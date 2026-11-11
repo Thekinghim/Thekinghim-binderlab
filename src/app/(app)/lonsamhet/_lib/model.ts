@@ -54,6 +54,8 @@ import {
 // Typer
 // ---------------------------------------------------------------------------
 
+import { monthForecast } from "./run-rate";
+
 export type ViewKey = "title" | "machine" | "store";
 export type TrendKey = "day" | "week" | "month";
 
@@ -535,6 +537,13 @@ export function buildLonsamhetModel(
       ? coverageDays(period, options.dataStart, today, options.hasOrdersToday ?? false) ||
         periodDays(period)
       : periodDays(period);
+  const previousCovered = !(
+    options.dataStart &&
+    input.previous &&
+    options.dataStart > input.previous.period.start
+  );
+  // "I den här takten": bara månaden hittills och de senaste 30 dagarna (./run-rate.ts).
+  const forecast = monthForecast({ period, today, days, profitOre: totalsRow.profitOre });
   const headline = lonsamhetHeadline({
     days,
     periodLabel: periodText(period, today),
@@ -558,8 +567,21 @@ export function buildLonsamhetModel(
       top && topName
         ? { name: topName, profitOre: top.profitOre, shareOfProfitBp: top.shareOfProfitBp }
         : null,
-    previous: prevTotals
-      ? { profitOre: prevTotals.profitOre, marginBp: prevTotals.marginBp }
+    // "Upp 12 % mot perioden innan" bara när perioden innan har data från första dagen:
+    // började försäljningen mitt i den jämförs hela dagar mot halva, och då ser allt ut att
+    // ha gått upp.
+    previous:
+      prevTotals && previousCovered
+        ? { profitOre: prevTotals.profitOre, marginBp: prevTotals.marginBp }
+        : null,
+    topKind: hv,
+    forecast: forecast
+      ? {
+          monthName: forecast.rolling
+            ? null
+            : formatMonth(isoDateToShellDate(`${forecast.month}-01`), { year: "never" }),
+          amountOre: forecast.amountOre,
+        }
       : null,
   });
 

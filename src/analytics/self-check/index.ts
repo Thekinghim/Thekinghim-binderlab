@@ -25,5 +25,29 @@ export {
 } from "./sync";
 export { settlementCheck, type SettlementRow } from "./settlements";
 export { hygieneCheck, type HygieneInput } from "./hygiene";
-export { homeLine, parseChecks, summarize, type RunStatus, type RunSummary } from "./summary";
+export {
+  CARD_FEE_LINK,
+  DEFAULT_VAT_LIMIT_ORE,
+  PACE_DAYS,
+  VAT_LINK,
+  cardFeeEffectOre,
+  daysToVatLimit,
+  roughWhen,
+  settingsCheck,
+  settingsCheckHeadline,
+  settingsHomeNotice,
+  settingsIssues,
+  stillValid,
+  vatAckValid,
+  type SettingsCheckInput,
+  type SettingsIssue,
+} from "./settings";
+export {
+  homeLink,
+  homeLine,
+  parseChecks,
+  summarize,
+  type RunStatus,
+  type RunSummary,
+} from "./summary";
 export { selfCheckDue, SELF_CHECK_HOUR } from "./schedule";

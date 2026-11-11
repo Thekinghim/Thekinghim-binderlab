@@ -57,6 +57,24 @@ function coveredText(p: IsoPeriod, today: string): string {
   return fullMonth ? `i ${periodText(p)}` : periodShort(p, today);
 }
 
+/**
+ * Frågan när en period saknar utbetalning: "Sålt för 41 200 kr i oktober efter avgifter."
+ * och "Vad betalade Awish?". En hel månad innevarande år skrivs utan årtal.
+ */
+export function payoutQuestionText(
+  period: IsoPeriod,
+  expectedOre: number,
+  today: string,
+): Headline {
+  const where = coveredText(period, today);
+  const sameYear = period.start.slice(0, 4) === today.slice(0, 4);
+  const short = where.startsWith("i ") && sameYear ? where.replace(/\s\d{4}$/, "") : where;
+  return {
+    title: `Sålt för ${sek(expectedOre)} ${short} efter avgifter.`,
+    aside: "Vad betalade Awish?",
+  };
+}
+
 /** Från första utbetalningens första dag till sista utbetalningens sista dag. */
 export function payoutSpan(result: ReconciliationResult): IsoPeriod {
   let start = result.payouts[0]!.period.start;

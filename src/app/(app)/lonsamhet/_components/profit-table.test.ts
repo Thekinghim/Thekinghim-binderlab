@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProfitLine } from "../_lib/model";
-import { lonsamhetCsv, soldLabel, sortedLines } from "./profit-table";
+import { NBSP } from "@/lib/format";
+
+import {
+  columnsFor,
+  LOW_MARGIN_BP,
+  lonsamhetCsv,
+  marginLine,
+  soldLabel,
+  sortedLines,
+} from "./profit-table";
 
 function line(p: Partial<ProfitLine> & Pick<ProfitLine, "key" | "name">): ProfitLine {
   return {
@@ -91,5 +100,21 @@ describe("antal sålda under namnet på telefonen", () => {
     expect(soldLabel(1)).toBe("1\u00a0såld");
     expect(soldLabel(12)).toBe("12\u00a0sålda");
     expect(soldLabel(1234)).toBe("1\u00a0234\u00a0sålda");
+  });
+});
+
+describe("marginalen under vinsten på telefonen", () => {
+  it("skrivs som en liten rad, och som låg under 15 %", () => {
+    expect(marginLine(3140)).toEqual({ text: `marginal 31,4${NBSP}%`, low: false });
+    expect(marginLine(LOW_MARGIN_BP)).toMatchObject({ low: false });
+    expect(marginLine(LOW_MARGIN_BP - 1)).toMatchObject({ low: true });
+    expect(marginLine(-50)).toMatchObject({ low: true });
+    expect(marginLine(null)).toBeNull();
+  });
+
+  it("kolumnen Marginal är dold på telefonen men finns kvar från md", () => {
+    const cols = columnsFor("title", rows, rows[0]!, false);
+    expect(cols.find((c) => c.key === "margin")?.hideOnMobile).toBe(true);
+    expect(cols.find((c) => c.key === "profit")?.hideOnMobile).toBeUndefined();
   });
 });

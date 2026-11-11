@@ -8,7 +8,10 @@ import type { PdfStatus } from "@/server/pdf/render";
  */
 export function ServiceLines({
   status,
+  hideMail = false,
 }: {
+  /** Dela-läget: e-post behövs inte, så raden om e-post visas inte. */
+  hideMail?: boolean;
   status: {
     mail: MailerStatus;
     pdf: PdfStatus;
@@ -17,7 +20,9 @@ export function ServiceLines({
 }) {
   // Namnen på miljövariablerna är tekniska uppgifter: de står bakom "Visa detaljer".
   const lines: { key: string; message: string; detail: string; settings: string }[] = [];
-  if (status.mail.kind === "outbox") {
+  if (hideMail) {
+    // Inget om e-post: rapporten delas för hand.
+  } else if (status.mail.kind === "outbox") {
     lines.push({
       key: "mail",
       message: "E-post är av: utskicken sparas lokalt.",

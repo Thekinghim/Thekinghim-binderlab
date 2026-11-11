@@ -17,7 +17,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -114,7 +114,10 @@ export interface RecipientRow {
 export interface DeliveryRow {
   readonly id: string;
   readonly recipientId: string | null;
-  readonly email: string;
+  /** null = delad för hand utan mottagare i appen. */
+  readonly email: string | null;
+  /** Delad för hand ("Skickade du den?"), inte skickad från appen. */
+  readonly manual: boolean;
   readonly status: DeliveryStatus;
   readonly sentAt: string | null;
   readonly error: string | null;
@@ -222,6 +225,7 @@ async function archiveTx(tx: Tx, orgId: string, limit: number, ids?: string[]) {
             reportId: s.reportDeliveries.reportId,
             recipientId: s.reportDeliveries.recipientId,
             email: s.reportDeliveries.email,
+            channel: s.reportDeliveries.channel,
             status: s.reportDeliveries.status,
             sentAt: s.reportDeliveries.sentAt,
             error: s.reportDeliveries.error,
@@ -265,7 +269,8 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
     list.push({
       id: d.id,
       recipientId: d.recipientId,
-      email: String(d.email),
+      email: d.email === null ? null : String(d.email),
+      manual: d.channel === "manual",
       status: d.status,
       sentAt: d.sentAt ? d.sentAt.toISOString() : null,
       error: d.error,
@@ -984,6 +989,54 @@ export async function setRecipientActiveFor(
       )
       .returning({ id: s.reportRecipients.id });
     if (rows.length === 0) throw new ReportError("Mottagaren finns inte.");
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Delad för hand (utan e-post)
+// ---------------------------------------------------------------------------
+
+/**
+ * "Skickade du den?": sparar att en godkänd rapport delats för hand. Ägare och admin.
+ * En rad per aktiv mottagare som kan få rapporten och inte redan fått den (så att punkten
+ * i Att göra försvinner), annars en rad utan mottagare. Status 'delivered', channel
+ * 'manual'. Att markera igen ändrar ingenting. Returnerar antalet nya rader.
+ */
+export async function markReportSharedFor(viewer: Viewer, reportId: string): Promise<number> {
+  const orgId = viewer.organization.id;
+  return as(viewer, EDIT_ROLES, async (tx) => {
+    // Två samtidiga "Ja, skickad" (dubbelt tryck, två personer) får inte ge dubbla rader.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`report-shared:${reportId}`}))`);
+    const report = await getReportTx(tx, orgId, reportId);
+    if (report.status === "superseded") {
+      throw new ReportError("Det finns en nyare version av rapporten. Dela den i stället.");
+    }
+    if (!report.approvedAt) {
+      throw new ReportError("Rapporten måste godkännas innan den markeras som skickad.");
+    }
+    const done = report.deliveries.filter((d) => DONE_DELIVERY.has(d.status));
+    const got = new Set(done.map((d) => d.recipientId).filter((id): id is string => id !== null));
+    const targets = eligibleRecipients(report.snapshot, await listRecipientsTx(tx, orgId)).filter(
+      (r) => !got.has(r.id),
+    );
+    const now = new Date();
+    const base = {
+      organizationId: orgId,
+      reportId: report.id,
+      status: "delivered" as const,
+      channel: "manual" as const,
+      sentAt: now,
+    };
+    if (targets.length > 0) {
+      await tx
+        .insert(s.reportDeliveries)
+        .values(targets.map((r) => ({ ...base, recipientId: r.id, email: r.email })));
+      return targets.length;
+    }
+    // Ingen mottagare kvar: en rad räcker, och bara om rapporten inte redan räknas som skickad.
+    if (done.length > 0) return 0;
+    await tx.insert(s.reportDeliveries).values({ ...base, recipientId: null, email: null });
+    return 1;
   });
 }
 

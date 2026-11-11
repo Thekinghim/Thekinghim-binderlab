@@ -1283,4 +1283,29 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [{ organizationId: c.A.orgId, email: "x-rodteam@example.se", role: "owner" }],
   },
+  // Runda 2, T5: Pengar
+  {
+    module: "@/app/(app)/installningar/_actions/settings",
+    name: "setVatAcknowledged",
+    allowed: OP,
+    args: () => [true],
+  },
+  {
+    module: "@/app/(app)/rapporter/actions",
+    name: "markReportShared",
+    allowed: OP,
+    args: (c) => [{ reportId: c.idsA.reports }],
+  },
+  {
+    module: "@/app/(app)/ekonomi/actions",
+    name: "addManualPayout",
+    allowed: OP,
+    args: () => [{ start: "2025-01-01", end: "2025-01-31", amount: "100", paidOn: "2025-02-01" }],
+  },
+  {
+    module: "@/app/(app)/ekonomi/actions",
+    name: "payoutExpectation",
+    allowed: OP,
+    args: () => [{ start: "2025-01-01", end: "2025-01-31" }],
+  },
 ];

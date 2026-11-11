@@ -10,13 +10,20 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 
-import { parseChecks, type CheckResult, type RunStatus } from "@/analytics/self-check";
+import {
+  parseChecks,
+  settingsHomeNotice,
+  vatAckValid,
+  type CheckResult,
+  type RunStatus,
+} from "@/analytics/self-check";
 import { getServiceDb, type Db } from "@/db/client";
 import type { SelfCheckTrigger } from "@/db/schema";
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
-import type { Viewer } from "@/server/data/core/loaders";
+import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
 
+import { fiscalYearAround, instantText } from "./queries";
 import { runSelfCheck, type SelfCheckRunResult } from "./run";
 
 /** "Kör kontrollen nu" högst så här ofta per organisation. */
@@ -100,27 +107,65 @@ export async function loadSelfCheckFor(viewer: Viewer, limit = 14): Promise<Self
 
 /**
  * Raden på Hem: senaste körningen (status och antal fel), eller null. Under RLS: läsaren
- * och påfyllaren ser ingen körning (null), utan att något kastas.
+ * och påfyllaren ser ingen körning (null), utan att något kastas. `notice` = varningen ur
+ * kontrollen "Inställningar", om den fortfarande gäller med dagens inställningar (en ändrad
+ * kortavgift eller "Revisorn har koll" tar bort raden direkt, utan en ny körning).
  */
-export async function latestSelfCheckFor(
-  viewer: Viewer,
-): Promise<{ id: string; ranAt: string; status: RunStatus; failed: number } | null> {
+export async function latestSelfCheckFor(viewer: Viewer): Promise<{
+  id: string;
+  ranAt: string;
+  status: RunStatus;
+  failed: number;
+  notice: string | null;
+} | null> {
   const orgId = viewer.organization.id;
   const [row] = (await withUserDbFor(viewer.user, async (tx) =>
     Array.from(
       await tx.execute(
-        sql`select id, ran_at, status, failed from public.self_check_runs
-            where organization_id = ${orgId}::uuid
-            order by ran_at desc limit 1`,
+        sql`select r.id, r.ran_at, r.status, r.failed,
+                   case when jsonb_typeof(r.checks) = 'array' then
+                     (select c from jsonb_array_elements(r.checks) c
+                      where c ->> 'id' = 'installningar' limit 1)
+                   end as settings_check,
+                   s.card_fee_bp, s.vat_rate_bp, s.vat_ok_at, s.fiscal_year_start_month
+            from public.self_check_runs r
+            left join public.organization_settings s on s.organization_id = r.organization_id
+            where r.organization_id = ${orgId}::uuid
+            order by r.ran_at desc limit 1`,
       ),
     ),
-  )) as unknown as { id: string; ran_at: Date | string; status: string; failed: number }[];
+  )) as unknown as {
+    id: string;
+    ran_at: Date | string;
+    status: string;
+    failed: number;
+    settings_check: unknown;
+    card_fee_bp: number | null;
+    vat_rate_bp: number | null;
+    vat_ok_at: unknown;
+    fiscal_year_start_month: number | null;
+  }[];
   if (!row) return null;
+  const [settingsCheck] = parseChecks(row.settings_check ? [row.settings_check] : []);
   return {
     id: row.id,
     ranAt: new Date(row.ran_at).toISOString(),
     status: STATUSES.includes(row.status as RunStatus) ? (row.status as RunStatus) : "error",
     failed: Number(row.failed),
+    notice: settingsCheck
+      ? settingsHomeNotice(settingsCheck.findings, {
+          cardFeeBp: Number(row.card_fee_bp ?? 0),
+          vatRateBp: Number(row.vat_rate_bp ?? 0),
+          // "Revisorn har koll" gäller räkenskapsåret det trycktes i (vatAckValid).
+          vatAcknowledged: vatAckValid(
+            instantText(row.vat_ok_at),
+            fiscalYearAround(
+              businessToday(new Date(), viewer.organization.timezone),
+              Number(row.fiscal_year_start_month ?? 1),
+            ).start,
+          ),
+        })
+      : null,
   };
 }
 

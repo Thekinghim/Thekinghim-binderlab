@@ -87,6 +87,25 @@ describe("monthVouchers", () => {
     expect(r.daysWithActualFees).toBe(1);
   });
 
+  it("inskriven för hand (okända avgifter): dagens uppskattade avgift står kvar", () => {
+    const r = monthVouchers({
+      report: report(170),
+      payouts: [{ ...PAYOUT, feesOre: 0, feesKnown: false }],
+      accounts: ACCOUNTS,
+      fiscalYear: FY,
+      series: "BL",
+      firstNumber: 1,
+    });
+    const day14 = r.verifications.find((v) => v.date === "2026-10-14")!;
+    expect(day14.transactions).toContainEqual({ account: "6040", amountOre: 170 });
+    expect(r.daysWithActualFees).toBe(0);
+    const payout = r.verifications.find((v) => v.text.startsWith("Utbetalning AW-10"))!;
+    expect(payout.transactions.some((t) => t.account === "6040")).toBe(false);
+    for (const v of r.verifications) {
+      expect(v.transactions.reduce((s, t) => s + t.amountOre, 0)).toBe(0);
+    }
+  });
+
   it("utan bankkonto i kontoplanen används BAS 1930 och det flaggas", () => {
     const r = monthVouchers({
       report: report(0),

@@ -532,7 +532,7 @@ describe("körningen", () => {
     expect(parsed.map((r) => r.id)).toEqual(["samma_vinst", "synk", "datahygien"]);
     expect(parsed[1]!.status).toBe("fail");
     expect(parsed[1]!.findings[0]!.link).toBe("/datakallor");
-    expect(CHECK_ORDER).toHaveLength(6);
+    expect(CHECK_ORDER).toHaveLength(7);
   });
 });
 

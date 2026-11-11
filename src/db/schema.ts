@@ -636,7 +636,10 @@ export const reportDeliveries = pgTable("report_deliveries", {
   organizationId: orgId(),
   reportId: uuid("report_id").notNull(),
   recipientId: uuid("recipient_id"),
-  email: citext("email").notNull(),
+  /** T5: tomt bara för en manuell rad utan mottagare (20261205000100_rapport_delad.sql). */
+  email: citext("email"),
+  /** T5: 'email' = skickad från appen, 'manual' = delad för hand. */
+  channel: text("channel").$type<"email" | "manual">().notNull().default("email"),
   status: reportDeliveryStatus("status").notNull(),
   sentAt: ts("sent_at"),
   providerMessageId: text("provider_message_id"),
@@ -663,6 +666,9 @@ export const organizationSettings = pgTable("organization_settings", {
   contactPhone: text("contact_phone"),
   /** Prisråd: mål för marginalen före butikernas andel (20261120000000_prisrad.sql). */
   targetMarginBp: integer("target_margin_bp").notNull().default(2500),
+  /** T5: momsgränsen vi varnar vid och "Revisorn har koll" (20261205000000_installningar_varning.sql). */
+  vatLimitOre: ore("vat_limit_ore").notNull().default(12_000_000),
+  vatOkAt: ts("vat_ok_at"),
   ...stamps(),
 });
 

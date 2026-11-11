@@ -25,6 +25,7 @@ import {
   createRecipientFor,
   createReportFor,
   ensurePdfFor,
+  markReportSharedFor,
   ReportError,
   sendReportFor,
   setRecipientActiveFor,
@@ -164,6 +165,24 @@ export async function sendReport(raw: unknown): Promise<ActionResult<SendResult>
     );
     refresh();
     return { ok: true, data: result };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+const sharedSchema = z.object({ reportId: uuid });
+
+/**
+ * "Skickade du den?" → Ja: sparar att en godkänd rapport delats för hand, så att månaden
+ * räknas som klar. Ägare och admin.
+ */
+export async function markReportShared(raw: unknown): Promise<ActionResult<{ added: number }>> {
+  try {
+    const viewer = await operator();
+    const input = sharedSchema.parse(raw);
+    const added = await markReportSharedFor(viewer, input.reportId);
+    refresh();
+    return { ok: true, data: { added } };
   } catch (error) {
     return failure(error);
   }

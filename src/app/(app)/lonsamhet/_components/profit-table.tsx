@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import {
   DataTable,
   sortOrder,
@@ -51,6 +52,40 @@ function SoldLine({ orders }: { orders: number }) {
   return (
     <span data-sold className="tnum basis-full text-sm text-muted md:hidden">
       {soldLabel(orders)}
+    </span>
+  );
+}
+
+/** Under den här marginalen (15 %) skrivs raden i varningsfärg på telefonen. */
+export const LOW_MARGIN_BP = 1_500;
+
+/** Raden under vinsten på telefonen: "marginal 31,4 %", och om den är låg. null utan marginal. */
+export function marginLine(bp: number | null): { text: string; low: boolean } | null {
+  if (bp === null) return null;
+  return { text: `marginal ${formatMarginBp(bp)}`, low: bp < LOW_MARGIN_BP };
+}
+
+/**
+ * Vinsten med marginalen som en liten rad under på telefonen (under md), där kolumnen
+ * Marginal är dold: grå, eller i varningsfärg med ordet "låg" under 15 %. Från md står
+ * marginalen i sin egen kolumn.
+ */
+function ProfitCell({ profit, marginBp }: { profit: ReactNode; marginBp: number | null }) {
+  const m = marginLine(marginBp);
+  return (
+    <span className="inline-flex flex-col items-end">
+      <span>{profit}</span>
+      {m ? (
+        <span
+          data-margin={m.low ? "low" : "ok"}
+          className={cn(
+            "tnum text-xs whitespace-nowrap md:hidden",
+            m.low ? "text-signal-fg" : "text-muted",
+          )}
+        >
+          {m.low ? `låg ${m.text}` : m.text}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -221,8 +256,18 @@ export function columnsFor(
       header: labels.profit,
       numeric: true,
       sortValue: sv.profit,
-      render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.profitOre)),
-      footer: <span className="font-medium text-fg">{kr(totals.profitOre)}</span>,
+      render: (r) =>
+        onlyUnpriced(r) ? (
+          MISSING
+        ) : (
+          <ProfitCell profit={kr(r.profitOre)} marginBp={r.kind === "item" ? r.marginBp : null} />
+        ),
+      footer: (
+        <ProfitCell
+          profit={<span className="font-medium text-fg">{kr(totals.profitOre)}</span>}
+          marginBp={totals.marginBp}
+        />
+      ),
     },
     {
       key: "margin",
@@ -231,6 +276,8 @@ export function columnsFor(
       sortValue: sv.margin,
       render: (r) => pct(r.marginBp),
       footer: pct(totals.marginBp),
+      // Telefon: marginalen står under vinsten (ProfitCell), så raden ryms utan att svepa.
+      hideOnMobile: true,
     },
   ];
   // Utan kortavgifter (0 kr på alla rader) tar kolumnen bara plats; CSV-exporten har den kvar.

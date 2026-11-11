@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { CashflowResult } from "@/analytics/cashflow";
+import { parseAmountOre } from "@/import/amount";
+import { NBSP } from "@/lib/format";
 
 import {
   bookkeepingTitle,
@@ -8,7 +10,9 @@ import {
   cashPhase,
   economyHeadline,
   NO_PAYOUT_SOURCE_TEXT,
+  payoutQuestionText,
 } from "./headline";
+import { amountField } from "./view";
 
 const PERIOD = { start: "2026-10-04", end: "2026-11-02" };
 const TODAY = "2026-11-03";
@@ -107,5 +111,47 @@ describe("Kassaflöde: egen rubrik och inget falskt 'Faktiskt 0 kr' (utvärderin
     expect(cashPhase("mixed", false)).toBe("untracked");
     expect(cashPhase("forecast", false)).toBe("forecast");
     expect(cashPhase("actual", true)).toBe("actual");
+  });
+});
+
+describe("payoutQuestionText (Vad betalade Awish?)", () => {
+  it("hel månad i år: månaden utan årtal", () => {
+    expect(
+      payoutQuestionText({ start: "2026-10-01", end: "2026-10-31" }, 4_120_000, "2026-11-05"),
+    ).toEqual({
+      title: `Sålt för 41${NBSP}200${NBSP}kr i oktober efter avgifter.`,
+      aside: "Vad betalade Awish?",
+    });
+  });
+
+  it("hel månad förra året: med årtal", () => {
+    expect(
+      payoutQuestionText({ start: "2025-12-01", end: "2025-12-31" }, 150_000, "2026-01-03").title,
+    ).toBe(`Sålt för 1${NBSP}500${NBSP}kr i december 2025 efter avgifter.`);
+  });
+
+  it("egna dagar: dagarna i klartext", () => {
+    const { title } = payoutQuestionText(
+      { start: "2026-10-14", end: "2026-10-31" },
+      99_950,
+      "2026-11-05",
+    );
+    expect(title.startsWith(`Sålt för 1${NBSP}000${NBSP}kr 14`)).toBe(true);
+    expect(title.endsWith("okt. efter avgifter.")).toBe(true);
+  });
+});
+
+describe("amountField", () => {
+  it("hela kronor utan decimaler, ören med komma", () => {
+    expect(amountField(4_120_000)).toBe("41200");
+    expect(amountField(1_217_160)).toBe("12171,60");
+    expect(amountField(5)).toBe("0,05");
+  });
+
+  it("går att läsa tillbaka som samma belopp", () => {
+    for (const ore of [4_120_000, 1_217_160, 5, 99]) {
+      const parsed = parseAmountOre(amountField(ore));
+      expect(parsed.ok && parsed.ore).toBe(ore);
+    }
   });
 });

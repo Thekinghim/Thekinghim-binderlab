@@ -6,9 +6,11 @@ import { wallClockIn } from "@/components/shell/period-state";
 import { MobileFold } from "@/components/ui/mobile-fold";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { DEFAULT_VAT_LIMIT_ORE, settingsCheckHeadline, vatAckValid } from "@/analytics/self-check";
 import { EN_DASH, NBSP, formatDate, formatInt } from "@/lib/format";
 import { operatorGaps, operatorParty } from "@/server/contracts/operator";
 import { requireRoute } from "@/server/data/core";
+import { fiscalYearAround } from "@/server/self-check/queries";
 import { listCustomerDemosFor } from "@/server/demo/customer-demos";
 import { listDataExportsFor } from "@/server/export/service";
 import { requireUser } from "@/server/session";
@@ -19,9 +21,10 @@ import { ExportDataButton } from "./_components/export-data";
 import { MerHead } from "./_components/mer-head";
 import { OwnerSharesForm } from "./_components/owner-shares-form";
 import { SettingsForm } from "./_components/settings-form";
+import { SettingsNotices, VatAcknowledgedLine } from "./_components/settings-notices";
 import { SettingsLog } from "./_components/settings-log";
 import { SubscriptionSection } from "./_components/subscription-section";
-import { loadSettingsPageFor } from "./_lib/data";
+import { loadSettingsIssuesFor, loadSettingsPageFor } from "./_lib/data";
 import {
   accountUse,
   fiscalYearLabel,
@@ -56,8 +59,10 @@ export default async function SettingsPage() {
   const ctx = await requireRoute("installningar");
   const user = await requireUser();
   const isOwnerRole = ctx.role === "owner";
-  const [data, exports] = await Promise.all([
+  const [data, issues, exports] = await Promise.all([
     loadSettingsPageFor(user, ctx.organization.id),
+    // Varningarna får aldrig stoppa sidan: utan dem visas inställningarna som förut.
+    loadSettingsIssuesFor(user, ctx.organization.id, ctx.today).catch(() => null),
     isOwnerRole
       ? listDataExportsFor({ user, organization: { ...ctx.organization, role: ctx.role } }).catch(
           () => [],
@@ -72,8 +77,16 @@ export default async function SettingsPage() {
   const when = (iso: string) =>
     formatDate(wallClockIn(new Date(iso), tz), { year: "auto", now: nowLocal });
 
-  const settings = data.settings ?? { cardFeeBp: 0, vatRateBp: 0, fiscalYearStartMonth: 1 };
+  const settings = data.settings ?? {
+    cardFeeBp: 0,
+    vatRateBp: 0,
+    fiscalYearStartMonth: 1,
+    vatLimitOre: DEFAULT_VAT_LIMIT_ORE,
+    vatOkAt: null,
+  };
   const headline = settingsHeadline(settings);
+  // Rubriken: det som behöver kollas, annars "Allt är inställt." (null = gick inte att läsa).
+  const check = issues ? settingsCheckHeadline(issues) : null;
   const log = settingsLog(data.events, data.actorNames, day);
   const settingsChanges = log.filter((e) => e.subject === "Avgifter och moms");
   const lastSettingsChange = settingsChanges[0];
@@ -100,7 +113,9 @@ export default async function SettingsPage() {
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 max-md:gap-6 md:gap-12 md:px-8 md:pt-12">
       <MerHead
         eyebrow="Inställningar"
-        title={headline.title}
+        title={check ? check.title : headline.title}
+        line={check ? headline.title : undefined}
+        tone={check && !check.ok ? "bad" : undefined}
         // Mobil: räkenskapsåret står i formuläret, ändringarna i loggen.
         metaOnMobile={false}
         meta={[
@@ -113,6 +128,10 @@ export default async function SettingsPage() {
           },
         ]}
       />
+
+      {issues && issues.length > 0 ? (
+        <SettingsNotices notices={issues.map((i) => ({ kind: i.kind, text: i.text }))} />
+      ) : null}
 
       <nav
         aria-label="Fler inställningar"
@@ -148,10 +167,12 @@ export default async function SettingsPage() {
       </nav>
 
       <section
+        id="kortavgift"
         aria-labelledby="avgifter"
-        className="rise flex flex-col gap-8 max-md:gap-3"
+        className="rise flex scroll-mt-28 flex-col gap-8 max-md:gap-3"
         style={{ "--i": 2 } as React.CSSProperties}
       >
+        <span id="moms" className="sr-only" aria-hidden />
         <SectionHeader id="avgifter" size="md" title="Avgifter och moms." />
         {/* Mobil: formulären är hopfällda med nuvarande värden på raden. */}
         <MobileFold
@@ -160,13 +181,20 @@ export default async function SettingsPage() {
         >
           <div className="max-w-2xl">
             <SettingsForm
-              key={`${settings.cardFeeBp}-${settings.vatRateBp}-${settings.fiscalYearStartMonth}`}
+              key={`${settings.cardFeeBp}-${settings.vatRateBp}-${settings.fiscalYearStartMonth}-${settings.vatLimitOre}`}
               cardFeeBp={settings.cardFeeBp}
               vatRateBp={settings.vatRateBp}
               fiscalYearStartMonth={settings.fiscalYearStartMonth}
+              vatLimitOre={settings.vatLimitOre}
             />
           </div>
         </MobileFold>
+        {vatAckValid(
+          settings.vatOkAt,
+          fiscalYearAround(ctx.today, settings.fiscalYearStartMonth).start,
+        ) && settings.vatRateBp === 0 ? (
+          <VatAcknowledgedLine since={when(settings.vatOkAt!)} />
+        ) : null}
       </section>
 
       <section

@@ -14,6 +14,12 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 
+import {
+  DEFAULT_VAT_LIMIT_ORE,
+  settingsIssues,
+  vatAckValid,
+  type SettingsIssue,
+} from "@/analytics/self-check";
 import type { Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
 import { isIsoDate, type IsoDate } from "@/domain";
@@ -26,11 +32,14 @@ import {
 import type { ActionResult } from "@/server/auth/flows";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 import { readCompanyDetails, type CompanyDetailsRow } from "@/server/contracts/operator";
+import { fiscalYearAround, querySettingsFacts } from "@/server/self-check/queries";
 
 import {
   AUDITED_TABLES,
   MAX_FEE_BP,
   MAX_VAT_BP,
+  MAX_VAT_LIMIT_ORE,
+  MIN_VAT_LIMIT_ORE,
   SETTINGS_MESSAGES,
   type LedgerAccountRow,
   type OwnerShareRow,
@@ -75,7 +84,8 @@ function json(value: unknown): Record<string, unknown> | null {
 async function querySettingsRow(tx: Tx, orgId: string): Promise<SettingsRow | null> {
   const r = Array.from(
     await tx.execute(
-      sql`select id, vat_rate_bp, card_fee_bp, fiscal_year_start_month, updated_at
+      sql`select id, vat_rate_bp, card_fee_bp, fiscal_year_start_month, updated_at,
+                 vat_limit_ore, vat_ok_at
           from public.organization_settings where organization_id = ${orgId}::uuid`,
     ),
   )[0] as Record<string, unknown> | undefined;
@@ -86,6 +96,8 @@ async function querySettingsRow(tx: Tx, orgId: string): Promise<SettingsRow | nu
         cardFeeBp: Number(r.card_fee_bp),
         fiscalYearStartMonth: Number(r.fiscal_year_start_month),
         updatedAt: iso(r.updated_at),
+        vatLimitOre: Number(r.vat_limit_ore),
+        vatOkAt: r.vat_ok_at == null ? null : iso(r.vat_ok_at),
       }
     : null;
 }
@@ -215,11 +227,15 @@ const settingsInput = z.object({
   cardFeeBp: z.number().int().min(0).max(MAX_FEE_BP),
   vatRateBp: z.number().int().min(0).max(MAX_VAT_BP),
   fiscalYearStartMonth: z.number().int().min(1).max(12),
+  /** Momsgränsen vi varnar vid, i öre. Utelämnad = oförändrad. */
+  vatLimitOre: z.number().int().min(MIN_VAT_LIMIT_ORE).max(MAX_VAT_LIMIT_ORE).optional(),
 });
 
 export type SettingsInput = z.input<typeof settingsInput>;
 
-/** Sparar kortavgift, momssats och räkenskapsårets första månad. Ägare och admin. */
+/**
+ * Sparar kortavgift, momssats, räkenskapsårets första månad och momsgränsen. Ägare och admin.
+ */
 export async function updateSettingsFor(
   user: SessionUser | null,
   raw: SettingsInput,
@@ -241,7 +257,8 @@ export async function updateSettingsFor(
         current &&
         current.cardFeeBp === input.cardFeeBp &&
         current.vatRateBp === input.vatRateBp &&
-        current.fiscalYearStartMonth === input.fiscalYearStartMonth
+        current.fiscalYearStartMonth === input.fiscalYearStartMonth &&
+        (input.vatLimitOre === undefined || current.vatLimitOre === input.vatLimitOre)
       ) {
         return { ok: true, data: { changed: false } };
       }
@@ -249,16 +266,100 @@ export async function updateSettingsFor(
         await tx.execute(
           sql`update public.organization_settings
               set card_fee_bp = ${input.cardFeeBp}, vat_rate_bp = ${input.vatRateBp},
-                  fiscal_year_start_month = ${input.fiscalYearStartMonth}
+                  fiscal_year_start_month = ${input.fiscalYearStartMonth},
+                  vat_limit_ore = ${input.vatLimitOre ?? current.vatLimitOre}
               where organization_id = ${input.organizationId}::uuid`,
         );
       } else {
         await tx.execute(
           sql`insert into public.organization_settings
-                (organization_id, card_fee_bp, vat_rate_bp, fiscal_year_start_month)
+                (organization_id, card_fee_bp, vat_rate_bp, fiscal_year_start_month, vat_limit_ore)
               values (${input.organizationId}::uuid, ${input.cardFeeBp}, ${input.vatRateBp},
-                      ${input.fiscalYearStartMonth})`,
+                      ${input.fiscalYearStartMonth},
+                      ${input.vatLimitOre ?? DEFAULT_VAT_LIMIT_ORE})`,
         );
+      }
+      return { ok: true, data: { changed: true } };
+    });
+  } catch (error) {
+    if (pgErrorOf(error)?.code === "42501")
+      return { ok: false, error: SETTINGS_MESSAGES.forbidden };
+    return { ok: false, error: dbErrorMessage(error) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// "Säger till": det som behöver kollas, och "Revisorn har koll"
+// ---------------------------------------------------------------------------
+
+/**
+ * Det som behöver kollas i inställningarna just nu (samma regel som den dagliga
+ * kontrollen, räknad på dagens tal). Ägare och admin, under RLS. Tom lista = allt är
+ * inställt.
+ */
+export async function loadSettingsIssuesFor(
+  user: SessionUser,
+  organizationId: string,
+  today: IsoDate,
+): Promise<SettingsIssue[]> {
+  await requireRoleFor(user, organizationId, PAGE_ROLES);
+  return withUserDbFor(user, async (tx) =>
+    settingsIssues(await querySettingsFacts(tx, organizationId, today)),
+  );
+}
+
+const vatOkInput = z.object({
+  organizationId: z.uuid(),
+  acknowledged: z.boolean(),
+  /** Dagens datum i organisationens tidszon (avgör räkenskapsåret). Utelämnat: dagens UTC-dag. */
+  today: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+});
+
+/**
+ * "Revisorn har koll": momsvarningen visas inte längre (acknowledged = false: varna igen).
+ * Ägare och admin. Ändrar aldrig momssatsen.
+ */
+export async function setVatAcknowledgedFor(
+  user: SessionUser | null,
+  raw: z.input<typeof vatOkInput>,
+): Promise<ActionResult<{ changed: boolean }>> {
+  const parsed = vatOkInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: SETTINGS_MESSAGES.invalid };
+  const input = parsed.data;
+  const denied = await authorize(
+    user,
+    input.organizationId,
+    PAGE_ROLES,
+    SETTINGS_MESSAGES.forbidden,
+  );
+  if (denied) return denied;
+  try {
+    return await withUserDbFor(user as SessionUser, async (tx) => {
+      const current = await querySettingsRow(tx, input.organizationId);
+      // "Har koll" gäller räkenskapsåret det trycktes i: ett gammalt från förra året räknas
+      // inte, så knappen sparar på nytt.
+      const today = (input.today ?? new Date().toISOString().slice(0, 10)) as IsoDate;
+      const fiscal = fiscalYearAround(today, current?.fiscalYearStartMonth ?? 1);
+      const valid = vatAckValid(current?.vatOkAt, fiscal.start);
+      // Varna igen nollställer också ett gammalt.
+      const unchanged = input.acknowledged ? valid : current?.vatOkAt === null;
+      if (current && unchanged) return { ok: true, data: { changed: false } };
+      if (current) {
+        await tx.execute(
+          sql`update public.organization_settings
+              set vat_ok_at = ${input.acknowledged ? sql`now()` : sql`null`}
+              where organization_id = ${input.organizationId}::uuid`,
+        );
+      } else if (input.acknowledged) {
+        await tx.execute(
+          sql`insert into public.organization_settings (organization_id, vat_ok_at)
+              values (${input.organizationId}::uuid, now())`,
+        );
+      } else {
+        return { ok: true, data: { changed: false } };
       }
       return { ok: true, data: { changed: true } };
     });

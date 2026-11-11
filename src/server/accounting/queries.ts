@@ -29,6 +29,8 @@ export interface PayoutRecord {
   readonly importId: string | null;
   readonly dataSourceId: string | null;
   readonly createdAt: string;
+  /** Inskriven för hand ("Vad betalade Awish?"): avgifterna är okända. */
+  readonly manual: boolean;
 }
 
 /**
@@ -75,6 +77,7 @@ export async function queryPayouts(
       importId: s.payouts.importId,
       dataSourceId: s.payouts.dataSourceId,
       createdAt: s.payouts.createdAt,
+      manual: s.payouts.manual,
       lineCount: sql<number>`(select count(*)::int from public.payout_lines pl
         where pl.organization_id = "payouts"."organization_id" and pl.payout_id = "payouts"."id")`,
     })

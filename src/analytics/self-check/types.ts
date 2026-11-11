@@ -12,12 +12,19 @@
  *   avrakningar       obetalda avräkningar = butikens andel på sidorna
  *   datahygien        order utan titel eller belopp, sålda titlar utan inköpspris,
  *                     negativt saldo
+ *   installningar     kortavgift 0 % trots kortköp, moms 0 % nära momsgränsen (varningar)
  *
  * Resultatet sparas i public.self_check_runs.checks (jsonb), därför bara enkla värden.
  */
 
 export type SelfCheckId =
-  "samma_vinst" | "awish_appen" | "pafyllning_awish" | "synk" | "avrakningar" | "datahygien";
+  | "samma_vinst"
+  | "awish_appen"
+  | "pafyllning_awish"
+  | "synk"
+  | "avrakningar"
+  | "datahygien"
+  | "installningar";
 
 /** pass = gick igenom, warn = varning (inget larm), fail = fel (larm), skip = inget att kontrollera. */
 export type CheckStatus = "pass" | "warn" | "fail" | "skip";
@@ -75,6 +82,7 @@ export const CHECKS: Readonly<Record<SelfCheckId, CheckMeta>> = {
   synk: { title: "Synk färsk", link: "/datakallor", linkLabel: "Datakällor" },
   avrakningar: { title: "Avräkningar", link: "/butiker", linkLabel: "Butiker" },
   datahygien: { title: "Datahygien", link: "/inkopspriser", linkLabel: "Inköpspriser" },
+  installningar: { title: "Inställningar", link: "/installningar", linkLabel: "Inställningar" },
 };
 
 export const CHECK_ORDER: readonly SelfCheckId[] = [
@@ -84,6 +92,7 @@ export const CHECK_ORDER: readonly SelfCheckId[] = [
   "synk",
   "avrakningar",
   "datahygien",
+  "installningar",
 ];
 
 export function isSelfCheckId(value: unknown): value is SelfCheckId {

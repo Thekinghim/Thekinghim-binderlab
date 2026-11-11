@@ -16,23 +16,29 @@ import {
   bpToInput,
   formatBp,
   parsePercentInput,
+  parseVatLimitInput,
+  vatLimitToInput,
 } from "../_lib/model";
 
-/** Kortavgift, momssats och räkenskapsårets start. Ägare och admin. */
+/** Kortavgift, momssats, räkenskapsårets start och momsgränsen vi varnar vid. Ägare och admin. */
 export function SettingsForm({
   cardFeeBp,
   vatRateBp,
   fiscalYearStartMonth,
+  vatLimitOre,
 }: {
   cardFeeBp: number;
   vatRateBp: number;
   fiscalYearStartMonth: number;
+  vatLimitOre: number;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [fee, setFee] = useState(bpToInput(cardFeeBp));
   const [vat, setVat] = useState(bpToInput(vatRateBp));
   const [month, setMonth] = useState(String(fiscalYearStartMonth));
+  const [limit, setLimit] = useState(vatLimitToInput(vatLimitOre));
+  const [limitError, setLimitError] = useState<string>();
   const [feeError, setFeeError] = useState<string>();
   const [vatError, setVatError] = useState<string>();
   const [error, setError] = useState<string>();
@@ -44,13 +50,16 @@ export function SettingsForm({
     const v = parsePercentInput(vat, MAX_VAT_BP);
     setFeeError(f.ok ? undefined : f.message);
     setVatError(v.ok ? undefined : v.message);
-    if (!f.ok || !v.ok) return;
+    const l = parseVatLimitInput(limit);
+    setLimitError(l.ok ? undefined : l.message);
+    if (!f.ok || !v.ok || !l.ok) return;
     setError(undefined);
     startTransition(async () => {
       const result = await updateSettings({
         cardFeeBp: f.bp,
         vatRateBp: v.bp,
         fiscalYearStartMonth: Number(month),
+        vatLimitOre: l.ore,
       });
       if (!result.ok) {
         setError(result.error);
@@ -108,17 +117,34 @@ export function SettingsForm({
           hint={vatRateBp === 0 ? "0 % när bolaget inte är momsregistrerat." : undefined}
         />
       </div>
-      <Select
-        label="Räkenskapsåret börjar"
-        name="fiscalYearStartMonth"
-        options={MONTH_OPTIONS}
-        value={month}
-        onChange={(e) => {
-          setMonth(e.target.value);
-          setError(undefined);
-        }}
-        wrapperClassName="sm:max-w-[calc(50%-8px)]"
-      />
+      <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+        <Select
+          label="Räkenskapsåret börjar"
+          name="fiscalYearStartMonth"
+          options={MONTH_OPTIONS}
+          value={month}
+          onChange={(e) => {
+            setMonth(e.target.value);
+            setError(undefined);
+          }}
+        />
+        <Input
+          label="Momsgräns"
+          name="vatLimit"
+          inputMode="numeric"
+          autoComplete="off"
+          suffix="kr"
+          className="tnum text-right"
+          value={limit}
+          onChange={(e) => {
+            setLimit(e.target.value);
+            setLimitError(undefined);
+            setError(undefined);
+          }}
+          error={limitError}
+          hint="Appen säger till när årets försäljning närmar sig."
+        />
+      </div>
       <p className="border-t border-line pt-4 text-sm text-muted">
         Gäller bakåt. Stängda månader ändras inte.
       </p>
