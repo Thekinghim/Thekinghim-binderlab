@@ -153,12 +153,20 @@ describe("Beställt och Kom fram på inköpslistan", () => {
     const v = await viewerFor(owner, orgId);
     const ordered = await planQty(v);
     const res = await receiveArrivalFor(v, { titleId, quantity: 30 });
-    expect(res).toMatchObject({ previous: 0, onHand: 30, expected: 56, fromOrders: 30, missing: 26 });
+    expect(res).toMatchObject({
+      previous: 0,
+      onHand: 30,
+      expected: 56,
+      fromOrders: 30,
+      missing: 26,
+    });
     expect(await level(hemma)).toBe(30);
     const [po] = await orders();
     expect(po).toMatchObject({ status: "received", quantity: 56, received: 30 });
     expect(po!.note).toContain("26 pack kom aldrig");
-    expect(onTheWay(await loadPurchasePlanFor(v)).find((w) => w.titleId === titleId)).toBeUndefined();
+    expect(
+      onTheWay(await loadPurchasePlanFor(v)).find((w) => w.titleId === titleId),
+    ).toBeUndefined();
     // 56 var räknade som på väg; nu ligger 30 hemma: planen ber om 26 till.
     expect(await planQty(v)).toBe(ordered + 26);
   });
@@ -171,7 +179,11 @@ describe("Beställt och Kom fram på inköpslistan", () => {
     expect(res.placeName).toBe("Kontoret");
     expect(await level(kontoret)).toBe(14);
     expect(await level(hemma)).toBe(30);
-    expect((await orders()).at(-1)).toMatchObject({ status: "received", quantity: 10, received: 10 });
+    expect((await orders()).at(-1)).toMatchObject({
+      status: "received",
+      quantity: 10,
+      received: 10,
+    });
   });
 
   it("Köpt, har dem här utan beställning, med nytt pris i samma steg", async () => {

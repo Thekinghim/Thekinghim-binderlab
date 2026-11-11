@@ -10,7 +10,7 @@
  *   ett vanligt inköp. Kom färre än beställt hos "Eget inköp" avslutas den ordern, så att
  *   planen ber om resten igen. Ett annat lager än standardlagret: packen flyttas dit i
  *   samma transaktion (transfer_stock).
- * - onTheWay: det som är på väg per titel, ur inköpsplanens rader. Ren.
+ * - onTheWay (src/analytics/purchasing/on-the-way.ts): det som är på väg per titel.
  *
  * Allt skrivs som användaren med RLS (ägare och admin, som övriga inköp).
  */
@@ -20,7 +20,6 @@ import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import type { PurchasePlan } from "@/analytics/purchasing/types";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { addDays, type IsoDate } from "@/domain";
@@ -342,36 +341,4 @@ function inList(ids: readonly string[]) {
   )})`;
 }
 
-// ---------------------------------------------------------------------------
-// På väg (rent)
-// ---------------------------------------------------------------------------
-
-export interface OnTheWay {
-  readonly titleId: string;
-  /** Pack som är beställda och inte har kommit. */
-  readonly quantity: number;
-  /** Tidigaste väntade leverans. */
-  readonly expectedOn: IsoDate;
-  /** Den väntade dagen har passerat. */
-  readonly late: boolean;
-}
-
-/** Det som är på väg per titel, ur inköpsplanens rader (beställt, inte utkast). */
-export function onTheWay(plan: Pick<PurchasePlan, "lines">): OnTheWay[] {
-  const out: OnTheWay[] = [];
-  for (const l of plan.lines) {
-    const open = l.onOrder.filter(
-      (o) => (o.status === "ordered" || o.status === "partially_received") && o.outstanding > 0,
-    );
-    if (open.length === 0) continue;
-    const first = open.reduce((a, b) => (b.expectedOn < a.expectedOn ? b : a));
-    out.push({
-      titleId: l.titleId,
-      quantity: open.reduce((sum, o) => sum + o.outstanding, 0),
-      expectedOn: first.expectedOn,
-      late: first.overdue,
-    });
-  }
-  return out;
-}
-
+export { onTheWay, type OnTheWay } from "@/analytics/purchasing/on-the-way";

@@ -13,6 +13,7 @@ import { dateText } from "../_lib/dates";
 import type { PlanLineView, PlanModel, SupplierView } from "../_lib/model";
 import { kr, packsMilli } from "../_lib/units";
 import { CreateOrderDialog, type OrderDraft } from "./create-order-dialog";
+import { BuyButtons, type BuyPlace } from "./buy-actions";
 import { EvidenceButton } from "./evidence-button";
 
 /** Räcker (samma regel som Vårt lager): "12 dagar" · "–" utan takt. */
@@ -242,11 +243,17 @@ export function PlanView({
   suppliers,
   canEdit,
   today,
+  places = [],
+  scope = "",
 }: {
   model: PlanModel;
   suppliers: readonly SupplierView[];
   canEdit: boolean;
   today: string;
+  /** De egna lagren (för "Köpt, har dem här"). */
+  places?: readonly BuyPlace[];
+  /** Nyckel för senast använda lager (organisation + användare). */
+  scope?: string;
 }) {
   const [draft, setDraft] = useState<OrderDraft | null>(null);
   const [open, setOpen] = useState(false);
@@ -272,10 +279,10 @@ export function PlanView({
             {model.noSupplierLines.map((l, i) => (
               <li
                 key={l.titleId}
-                className="rise flex min-h-12 items-center justify-between gap-4 py-2"
+                className="rise flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2"
                 style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
               >
-                <span className="flex min-w-0 flex-col text-base text-fg">
+                <span className="flex min-w-0 flex-1 basis-56 flex-col text-base text-fg">
                   <span>
                     Köp ca <span className="tnum font-medium">{formatInt(l.suggestQty)}</span>
                     {NBSP}st {l.title}
@@ -287,7 +294,22 @@ export function PlanView({
                     </span>
                   ) : null}
                 </span>
-                <EvidenceButton evidence={l.evidence} title={l.title} text={l.text} />
+                <span className="flex flex-wrap items-center gap-2">
+                  {/* Beställt eller redan köpt: ett tryck, utan leverantörsregister. */}
+                  {canEdit ? (
+                    <BuyButtons
+                      target={{
+                        titleId: l.titleId,
+                        name: l.title,
+                        qty: l.suggestQty,
+                        unitCostOre: l.priceOre,
+                      }}
+                      places={places}
+                      scope={scope}
+                    />
+                  ) : null}
+                  <EvidenceButton evidence={l.evidence} title={l.title} text={l.text} />
+                </span>
               </li>
             ))}
           </ul>

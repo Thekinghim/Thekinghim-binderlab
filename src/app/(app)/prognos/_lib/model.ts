@@ -9,6 +9,7 @@
 
 import { approxKr, packs } from "@/analytics/forecast/common";
 import type { AccuracyMetrics, ForecastTotal } from "@/analytics/forecast/types";
+import { onTheWay } from "@/analytics/purchasing/on-the-way";
 import { purchaseQty } from "@/analytics/purchasing/plan";
 import type { PurchaseLine, PurchaseLineStatus } from "@/analytics/purchasing/types";
 import { daysBetween, dayOfWeek, ratioBp, type IsoDate, type Period } from "@/domain";
@@ -230,6 +231,8 @@ export interface PlanLineView {
   readonly action: NeedAction | null;
   /** Pack hemma som de är, även under 0 (planen räknar under 0 som 0). */
   readonly home: number;
+  /** Dagens inköpspris (Inköpspriser) i öre, eller null. Förifylls när packen kommit. */
+  readonly priceOre: number | null;
   /** Under 0 hemma: räkna om först. */
   readonly negative: boolean;
   /** Under 0 och ska fyllas på: "1. Räkna om. 2. Packa 2 omgångar." Annars null. */
@@ -280,6 +283,15 @@ export interface PlanModel {
    * med "Lägg till leverantör" som nästa steg för pris och box. Flest pack först.
    */
   readonly noSupplierLines: readonly PlanLineView[];
+  /** Beställt och på väg, per titel (namnordning): "På väg: 36 st, väntas fredag". */
+  readonly onTheWay: readonly {
+    readonly titleId: string;
+    readonly name: string;
+    readonly qty: number;
+    readonly expectedOn: string;
+    readonly late: boolean;
+    readonly unitCostOre: number | null;
+  }[];
 }
 
 export interface PurchaseOrderView {
@@ -800,6 +812,12 @@ function planModel(
   const p = data.plan;
   const ownIds = new Set(data.titles.filter((t) => t.ownProduct).map((t) => t.id));
   const batchSizes = new Map(data.titles.map((t) => [t.id, t.mysteryBatchSize ?? null]));
+  // Dagens inköpspris per titel (bara priser ur Inköpspriser, inte leverantörens listpris).
+  const priceToday = new Map(
+    data.valuation.titles
+      .filter((v) => v.costSource === "purchase-price" && v.unitCostOre !== null)
+      .map((v) => [v.titleId, v.unitCostOre as number]),
+  );
   // Egna produkter: "Packa X st" med planens antal (purchaseQty, samma som Vårt lager).
   const packQtyFor = (l: PurchaseLine): number | null =>
     ownIds.has(l.titleId) ? packQtyOf(l) : null;
@@ -890,6 +908,7 @@ function planModel(
       packQty: packQty ?? 0,
       action,
       home,
+      priceOre: priceToday.get(l.titleId) ?? null,
       negative,
       steps: stepsText(negative, action),
       fact: factLine({
@@ -980,6 +999,16 @@ function planModel(
     lateCount,
     packLines,
     noSupplierLines,
+    onTheWay: onTheWay(p)
+      .map((w) => ({
+        titleId: w.titleId,
+        name: names.title(w.titleId),
+        qty: w.quantity,
+        expectedOn: w.expectedOn,
+        late: w.late,
+        unitCostOre: priceToday.get(w.titleId) ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "sv")),
   };
 }
 

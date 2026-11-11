@@ -6,7 +6,7 @@
  * Small words such as "3 packs" and "at Kontoret": import from "../words.en".
  */
 
-import { batches } from "../words.en";
+import { batches, f, packs } from "../words.en";
 import type { R2T3 } from "./t3.sv";
 
 export const t3: R2T3 = {
@@ -35,6 +35,23 @@ export const t3: R2T3 = {
   receiptPriceFailed: (reason) => `The packs are saved, but the price was not saved. ${reason}`,
   receiptPriceFailedTitle: "The price was not saved",
   receiptPriceInvalid: "Write the price in kronor, like 112.50.",
+
+  ordered: "Ordered",
+  boughtHere: "It arrived",
+  orderedHint: "Comes in about 7 days. The list stops asking for them.",
+  orderedSave: "Save as ordered",
+  orderedToast: (n, title) => `Ordered: ${packs(n)} ${title}.`,
+  wayTitle: "On the way",
+  wayLine: (n, when) => `On the way: ${packs(n)}, expected ${when}`,
+  wayLineLate: (n, when) => `On the way: ${packs(n)}, was expected ${when}`,
+  wayToday: "today",
+  weekdays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+  arrived: "It arrived",
+  arrivedHint: "How many packs came, and what did they cost?",
+  arrivedSave: "Add to stock",
+  gotFewer: (planned, got) =>
+    `You planned ${f.int(planned)}, got ${f.int(got)}. We will ask you to buy ${f.int(planned - got)} more.`,
+  notSavedTitle: "Not saved",
 };
 
 /**

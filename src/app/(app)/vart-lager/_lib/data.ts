@@ -10,6 +10,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 
 import { purchaseQtyByTitle } from "@/analytics/purchasing";
+import { onTheWay } from "@/analytics/purchasing/on-the-way";
 import { addDays, DomainError } from "@/domain";
 import type { Tx } from "@/db/client";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
@@ -84,7 +85,21 @@ async function queryLatest(tx: Tx, orgId: string): Promise<Map<string, Warehouse
   return map;
 }
 
+/** "På väg" för en titel: beställt och inte framme än (inköpslistan). */
+export interface WayView {
+  readonly titleId: string;
+  readonly name: string;
+  readonly qty: number;
+  readonly expectedOn: string;
+  readonly late: boolean;
+  readonly unitCostOre: number | null;
+}
+
 export interface VartLagerView extends VartLagerModel {
+  /** Dagens affärsdatum. */
+  readonly today: string;
+  /** Det som är beställt och på väg, per titel (namnordning). */
+  readonly onTheWay: readonly WayView[];
   readonly hasWarehouse: boolean;
   /** Ägare och admin: får skapa ett lager (även när inget finns än). */
   readonly canAddPlace: boolean;
@@ -159,8 +174,28 @@ export async function loadVartLagerFor(
     retired: retiredTitles(slotPeriods, today),
     purchase: plan ? purchaseQtyByTitle(plan) : null,
   });
+  const rowOf = new Map(model.rows.map((r) => [r.titleId, r]));
+  const way: WayView[] = (plan ? onTheWay(plan) : [])
+    .flatMap((w) => {
+      const r = rowOf.get(w.titleId);
+      return r
+        ? [
+            {
+              titleId: w.titleId,
+              name: r.name,
+              qty: w.quantity,
+              expectedOn: w.expectedOn,
+              late: w.late,
+              unitCostOre: r.unitCostOre,
+            },
+          ]
+        : [];
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "sv"));
   return {
     ...model,
+    today,
+    onTheWay: way,
     hasWarehouse: our.hasWarehouse,
     canAddPlace: (EDIT_ROLES as readonly string[]).includes(role),
   };

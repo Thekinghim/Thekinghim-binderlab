@@ -23,6 +23,7 @@ import { LostSalesView } from "./_components/lost-sales-view";
 import { OrdersView } from "./_components/orders-view";
 import { OurStock } from "./_components/our-stock";
 import { ourStockTitle } from "./_lib/our-stock";
+import { OnTheWayList } from "./_components/buy-actions";
 import { PlanView } from "./_components/plan-view";
 import { SuppliersView } from "./_components/suppliers-view";
 import { ValuationView } from "./_components/valuation-view";
@@ -107,8 +108,10 @@ export default async function PrognosPage({
   const p = await loadPeriod(sp);
   let m: PageModel;
   let stock: OurStockView;
+  let buyScope: string;
   try {
     const viewer = await currentViewer();
+    buyScope = `${viewer.organization.id}:${viewer.user.userId}`;
     const [data, our] = await Promise.all([
       loadPrognosFor(viewer, { period: p.period, scope: p.scope }),
       loadOurStockFor(viewer, new Date(ctx.now)),
@@ -153,6 +156,7 @@ export default async function PrognosPage({
       hasCentralWarehouse={m.hasCentralWarehouse}
     />
   );
+  const buyPlaces = stock.places.map((pl) => ({ id: pl.id, name: pl.name }));
   const forecastMeta = m.meta.filter(
     (x) => x.label !== "Att beställa" && x.label !== "Kapitalbindning",
   );
@@ -201,6 +205,15 @@ export default async function PrognosPage({
             </section>
           ) : null}
 
+          {/* Beställt och på väg (även delägarens rader): "Kom fram" när packen kommit. */}
+          <OnTheWayList
+            items={m.plan.onTheWay}
+            today={m.today}
+            canEdit={m.canEdit && m.hasCentralWarehouse}
+            places={buyPlaces}
+            scope={buyScope}
+          />
+
           <section aria-labelledby="inkopsforslag" className={`rise ${SECTION}`} style={rise(2)}>
             <h2 id="inkopsforslag" className="label text-subtle">
               Att beställa
@@ -210,6 +223,8 @@ export default async function PrognosPage({
               suppliers={m.suppliers.suppliers}
               canEdit={m.canEdit}
               today={m.today}
+              places={buyPlaces}
+              scope={buyScope}
             />
           </section>
 

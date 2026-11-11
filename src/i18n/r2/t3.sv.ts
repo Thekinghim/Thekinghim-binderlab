@@ -12,7 +12,9 @@
  * `inPlace`, `placeName` och `f` från "../words.sv". Importera aldrig från "../sv" (cirkel).
  */
 
-import { batches } from "../words.sv";
+import { NBSP } from "@/lib/format";
+
+import { batches, f, packs } from "../words.sv";
 
 export const t3 = {
   /** Inköpslistan: mystery packs skrivs alltid i hela omgångar. */
@@ -44,6 +46,24 @@ export const t3 = {
   receiptPriceFailed: (reason: string) => `Packen är sparade, men priset sparades inte. ${reason}`,
   receiptPriceFailedTitle: "Priset sparades inte",
   receiptPriceInvalid: "Skriv priset i kronor, t.ex. 112,50.",
+
+  // "Beställt", "På väg" och "Kom fram" på inköpslistan (T3-4).
+  ordered: "Beställt",
+  boughtHere: "Köpt, har dem här",
+  orderedHint: "Kommer om ca 7 dagar. Listan slutar fråga efter dem.",
+  orderedSave: "Spara som beställt",
+  orderedToast: (n: number, title: string) => `Beställt: ${packs(n)} ${title}.`,
+  wayTitle: "På väg",
+  wayLine: (n: number, when: string) => `På väg: ${f.int(n)}${NBSP}st, väntas ${when}`,
+  wayLineLate: (n: number, when: string) => `På väg: ${f.int(n)}${NBSP}st, väntades ${when}`,
+  wayToday: "i dag",
+  weekdays: ["måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag", "söndag"],
+  arrived: "Kom fram",
+  arrivedHint: "Hur många pack kom, och vad kostade de?",
+  arrivedSave: "Lägg in i lagret",
+  gotFewer: (planned: number, got: number) =>
+    `Du planerade ${f.int(planned)}, fick ${f.int(got)}. Vi ber dig köpa ${f.int(planned - got)} till.`,
+  notSavedTitle: "Sparades inte",
 };
 
 export type R2T3 = typeof t3;
