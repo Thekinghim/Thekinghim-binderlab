@@ -24,6 +24,7 @@ import {
   type CorrectPriceOutcome,
 } from "./_lib/data";
 import { MAX_UNIT_COST_ORE, PRICE_MESSAGES } from "./_lib/model";
+import type { PriceDoubtResult } from "./_lib/price-check";
 import { splitWithPrice, type PerOrderSplit } from "./_lib/price-economics";
 
 /** Lägger till (eller ersätter samma dag) ett inköpspris för en titel. Ägare och admin. */
@@ -32,7 +33,9 @@ export async function addPurchasePrice(input: {
   unitCostOre: number;
   validFrom: string;
   note?: string;
-}): Promise<ActionResult<AddPriceOutcome>> {
+  /** true = användaren har sett varningen om ett konstigt pris och sparar ändå. */
+  confirmed?: boolean;
+}): Promise<ActionResult<AddPriceOutcome> | PriceDoubtResult> {
   const organization = await getActiveOrganization();
   if (!organization) return { ok: false, error: PRICE_MESSAGES.forbidden };
   const result = await addPurchasePriceFor(await getSessionUser(), {
@@ -41,6 +44,8 @@ export async function addPurchasePrice(input: {
     unitCostOre: Number(input?.unitCostOre),
     validFrom: String(input?.validFrom ?? ""),
     note: typeof input?.note === "string" ? input.note : undefined,
+    // Formulären går alltid genom rimlighetskollen (price-check.ts).
+    confirmed: input?.confirmed === true,
   });
   if (result.ok) await revalidateSettlementData();
   return result;
@@ -54,7 +59,9 @@ export async function correctPurchasePrice(input: {
   titleId: string;
   unitCostOre: number;
   note?: string;
-}): Promise<ActionResult<CorrectPriceOutcome>> {
+  /** true = användaren har sett varningen om ett konstigt pris och sparar ändå. */
+  confirmed?: boolean;
+}): Promise<ActionResult<CorrectPriceOutcome> | PriceDoubtResult> {
   const ctx = await loadOptionalContext();
   if (!ctx) return { ok: false, error: PRICE_MESSAGES.forbidden };
   const result = await correctPurchasePriceFor(await getSessionUser(), {
@@ -63,6 +70,7 @@ export async function correctPurchasePrice(input: {
     unitCostOre: Number(input?.unitCostOre),
     note: typeof input?.note === "string" ? input.note : undefined,
     today: ctx.today,
+    confirmed: input?.confirmed === true,
   });
   if (result.ok) await revalidateSettlementData();
   return result;

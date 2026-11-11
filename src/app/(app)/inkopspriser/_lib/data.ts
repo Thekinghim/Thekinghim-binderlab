@@ -36,6 +36,7 @@ import {
   type PriceAuditEvent,
   type PriceRecord,
 } from "./model";
+import { priceDoubt, priceDoubtText, type PriceDoubtResult } from "./price-check";
 
 const READ_ROLES = ["owner", "admin", "viewer"] as const satisfies readonly MemberRole[];
 const WRITE_ROLES = ["owner", "admin"] as const satisfies readonly MemberRole[];
@@ -107,6 +108,49 @@ async function queryOrderDays(
     date: isoDay(r.day),
     orders: Number(r.orders),
   }));
+}
+
+/**
+ * Snittet av vad kunderna betalat per pack för titeln de senaste 90 dagarna (öre), eller
+ * null utan försäljning. Används bara av rimlighetskollen (price-check.ts).
+ */
+async function queryAvgSaleOre(tx: Tx, orgId: string, titleId: string): Promise<number | null> {
+  const result = await tx.execute(
+    sql`select round(avg(o.amount_ore))::bigint as avg_ore
+        from public.orders o
+        where o.organization_id = ${orgId}::uuid and o.title_id = ${titleId}::uuid
+          and ${countedOrder()} and o.amount_ore > 0
+          and o.business_date >= current_date - 90`,
+  );
+  const row = Array.from(result)[0] as { avg_ore: unknown } | undefined;
+  const n = row?.avg_ore === null || row?.avg_ore === undefined ? null : Number(row.avg_ore);
+  return n !== null && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Priset som gällde `day` (det senaste på eller före dagen), annars titelns första pris. */
+function priceBefore(
+  own: readonly Pick<PriceRecord, "unitCostOre" | "validFrom">[],
+  day: string,
+): number | null {
+  const sorted = own.slice().sort((x, y) => x.validFrom.localeCompare(y.validFrom));
+  const before = sorted.filter((p) => p.validFrom <= day).at(-1);
+  return (before ?? sorted[0])?.unitCostOre ?? null;
+}
+
+/**
+ * Rimlighetskollen på servern. Körs bara när anroparen säger `confirmed: false` (formulären
+ * gör det alltid): ett pris långt från det förra, eller över vad packet säljs för, sparas
+ * först efter ett extra tryck (`confirmed: true`). Utelämnat = ingen koll (uträknade priser).
+ */
+async function doubtFor(
+  tx: Tx,
+  input: { organizationId: string; titleId: string; unitCostOre: number; confirmed?: boolean },
+  oldOre: number | null,
+): Promise<PriceDoubtResult | null> {
+  if (input.confirmed !== false) return null;
+  const saleOre = await queryAvgSaleOre(tx, input.organizationId, input.titleId);
+  const doubt = priceDoubt({ newOre: input.unitCostOre, oldOre, saleOre });
+  return doubt ? { ok: false, error: priceDoubtText(doubt), doubt } : null;
 }
 
 async function queryClosedMonths(tx: Tx, orgId: string): Promise<string[]> {
@@ -247,6 +291,11 @@ const addInput = z.object({
     .max(200)
     .optional()
     .transform((v) => (v ? v : null)),
+  /**
+   * false = kör rimlighetskollen och be om ett extra tryck vid ett konstigt pris;
+   * true = användaren har sett varningen och sparar ändå; utelämnat = ingen koll.
+   */
+  confirmed: z.boolean().optional(),
 });
 
 export type AddPriceInput = z.input<typeof addInput>;
@@ -302,7 +351,7 @@ async function authorizeWrite(
 export async function addPurchasePriceFor(
   user: SessionUser | null,
   raw: AddPriceInput,
-): Promise<ActionResult<AddPriceOutcome>> {
+): Promise<ActionResult<AddPriceOutcome> | PriceDoubtResult> {
   const parsed = addInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: PRICE_MESSAGES.invalid };
   const input = parsed.data;
@@ -329,10 +378,15 @@ export async function addPurchasePriceFor(
         return { ok: false, error: PRICE_MESSAGES.closedMonth(hit) };
       }
 
+      if (existing && existing.unitCostOre === input.unitCostOre && existing.note === input.note) {
+        return { ok: false, error: PRICE_MESSAGES.unchanged };
+      }
+      if (!noteOnly) {
+        const doubt = await doubtFor(tx, input, priceBefore(own, input.validFrom));
+        if (doubt) return doubt;
+      }
+
       if (existing) {
-        if (existing.unitCostOre === input.unitCostOre && existing.note === input.note) {
-          return { ok: false, error: PRICE_MESSAGES.unchanged };
-        }
         await tx.execute(
           sql`update public.purchase_prices
               set unit_cost_ore = ${input.unitCostOre}, note = ${input.note}
@@ -387,7 +441,7 @@ export interface CorrectPriceOutcome {
 export async function correctPurchasePriceFor(
   user: SessionUser | null,
   raw: CorrectPriceInput,
-): Promise<ActionResult<CorrectPriceOutcome>> {
+): Promise<ActionResult<CorrectPriceOutcome> | PriceDoubtResult> {
   const parsed = correctInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: PRICE_MESSAGES.invalid };
   const input = parsed.data;
@@ -417,6 +471,9 @@ export async function correctPurchasePriceFor(
       if (plan.steps.length === 0) {
         return { ok: false, error: PRICE_MESSAGES.correctionUnchanged };
       }
+
+      const doubt = await doubtFor(tx, input, priceBefore(own, input.today));
+      if (doubt) return doubt;
 
       // Anteckningen hamnar på perioden som gäller i dag (den senaste som rättas).
       const last = plan.steps.at(-1)!;

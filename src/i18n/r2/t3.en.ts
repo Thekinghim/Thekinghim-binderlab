@@ -13,6 +13,19 @@ export const t3: R2T3 = {
   packBatches: (n) => `Pack ${batches(n)}`,
   countFirst: (then) => `1. Count again. 2. ${then}.`,
   countFirstHint: "The number at home is below 0. Count the packs under Stock first.",
+
+  priceSet: "Set the price",
+  priceSetSub: "Counts for all sales so far",
+  priceFixOld: "Fix the old price",
+  priceFixOldSub: "Changes old profit too",
+  priceMuchHigher: (now, before) =>
+    `${now} is much more than the last price ${before}. Is that right?`,
+  priceMuchLower: (now, before) =>
+    `${now} is much less than the last price ${before}. Is that right?`,
+  priceAboveSale: (now, sale) =>
+    `${now} is more than the pack sells for (about ${sale}). Is that right?`,
+  priceSaveAnyway: "Yes, save anyway",
+  priceChange: "Change the price",
 };
 
 /**

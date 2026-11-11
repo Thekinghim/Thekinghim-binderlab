@@ -20,6 +20,20 @@ export const t3 = {
   /** Under 0 hemma: räkna om först. `then` är nästa steg ("Packa 2 omgångar"). */
   countFirst: (then: string) => `1. Räkna om. 2. ${then}.`,
   countFirstHint: "Antalet hemma står under 0. Räkna packen under Lager först.",
+
+  // Inköpspriser (T3-2): rätt knapp som standard, och ett extra tryck vid ett konstigt pris.
+  priceSet: "Sätt priset",
+  priceSetSub: "Gäller all försäljning hittills",
+  priceFixOld: "Rätta det gamla priset",
+  priceFixOldSub: "Ändrar vinsten bakåt i tiden",
+  priceMuchHigher: (now: string, before: string) =>
+    `${now} är mycket mer än förra priset ${before}. Stämmer det?`,
+  priceMuchLower: (now: string, before: string) =>
+    `${now} är mycket mindre än förra priset ${before}. Stämmer det?`,
+  priceAboveSale: (now: string, sale: string) =>
+    `${now} är mer än packet säljs för (ca ${sale}). Stämmer det?`,
+  priceSaveAnyway: "Ja, spara ändå",
+  priceChange: "Ändra priset",
 };
 
 export type R2T3 = typeof t3;
