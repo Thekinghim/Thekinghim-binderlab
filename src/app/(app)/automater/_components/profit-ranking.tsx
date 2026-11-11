@@ -14,15 +14,18 @@ import { loadFleetRanking } from "../_lib/ranking-data";
 /**
  * Automat-ranking: automaterna rangordnade efter vinst per dag (samma tal som
  * Enhetsekonomi), med försäljning per dag, slutsålt och ett omdöme per automat ("Bäst",
- * "Går bra", "Går dåligt: överväg att flytta"). Med en enda automat jämförs den med sin
+ * "Tjänar bra", "Tjänar dåligt: överväg att flytta"). Med en enda automat jämförs den med sin
  * egen förra period. Strömmas in under listan (egen Suspense på sidan).
  */
 export async function ProfitRanking({
   searchParams,
   query,
+  down,
 }: {
   searchParams: SearchParamsInput;
   query: string;
+  /** Automater som är ur drift just nu (id → etikett): raden visar det i stället för omdömet. */
+  down?: ReadonlyMap<string, string>;
 }) {
   // Ett fel i rankingen ska aldrig stoppa listan ovanför.
   const data = await loadFleetRanking(searchParams).catch((error: unknown) => {
@@ -35,6 +38,7 @@ export async function ProfitRanking({
     machines: data.machines,
     hrefOf: (code) => machineHref(code, query),
     storeShareDeducted: data.storeShareDeducted,
+    down,
   });
   if (view.rows.length === 0) return null;
   return (
@@ -90,10 +94,7 @@ export async function ProfitRanking({
                 />
               </span>
               <span className="ml-7 flex flex-col gap-1">
-                <StatusTag
-                  status={r.warn ? "warning" : "neutral"}
-                  className="h-auto min-h-6 w-fit max-w-full py-0.5 whitespace-normal"
-                >
+                <StatusTag status={r.warn ? "warning" : "neutral"} wrap>
                   {r.verdictText}
                 </StatusTag>
                 <span className="meta text-muted">{r.sales}</span>

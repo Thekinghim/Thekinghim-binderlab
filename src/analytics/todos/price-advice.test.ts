@@ -95,6 +95,7 @@ describe("prisråd i Att göra", () => {
       {
         titleId: "fusion",
         salePriceOre: 24_900,
+        lowestIn: null,
         unitCostOre: 22_000,
         profitOre: 2_900,
         marginBp: 1_165,
@@ -104,6 +105,7 @@ describe("prisråd i Att göra", () => {
       {
         titleId: "flames",
         salePriceOre: 17_900,
+        lowestIn: null,
         unitCostOre: 15_000,
         profitOre: 2_900,
         marginBp: 1_620,

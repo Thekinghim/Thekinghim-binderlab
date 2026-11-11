@@ -165,16 +165,23 @@ export async function loadFleetRankingWith(
     cur.bp += s.lostDayWeightBp;
     lostBy.set(s.machineId, cur);
   }
-  const current = unitRows(input.current, input, machineIds, dp.period.end).map((r) => {
-    const l = lostBy.get(r.machineId);
-    return {
-      ...r,
-      lostRevenueOre: lost ? (l?.revenue ?? 0) : null,
-      stockoutDayTenths: lost ? Math.round((l?.bp ?? 0) / 1_000) : null,
-    };
-  });
+  // Enhetsekonomin tar med varje automat som har order, även arkiverade. De visas inte i
+  // rangordningen och ska därför inte heller räknas i medianen eller omdömena.
+  const shown = (r: FleetMachineInput) => machines.has(r.machineId);
+  const current = unitRows(input.current, input, machineIds, dp.period.end)
+    .filter(shown)
+    .map((r) => {
+      const l = lostBy.get(r.machineId);
+      return {
+        ...r,
+        lostRevenueOre: lost ? (l?.revenue ?? 0) : null,
+        stockoutDayTenths: lost ? Math.round((l?.bp ?? 0) / 1_000) : null,
+      };
+    });
   const earlier =
-    previous && input.previous ? unitRows(input.previous, input, machineIds, previous.end) : [];
+    previous && input.previous
+      ? unitRows(input.previous, input, machineIds, previous.end).filter(shown)
+      : [];
 
   return {
     ranking: fleetRanking(current, earlier),

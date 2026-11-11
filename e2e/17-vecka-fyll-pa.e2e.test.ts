@@ -136,7 +136,9 @@ async function partnerPage(): Promise<{ page: Page; context: BrowserContext }> {
 }
 
 const noSideScroll = (page: Page) =>
-  page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  page.evaluate(
+    () => document.documentElement.scrollWidth <= Math.min(window.innerWidth, window.screen.width),
+  );
 
 /** Tryckytor under 44 × 44 px inom `scope` (knappar, länkar och fält som syns). */
 async function smallTargets(page: Page, scope: string) {
@@ -428,7 +430,7 @@ const SV = {
   list: "Automater",
   done: /^Klar/,
   yes: "Ja, jag har fyllt på",
-  banner: (n: number) => new RegExp(`Klart! ${n}\\s?pack påfyllda`),
+  banner: (n: number) => new RegExp(`Klart! ${n}\\s?pack påfyll(da|t)`),
   refresh: "Uppdatera",
   refreshed: /^Uppdaterat \d\d:\d\d$/,
   undo: "Ångra",

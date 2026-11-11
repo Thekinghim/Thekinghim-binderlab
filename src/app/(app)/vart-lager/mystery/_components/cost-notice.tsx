@@ -17,9 +17,12 @@ import { krAuto } from "../_lib/kr";
  * stämmer inte med kalkylen (en del har bytt pris eller innehållet är ändrat).
  *
  * Två val för den som får ändra priser (ägare och admin, även i Enkel vy), aldrig tyst:
- * - "Uppdatera priset från idag": ett nytt inköpspris från i dag. Sålda pack behåller sitt.
+ * - "Uppdatera priset från i dag": ett nytt inköpspris från i dag. Sålda pack behåller sitt.
  * - "Rätta priset": priset gäller även allt som redan är sålt (som på Inköpspriser). Det går
  *   inte att ångra, så knappen frågar först ("Ja, rätta priset" / "Avbryt").
+ * Saknar mystery-packet inköpspris helt finns inget gammalt pris att behålla: då finns en
+ * enda knapp, "Lägg in priset 192 kr", och priset gäller även det som redan är sålt (annars
+ * står de sålda packen kvar utan kostnad och punkten i Att göra försvinner inte).
  * Beloppet räknas på servern; `calculatedOre` skickas bara med för att neka en inaktuell sida.
  */
 export function CostNotice({
@@ -67,7 +70,12 @@ export function CostNotice({
         return;
       }
       toast({
-        title: mode === "correct" ? t.mystery.costFixed(amount) : t.mystery.costUpdated(amount),
+        title:
+          currentOre === null
+            ? t.mystery.costAdded(amount)
+            : mode === "correct"
+              ? t.mystery.costFixed(amount)
+              : t.mystery.costUpdated(amount),
         tone: "ok",
       });
       router.refresh();
@@ -117,6 +125,19 @@ export function CostNotice({
             </button>
           </div>
         </div>
+      ) : canUpdate && currentOre === null ? (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => run("correct")}
+          data-testid="mystery-kostnad-lagg-in"
+          className="flex min-h-14 flex-col items-start justify-center gap-0.5 rounded-md border border-inverse bg-inverse px-4 py-2 text-left text-on-inverse active:bg-inverse-hover disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled"
+        >
+          <span className="text-base font-medium">
+            {busy === "correct" ? t.common.saving : t.mystery.addPrice(amount)}
+          </span>
+          <span className="text-sm opacity-80">{t.mystery.addPriceSub}</span>
+        </button>
       ) : canUpdate ? (
         <div className="flex flex-col gap-2 md:flex-row">
           <button

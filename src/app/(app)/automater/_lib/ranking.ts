@@ -21,9 +21,9 @@ export interface RankRow {
   readonly href: string;
   readonly rank: number;
   readonly verdict: FleetVerdict;
-  /** "Bäst" · "Går bra" · "Går dåligt: överväg att flytta" … */
+  /** "Bäst" · "Tjänar bra" · "Tjänar dåligt: överväg att flytta" … eller "Ur drift" (se `down`). */
   readonly verdictText: string;
-  /** Omdömet behöver uppmärksamhet (går dåligt eller sämre). */
+  /** Omdömet behöver uppmärksamhet (tjänar dåligt, sämre än förra perioden eller ur drift). */
   readonly warn: boolean;
   /** "412 kr/dag" */
   readonly profit: string;
@@ -62,9 +62,9 @@ export function verdictText(r: Pick<FleetRow, "verdict" | "activeDays">): string
     case "best":
       return "Bäst";
     case "good":
-      return "Går bra";
+      return "Tjänar bra";
     case "weak":
-      return "Går dåligt: överväg att flytta";
+      return "Tjänar dåligt: överväg att flytta";
     case "new":
       return `För ny: ${daysText(r.activeDays)}`;
     case "alone":
@@ -109,6 +109,12 @@ export function rankingView(args: {
   machines: ReadonlyMap<string, { code: string; name: string }>;
   hrefOf: (code: string) => string;
   storeShareDeducted: boolean;
+  /**
+   * Automater som är ur drift just nu (id → etiketten, t.ex. "Ur drift"). Omdömet handlar
+   * om vinsten i perioden: en automat som står still ska inte samtidigt få "Tjänar bra",
+   * så raden visar driftläget i stället. Talen är desamma.
+   */
+  down?: ReadonlyMap<string, string>;
 }): RankingView {
   const { ranking } = args;
   const codeOf = (id: string) => args.machines.get(id)?.code ?? "Automaten";
@@ -116,6 +122,7 @@ export function rankingView(args: {
     .filter((r) => args.machines.has(r.machineId))
     .map((r) => {
       const m = args.machines.get(r.machineId)!;
+      const down = args.down?.get(r.machineId) ?? null;
       return {
         machineId: r.machineId,
         code: m.code,
@@ -123,8 +130,8 @@ export function rankingView(args: {
         href: args.hrefOf(m.code),
         rank: r.rank,
         verdict: r.verdict,
-        verdictText: verdictText(r),
-        warn: r.verdict === "weak" || r.verdict === "worse",
+        verdictText: down ? `${down} nu` : verdictText(r),
+        warn: down !== null || r.verdict === "weak" || r.verdict === "worse",
         profit: perDayText(r.profitPerDayOre),
         sales: `Säljer ${perDayText(r.revenuePerDayOre)} · ${tenths(r.unitsPerDayTenths)}${NBSP}pack/dag`,
         lost: lostText(r),
@@ -147,6 +154,8 @@ export function rankingView(args: {
         : only.verdict === "alone"
           ? "Bara en automat och ingen förra period: inget att jämföra med än."
           : `${verdictText(only)}${only.vsPreviousBp === null ? "" : ` (${signedPct(only.vsPreviousBp)})`}.`;
+    const downNow = args.down?.get(only.machineId);
+    if (downNow) aside = `${downNow} nu. ${aside}`;
   } else {
     const weak = ranking.weak;
     title = ranking.best
@@ -154,12 +163,12 @@ export function rankingView(args: {
       : "Vinst per dag.";
     aside =
       weak.length === 1
-        ? `${codeOf(weak[0]!.machineId)} går dåligt: överväg att flytta den.`
+        ? `${codeOf(weak[0]!.machineId)} tjänar dåligt: överväg att flytta den.`
         : weak.length > 1
-          ? `${formatInt(weak.length)}${NBSP}automater går dåligt: överväg att flytta dem.`
+          ? `${formatInt(weak.length)}${NBSP}automater tjänar dåligt: överväg att flytta dem.`
           : ranking.medianProfitPerDayOre === null
             ? `För lite data för att jämföra: minst två automater behöver ${FLEET_MIN_DAYS}${NBSP}dagar.`
-            : "Ingen automat går dåligt.";
+            : "Ingen automat tjänar dåligt.";
   }
   return {
     mode: ranking.mode,
@@ -174,7 +183,7 @@ export function rankingView(args: {
 
 /**
  * Raden på Hem (bara med minst två automater som sålt): "BL-003 tjänar mest: 412 kr/dag.
- * BL-007 går dåligt: överväg att flytta den." null när det inte finns något att säga.
+ * BL-007 tjänar dåligt: överväg att flytta den." null när det inte finns något att säga.
  */
 export function homeRankingLine(view: RankingView, ranking: FleetRanking): string | null {
   if (view.mode !== "fleet") return null;

@@ -60,6 +60,10 @@ export default async function AutomaterPage({
   const daysLabel = `${formatInt(period.span.days)}${NBSP}d`;
   // Överst: vad som behöver göras (managerfrågan), pengarna som andra rad.
   const needs = machineNeeds(rows);
+  // Rangordningen säger inte "Tjänar bra" om en automat som står still: den visar driftläget.
+  const down = new Map(
+    active.filter((r) => r.status.health === "offline").map((r) => [r.id, r.status.label]),
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 max-md:gap-8 md:gap-16 md:px-8 md:pt-12">
@@ -185,7 +189,7 @@ export default async function AutomaterPage({
           {/* Automat-ranking: vinst per dag och omdöme (en automat: mot sin förra period). */}
           {!period.pendingToday && active.length > 0 ? (
             <Suspense fallback={null}>
-              <ProfitRanking searchParams={sp} query={carriedQuery(sp)} />
+              <ProfitRanking searchParams={sp} query={carriedQuery(sp)} down={down} />
             </Suspense>
           ) : null}
         </>

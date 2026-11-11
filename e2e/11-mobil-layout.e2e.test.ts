@@ -99,10 +99,10 @@ function inspect(): Problem[] {
   const MIN = 44;
   const problems: Problem[] = [];
   const doc = document.documentElement;
-  if (doc.scrollWidth > window.innerWidth) {
+  if (doc.scrollWidth > Math.min(window.innerWidth, window.screen.width)) {
     problems.push({
       kind: "sidled",
-      what: `sidan är ${doc.scrollWidth} px bred på en ${window.innerWidth} px skärm`,
+      what: `sidan är ${doc.scrollWidth} px bred på en ${Math.min(window.innerWidth, window.screen.width)} px skärm`,
     });
   }
   const main = document.querySelector("main") ?? document.body;
@@ -145,7 +145,12 @@ function inspect(): Problem[] {
     const r = el.getBoundingClientRect();
     // En skrollruta som går ut i sidans marginal (kant till kant på mobilen) är med flit, så
     // länge den håller sig på skärmen.
-    if (scrolls(s) && r.left >= -0.5 && r.right <= window.innerWidth + 0.5) continue;
+    if (
+      scrolls(s) &&
+      r.left >= -0.5 &&
+      r.right <= Math.min(window.innerWidth, window.screen.width) + 0.5
+    )
+      continue;
     const p = parent.getBoundingClientRect();
     const over = Math.max(r.right - p.right, p.left - r.left);
     if (over > 1.5) {

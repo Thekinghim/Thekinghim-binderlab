@@ -35,16 +35,22 @@ export function StatusTag({
   status,
   children,
   className,
+  wrap = false,
 }: {
   status: Status;
   children?: React.ReactNode;
   className?: string;
+  /** Lång text får radbrytas (t.ex. en hel mening i en smal kolumn på mobilen). */
+  wrap?: boolean;
 }) {
   const quiet = status === "ok" || status === "neutral";
   return (
     <span
       className={cn(
-        "label inline-flex h-6 items-center gap-1.5 rounded-xs border px-1.5 whitespace-nowrap",
+        "label inline-flex items-center gap-1.5 rounded-xs border px-1.5",
+        // cn() slår bara ihop klassnamn: en "whitespace-normal" utifrån vinner inte över
+        // "whitespace-nowrap" här, så radbrytningen väljs med en egen prop.
+        wrap ? "min-h-6 w-fit max-w-full py-0.5 whitespace-normal" : "h-6 whitespace-nowrap",
         tone[status],
         className,
       )}

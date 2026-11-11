@@ -4,7 +4,7 @@
  * - samma siffror som Lönsamhet: med moms, kortavgift och en butik med provision är
  *   kalkylens och prisrådets vinst och marginal exakt Lönsamhetens (profitability per titel)
  *   FÖRE butikernas andel för samma dag,
- * - dubbeltryck: "Uppdatera priset från idag" och "Rätta priset" två gånger ger samma läge
+ * - dubbeltryck: "Uppdatera priset från i dag" och "Rätta priset" två gånger ger samma läge
  *   och inget fel (en prisrad, en loggrad),
  * - en titel i en annan organisation går inte att nå.
  */
@@ -195,7 +195,7 @@ describe("Mystery-kalkylen och Prisråd: granskning", () => {
     expect(a.suggestedMarginBp).toBe(2_544);
   });
 
-  it("dubbeltryck på Uppdatera priset från idag: samma läge, inget fel, en loggrad", async () => {
+  it("dubbeltryck på Uppdatera priset från i dag: samma läge, inget fel, en loggrad", async () => {
     const viewer = await viewerFor(owner, orgId);
     const before = await auditRows();
     const input = { titleId: mystery, expectedOre: 11_112, mode: "today" as const };

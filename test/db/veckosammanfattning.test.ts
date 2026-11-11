@@ -424,6 +424,40 @@ describe("veckosammanfattningen: en gång per vecka", () => {
     expect(third.sent).toEqual([]);
     expect((await summaryRows(orgId, "2026-11-16")).map((r) => r.status)).toEqual(["sent", "sent"]);
   });
+
+  it("en rad som blivit liggande som pending tas om efter tio minuter, inte tidigare", async () => {
+    // En körning dog mellan raden och utskicket: raderna för veckan står kvar som pending.
+    const week4 = new Date("2026-12-14T06:07:00Z");
+    const down = fakeSender({ fail: () => "error" });
+    await runWeeklySummaries(db(), week4, { only: [orgId], sender: down.sender });
+    await db().execute(sql`alter table public.weekly_summaries disable trigger t20_stamp_update`);
+    try {
+      await db().execute(
+        sql`update public.weekly_summaries set status = 'pending', updated_at = now()
+            where organization_id = ${orgId}::uuid and week_start = '2026-12-07'`,
+      );
+      // Nyss tagen: en annan körning arbetar kanske med den. Inget skickas.
+      const early = fakeSender();
+      const first = await runWeeklySummaries(db(), week4, { only: [orgId], sender: early.sender });
+      expect(first.organizations[0]).toMatchObject({ sent: 0, already: 2 });
+      expect(early.sent).toEqual([]);
+      // Elva minuter gammal: ingen arbetar med den längre.
+      await db().execute(
+        sql`update public.weekly_summaries set updated_at = now() - interval '11 minutes'
+            where organization_id = ${orgId}::uuid and week_start = '2026-12-07'`,
+      );
+    } finally {
+      await db().execute(sql`alter table public.weekly_summaries enable trigger t20_stamp_update`);
+    }
+    const late = fakeSender();
+    const second = await runWeeklySummaries(db(), week4, { only: [orgId], sender: late.sender });
+    expect(second.organizations[0]).toMatchObject({ sent: 2, failed: 0 });
+    expect(late.sent).toHaveLength(2);
+    expect((await summaryRows(orgId, "2026-12-07")).map((r) => r.status)).toEqual(["sent", "sent"]);
+    const again = fakeSender();
+    await runWeeklySummaries(db(), week4, { only: [orgId], sender: again.sender });
+    expect(again.sent).toEqual([]);
+  });
 });
 
 describe("veckosammanfattningen: vem och när", () => {

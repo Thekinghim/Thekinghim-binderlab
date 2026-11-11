@@ -217,7 +217,7 @@ describe("engelskan för den som inte är teknisk", () => {
     expect(en.mystery.costMissingWhy).toBe(
       "Without a purchase price, no profit is counted for sold packs.",
     );
-    expect(sv.mystery.updateFromToday).toBe("Uppdatera priset från idag");
+    expect(sv.mystery.updateFromToday).toBe("Uppdatera priset från i dag");
     expect(sv.mystery.fixPrice).toBe("Rätta priset");
     expect(en.mystery.costNow("Mystery pack premium", "213 kr", "174 kr")).toBe(
       "Mystery pack premium now costs 213 kr, not 174 kr",

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense, type CSSProperties } from "react";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 import { carriedQuery } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
@@ -117,7 +117,14 @@ export default async function LonsamhetPage({
       loadSyncInfo(),
       requestStoreShareView(),
       // Prisråd: hela organisationen i dag (samma som punkten i Att göra), oavsett period.
-      currentViewer().then((viewer) => loadPriceAdviceFor(viewer, new Date(ctx.now))),
+      // Ett fel i Prisråd ska aldrig stoppa Lönsamhet: avsnittet visas då inte.
+      currentViewer()
+        .then((viewer) => loadPriceAdviceFor(viewer, new Date(ctx.now)))
+        .catch((error: unknown) => {
+          unstable_rethrow(error);
+          console.error("[lonsamhet] Prisråd kunde inte läsas:", error);
+          return null;
+        }),
     ]);
 
   const stale = homeStaleImport(sync, p.period.end, ctx.now, ctx.timeZone);
@@ -183,7 +190,7 @@ export default async function LonsamhetPage({
         {stale ? <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} /> : null}
       </div>
 
-      <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} />
+      {advice ? <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} /> : null}
 
       {model.orders === 0 ? (
         <section className={SECTION} aria-label="Ingen försäljning">

@@ -5,7 +5,7 @@
  * - en del byter pris (Fusion Strike 133 → 220 kr): mystery-packets eget inköpspris stämmer
  *   inte längre med kalkylen. Notisen (loadMysteryCostDriftsFor) och punkten i Att göra
  *   säger "kostar nu 213 kr, inte 174 kr"; påfyllaren får ingen sådan punkt,
- * - "Uppdatera priset från idag": beloppet räknas på servern, ett nytt pris från i dag;
+ * - "Uppdatera priset från i dag": beloppet räknas på servern, ett nytt pris från i dag;
  *   det gamla priset och all tidigare försäljning ligger kvar orörda (historiken skrivs
  *   aldrig om tyst); en inaktuell sida nekas och inget skrivs,
  * - "Rätta priset": först då får även gamla perioder det nya priset,
@@ -299,7 +299,7 @@ describe("Mystery-kalkylen och Prisråd", () => {
       expect(await premiumPrices()).toHaveLength(1);
     });
 
-    it("Uppdatera priset från idag: nytt pris i dag, det gamla priset ligger kvar", async () => {
+    it("Uppdatera priset från i dag: nytt pris i dag, det gamla priset ligger kvar", async () => {
       const res = await updateMysteryCostFor(await viewerFor(admin, orgId), {
         titleId: premium,
         expectedOre: 21_300,
@@ -374,6 +374,8 @@ describe("Mystery-kalkylen och Prisråd", () => {
           titleId: t.fusion,
           name: "Fusion Strike",
           salePriceOre: 24_900,
+          lowestIn: null,
+          where: null,
           unitCostOre: 22_000,
           profitOre: 2_900,
           marginBp: 1_165,
@@ -466,6 +468,130 @@ describe("Mystery-kalkylen och Prisråd", () => {
             where organization_id = ${orgId}::uuid`,
       );
       expect(row.bp).toBe(2_500);
+    });
+  });
+
+  describe("efter granskningen av release 8", () => {
+    let budget: string;
+    let m1: string;
+    let m2: string;
+    let sourceId: string;
+    const sale = (ext: string, titleId: string, machineId: string, daysAgo: number, ore: number) =>
+      db().execute(
+        sql`insert into public.orders (organization_id, data_source_id, external_id, raw_title,
+              title_id, ordered_at, amount_ore, machine_id, source_hash)
+            values (${orgId}::uuid, ${sourceId}::uuid, ${ext}, 'x', ${titleId}::uuid,
+              now() - make_interval(days => ${daysAgo}), ${ore}, ${machineId}::uuid, md5(${ext}))`,
+      );
+
+    beforeAll(async () => {
+      const ids = await asUser(owner, async (tx) => {
+        const [title] = await tx
+          .insert(s.titles)
+          .values({ organizationId: orgId, name: "Mystery pack budget", ownProduct: true })
+          .returning();
+        const [machine] = await tx
+          .insert(s.machines)
+          .values({
+            organizationId: orgId,
+            code: "BL-002",
+            name: "Automat 2",
+            activeFrom: "2020-01-01",
+          })
+          .returning();
+        return { budget: title!.id, m2: machine!.id };
+      });
+      budget = ids.budget;
+      m2 = ids.m2;
+      m1 = (
+        await one<{ id: string }>(
+          db(),
+          sql`select id from public.machines where organization_id = ${orgId}::uuid and code = 'BL-001'`,
+        )
+      ).id;
+      sourceId = (
+        await one<{ id: string }>(
+          db(),
+          sql`select id from public.data_sources where organization_id = ${orgId}::uuid limit 1`,
+        )
+      ).id;
+      // 10 Phantasmal Flames à 150 kr och 4 Ascended Heroes à 200 kr: 2 300 kr / 14 = 164,29 kr.
+      await saveRecipeFor(await viewerFor(owner, orgId), {
+        titleId: budget,
+        batchSize: 14,
+        items: [
+          { titleId: t.flames!, quantity: 10, hit: false },
+          { titleId: t.heroes!, quantity: 4, hit: true },
+        ],
+      });
+      // Sålt utan inköpspris: två i BL-001 för 249 kr (15 dagar sedan och i går).
+      await sale("b-1", budget, m1, 15, 24_900);
+      await sale("b-2", budget, m1, 1, 24_900);
+    });
+
+    it("sålt mystery pack utan inköpspris: EN punkt i Att göra, inte två", async () => {
+      const mine = (await todos(owner)).filter((x) => x.evidence.titleIds.includes(budget));
+      expect(mine.map((x) => x.kind)).toEqual(["mystery-cost"]);
+      expect(mine[0]!.title.replace(/\u00a0/g, " ")).toBe(
+        "Mystery pack budget kostar 164,29 kr men saknar inköpspris",
+      );
+      // Admin ser samma enda punkt.
+      const admins = (await todos(admin)).filter((x) => x.evidence.titleIds.includes(budget));
+      expect(admins.map((x) => x.kind)).toEqual(["mystery-cost"]);
+    });
+
+    it("'Lägg in priset' ger även de sålda packen ett pris, och punkterna försvinner", async () => {
+      const v = await viewerFor(owner, orgId);
+      const res = await updateMysteryCostFor(v, {
+        titleId: budget,
+        expectedOre: 16_429,
+        mode: "correct",
+      });
+      expect(res).toMatchObject({ unitCostOre: 16_429, mode: "correct", affectedOrders: 2 });
+      // Ett pris, från den första sålda dagen (inte från i dag).
+      const prices = await rows<{ unit_cost_ore: number; valid_from: string }>(
+        db(),
+        sql`select unit_cost_ore::int, valid_from::text from public.purchase_prices
+            where organization_id = ${orgId}::uuid and title_id = ${budget}::uuid`,
+      );
+      expect(prices).toHaveLength(1);
+      expect(prices[0]!.unit_cost_ore).toBe(16_429);
+      expect(prices[0]!.valid_from < today).toBe(true);
+      const left = (await todos(owner)).filter(
+        (x) =>
+          x.evidence.titleIds.includes(budget) &&
+          (x.kind === "mystery-cost" || x.kind === "missing-price"),
+      );
+      expect(left).toEqual([]);
+      // Ett andra tryck (dubbeltryck) är inget fel.
+      expect(
+        await updateMysteryCostFor(v, { titleId: budget, expectedOre: 16_429, mode: "correct" }),
+      ).toMatchObject({ mode: "correct", affectedOrders: 0 });
+    });
+
+    it("olika pris i automaterna: Prisråd och kalkylen visar samma pris och säger var", async () => {
+      // BL-002 säljer samma pack för 199 kr (3 dagar sedan); BL-001 för 249 kr i går.
+      await sale("b-3", budget, m2, 3, 19_900);
+      const v = await viewerFor(owner, orgId);
+      const row = (await loadPriceAdviceFor(v)).rows.find((r) => r.titleId === budget);
+      expect(row).toMatchObject({ salePriceOre: 19_900, unitCostOre: 16_429 });
+      expect(row!.where?.code).toBe("BL-002");
+      expect(row!.where!.soldOn < today).toBe(true);
+      const detail = await loadMysteryDetailFor(v, budget);
+      expect(detail).toMatchObject({ salePriceOre: 19_900, salePriceMachine: "BL-002" });
+      // Premium säljs bara i en automat: inget att peka ut.
+      expect(await loadMysteryDetailFor(v, premium)).toMatchObject({
+        salePriceOre: 29_900,
+        salePriceMachine: null,
+      });
+      // När BL-002 också säljer för 249 kr är priserna lika igen.
+      await sale("b-4", budget, m2, 0, 24_900);
+      expect(await loadMysteryDetailFor(v, budget)).toMatchObject({
+        salePriceOre: 24_900,
+        salePriceMachine: null,
+      });
+      const again = (await loadPriceAdviceFor(v)).rows.find((r) => r.titleId === budget);
+      expect(again?.where ?? null).toBeNull();
     });
   });
 });

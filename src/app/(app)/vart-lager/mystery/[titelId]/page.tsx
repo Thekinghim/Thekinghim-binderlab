@@ -173,7 +173,7 @@ export default async function MysteryPackPage({
               canUpdate={canSetCost}
             />
           ) : null}
-          <Calculator calc={calc} />
+          <Calculator calc={calc} lowestIn={detail.salePriceMachine} />
           {calc.missing.length > 0 ? (
             <Link
               href="/inkopspriser"

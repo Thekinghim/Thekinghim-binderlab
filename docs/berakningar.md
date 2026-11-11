@@ -913,19 +913,21 @@ Automater visar rangordningen, Hem en rad med minst två automater, och varje au
 
 Vinst och intäkt per dag och aktiva dagar är samma tal som Enhetsekonomi (avsnitt 23). Pack per dag = order / aktiva dagar. Slutsålt per automat = summan av automatens slutsålda dagar och förlorade intäkt enligt förlorad försäljning (avsnitt 18); går det inte att räkna visas det inte.
 
-| Omdöme                         | Villkor                                                                                           |
-| ------------------------------ | ------------------------------------------------------------------------------------------------- |
-| För ny                         | färre än 14 aktiva dagar: inget omdöme, räknas inte i medianen                                    |
-| Går dåligt: överväg att flytta | minst 14 dagar och förlust per dag, eller högst 50 % av medianen (när medianen är över 0)         |
-| Bäst                           | högst vinst per dag bland dem med minst 14 dagar (minst två sådana), över 0 och inte "går dåligt" |
-| Går bra                        | övriga med minst 14 dagar                                                                         |
-| Inget att jämföra med än       | bara en automat har 14 dagar: ingen median                                                        |
+| Omdöme                            | Villkor                                                                                              |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| För ny                            | färre än 14 aktiva dagar: inget omdöme, räknas inte i medianen                                       |
+| Tjänar dåligt: överväg att flytta | minst 14 dagar och förlust per dag, eller högst 50 % av medianen (när medianen är över 0)            |
+| Bäst                              | högst vinst per dag bland dem med minst 14 dagar (minst två sådana), över 0 och inte "tjänar dåligt" |
+| Tjänar bra                        | övriga med minst 14 dagar                                                                            |
+| Inget att jämföra med än          | bara en automat har 14 dagar: ingen median                                                           |
 
 Medianen räknas över automaterna med minst 14 aktiva dagar (jämnt antal: medelvärdet av de två mittersta). På sidan heter den "en vanlig automat" ("40 kr/dag mer än en vanlig automat"). Slutsålda dagar summeras över automatens titlar ("Titlar slutsålda 3,5 dagar") och kan därför vara fler än periodens dagar.
 
+Arkiverade automater visas inte och räknas inte heller i medianen eller omdömena, även om de har order i perioden. Omdömet handlar om vinsten i perioden: en automat som är ur drift just nu (maskinhälsan, som på Drift) visar "Ur drift nu" i stället för omdömet på Automater.
+
 **En enda automat** jämförs med sig själv perioden innan (lika lång, bara när den ligger helt inom datan och har minst 14 aktiva dagar): vinst per dag minst 10 % upp = "Går bättre än förra perioden", minst 10 % ner = "Går sämre", annars "Går som förra perioden". Utan förra period sägs att det inte finns något att jämföra med.
 
-**Exempel.** Vinst per dag 400, 200, 180 och 40 kr: medianen är 190 kr. 400 kr är "Bäst", 200 och 180 kr "Går bra", 40 kr (under 95 kr) "Går dåligt: överväg att flytta".
+**Exempel.** Vinst per dag 400, 200, 180 och 40 kr: medianen är 190 kr. 400 kr är "Bäst", 200 och 180 kr "Tjänar bra", 40 kr (under 95 kr) "Tjänar dåligt: överväg att flytta".
 
 ### Bästa sortiment (`assortment.ts`)
 
@@ -953,12 +955,14 @@ Vad ett mystery pack kostar, räknat på innehållet (receptet) och dagens inkö
 - vinst per pack = pris utan moms − kortavgift − kostnad per pack (`unitMargin`, samma formler som liggaren, före butikens andel och utan VMB)
 - marginal = vinst per pack / pris utan moms
 
-Priset i automaten är det senaste betalda köpet av titeln. Saknar en del inköpspris är kostnaden okänd (ingen gissning). Sidan visar kalkylen för det sparade innehållet, och redigeraren räknar om den för varje ändring innan något sparas.
+Priset i automaten räknas som i Prisråd (avsnitt 30): det lägsta av automaternas senaste betalda pris de senaste 30 dagarna, och kalkylen säger i vilken automat när priserna skiljer sig ("lägst, i BL-002"). Utan köp på 30 dagar används det senaste köpet. Kalkylen och Prisråd visar därför alltid samma pris. Saknar en del inköpspris är kostnaden okänd (ingen gissning). Sidan visar kalkylen för det sparade innehållet, och redigeraren räknar om den för varje ändring innan något sparas.
 
 **Sålda mystery packs räknas med titelns eget inköpspris** (`purchase_prices`), precis som alla andra titlar. Kalkylen ändrar aldrig det priset av sig själv. När kalkylen inte är titelns pris i dag (en del har bytt pris eller innehållet är ändrat) visas "Mystery pack premium kostar nu 213 kr, inte 174 kr" på Mystery packs, på Inköpspriser och i Att göra (`mystery-cost`), med två val för ägare och admin:
 
-- **Uppdatera priset från idag**: ett nytt inköpspris från i dag. Allt som redan är sålt behåller sitt pris.
+- **Uppdatera priset från i dag**: ett nytt inköpspris från i dag. Allt som redan är sålt behåller sitt pris.
 - **Rätta priset**: samma rättelse som på Inköpspriser (alla perioder som inte ligger i en stängd månad får det nya priset). Knappen frågar först ("Ja, rätta priset"), eftersom det inte går att ångra.
+
+**Saknar mystery-packet inköpspris helt** finns inget gammalt pris att behålla. Då finns en enda knapp, "Lägg in priset 192 kr", som lägger in priset för allt som redan är sålt (samma rättelse som Rätta priset; ligger allt sålt i stängda månader läggs priset in från i dag). Att göra visar då en punkt, kalkylens, och inte också "Lägg in inköpspris".
 
 Ett andra tryck på samma knapp (dubbeltryck, två flikar) ger samma läge och inget fel: inget skrivs och inget loggas en gång till.
 
@@ -973,3 +977,5 @@ En produkt "tjänar för lite" när marginalen **före butikernas andel** är un
 - marginal = (pris utan moms − kortavgift − inköpspris) / pris utan moms
 
 "Höj till X kr" är det lägsta priset över dagens, i hela kronor som slutar på 5 eller 9, där marginalen når målet (inköp 220 kr och mål 25 % ger 295 kr). Titlar utan köp på 30 dagar eller utan inköpspris får inget råd. Lönsamhet visar listan och Att göra en enda punkt ("2 produkter tjänar för lite", `price-advice`); båda räknar på hela organisationen i dag, oavsett sidans period och filter. Det är bara ett råd: priset ändras i automatens system.
+
+Har automaterna olika pris säger raden var det låga priset finns och när det senast såldes där ("Säljs för 249 kr i BL-002 (senast 14 okt)"). En automat som inte har sålt titeln sedan priset höjdes har kvar sitt gamla pris i rådet tills den säljer igen eller köpet är äldre än 30 dagar; raden visar då vilken automat det gäller.

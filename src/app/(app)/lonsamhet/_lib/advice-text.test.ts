@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { adviceHeadline, adviceMargin, parseTargetPercent } from "./advice-text";
+import { adviceHeadline, adviceMargin, adviceWhere, parseTargetPercent } from "./advice-text";
 
 describe("prisråd på Lönsamhet", () => {
   it("rubriken: antal produkter, eller att ingen är under målet", () => {
@@ -8,6 +8,13 @@ describe("prisråd på Lönsamhet", () => {
     expect(adviceHeadline(1, 2_500)).toBe("1 produkt tjänar för lite.");
     // Sant även utan köp de senaste 30 dagarna (då är ingen produkt räknad alls).
     expect(adviceHeadline(0, 2_500)).toBe("Ingen produkt är under målet 25 %.");
+  });
+
+  it("olika pris i automaterna: raden säger var det låga priset finns och när det såldes", () => {
+    expect(adviceWhere({ code: "BL-002", soldOn: "2026-11-09" }).replace(/\u00a0/g, " ")).toBe(
+      " i BL-002 (senast 9 nov)",
+    );
+    expect(adviceWhere(null)).toBe("");
   });
 
   it("marginalen på en rad ser aldrig ut att nå målet", () => {

@@ -3,7 +3,7 @@
  */
 
 import { MAX_TARGET_MARGIN_BP, MIN_TARGET_MARGIN_BP } from "@/domain";
-import { formatInt, formatMarginBp } from "@/lib/format";
+import { formatDay, formatInt, formatMarginBp } from "@/lib/format";
 
 /** "2 produkter tjänar för lite." · "Ingen produkt är under målet 25 %." */
 export function adviceHeadline(n: number, targetBp: number): string {
@@ -20,6 +20,16 @@ export function adviceMargin(marginBp: number, targetBp: number): string {
   const whole = formatMarginBp(marginBp, 0);
   if (marginBp >= targetBp || Math.round(marginBp / 100) < Math.round(targetBp / 100)) return whole;
   return formatMarginBp(Math.floor(marginBp / 10) * 10, 1);
+}
+
+/**
+ * "i BL-002 (senast 9 nov)": var det låga priset finns när automaterna har olika pris.
+ * Tom sträng när alla automater har samma pris.
+ */
+export function adviceWhere(where: { code: string; soldOn: string } | null): string {
+  if (!where) return "";
+  const [y, m, d] = where.soldOn.split("-").map(Number);
+  return ` i ${where.code} (senast ${formatDay(new Date(y!, m! - 1, d!))})`;
 }
 
 /** "25" → 2 500 bp. Hela procent, 1–90. null = ogiltigt. */

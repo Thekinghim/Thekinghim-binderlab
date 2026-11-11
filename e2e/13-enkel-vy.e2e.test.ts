@@ -133,9 +133,12 @@ async function expectSimplePage(page: Page): Promise<void> {
   expect(body).not.toMatch(
     /Vårt lager|Inköp|Lager|Räkna|Beställ|Sparat|Ändra|Saknar|Butik|Awish|VMB|queue|purchasing/,
   );
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= Math.min(window.innerWidth, window.screen.width),
+    ),
+  ).toBe(true);
   await expectTapTargets(page, "main");
   await expectTapTargets(page, 'nav[aria-label="Menu"]');
 }
@@ -333,7 +336,10 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     expect(body).not.toMatch(/Försäljning|Vår vinst|Fyll på|I dag/);
     // Bredare än skärmen? (iPhone SE: 375 px)
     expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= Math.min(window.innerWidth, window.screen.width),
+      ),
     ).toBe(true);
     await screenshot(page, "13-delagare-sales-iphonese");
 

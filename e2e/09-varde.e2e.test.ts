@@ -12,6 +12,7 @@ import {
   launchBrowser,
   openPage,
   screenshot,
+  until,
   type Browser,
   type Page,
 } from "./support/browser";
@@ -42,7 +43,7 @@ async function ownerPage(options: Parameters<typeof openPage>[2]): Promise<Page>
 async function noSideScroll(page: Page): Promise<void> {
   const [scroll, inner] = await page.evaluate((): [number, number] => [
     document.documentElement.scrollWidth,
-    window.innerWidth,
+    Math.min(window.innerWidth, window.screen.width),
   ]);
   expect(scroll).toBeLessThanOrEqual(inner);
 }
@@ -62,7 +63,11 @@ describe.each([
     }
     await page.getByRole("navigation", { name: "Välj månad" }).waitFor();
     await noSideScroll(page);
-    await page.getByText("Så räknas det", { exact: true }).click();
+    // Medan sidan strömmas in kan blocket en kort stund finnas två gånger (den nya delen
+    // ligger dold tills den byts in): vänta tills det finns exakt ett.
+    const how = page.getByText("Så räknas det", { exact: true });
+    await until(async () => (await how.count()) === 1, "Så räknas det finns en gång");
+    await how.click();
     await page.getByText(/^Slutsålt undvikt: pack som såldes/).waitFor();
     await noSideScroll(page);
     await screenshot(page, `09-varde-${name === "dator" ? "dator" : "iphone15"}`);

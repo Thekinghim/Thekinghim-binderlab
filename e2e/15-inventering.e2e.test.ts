@@ -110,9 +110,12 @@ async function expectTapTargets(page: Page, scope: string): Promise<void> {
 
 /** Ingen sidledes scroll och stora tryckytor i sidan. */
 async function expectPhonePage(page: Page): Promise<void> {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= Math.min(window.innerWidth, window.screen.width),
+    ),
+  ).toBe(true);
   await expectTapTargets(page, "main");
 }
 
@@ -246,7 +249,10 @@ describe("Inventering (iPhone SE)", () => {
     const entry = page.getByRole("link", { name: "Inventera", exact: true });
     await entry.waitFor();
     expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= Math.min(window.innerWidth, window.screen.width),
+      ),
     ).toBe(true);
     const box = await entry.boundingBox();
     expect(box && box.height >= 44 && box.width >= 44).toBe(true);

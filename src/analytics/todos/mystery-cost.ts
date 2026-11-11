@@ -12,7 +12,7 @@
  * `mysteryRecipes` bara med ekonomin).
  */
 
-import { mysteryCostDrifts, PriceIndex } from "@/domain";
+import { mysteryCostDrifts, PriceIndex, type MysteryCostDrift } from "@/domain";
 
 import { evidence } from "./common";
 import { urgencyOf, type TodoContext } from "./context";
@@ -24,7 +24,8 @@ export function mysteryCostLink(titleId: string): string {
   return `/vart-lager/mystery/${encodeURIComponent(titleId)}#kalkyl`;
 }
 
-export function mysteryCostTodos(ctx: TodoContext): TodoItem[] {
+/** Mystery packs vars inköpspris inte är kalkylen i dag (aktiva titlar). */
+export function mysteryDrifts(ctx: TodoContext): MysteryCostDrift[] {
   const recipes = ctx.input.mysteryRecipes ?? [];
   if (recipes.length === 0) return [];
   const active = new Set(ctx.input.titles.filter((t) => !t.archived).map((t) => t.id));
@@ -33,7 +34,23 @@ export function mysteryCostTodos(ctx: TodoContext): TodoItem[] {
   return mysteryCostDrifts(
     recipes.filter((r) => active.has(r.titleId)),
     priceOf,
-  ).map((d): TodoItem => {
+  );
+}
+
+/**
+ * Mystery packs som helt saknar inköpspris i dag men har en kalkyl. De får punkten här
+ * ("kostar 192 kr men saknar inköpspris", där priset läggs in för allt som är sålt) och
+ * ska inte dessutom få den vanliga punkten "Lägg in inköpspris".
+ */
+export function unpricedMysteryTitles(drifts: readonly MysteryCostDrift[]): Set<string> {
+  return new Set(drifts.filter((d) => d.currentOre === null).map((d) => d.titleId));
+}
+
+export function mysteryCostTodos(
+  ctx: TodoContext,
+  drifts: readonly MysteryCostDrift[] = mysteryDrifts(ctx),
+): TodoItem[] {
+  return drifts.map((d): TodoItem => {
     const name = ctx.titleName(d.titleId);
     return {
       key: `mystery-cost:${d.titleId}`,
@@ -49,7 +66,7 @@ export function mysteryCostTodos(ctx: TodoContext): TodoItem[] {
           : `${name} kostar nu ${krAuto(d.calculatedOre)}, inte ${krAuto(d.currentOre)}`,
       detail:
         d.currentOre === null
-          ? "Utan inköpspris räknas ingen vinst på sålda pack. Lägg in priset."
+          ? "Utan inköpspris räknas ingen vinst på sålda pack. Lägg in priset, så räknas även det som redan är sålt."
           : "Innehållet eller ett inköpspris har ändrats. Uppdatera priset, annars visas fel vinst.",
       evidence: evidence({
         rule: "Innehållet × dagens inköpspriser är inte mystery-packets eget inköpspris.",

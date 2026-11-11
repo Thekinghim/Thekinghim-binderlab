@@ -81,10 +81,7 @@ export async function BestAssortment({
               </span>
               <span className="flex flex-col gap-1">
                 {r.tag ? (
-                  <StatusTag
-                    status={r.warn ? "warning" : "neutral"}
-                    className="h-auto min-h-6 w-fit max-w-full py-0.5 whitespace-normal"
-                  >
+                  <StatusTag status={r.warn ? "warning" : "neutral"} wrap>
                     {r.tag}
                   </StatusTag>
                 ) : null}

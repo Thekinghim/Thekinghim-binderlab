@@ -8,13 +8,13 @@
  * Flera automater (minst två har sålt):
  *   jämförbara = automater med minst FLEET_MIN_DAYS aktiva dagar
  *   median     = medianen av de jämförbaras vinst per dag
- *   "Går dåligt: överväg att flytta" = jämförbar och går med förlust per dag, eller tjänar
+ *   "Tjänar dåligt: överväg att flytta" = jämförbar och går med förlust per dag, eller tjänar
  *                högst hälften av medianen (FLEET_WEAK_SHARE_BP) när medianen är över 0
  *   "Bäst"     = högst vinst per dag bland de jämförbara (minst två), över 0 och inte svag
- *   "Går bra"  = övriga jämförbara
+ *   "Tjänar bra"  = övriga jämförbara
  *   "För ny"   = färre än FLEET_MIN_DAYS aktiva dagar: inget omdöme
  *   Finns bara en jämförbar automat finns ingen median: den får "Inget att jämföra med än"
- *   (eller "Går dåligt" om den går med förlust).
+ *   (eller "Tjänar dåligt" om den går med förlust).
  *
  * En automat: jämförs med sig själv perioden innan (lika lång). Vinst per dag minst
  * SELF_CHANGE_BP (10 %) upp = "Går bättre", minst lika mycket ner = "Går sämre", annars

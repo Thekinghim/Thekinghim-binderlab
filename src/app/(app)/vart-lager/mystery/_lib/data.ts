@@ -9,7 +9,15 @@ import "server-only";
 
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 
-import { DomainError, mysteryCostDrifts, PriceIndex, type IsoDate } from "@/domain";
+import {
+  addDays,
+  currentSalePriceDetails,
+  DomainError,
+  mysteryCostDrifts,
+  PRICE_ADVICE_WINDOW_DAYS,
+  PriceIndex,
+  type IsoDate,
+} from "@/domain";
 import * as s from "@/db/schema";
 import type { Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
@@ -256,14 +264,53 @@ export interface MysteryDetail {
   readonly packings: readonly PackingRow[];
   /** Titlar som kan vara delar (aktiva, inte egna produkter), med namn. */
   readonly choices: ReadonlyArray<{ id: string; name: string }>;
-  /** Senaste försäljningspriset (öre, med moms), eller null. */
+  /**
+   * Priset i automaten (öre, med moms), eller null. Samma regel som Prisråd: det lägsta av
+   * automaternas senaste pris de senaste 30 dagarna; utan köp i fönstret det senaste köpet.
+   */
   readonly salePriceOre: number | null;
+  /** Automaterna har olika pris: koden för automaten med det låga priset ("BL-002"). */
+  readonly salePriceMachine: string | null;
   /** Avgifterna i kalkylen (moms och kortavgift, organisationens inställningar). */
   readonly fees: CalcFees;
 }
 
-/** Senaste betalda order (inte testköp) för titeln: priset i automaten. */
-async function queryLatestSalePrice(tx: Tx, orgId: string, titleId: string) {
+/**
+ * Priset i automaten för titeln, med samma regel som Prisråd (@/domain price-advice): det
+ * lägsta av automaternas senaste betalda pris de senaste 30 dagarna (inte testköp), så att
+ * kalkylen och Prisråd aldrig visar olika pris. Utan köp i fönstret: det senaste köpet.
+ */
+async function querySalePrice(
+  tx: Tx,
+  orgId: string,
+  titleId: string,
+  today: IsoDate,
+): Promise<{ ore: number; machineId: string | null; differs: boolean } | null> {
+  const since = addDays(today, -(PRICE_ADVICE_WINDOW_DAYS - 1));
+  const recent = (await tx.execute(sql`
+    select o.machine_id, o.business_date::text as business_date, o.amount_ore,
+           to_char(o.ordered_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as ordered_at
+    from public.orders o
+    where o.organization_id = ${orgId}::uuid and o.title_id = ${titleId}::uuid
+      and o.test_purchase_at is null and o.amount_ore > 0
+      and o.business_date >= ${since}::date and o.business_date <= ${today}::date
+  `)) as unknown as Iterable<{
+    machine_id: string | null;
+    business_date: string;
+    amount_ore: string | number;
+    ordered_at: string;
+  }>;
+  const current = currentSalePriceDetails(
+    [...recent].map((r) => ({
+      titleId,
+      machineId: r.machine_id,
+      businessDate: r.business_date,
+      amountOre: Number(r.amount_ore),
+      orderedAt: r.ordered_at,
+    })),
+    since,
+  ).get(titleId);
+  if (current) return { ore: current.ore, machineId: current.machineId, differs: current.differs };
   const [row] = await tx
     .select({ amountOre: s.orders.amountOre })
     .from(s.orders)
@@ -277,7 +324,7 @@ async function queryLatestSalePrice(tx: Tx, orgId: string, titleId: string) {
     )
     .orderBy(desc(s.orders.orderedAt))
     .limit(1);
-  return row?.amountOre ?? null;
+  return row ? { ore: row.amountOre, machineId: null, differs: false } : null;
 }
 
 /**
@@ -299,7 +346,7 @@ export async function loadMysteryDetailFor(
     .map((t) => ({ id: t.id, name: t.name }))
     .sort((a, b) => a.name.localeCompare(b.name, "sv"));
 
-  const { versions, packings, salePriceOre, settings } = await withUserDbFor(
+  const { versions, packings, salePrice, settings } = await withUserDbFor(
     viewer.user,
     async (tx) => {
       const v = await tx
@@ -356,10 +403,12 @@ export async function loadMysteryDetailFor(
             .orderBy(desc(s.mysteryPackings.packedAt))
             .limit(5)
         : [];
-      const price = overview.seesMoney ? await queryLatestSalePrice(tx, orgId, titleId) : null;
+      const price = overview.seesMoney
+        ? await querySalePrice(tx, orgId, titleId, overview.today)
+        : null;
       // Påfyllaren ser inga belopp (och får inte läsa inställningarna): standardvärden.
       const settings = overview.seesMoney ? await querySettings(tx, orgId) : DEFAULT_SETTINGS;
-      return { versions: v, packings: p, salePriceOre: price, settings };
+      return { versions: v, packings: p, salePrice: price, settings };
     },
   );
 
@@ -387,7 +436,11 @@ export async function loadMysteryDetailFor(
     versions: versions.map((v) => ({ ...v, rows: Number(v.rows) })),
     packings: packingRows,
     choices,
-    salePriceOre,
+    salePriceOre: salePrice?.ore ?? null,
+    salePriceMachine:
+      salePrice?.differs && salePrice.machineId
+        ? (master.machines.find((m) => m.id === salePrice.machineId)?.code ?? null)
+        : null,
     fees: { vatRateBp: settings.vatRateBp, cardFeeBp: settings.cardFeeBp },
   };
 }

@@ -114,9 +114,12 @@ async function shot(page: Page, name: string): Promise<void> {
 }
 
 async function expectNoSideScroll(page: Page): Promise<void> {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= Math.min(window.innerWidth, window.screen.width),
+    ),
+  ).toBe(true);
 }
 
 /** Tryckytor på minst 44 × 44 px inom `scope` (en CSS-väljare). */
@@ -290,7 +293,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     ).toBe(`${kr(profit.profitOre)} kr`);
     await calc.getByText("6 × Kalkyl Fusion Strike").waitFor();
     await calc.getByText("à 220 kr").waitFor();
-    await section.getByRole("button", { name: /^Uppdatera priset från idag/ }).waitFor();
+    await section.getByRole("button", { name: /^Uppdatera priset från i dag/ }).waitFor();
     await section.getByRole("button", { name: /^Rätta priset/ }).waitFor();
     await expectNoSideScroll(page);
     await expectTapTargets(page, "#kalkyl");
@@ -308,7 +311,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await expectTapTargets(page, '[data-testid="mystery-kostnad-notis"]');
     await shot(page, "16-agare-mystery-ratta-fraga-iphonese");
     await confirm.getByRole("button", { name: "Avbryt", exact: true }).click();
-    await section.getByRole("button", { name: /^Uppdatera priset från idag/ }).waitFor();
+    await section.getByRole("button", { name: /^Uppdatera priset från i dag/ }).waitFor();
     expect((await mysteryPrices()).map((p) => p.ore)).toEqual([17_400]);
 
     // Vad händer om: en Fusion Strike mindre och en Phantasmal Flames till → 185 kr per pack.
@@ -487,5 +490,116 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await todo.scrollIntoViewIfNeeded();
     await expectNoSideScroll(page);
     await shot(page, "16-agare-att-gora-prisrad-iphonese");
+
+    // "Visa prisråd" landar på Prisråd, inte längre ner på Lönsamhet: rubriken syns på
+    // skärmen även när sidan har satt sig (skelettet först, sedan diagrammen).
+    await page
+      .getByRole("link", { name: /Visa prisråd/ })
+      .first()
+      .click();
+    await page.waitForURL((url) => url.pathname === "/lonsamhet" && url.hash === "#prisrad");
+    const heading = page.locator("#prisrad-rubrik");
+    await heading.waitFor();
+    const inView = () =>
+      page.evaluate(() => {
+        const r = document.getElementById("prisrad-rubrik")?.getBoundingClientRect();
+        return r !== undefined && r.top >= 0 && r.bottom <= window.innerHeight;
+      });
+    await until(inView, "Prisråd syns på skärmen efter länken från Att göra");
+    await page.waitForLoadState("networkidle");
+    // Och den ligger kvar där när sidan har satt sig (diagrammen har fått sin höjd): synlig
+    // utan avbrott i minst 1,5 sekunder.
+    let since = Date.now();
+    await until(async () => {
+      if (!(await inView())) since = Date.now();
+      return Date.now() - since >= 1_500;
+    }, "Prisråd ligger kvar på skärmen");
+    expect(await inView()).toBe(true);
+  });
+
+  it("ägaren: mystery pack utan inköpspris har EN punkt och EN knapp, och de sålda packen får priset", async () => {
+    // Ett sålt mystery pack som aldrig har fått något inköpspris: 6 × 220 + 4 × 150 = 192 kr.
+    const NAME = "Kalkyl Mystery Utan Pris";
+    const id = await titleId(NAME, true);
+    const [parts] = await sql<{ fusion: string; flames: string }[]>`
+      select (select id from public.titles where organization_id = ${orgId}::uuid
+                and name = ${FUSION}) as fusion,
+             (select id from public.titles where organization_id = ${orgId}::uuid
+                and name = ${FLAMES}) as flames`;
+    await sql.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`update public.titles set archived_at = null where id = ${id}::uuid`;
+      await tx`delete from public.purchase_prices
+               where organization_id = ${orgId}::uuid and title_id = ${id}::uuid`;
+    });
+    await asOwner(
+      (tx) => tx`select public.save_mystery_recipe(${orgId}::uuid, ${id}::uuid, 10,
+        ${tx.json([
+          { titleId: parts!.fusion, quantity: 6, hit: false },
+          { titleId: parts!.flames, quantity: 4, hit: true },
+        ])})`,
+    );
+    const [machine] = await sql<{ id: string }[]>`
+      select id from public.machines
+      where organization_id = ${orgId}::uuid and archived_at is null order by code limit 1`;
+    for (const n of [1, 2]) {
+      await sql`
+        insert into public.orders (organization_id, data_source_id, external_id, raw_title,
+                                   title_id, ordered_at, amount_ore, machine_id, source_hash)
+        values (${orgId}::uuid, ${e2e().importSource.id}::uuid, ${`e2e-kalkyl-utan-${n}`}, ${NAME},
+                ${id}::uuid, now() - make_interval(hours => ${n * 30}), ${SALE_ORE},
+                ${machine!.id}::uuid, md5(${`e2e-kalkyl-utan-${n}`}))`;
+    }
+    const prices = () => sql<{ ore: number; before_today: boolean }[]>`
+      select unit_cost_ore::int as ore,
+             valid_from < (now() at time zone 'Europe/Stockholm')::date as before_today
+      from public.purchase_prices
+      where organization_id = ${orgId}::uuid and title_id = ${id}::uuid`;
+    try {
+      const page = await ownerPage();
+      // Att göra: kalkylens punkt, inte också den vanliga "Lägg in inköpspris".
+      await visit(page, "/att-gora");
+      await page.getByText(`${NAME} kostar 192 kr men saknar inköpspris`).first().waitFor();
+      const later = page.getByRole("button", { name: /^Visa · \d+/ });
+      if ((await later.count()) > 0) await later.first().click();
+      expect(await page.getByText(`Lägg in inköpspris för ${NAME}`).count()).toBe(0);
+
+      // Kalkylen: en enda knapp. Inget val mellan "från i dag" och "Rätta priset".
+      await visit(page, `/vart-lager/mystery/${id}`);
+      const notice = page.locator('#kalkyl [data-testid="mystery-kostnad-notis"]');
+      await notice.getByText(`${NAME} kostar 192 kr men saknar inköpspris`).waitFor();
+      const add = notice.getByRole("button", { name: /^Lägg in priset 192 kr/ });
+      await add.waitFor();
+      expect(await notice.getByRole("button").count()).toBe(1);
+      expect(await plain(add)).toContain("Gäller även allt som redan är sålt.");
+      await expectNoSideScroll(page);
+      await expectTapTargets(page, '#kalkyl [data-testid="mystery-kostnad-notis"]');
+      await notice.scrollIntoViewIfNeeded();
+      await shot(page, "16-agare-mystery-utan-pris-iphonese");
+      await add.click();
+      // Ett pris, från före i dag: de två sålda packen har nu en kostnad.
+      await until(async () => (await prices()).length === 1, "priset är sparat");
+      expect(await prices()).toEqual([{ ore: 19_200, before_today: true }]);
+      await until(async () => (await notice.count()) === 0, "notisen är borta");
+      const [unpriced] = await sql<{ n: number }[]>`
+        select count(*)::int as n from public.orders o
+        where o.organization_id = ${orgId}::uuid and o.title_id = ${id}::uuid
+          and not exists (
+            select 1 from public.purchase_prices p
+            where p.organization_id = o.organization_id and p.title_id = o.title_id
+              and p.valid_from <= o.business_date)`;
+      expect(unpriced!.n).toBe(0);
+      // Att göra har ingen punkt kvar om mystery-packet.
+      await visit(page, "/att-gora");
+      await page.getByRole("heading", { level: 1 }).first().waitFor();
+      const open = page.getByRole("button", { name: /^Visa · \d+/ });
+      if ((await open.count()) > 0) await open.first().click();
+      const body = await plain(page.locator("main"));
+      expect(body).not.toContain(`${NAME} kostar`);
+      expect(body).not.toContain(`Lägg in inköpspris för ${NAME}`);
+    } finally {
+      // Titeln arkiveras, så att den inte ligger kvar i andra testers listor.
+      await sql`update public.titles set archived_at = now() where id = ${id}::uuid`;
+    }
   });
 });

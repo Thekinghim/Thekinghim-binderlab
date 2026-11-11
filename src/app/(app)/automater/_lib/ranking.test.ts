@@ -37,11 +37,11 @@ describe("rankingView: flera automater", () => {
       m("c", 3_500),
     ]);
     expect(plain(v.title)).toBe("BL-001 tjänar mest: 412 kr/dag.");
-    expect(plain(v.aside)).toBe("BL-003 går dåligt: överväg att flytta den.");
+    expect(plain(v.aside)).toBe("BL-003 tjänar dåligt: överväg att flytta den.");
     expect(v.rows.map((r) => r.verdictText)).toEqual([
       "Bäst",
-      "Går bra",
-      "Går dåligt: överväg att flytta",
+      "Tjänar bra",
+      "Tjänar dåligt: överväg att flytta",
     ]);
     expect(v.rows.map((r) => r.warn)).toEqual([false, false, true]);
     expect(plain(v.rows[0]!.profit)).toBe("412 kr/dag");
@@ -52,7 +52,7 @@ describe("rankingView: flera automater", () => {
     expect(v.rows[0]!.href).toBe("/automater/bl-001");
     expect(v.note).toBe("Vinst före butikernas andel.");
     expect(plain(homeRankingLine(v, ranking))).toBe(
-      "BL-001 tjänar mest: 412 kr/dag. BL-003 går dåligt: överväg att flytta den.",
+      "BL-001 tjänar mest: 412 kr/dag. BL-003 tjänar dåligt: överväg att flytta den.",
     );
   });
 
@@ -62,15 +62,15 @@ describe("rankingView: flera automater", () => {
       [],
       true,
     );
-    expect(plain(v.aside)).toBe("2 automater går dåligt: överväg att flytta dem.");
+    expect(plain(v.aside)).toBe("2 automater tjänar dåligt: överväg att flytta dem.");
     expect(v.note).toBe("Vinst efter butikernas andel.");
   });
 
   it("ingen går dåligt", () => {
     const { view: v, ranking } = view([m("a", 40_000), m("b", 30_000)]);
-    expect(v.aside).toBe("Ingen automat går dåligt.");
+    expect(v.aside).toBe("Ingen automat tjänar dåligt.");
     expect(plain(homeRankingLine(v, ranking))).toBe(
-      "BL-001 tjänar mest: 400 kr/dag. Ingen automat går dåligt.",
+      "BL-001 tjänar mest: 400 kr/dag. Ingen automat tjänar dåligt.",
     );
   });
 
@@ -87,6 +87,37 @@ describe("rankingView: flera automater", () => {
   it("arkiverade (okända) automater visas inte", () => {
     const { view: v } = view([m("a", 40_000), m("b", 30_000), m("okänd", 10)]);
     expect(v.rows.map((r) => r.code)).toEqual(["BL-001", "BL-002"]);
+  });
+});
+
+describe("rankingView: automat ur drift", () => {
+  it("raden visar driftläget i stället för omdömet, talen är desamma", () => {
+    const ranking = fleetRanking([m("a", 40_000), m("b", 30_000)], []);
+    const v = rankingView({
+      ranking,
+      machines,
+      hrefOf,
+      storeShareDeducted: false,
+      down: new Map([["b", "Ur drift"]]),
+    });
+    expect(v.rows.map((r) => r.verdictText)).toEqual(["Bäst", "Ur drift nu"]);
+    expect(v.rows.map((r) => r.warn)).toEqual([false, true]);
+    expect(plain(v.rows[1]!.profit)).toBe("300 kr/dag");
+    // Sammanfattningen talar om vinsten, inte om driften.
+    expect(v.aside).toBe("Ingen automat tjänar dåligt.");
+  });
+
+  it("en enda automat: driftläget står först", () => {
+    const ranking = fleetRanking([m("a", 41_200)], [m("a", 38_000)]);
+    const v = rankingView({
+      ranking,
+      machines,
+      hrefOf,
+      storeShareDeducted: false,
+      down: new Map([["a", "Ur drift"]]),
+    });
+    expect(plain(v.aside)).toBe("Ur drift nu. Går som förra perioden (+8 %).");
+    expect(v.rows[0]!.verdictText).toBe("Ur drift nu");
   });
 });
 

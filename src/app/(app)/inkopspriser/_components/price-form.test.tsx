@@ -53,7 +53,7 @@ describe("PriceForm före hydrering", () => {
     const html = serverHtml();
     expect(html).toContain("Rätta priset");
     expect(html).toContain("Gäller all försäljning");
-    expect(html).toContain("Nytt inköpspris från idag");
+    expect(html).toContain("Nytt inköpspris från i dag");
     expect(html).toContain("Äldre försäljning behåller sitt pris");
     expect(html).toContain("Annat datum…");
     expect(html).not.toMatch(/name="validFrom"/);

@@ -32,7 +32,7 @@ async function loadLine(sp: SearchParamsInput): Promise<string | null> {
 
 /**
  * Automat-ranking på Hem, bara med minst två automater: "BL-003 tjänar mest: 412 kr/dag.
- * BL-007 går dåligt: överväg att flytta den." Länkar till rangordningen på Automater.
+ * BL-007 tjänar dåligt: överväg att flytta den." Länkar till rangordningen på Automater.
  */
 export async function RankingLine({ searchParams }: { searchParams: SearchParamsInput }) {
   const text = await loadLine(searchParams);

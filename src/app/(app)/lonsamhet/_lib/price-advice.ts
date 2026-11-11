@@ -22,6 +22,7 @@ import {
   MAX_TARGET_MARGIN_BP,
   MIN_TARGET_MARGIN_BP,
   PRICE_ADVICE_WINDOW_DAYS,
+  type IsoDate,
   type PriceAdvice,
 } from "@/domain";
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
@@ -46,6 +47,11 @@ export const ADVICE_MESSAGES = {
 
 export interface PriceAdviceRow extends PriceAdvice {
   readonly name: string;
+  /**
+   * Automaterna har olika pris: var det låga priset finns ("BL-002") och när det senast
+   * såldes där. Så syns det om rådet bygger på en automat som inte sålt sedan priset höjdes.
+   */
+  readonly where: { readonly code: string; readonly soldOn: IsoDate } | null;
 }
 
 export interface PriceAdviceView {
@@ -77,11 +83,19 @@ export async function loadPriceAdviceFor(
     }),
   ]);
   const names = new Map(master.titles.map((t) => [t.id, t.name]));
+  const codes = new Map(master.machines.map((m) => [m.id, m.code]));
   const rows = priceAdviceFor(
     { orders: db.orders, titles: master.titles, prices: db.prices, settings: db.settings },
     today,
     db.targetBp,
-  ).map((r) => ({ ...r, name: names.get(r.titleId) ?? r.titleId }));
+  ).map((r) => {
+    const code = r.lowestIn?.machineId ? codes.get(r.lowestIn.machineId) : undefined;
+    return {
+      ...r,
+      name: names.get(r.titleId) ?? r.titleId,
+      where: r.lowestIn && code ? { code, soldOn: r.lowestIn.soldOn } : null,
+    };
+  });
   return { targetBp: db.targetBp, rows };
 }
 

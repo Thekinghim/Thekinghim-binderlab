@@ -8,7 +8,7 @@ import type { MysteryRecipeRef, PurchasePrice } from "@/domain";
 
 import { applyDismissals } from "./dismissals";
 import { computeTodos } from "./index";
-import { input, NOW, title } from "./test-helpers";
+import { input, NOW, order, title } from "./test-helpers";
 
 const RECIPE: MysteryRecipeRef = {
   titleId: "premium",
@@ -94,7 +94,42 @@ describe("mystery pack med fel inköpspris", () => {
     expect(t?.title).toBe("Mystery pack premium kostar 188,14 kr men saknar inköpspris");
     expect(t?.fingerprint).toBe("-|18814");
     // Inget har "ändrats": priset har aldrig lagts in.
-    expect(t?.detail).toBe("Utan inköpspris räknas ingen vinst på sålda pack. Lägg in priset.");
+    expect(t?.detail).toBe(
+      "Utan inköpspris räknas ingen vinst på sålda pack. Lägg in priset, så räknas även det som redan är sålt.",
+    );
+  });
+
+  it("sålt mystery pack utan inköpspris: en punkt (kalkylens), inte också 'Lägg in inköpspris'", () => {
+    const sold = [
+      order({ titleId: "premium", businessDate: "2026-10-30", amountOre: 24_900 }),
+      order({ titleId: "fusion", businessDate: "2026-10-30", amountOre: 24_900 }),
+    ];
+    const without = prices().filter((p) => p.titleId !== "premium");
+    const all = computeTodos(
+      input({ titles: TITLES, prices: without, orders: sold, mysteryRecipes: [RECIPE] }),
+      NOW,
+    );
+    expect(all.filter((t) => t.evidence.titleIds.includes("premium")).map((t) => t.kind)).toEqual([
+      "mystery-cost",
+    ]);
+    // Utan kalkyl (läsaren, eller inget innehåll) finns den vanliga punkten kvar.
+    const plain = computeTodos(input({ titles: TITLES, prices: without, orders: sold }), NOW);
+    expect(plain.filter((t) => t.evidence.titleIds.includes("premium")).map((t) => t.kind)).toEqual(
+      ["missing-price"],
+    );
+    // En annan titel utan pris berörs inte.
+    const other = computeTodos(
+      input({
+        titles: [...TITLES, title("extra", "Extra")],
+        prices: without,
+        orders: [...sold, order({ titleId: "extra", businessDate: "2026-10-30" })],
+        mysteryRecipes: [RECIPE],
+      }),
+      NOW,
+    );
+    expect(other.filter((t) => t.kind === "missing-price").map((t) => t.key)).toEqual([
+      "missing-price:extra",
+    ]);
   });
 
   it("arkiverat mystery pack ger ingen punkt", () => {

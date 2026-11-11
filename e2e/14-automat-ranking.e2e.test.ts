@@ -3,7 +3,7 @@
  *
  * Flottan (tio automater, e2e/support/ranking-fixture.ts):
  * - Hem har en rad om vem som tjänar mest och vem som går dåligt, som leder till Automater.
- * - Automater rangordnar alla tio efter vinst per dag, med "Bäst", "Går bra", "Går dåligt:
+ * - Automater rangordnar alla tio efter vinst per dag, med "Bäst", "Tjänar bra", "Går dåligt:
  *   överväg att flytta" och "För ny". "Visa butikernas andel" sänker vinsten per dag.
  * - Automaten som går dåligt: Bästa sortiment föreslår "Byt ut White Flair … Prova 30th
  *   Celebration …". Med 7 dagar sägs att det är för lite data.
@@ -60,12 +60,16 @@ async function expectFits(page: Page, selector: string): Promise<void> {
   const problems = await page.evaluate((sel: string) => {
     const out: string[] = [];
     const doc = document.documentElement;
-    if (doc.scrollWidth > window.innerWidth) out.push(`sidan är ${doc.scrollWidth} px bred`);
+    if (doc.scrollWidth > Math.min(window.innerWidth, window.screen.width))
+      out.push(`sidan är ${doc.scrollWidth} px bred`);
     const root = document.querySelector(sel);
     if (!root) return [`${sel} saknas`];
     for (const el of Array.from(root.querySelectorAll("*"))) {
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && (r.right > window.innerWidth + 1 || r.left < -1)) {
+      if (
+        r.width > 0 &&
+        (r.right > Math.min(window.innerWidth, window.screen.width) + 1 || r.left < -1)
+      ) {
         out.push(`${el.tagName} "${(el.textContent ?? "").trim().slice(0, 30)}" utanför skärmen`);
       }
     }
@@ -136,7 +140,7 @@ describe("Automat-ranking med tio automater (iPhone SE)", () => {
     await page.goto("/");
     const line = await sectionText(page, "[data-home-ranking]");
     expect(line).toMatch(
-      /^BL-001 tjänar mest: [\d ]+ kr\/dag\. BL-009 går dåligt: överväg att flytta den\./,
+      /^BL-001 tjänar mest: [\d ]+ kr\/dag\. BL-009 tjänar dåligt: överväg att flytta den\./,
     );
     await expectFits(page, "[data-home-ranking]");
     await shot(page, "[data-home-ranking]", "rank-01-hem-rad");
@@ -152,7 +156,7 @@ describe("Automat-ranking med tio automater (iPhone SE)", () => {
     const body = await sectionText(page, section);
     expect(body).toMatch(/RANGORDNING · VINST PER DAG · 29 D/i);
     expect(body).toMatch(/BL-001 tjänar mest: [\d ]+ kr\/dag\./);
-    expect(body).toContain("BL-009 går dåligt: överväg att flytta den.");
+    expect(body).toContain("BL-009 tjänar dåligt: överväg att flytta den.");
     expect(body).toContain("Vinst före butikernas andel.");
 
     const rows = page.locator(`${section} ol > li`);
@@ -162,10 +166,10 @@ describe("Automat-ranking med tio automater (iPhone SE)", () => {
     expect(first).toMatch(/Bäst/i);
     expect(first).toMatch(/Säljer [\d ]+ kr\/dag · 14,0 pack\/dag/);
     expect(first).toMatch(/29 dagar · [\d ]+ kr\/dag mer än en vanlig automat/);
-    expect(text(await rows.nth(1).innerText())).toMatch(/Går bra/i);
+    expect(text(await rows.nth(1).innerText())).toMatch(/Tjänar bra/i);
     const weak = page.locator(`${section} a[data-verdict="weak"]`);
     expect(await weak.count()).toBe(1);
-    expect(text(await weak.innerText())).toMatch(/BL-009[\s\S]*Går dåligt: överväg att flytta/i);
+    expect(text(await weak.innerText())).toMatch(/BL-009[\s\S]*Tjänar dåligt: överväg att flytta/i);
     expect(text(await page.locator(`${section} a[data-verdict="new"]`).innerText())).toMatch(
       /BL-010[\s\S]*För ny: 6 dagar/i,
     );
@@ -336,6 +340,18 @@ describe("En ensam automat (iPhone SE)", () => {
     expect(body).not.toContain("Prova");
     expect(body).toContain(
       "Inget att prova i stället än: ingen annan automat har sålt i 14 dagar.",
+    );
+    // Mystery-packets etikett är appens längsta: den ska radbrytas, inte göra sidan bredare
+    // än telefonen (expectFits mäter mot skärmens bredd, 375 px).
+    expect(body).toMatch(/Mystery pack: fylls bara när facket är tomt \(14 st\)/i);
+    const tag = page
+      .locator(`${section} li`)
+      .filter({ hasText: "Mystery Pack Premium" })
+      .getByText(/fylls bara när facket är tomt/i);
+    const box = await tag.boundingBox();
+    expect(box!.x + box!.width).toBeLessThanOrEqual(375);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      375,
     );
     await expectFits(page, section);
     await shot(page, section, "rank-08-en-automat-sortiment");

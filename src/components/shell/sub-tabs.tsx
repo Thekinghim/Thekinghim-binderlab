@@ -218,7 +218,13 @@ function TabRow({
 
   return (
     <nav aria-label={label} className={cn("min-w-0", className)}>
-      <div ref={rowRef} className="relative flex min-w-0 items-stretch border-b border-line">
+      {/* max-md:overflow-x-clip (mobil; på dator får Mer-menyn sticka ut): markeringen ligger utanför rullrutan. När den aktiva fliken står
+          långt till höger hamnar den först utanför raden (tills raden har rullat dit), och
+          utan klippningen blev hela sidan en kort stund bredare än telefonen. */}
+      <div
+        ref={rowRef}
+        className="relative flex min-w-0 items-stretch border-b border-line max-md:overflow-x-clip"
+      >
         <div
           ref={scrollRef}
           // Under md tonar högerkanten ut, så att man ser att raden går att rulla.

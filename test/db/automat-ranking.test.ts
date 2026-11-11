@@ -9,6 +9,7 @@
  * - Vyknappen "Visa butikernas andel" sänker vinsten per dag; utan den är vinsten före andelen.
  */
 
+import { inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
@@ -255,6 +256,26 @@ describe("Automat-ranking", () => {
     expect(scoped.storeShareDeducted).toBe(true);
     expect(all.ranking.rows).toHaveLength(10);
   });
+
+  it("arkiverade automater räknas inte: en kvar jämförs med sig själv, inte med de dolda", async () => {
+    const three = await seedFleet(3);
+    const owner = await viewerFor(three.owner, three.orgId);
+    expect((await loadFleetRankingWith(loaders(owner), SP)).ranking.mode).toBe("fleet");
+    // Automat 2 och 3 arkiveras: deras order ligger kvar i perioden.
+    await asUser(three.owner, (tx) =>
+      tx
+        .update(s.machines)
+        .set({ archivedAt: NOW })
+        .where(inArray(s.machines.id, three.machineIds.slice(1))),
+    );
+    const data = await loadFleetRankingWith(loaders(owner), SP);
+    expect([...data.machines.keys()]).toEqual([three.machineIds[0]]);
+    expect(data.ranking.mode).toBe("single");
+    expect(data.ranking.rows.map((x) => x.machineId)).toEqual([three.machineIds[0]]);
+    expect(data.ranking.medianProfitPerDayOre).toBeNull();
+    expect(data.ranking.rows[0]!.verdict).toBe("same");
+    expect(data.ranking.rows[0]!.vsMedianOre).toBeNull();
+  }, 120_000);
 
   it("påfyllaren får ingenting, läsaren får läsa", async () => {
     const refiller = await viewerFor(await createMember(ten.orgId, "refiller"), ten.orgId);

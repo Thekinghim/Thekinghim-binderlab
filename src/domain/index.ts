@@ -218,6 +218,7 @@ export {
 } from "./mystery-cost";
 
 export {
+  currentSalePriceDetails,
   currentSalePrices,
   DEFAULT_TARGET_MARGIN_BP,
   isPricePoint,
@@ -227,6 +228,7 @@ export {
   priceAdvice,
   suggestedPriceOre,
   unitMargin,
+  type CurrentSalePrice,
   type PriceAdvice,
   type PriceAdviceInput,
   type SalePriceOrder,

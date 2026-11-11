@@ -6,7 +6,9 @@
  * - Flottan: tio automater i var sin butik. BL-001–BL-008 säljer olika mycket (Pokémon 151
  *   och 30th Celebration), BL-009 säljer lite och har en titel som står still (White
  *   Flair), BL-010 är ny (6 dagar).
- * - Ensam: en automat som säljer mer de senaste 30 dagarna än perioden innan.
+ * - Ensam: en automat som säljer mer de senaste 30 dagarna än perioden innan. Den har också
+ *   ett mystery pack (egen produkt med innehåll, 14 per omgång) i sortimentet: raden i
+ *   Bästa sortiment har appens längsta etikett, den som måste radbrytas på en smal telefon.
  *
  * Varje körning skapar nya organisationer och användare (runId i namnet).
  */
@@ -43,12 +45,16 @@ interface MachineSpec {
   readonly earlier?: Record<string, number>;
 }
 
+/** Mystery-packet i Ensam (egen produkt med innehåll). */
+export const RANKING_MYSTERY = "Mystery Pack Premium";
+
 const TITLES = [
   "Pokémon 151",
   "30th Celebration",
   "Surging Sparks",
   "Prismatic Evolutions",
   "White Flair",
+  RANKING_MYSTERY,
 ];
 
 const FLEET: MachineSpec[] = [
@@ -93,8 +99,11 @@ const SOLO: MachineSpec[] = [
     name: "Sega gubben",
     perDay: { "Pokémon 151": 4, "Surging Sparks": 2, "Prismatic Evolutions": 2 },
     earlier: { "Pokémon 151": 3 },
-    alsoListed: ["White Flair"],
-    single: [["White Flair", 12]],
+    alsoListed: ["White Flair", RANKING_MYSTERY],
+    single: [
+      ["White Flair", 12],
+      [RANKING_MYSTERY, 5],
+    ],
   },
 ];
 
@@ -134,6 +143,16 @@ async function seedOrg(
       await tx`
         insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from)
         values (${orgId}::uuid, ${t!.id}::uuid, 4500, current_date - 200)`;
+    }
+    if (machines.some((m) => m.alsoListed?.includes(RANKING_MYSTERY))) {
+      await tx`update public.titles set own_product = true
+               where organization_id = ${orgId}::uuid and id = ${titleId.get(RANKING_MYSTERY)!}::uuid`;
+      await tx`select public.save_mystery_recipe(${orgId}::uuid,
+        ${titleId.get(RANKING_MYSTERY)!}::uuid, 14,
+        ${tx.json([
+          { titleId: titleId.get("Pokémon 151")!, quantity: 10, hit: false },
+          { titleId: titleId.get("Prismatic Evolutions")!, quantity: 4, hit: true },
+        ])})`;
     }
     const [source] = await tx<{ id: string }[]>`
       insert into public.data_sources (organization_id, provider, name)

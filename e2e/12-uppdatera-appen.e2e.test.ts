@@ -127,7 +127,7 @@ describe.each(DEVICES)("Uppdatera appen på %s", (device) => {
       await banner.waitFor();
       expect(await banner.innerText()).toContain("Ny version av appen finns");
       await waitForState(page, "ny");
-      const width = await page.evaluate(() => window.innerWidth);
+      const width = await page.evaluate(() => Math.min(window.innerWidth, window.screen.width));
       const box = await banner.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.y).toBeGreaterThanOrEqual(0);

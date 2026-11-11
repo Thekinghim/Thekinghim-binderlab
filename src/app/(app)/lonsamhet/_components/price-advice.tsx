@@ -1,6 +1,7 @@
+import { ScrollToHash } from "@/components/ui/scroll-to-hash";
 import { formatInt, formatKronor, formatMarginBp } from "@/lib/format";
 
-import { adviceHeadline, adviceMargin } from "../_lib/advice-text";
+import { adviceHeadline, adviceMargin, adviceWhere } from "../_lib/advice-text";
 import type { PriceAdviceView } from "../_lib/price-advice";
 import { TargetMarginControl } from "./target-margin";
 
@@ -30,7 +31,8 @@ export function PriceAdviceSection({
     <li key={r.titleId} className="flex flex-col gap-1 px-4 py-3" data-testid="prisrad-rad">
       <span className="text-base font-medium [overflow-wrap:anywhere] text-fg">{r.name}</span>
       <span className="tnum text-base text-muted">
-        Säljs för {kr(r.salePriceOre)} · inköp {kr(r.unitCostOre)} · marginal{" "}
+        Säljs för {kr(r.salePriceOre)}
+        {adviceWhere(r.where)} · inköp {kr(r.unitCostOre)} · marginal{" "}
         <span className="font-medium text-signal-fg">{adviceMargin(r.marginBp, targetBp)}</span>
       </span>
       <span className="tnum text-base text-fg">
@@ -46,6 +48,7 @@ export function PriceAdviceSection({
       aria-labelledby="prisrad-rubrik"
       className="flex scroll-mt-28 flex-col gap-4 border-t border-line py-8 md:py-12"
     >
+      <ScrollToHash id="prisrad" />
       <div className="flex flex-col gap-1">
         <p className="label text-subtle">Prisråd</p>
         <h2 id="prisrad-rubrik" className="text-xl font-medium text-fg">
@@ -75,7 +78,7 @@ export function PriceAdviceSection({
       <TargetMarginControl targetBp={targetBp} canEdit={canEdit} />
       <p className="meta text-subtle">
         Marginalen är före butikernas andel, med senaste priset i automaten (30 dagar) och dagens
-        inköpspris.
+        inköpspris. Har automaterna olika pris räknas det lägsta, och raden säger var.
       </p>
     </section>
   );

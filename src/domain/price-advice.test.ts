@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  currentSalePriceDetails,
   currentSalePrices,
   isPricePoint,
   priceAdvice,
@@ -121,6 +122,57 @@ describe("currentSalePrices", () => {
   });
 });
 
+describe("currentSalePriceDetails", () => {
+  const o = (machineId: string | null, businessDate: string, amountOre: number) => ({
+    titleId: "a",
+    machineId,
+    businessDate,
+    amountOre,
+  });
+
+  it("olika pris i automaterna: det lägsta, med automaten och dagen det kommer från", () => {
+    // m1 sålde för 285 kr i går; m2 sålde senast för 28 dagar sedan, för 249 kr.
+    const d = currentSalePriceDetails(
+      [o("m1", "2026-10-31", 28_500), o("m2", "2026-10-05", 24_900), o("m2", "2026-10-04", 23_900)],
+      "2026-10-04",
+    );
+    expect(d.get("a")).toEqual({
+      ore: 24_900,
+      machineId: "m2",
+      soldOn: "2026-10-05",
+      differs: true,
+    });
+  });
+
+  it("samma pris överallt: inget att peka ut", () => {
+    const d = currentSalePriceDetails(
+      [o("m1", "2026-10-31", 24_900), o("m2", "2026-10-20", 24_900)],
+      "2026-10-04",
+    );
+    expect(d.get("a")).toMatchObject({ ore: 24_900, differs: false });
+    expect(currentSalePriceDetails([o("m1", "2026-10-31", 24_900)], "2026-10-04").get("a")).toEqual(
+      { ore: 24_900, machineId: "m1", soldOn: "2026-10-31", differs: false },
+    );
+  });
+
+  it("rådet bär med sig var det låga priset finns", () => {
+    const orders = [o("m1", "2026-10-31", 28_500), o("m2", "2026-10-05", 24_900)];
+    const details = currentSalePriceDetails(orders, "2026-10-04");
+    const [row] = priceAdvice({
+      titleIds: ["a"],
+      salePrices: currentSalePrices(orders, "2026-10-04"),
+      saleDetails: details,
+      costOf: () => 22_000,
+      settings: NO_FEES,
+      targetBp: 2_500,
+    });
+    expect(row).toMatchObject({
+      salePriceOre: 24_900,
+      lowestIn: { machineId: "m2", soldOn: "2026-10-05" },
+    });
+  });
+});
+
 describe("priceAdvice", () => {
   const input = {
     titleIds: ["fusion", "ok", "unsold", "unpriced"],
@@ -139,6 +191,7 @@ describe("priceAdvice", () => {
       {
         titleId: "fusion",
         salePriceOre: 24_900,
+        lowestIn: null,
         unitCostOre: 22_000,
         profitOre: 2_900,
         marginBp: 1_165,

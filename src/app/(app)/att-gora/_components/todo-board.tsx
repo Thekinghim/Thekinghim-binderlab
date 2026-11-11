@@ -503,7 +503,7 @@ function RefillDialog({ action }: { action: RefillActionView }) {
         return;
       }
       toast({
-        title: `Klart! ${formatInt(n)}${NBSP}pack påfyllda`,
+        title: `Klart! ${formatInt(n)}${NBSP}pack ${n === 1 ? "påfyllt" : "påfyllda"}`,
         description: `${action.titleName} i ${action.machineName}.`,
         tone: "ok",
       });

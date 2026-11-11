@@ -13,7 +13,9 @@
  *   delägarens notis och sammanfattning nämner den inte.
  * - En gång: raden i weekly_summaries läggs före utskicket (unique per person och vecka,
  *   on conflict do nothing). Två körningar samma vecka, också samtidiga, skickar en notis.
- *   Bara en vecka där ingen telefon fick notisen (status failed) provas igen.
+ *   Bara en vecka där ingen telefon fick notisen (status failed) provas igen, och en rad
+ *   som blivit liggande som pending (körningen dog mellan raden och utskicket) efter
+ *   PENDING_RETRY_MINUTES, så att nästa körning samma måndag skickar den.
  *
  * Siffrorna läses under RLS som mottagaren (./summary.ts); raden och push-enheternas
  * status skrivs som systemroll. Utan konfigurerad push skickas och sparas ingenting.
@@ -102,6 +104,14 @@ export function weeklyEnabled(pref: boolean | null, alertPush: boolean | null): 
   return pref ?? alertPush === true;
 }
 
+/** Så länge får en körning på sig att skicka innan en annan körning tar över raden. */
+export const PENDING_RETRY_MINUTES = 10;
+
+/** Raden får tas om: misslyckad, eller pending som ingen körning längre arbetar med. */
+const RETRYABLE = sql`(${s.weeklySummaries.status} = 'failed'
+  or (${s.weeklySummaries.status} = 'pending'
+      and ${s.weeklySummaries.updatedAt} < now() - make_interval(mins => ${PENDING_RETRY_MINUTES})))`;
+
 async function sendTo(
   db: Db,
   sender: PushSender,
@@ -111,7 +121,7 @@ async function sendTo(
 ): Promise<WeeklyRecipientStatus> {
   if (!weeklyEnabled(r.weekly_summary, r.alert_push)) return "off";
   const [existing] = await db
-    .select({ status: s.weeklySummaries.status })
+    .select({ retry: sql<boolean>`${RETRYABLE}` })
     .from(s.weeklySummaries)
     .where(
       and(
@@ -120,7 +130,7 @@ async function sendTo(
         eq(s.weeklySummaries.weekStart, week),
       ),
     );
-  if (existing && existing.status !== "failed") return "already";
+  if (existing && !existing.retry) return "already";
 
   const viewMode = r.view_mode === "simple" ? "simple" : "full";
   const viewer: Viewer = {
@@ -165,8 +175,9 @@ async function sendTo(
         s.weeklySummaries.userId,
         s.weeklySummaries.weekStart,
       ],
+      // updated_at stämplas av triggern: en samtidig körning ser raden som nyss tagen.
       set: { status: "pending", ...values },
-      setWhere: eq(s.weeklySummaries.status, "failed"),
+      setWhere: RETRYABLE,
     })
     .returning({ id: s.weeklySummaries.id });
   if (!claimed) return "already";

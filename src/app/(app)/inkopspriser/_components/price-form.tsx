@@ -314,7 +314,7 @@ export function PriceForm({
           disabled={!ready || otherBusy("today")}
           onClick={() => saveFrom(today, "today")}
         >
-          <Choice title="Nytt inköpspris från idag" sub="Äldre försäljning behåller sitt pris" />
+          <Choice title="Nytt inköpspris från i dag" sub="Äldre försäljning behåller sitt pris" />
         </Button>
       </div>
 

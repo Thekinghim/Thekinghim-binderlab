@@ -118,7 +118,7 @@ export const sv = {
     all: "Alla",
     mine: "Mina",
     noneMine: "Inga automater är dina.",
-    doneTitle: (n: number) => `Klart! ${packs(n)} påfyllda`,
+    doneTitle: (n: number) => `Klart! ${packs(n)} ${n === 1 ? "påfyllt" : "påfyllda"}`,
     doneOffline: "Sparat i telefonen. Skickas med nät.",
     leftAt: (n: number, place: string) => `${f.int(n)} kvar ${inPlace(place)}`,
     undone: (n: number) => `Ångrat · ${packs(n)}`,
@@ -295,6 +295,8 @@ export const sv = {
     costNotSaved: "Sparades inte",
     salePrice: "Pris i automaten",
     noSaleYet: "inget köp än",
+    /** Automaterna har olika pris: kalkylen visar det lägsta (som Prisråd). */
+    salePriceLowestIn: (code: string) => `lägst, i ${code}`,
     missingPrices: (names: string) => `Saknar inköpspris: ${names}.`,
     pricesLink: "Inköpspriser",
     /** Kalkylen: kostnad, pris, vinst och marginal per pack. */
@@ -321,13 +323,17 @@ export const sv = {
     /** När mystery-packet inte har något inköpspris alls (inget har ändrats). */
     costMissingWhy: "Utan inköpspris räknas ingen vinst på sålda pack.",
     costNowAsk: "Be ägaren uppdatera priset.",
-    updateFromToday: "Uppdatera priset från idag",
+    updateFromToday: "Uppdatera priset från i dag",
     updateFromTodaySub: "Det som redan är sålt behåller sitt pris.",
     fixPrice: "Rätta priset",
     fixPriceSub: "Gäller även allt som redan är sålt.",
     fixConfirm: (amount: string) =>
       `Allt som redan är sålt räknas om med ${amount}. Det går inte att ångra. Stängda månader ändras inte.`,
     fixYes: "Ja, rätta priset",
+    /** Mystery-packet har inget inköpspris alls: en knapp, och priset gäller allt som är sålt. */
+    addPrice: (amount: string) => `Lägg in priset ${amount}`,
+    addPriceSub: "Gäller även allt som redan är sålt.",
+    costAdded: (amount: string) => `Priset är ${amount}.`,
     costUpdated: (amount: string) => `Priset är ${amount} från i dag.`,
     costFixed: (amount: string) => `Priset är rättat till ${amount}.`,
     openCalc: "Visa kalkylen",

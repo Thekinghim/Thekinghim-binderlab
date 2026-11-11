@@ -974,7 +974,7 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c, { unitCostOre: 1 })],
   },
-  // Mystery-kalkylen: "Uppdatera priset från idag" / "Rätta priset"
+  // Mystery-kalkylen: "Uppdatera priset från i dag" / "Rätta priset"
   {
     module: "@/app/(app)/vart-lager/mystery/actions",
     name: "updateMysteryCost",

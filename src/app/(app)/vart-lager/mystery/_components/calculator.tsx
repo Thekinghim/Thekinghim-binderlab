@@ -14,10 +14,13 @@ import type { MysteryCalc } from "../_lib/model";
 export function Calculator({
   calc,
   draft = false,
+  lowestIn,
   className,
 }: {
   calc: MysteryCalc;
   draft?: boolean;
+  /** Automaterna har olika pris: koden för automaten med det låga priset som visas. */
+  lowestIn?: string | null;
   className?: string;
 }) {
   const t = useT();
@@ -56,6 +59,11 @@ export function Calculator({
         <dt className="text-muted">{t.mystery.salePrice}</dt>
         <dd className="tnum text-right text-fg">
           {calc.salePriceOre !== null ? kr(calc.salePriceOre) : t.mystery.noSaleYet}
+          {calc.salePriceOre !== null && lowestIn ? (
+            <span data-testid="kalkyl-pris-automat" className="block text-sm text-muted">
+              {t.mystery.salePriceLowestIn(lowestIn)}
+            </span>
+          ) : null}
         </dd>
         <dt className="text-muted">{t.mystery.calcCostPack}</dt>
         <dd data-testid="kalkyl-per-pack" className="tnum text-right text-fg">

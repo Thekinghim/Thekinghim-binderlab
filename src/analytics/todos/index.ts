@@ -14,7 +14,7 @@ import { contractTodos } from "./contracts";
 import { duplicateTitleTodos } from "./duplicates";
 import { missingContractTodos } from "./missing-contract";
 import { missingPriceTodos } from "./missing-price";
-import { mysteryCostTodos } from "./mystery-cost";
+import { mysteryCostTodos, mysteryDrifts, unpricedMysteryTitles } from "./mystery-cost";
 import { priceAdviceTodos } from "./price-advice";
 import { refillTodos } from "./refill";
 import { reportReviewTodos } from "./report-review";
@@ -41,6 +41,9 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
     refills.map((t) => [t.key.slice("refill:".length), t.atStakeOre ?? 0] as const),
   );
   // En butik utan kontrakt och avtal: en punkt (Skapa kontrakt lägger in avtalet).
+  // Ett mystery pack utan inköpspris: en punkt (kalkylens), inte två.
+  const drifts = mysteryDrifts(ctx);
+  const unpricedMystery = unpricedMysteryTitles(drifts);
   const deals = mergeAgreementTodos(missingContractTodos(ctx), agreementGapTodos(ctx));
   return sortTodos([
     ...refills,
@@ -54,8 +57,10 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
     ...deals.agreements,
     ...contractTodos(ctx),
     ...deals.contracts,
-    ...missingPriceTodos(ctx),
-    ...mysteryCostTodos(ctx),
+    ...missingPriceTodos(ctx).filter(
+      (t) => !t.evidence.titleIds.some((id) => unpricedMystery.has(id)),
+    ),
+    ...mysteryCostTodos(ctx, drifts),
     ...priceAdviceTodos(ctx),
     ...duplicateTitleTodos(ctx),
     ...teamTodos(ctx),

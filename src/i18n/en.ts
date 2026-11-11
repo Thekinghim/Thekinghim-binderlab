@@ -405,6 +405,7 @@ export const en: Messages = {
     costNotSaved: "Not saved",
     salePrice: "Price in the machine",
     noSaleYet: "no sale yet",
+    salePriceLowestIn: (code) => `lowest, in ${code}`,
     missingPrices: (names) => `No purchase price: ${names}.`,
     pricesLink: "Purchase prices",
     calcTitle: "Calculator",
@@ -432,6 +433,9 @@ export const en: Messages = {
     updateFromTodaySub: "What is already sold keeps its price.",
     fixPrice: "Correct the price",
     fixPriceSub: "Also changes everything already sold.",
+    addPrice: (amount) => `Add the price ${amount}`,
+    addPriceSub: "Also covers everything already sold.",
+    costAdded: (amount) => `The price is ${amount}.`,
     fixConfirm: (amount) =>
       `Everything already sold is counted again with ${amount}. This cannot be undone. Closed months do not change.`,
     fixYes: "Yes, correct the price",

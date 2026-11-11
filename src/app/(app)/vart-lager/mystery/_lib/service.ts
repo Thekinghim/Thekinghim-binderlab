@@ -314,17 +314,23 @@ export async function updateMysteryCostFor(
       today,
       note: "Rättat efter kalkylen (Mystery packs)",
     });
+    if (result.ok) {
+      return {
+        unitCostOre: cost,
+        mode: "correct",
+        validFrom: result.data?.start ?? today,
+        affectedOrders: result.data?.affectedOrders ?? 0,
+      };
+    }
     // Redan rättat (ett andra tryck): all försäljning har priset, så det är inget fel.
-    if (!result.ok && result.error === PRICE_MESSAGES.correctionUnchanged) {
+    if (result.error === PRICE_MESSAGES.correctionUnchanged) {
       return { unitCostOre: cost, mode: "correct", validFrom: today, affectedOrders: 0 };
     }
-    if (!result.ok) throw new MysteryError(result.error);
-    return {
-      unitCostOre: cost,
-      mode: "correct",
-      validFrom: result.data?.start ?? today,
-      affectedOrders: result.data?.affectedOrders ?? 0,
-    };
+    // Inget pris alls och inget går att rätta (allt ligger i stängda månader): priset läggs
+    // in från i dag nedan, så att mystery-packet inte står kvar utan pris.
+    if (!(calc.own === null && result.error === PRICE_MESSAGES.correctionClosed)) {
+      throw new MysteryError(result.error);
+    }
   }
   const result = await addPurchasePriceFor(viewer.user, {
     organizationId: orgId,

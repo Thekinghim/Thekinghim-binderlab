@@ -93,28 +93,82 @@ export interface SalePriceOrder {
   readonly orderedAt?: string;
 }
 
+/** Priset i automaten för en titel, och var det gäller. */
+export interface CurrentSalePrice {
+  /** Det lägsta av automaternas senaste pris (öre, med moms). */
+  readonly ore: number;
+  /** Automaten med det priset (den senast sålda om flera har det). null = okänd automat. */
+  readonly machineId: string | null;
+  /** Dagen för det köpet. */
+  readonly soldOn: IsoDate;
+  /** Automaterna har olika pris: då behöver raden säga var det låga priset finns. */
+  readonly differs: boolean;
+}
+
 /**
  * Priset i automaten per titel: det senaste betalda köpet (inte gratis-pack) per automat
  * från `since`, och det lägsta av dem när automaterna har olika pris (det är där marginalen
- * är sämst). Titlar utan köp i fönstret saknas (priset är okänt).
+ * är sämst). Titlar utan köp i fönstret saknas (priset är okänt). Med olika pris i
+ * automaterna sägs vilken automat och vilken dag det låga priset kommer från: en automat
+ * som inte sålt titeln sedan priset höjdes har kvar sitt gamla pris här.
  */
-export function currentSalePrices(
+export function currentSalePriceDetails(
   orders: readonly SalePriceOrder[],
   since: IsoDate,
-): Map<string, number> {
-  const latest = new Map<string, { at: string; ore: number; titleId: string }>();
+): Map<string, CurrentSalePrice> {
+  type Latest = {
+    at: string;
+    ore: number;
+    titleId: string;
+    machineId: string | null;
+    day: IsoDate;
+  };
+  const latest = new Map<string, Latest>();
   for (const o of orders) {
     if (o.amountOre <= 0 || o.businessDate < since) continue;
     const key = `${o.titleId}\u0000${o.machineId ?? ""}`;
     const at = `${o.businessDate}|${o.orderedAt ?? ""}`;
     const prev = latest.get(key);
-    if (!prev || at >= prev.at) latest.set(key, { at, ore: o.amountOre, titleId: o.titleId });
+    if (!prev || at >= prev.at) {
+      latest.set(key, {
+        at,
+        ore: o.amountOre,
+        titleId: o.titleId,
+        machineId: o.machineId,
+        day: o.businessDate,
+      });
+    }
   }
-  const out = new Map<string, number>();
+  const lowest = new Map<string, Latest>();
+  const differs = new Set<string>();
   for (const v of latest.values()) {
-    const prev = out.get(v.titleId);
-    if (prev === undefined || v.ore < prev) out.set(v.titleId, v.ore);
+    const prev = lowest.get(v.titleId);
+    if (prev === undefined) {
+      lowest.set(v.titleId, v);
+      continue;
+    }
+    if (v.ore !== prev.ore) differs.add(v.titleId);
+    if (v.ore < prev.ore || (v.ore === prev.ore && v.at > prev.at)) lowest.set(v.titleId, v);
   }
+  const out = new Map<string, CurrentSalePrice>();
+  for (const [titleId, v] of lowest) {
+    out.set(titleId, {
+      ore: v.ore,
+      machineId: v.machineId,
+      soldOn: v.day,
+      differs: differs.has(titleId),
+    });
+  }
+  return out;
+}
+
+/** Bara priset per titel, se `currentSalePriceDetails`. */
+export function currentSalePrices(
+  orders: readonly SalePriceOrder[],
+  since: IsoDate,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [titleId, v] of currentSalePriceDetails(orders, since)) out.set(titleId, v.ore);
   return out;
 }
 
@@ -123,6 +177,8 @@ export interface PriceAdviceInput {
   readonly titleIds: readonly string[];
   /** Priset i automaten per titel (öre, med moms), se `currentSalePrices`. */
   readonly salePrices: ReadonlyMap<string, number>;
+  /** Var priset gäller (se `currentSalePriceDetails`), när det är känt. */
+  readonly saleDetails?: ReadonlyMap<string, CurrentSalePrice>;
   /** Dagens inköpspris per titel (öre). */
   readonly costOf: (titleId: string) => number | null | undefined;
   readonly settings: FeeSettings;
@@ -133,6 +189,11 @@ export interface PriceAdviceInput {
 export interface PriceAdvice {
   readonly titleId: string;
   readonly salePriceOre: number;
+  /**
+   * Automaterna har olika pris: priset ovan är det lägsta, från den här automaten och det
+   * här köpet. null när alla automater som sålt titeln har samma pris.
+   */
+  readonly lowestIn: { readonly machineId: string | null; readonly soldOn: IsoDate } | null;
   readonly unitCostOre: number;
   /** Vinst per pack före butikens andel (öre). */
   readonly profitOre: number;
@@ -156,9 +217,14 @@ export function priceAdvice(input: PriceAdviceInput): PriceAdvice[] {
     const now = unitMargin(sale, cost, input.settings);
     if (now.marginBp === null || now.marginBp >= input.targetBp) continue;
     const suggested = suggestedPriceOre(cost, input.targetBp, input.settings, sale);
+    const where = input.saleDetails?.get(titleId);
     out.push({
       titleId,
       salePriceOre: sale,
+      lowestIn:
+        where && where.differs && where.ore === sale
+          ? { machineId: where.machineId, soldOn: where.soldOn }
+          : null,
       unitCostOre: cost,
       profitOre: now.profitOre,
       marginBp: now.marginBp,

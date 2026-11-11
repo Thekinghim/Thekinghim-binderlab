@@ -14,7 +14,7 @@
 
 import {
   addDays,
-  currentSalePrices,
+  currentSalePriceDetails,
   PRICE_ADVICE_WINDOW_DAYS,
   priceAdvice,
   PriceIndex,
@@ -37,9 +37,11 @@ export function priceAdviceFor(
 ): PriceAdvice[] {
   const since = addDays(today, -(PRICE_ADVICE_WINDOW_DAYS - 1));
   const index = new PriceIndex(input.prices);
+  const details = currentSalePriceDetails(input.orders, since);
   return priceAdvice({
     titleIds: input.titles.filter((t) => !t.archived).map((t) => t.id),
-    salePrices: currentSalePrices(input.orders, since),
+    salePrices: new Map([...details].map(([id, v]) => [id, v.ore])),
+    saleDetails: details,
     costOf: (id) => index.priceOn(id, today)?.unitCostOre ?? null,
     settings: input.settings,
     targetBp,
