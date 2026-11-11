@@ -402,3 +402,41 @@ funktion `toPackFromSlots` som Mystery-sidan), och planen använder det på två
 **Konsekvenser.** "Packa 1 omgång" kan stå bredvid "Köp 24 Pokémon 151, 16 av dem går till Mystery Pack" (delar till
 fler omgångar än den som packas nu). Underlaget på Inköp visar båda talen. Inköpsplanen läser fackens fakta (några
 små frågor till).
+
+## ADR 29. Granskningen av runda 2: ett inskick per inköp, en regel för minus, färre larm
+
+**Kontext.** Fyra granskare gick igenom hela produkten efter sammanslagningen av runda 2. De hittade bland annat
+att "Kom fram" tryckt två gånger lade in leveransen två gånger, att ett minus hemma gav olika besked på Mystery och
+på inköpslistan, och att varje fack som tog slut drog med sig påminnelser om alla andra tomma fack.
+
+**Beslut.**
+
+1. **Inköp skrivs en gång.** Formulären ("Beställt", "Kom fram", "Köpt, har dem här", "+ Inköp", delägarens
+   leverans) skickar ett eget id (`clientId`, `useSubmitIds`) och behåller det tills svaret kommit. Servern
+   (`src/server/purchasing/quick.ts`) sparar id:t och svaret i `purchase_requests` i samma transaktion som inköpet;
+   samma id en gång till ger samma svar och ingen ny order eller lagerhändelse. "Kom fram" på en rad där inget
+   längre är på väg vägras ("Leveransen är redan inlagd"). Utan id (en äldre flik) gäller det gamla skyddet på 60
+   sekunder för "Beställt".
+2. **Minus hemma för ett mystery pack avgörs på ett ställe** (`packWithMinus` i
+   `src/app/(app)/vart-lager/mystery/_lib/model.ts`). Står exakt ett lager på minus i hela omgångar läggs de
+   omgångarna ihop med fackens, och talet går in i inköpsplanen (`packNowFor`, `PurchaseLine.packNow.fixPlaceId`).
+   Mystery, Vårt lager, Inköp och delägarens lista säger då samma "Packa N omgångar" med samma knapp (packa i det
+   lagret), och delarna köps för alla N. Ett udda minus (−1) eller minus i flera lager: "Räkna om" på alla sidor.
+3. **Startklar-raden i Att göra gäller bara nya automater:** inget köp än, eller första köpet för mindre än 30
+   dagar sedan (`NEW_MACHINE_DAYS`). En automat i drift kallas aldrig "inte startklar"; listan på automatens sida
+   finns kvar.
+4. **Larm.** En utvärdering som startas av att ett fack just blev tomt skickar inga påminnelser
+   (`evaluateOrganization(…, { reminders: false })`); de kommer från det dagliga larmjobbet. Utskick till samma
+   person med samma sändtid slås ihop till ett (`mergeDeliveries` i `enqueueDeliveries`), och en påminnelse ersätter
+   aldrig en avisering som inte hunnit gå ut.
+5. **Vårt lager och Inköp** visar fackets egna dagar (Lagers "N d", `WarehouseRow.machinesDaysLeft`) när inget
+   ligger hemma. Med pack hemma: allt vi har delat på takten, som förut.
+6. **Fyll på:** packas en omgång i samma besök tar den sina delar först, och en del som också fylls på lös får det
+   som är kvar (`afterPacking`). Sidan säger det före Ja.
+7. **Värde** räknar bara rapporter som appen skickat (`channel = 'email'`), inte dem ägaren delat för hand.
+
+**Konsekvenser.** Två nya migreringar: `20261210000000_inkop_en_gang.sql` (tabellen `purchase_requests`,
+append-only, ägare och admin) och `20261210000100_varde_bara_mejl.sql`. Båda ska köras innan koden går live:
+"Beställt" och "Kom fram" skriver i den nya tabellen. Mystery säger fortfarande "tom om ca N dagar" räknat till
+dagen EFTER slutdagen (ADR 27); Lager, Vårt lager och Inköp säger dagarna packen räcker. Talen kan därför skilja
+en dag mellan Mystery och de andra.
