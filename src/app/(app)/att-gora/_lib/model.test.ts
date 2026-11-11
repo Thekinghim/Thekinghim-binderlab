@@ -7,6 +7,8 @@ import { NBSP } from "@/lib/format";
 import {
   buildPage,
   extraTodos,
+  factLine,
+  suggestionsLine,
   plainWords,
   dismissedViews,
   formatFigure,
@@ -156,6 +158,48 @@ describe("text", () => {
     expect(formatFigure({ value: 3, unit: "tenths" })).toBe("0,3");
     expect(formatFigure({ value: 1, unit: "days" })).toBe(`1${NBSP}dag`);
     expect(formatFigure({ value: 5_000, unit: "bp" })).toBe(`50${NBSP}%`);
+  });
+});
+
+describe("raden under rubriken i telefonen", () => {
+  it("påfyllning: pack kvar, räcker och kronor i risk i en mening", () => {
+    const todo = item({
+      ...refill(M1, "soon", 230_000, 5),
+      evidence: {
+        ...refill(M1, "soon", 230_000, 5).evidence,
+        figures: [
+          { key: "onHand", label: "I lager", value: 5, unit: "packs" },
+          { key: "daysLeftTenths", label: "Räcker (dagar)", value: 18, unit: "tenths" },
+        ],
+      },
+    });
+    expect(factLine(todo, true)).toBe(
+      `5${NBSP}pack kvar · räcker 1,8${NBSP}d · 2${NBSP}300${NBSP}kr i risk`,
+    );
+    // Påfyllaren ser inga kronor.
+    expect(factLine(todo, false)).toBe(`5${NBSP}pack kvar · räcker 1,8${NBSP}d`);
+    expect(buildPage(input([todo])).groups[0]!.items[0]!.facts).toBe(factLine(todo, true));
+  });
+
+  it("slut i automaten: Slut och kronorna", () => {
+    expect(factLine(refill(M1, "now", 104_000, 0), true)).toBe(
+      `Slut · 1${NBSP}040${NBSP}kr i risk`,
+    );
+  });
+
+  it("andra sorter: måtten med sina ord, tom utan mått", () => {
+    expect(factLine(missingPrice, true)).toBe(`Order 15 · Intäkt utan pris 2${NBSP}235${NBSP}kr`);
+    expect(factLine(item({ key: "team:x", kind: "team", level: "later" }), true)).toBe("");
+  });
+
+  it("AI-förslagen som en rad: antal och summan per månad", () => {
+    expect(suggestionsLine([{ effectSekMonth: 1000 }])).toBe(
+      `1${NBSP}förslag från AI · ca${NBSP}1${NBSP}000${NBSP}kr/mån`,
+    );
+    expect(suggestionsLine([{ effectSekMonth: 600 }, { effectSekMonth: 0 }])).toBe(
+      `2${NBSP}förslag från AI · ca${NBSP}600${NBSP}kr/mån`,
+    );
+    expect(suggestionsLine([{ effectSekMonth: 0 }])).toBe(`1${NBSP}förslag från AI`);
   });
 });
 

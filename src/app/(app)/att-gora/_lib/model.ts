@@ -96,6 +96,8 @@ export interface TodoView {
   readonly detail: string;
   /** Upp till tre mått som står bredvid punkten. */
   readonly figures: FigureView[];
+  /** Måtten som en grå rad under rubriken i telefonen: "5 pack kvar · räcker 1,8 d · 2 300 kr i risk". */
+  readonly facts: string;
   readonly rule: string;
   /** Hela underlaget, formaterat. */
   readonly evidence: FigureView[];
@@ -554,6 +556,40 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
   return out.slice(0, 3);
 }
 
+/**
+ * Måtten som en mening under rubriken (telefonen): "5 pack kvar · räcker 1,8 d · 2 300 kr i
+ * risk". Samma tal som primaryFigures, i ord i stället för etikett och värde. Tom utan mått.
+ */
+export function factLine(item: TodoItem, economy: boolean): string {
+  if (item.kind === "refill") {
+    const parts: string[] = [];
+    const onHand = figureValue(item, "onHand");
+    const tenths = figureValue(item, "daysLeftTenths");
+    const lostOre = figureValue(item, LOST_REVENUE_FIGURE);
+    if (onHand !== null) {
+      parts.push(onHand <= 0 ? "slut" : `${formatInt(onHand)}${NBSP}pack kvar`);
+      if (onHand > 0 && tenths !== null) parts.push(`räcker ${formatDecimal(tenths / 10)}${NBSP}d`);
+    }
+    if (economy && item.atStakeOre !== null && item.atStakeOre > 0) {
+      parts.push(`${kr(item.atStakeOre)} i risk`);
+    }
+    if (economy && lostOre !== null && lostOre > 0)
+      parts.push(`förlorat ${kr(lostOre)} på 14${NBSP}d`);
+    return capitalize(parts.join(" · "));
+  }
+  return primaryFigures(item, economy)
+    .map((f) => (f.label === "I risk 7 d" ? `${f.value} i risk` : `${f.label} ${f.value}`))
+    .join(" · ");
+}
+
+/** "1 förslag från AI · ca 1 000 kr/mån": raden som fäller ut AI-förslagen under listan. */
+export function suggestionsLine(items: readonly { readonly effectSekMonth: number }[]): string {
+  const sum = items.reduce((a, s) => a + Math.max(0, s.effectSekMonth), 0);
+  return `${plural(items.length, "förslag", "förslag")} från AI${
+    sum > 0 ? ` · ca${NBSP}${formatInt(sum)}${NBSP}kr/mån` : ""
+  }`;
+}
+
 /** Hela underlaget, formaterat. Belopp tas bort för roller som inte ser ekonomi. */
 export function evidenceFigures(item: TodoItem, economy: boolean): FigureView[] {
   return item.evidence.figures
@@ -758,6 +794,7 @@ export function toView(item: TodoItem, input: ModelInput, signal: boolean): Todo
     title: withPeriod(item.title),
     detail: plainWords(item.detail),
     figures: primaryFigures(item, input.economy),
+    facts: factLine(item, input.economy),
     rule: item.evidence.rule,
     evidence: evidenceFigures(item, input.economy),
     action: actionFor(item, input),

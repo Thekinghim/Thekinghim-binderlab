@@ -278,7 +278,7 @@ function DismissedList({
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((v) => !v)}
-        className={cn(linkButton, linkVariant.ghost, "-ml-2.5")}
+        className={cn(linkButton, linkVariant.ghost, "-ml-2.5 max-md:min-h-11")}
       >
         <Icon
           name="chevronRight"
@@ -306,7 +306,7 @@ function DismissedList({
                 variant="secondary"
                 onClick={() => onUndo(d)}
                 aria-label={`Ångra klar: ${d.title}`}
-                className="self-start"
+                className="self-start max-md:min-h-11"
               >
                 Ångra
               </Button>
@@ -421,8 +421,8 @@ function TodoRow({
   people: readonly PersonOption[];
 }) {
   const titleId = useId();
-  // Mobil: rubrik och en huvudåtgärd på raden; talen, länken, Vem och (när det finns en
-  // annan huvudåtgärd) Klar fälls ut med "Mer". Från md visas allt som förut.
+  // Mobil: rubrik, talen som en grå rad och en huvudåtgärd; förklaringen, länken, Vem och
+  // (när det finns en annan huvudåtgärd) Klar fälls ut med "Mer". Från md visas allt som förut.
   const [more, setMore] = useState(false);
   const fold = more ? "" : "max-md:hidden";
   const hasPrimary = item.action != null;
@@ -437,11 +437,14 @@ function TodoRow({
       <div className="flex min-w-0 flex-col gap-2 max-md:row-start-1 max-md:gap-1 lg:col-span-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatusTag status={item.status}>{item.statusText}</StatusTag>
-          <span className="label text-subtle">{item.eyebrow}</span>
+          {/* Mobil: etiketten upprepar rubriken ("Påfyllning · BL-001") och visas inte. */}
+          <span className="label text-subtle max-md:hidden">{item.eyebrow}</span>
         </div>
         <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
           {item.title}
         </h3>
+        {/* Mobil: talen som en grå rad under rubriken, alltid synlig. */}
+        {item.facts ? <p className="tnum text-sm text-muted md:hidden">{item.facts}</p> : null}
         <details className="group max-w-2xl" onToggle={(e) => setMore(e.currentTarget.open)}>
           <summary className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg max-md:-my-1.5 max-md:min-h-11 max-md:pr-4 [&::-webkit-details-marker]:hidden">
             <Icon
@@ -475,10 +478,8 @@ function TodoRow({
 
       {item.figures.length > 0 ? (
         <dl
-          className={cn(
-            "flex min-w-0 flex-wrap gap-x-6 gap-y-2 lg:col-span-3 lg:flex-col lg:gap-y-1.5",
-            fold,
-          )}
+          // Mobil: talen står redan i raden under rubriken.
+          className="flex min-w-0 flex-wrap gap-x-6 gap-y-2 max-md:hidden lg:col-span-3 lg:flex-col lg:gap-y-1.5"
         >
           {item.figures.map((f) => (
             <div

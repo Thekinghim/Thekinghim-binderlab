@@ -4,6 +4,7 @@ import type React from "react";
 import { isMine, personOptions, todoAssignee } from "@/analytics/team";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { wallClockIn } from "@/components/shell/period-state";
+import { Icon } from "@/components/ui/icon";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatRelative, formatTime } from "@/lib/format";
@@ -33,7 +34,7 @@ import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
 
 import { HeaderMeta } from "./_components/header-meta";
 import { TodoBoard } from "./_components/todo-board";
-import { buildPage, extraTodos } from "./_lib/model";
+import { buildPage, extraTodos, suggestionsLine } from "./_lib/model";
 import { loadDismissedFor } from "./_lib/service";
 
 export const metadata: Metadata = { title: "Att göra" };
@@ -78,6 +79,8 @@ export default async function TodoPage({
     ]),
   );
   const mine = readParam(sp, "mina") === "1";
+  // "Mina / Alla" behövs bara när någon punkt är någon annans (annars är listorna lika).
+  const othersHaveItems = state.items.some((t) => !isMine(assignees.get(t.key), me));
   const todos = mine ? state.items.filter((t) => isMine(assignees.get(t.key), me)) : state.items;
   // Avbockade punkter vars orsak finns kvar (RLS: påfyllaren bara lagerpunkter). En
   // avbockning vars orsak redan är löst döljer inget och visas inte.
@@ -173,30 +176,22 @@ export default async function TodoPage({
           className="pb-6 max-md:pb-3 md:pb-8 max-md:[&_p.line-clamp-2]:hidden"
         />
       </div>
-      <div
-        className="rise flex flex-wrap items-center gap-3 pb-6 max-md:pb-4"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        <MineToggle
-          mine={mine}
-          hrefMine={withMine(sp, true)}
-          hrefAll={withMine(sp, false)}
-          label="Vems punkter"
-        />
-      </div>
+      {mine || othersHaveItems ? (
+        <div
+          className="rise flex flex-wrap items-center gap-3 pb-6 max-md:pb-4"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          <MineToggle
+            mine={mine}
+            hrefMine={withMine(sp, true)}
+            hrefAll={withMine(sp, false)}
+            label="Vems punkter"
+          />
+        </div>
+      ) : null}
       <AwishExpiry notice={awishExpiry} />
       {viewer ? <NewMachinesFound viewer={viewer} preloaded={newMachines} /> : null}
       {viewer ? <BokforingReady viewer={viewer} preloaded={ready} /> : null}
-      {advisor && advisor.suggestions.length > 0 ? (
-        <section
-          aria-labelledby="forslag-rubrik"
-          className="rise flex flex-col gap-4 pb-10"
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          <SectionHeader id="forslag-rubrik" size="sm" title="Förslag." aside="Från AI." />
-          <Suggestions items={advisor.suggestions} manualLeft={null} canGenerate={false} />
-        </section>
-      ) : null}
       {view.total === 0 ? (
         <div className="fade-in border-t border-line pt-10 pb-12">
           <StateMessage
@@ -223,6 +218,27 @@ export default async function TodoPage({
           people={personOptions(me, teamState.team)}
         />
       </div>
+      {/* AI-förslagen ligger under listan, hopfällda till en rad: det som brådskar står först. */}
+      {advisor && advisor.suggestions.length > 0 ? (
+        <details
+          className="group/ai rise border-t border-line"
+          style={{ "--i": 2 } as React.CSSProperties}
+          data-ai-suggestions
+        >
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-3 text-base text-fg hover:text-fg [&::-webkit-details-marker]:hidden">
+            <span>{suggestionsLine(advisor.suggestions)}</span>
+            <Icon
+              name="chevronRight"
+              size={12}
+              className="shrink-0 text-subtle transition-transform duration-fast group-open/ai:rotate-90"
+            />
+          </summary>
+          {/* Telefonen: kortets knappar får 44 px tryckyta. */}
+          <div className="pt-2 pb-8 max-md:[&_a]:min-h-11 max-md:[&_button]:min-h-11">
+            <Suggestions items={advisor.suggestions} manualLeft={null} canGenerate={false} />
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
