@@ -448,4 +448,83 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await until(async () => (await level()) === 37, "inköpet är i lagret");
     expect((await prices()).at(-1)?.ore).toBe(12200);
   });
+  it("ett köp medan en beställning är på väg stryker den inte, och Not coming tar bort den", async () => {
+    // Ägaren beställer 20 från köpraden på Inköp.
+    const owner = await ownerPage("/prognos");
+    await owner.getByRole("button", { name: `Beställt, ${title}` }).click();
+    const ordered = owner.getByRole("dialog");
+    await ordered.getByLabel("Antal pack").fill("20");
+    await ordered.getByRole("button", { name: "Spara som beställt" }).click();
+    await owner.getByText(/^På väg: 20\sst, väntas /).waitFor();
+    const before = await level();
+
+    // Delägaren köper 10 i butik medan de 20 är på väg ("It arrived" på köpraden): de räknas
+    // av, men beställningen står kvar som på väg med 10.
+    const page = await partnerPage("/prognos");
+    const item = page
+      .getByRole("list", { name: "Buy list" })
+      .getByRole("listitem")
+      .filter({ hasText: title });
+    await item.getByRole("button", { name: `It arrived, ${title}` }).click();
+    const sheet = page.getByRole("dialog");
+    await sheet.getByLabel("Number of packs").fill("10");
+    // Köpraden är ingen beställning: där går det inte att stryka något.
+    expect(await sheet.getByRole("button", { name: /They are not coming/ }).count()).toBe(0);
+    await sheet.getByRole("button", { name: "Add to stock" }).click();
+    await page
+      .getByText(/10\spacks are still on the way\./)
+      .first()
+      .waitFor();
+    await page.getByText(/^On the way: 10\spacks, expected /).waitFor();
+    await until(async () => (await level()) === before + 10, "10 pack i lagret");
+    const open = () => sql<{ status: string; left: number }[]>`
+      select po.status::text as status, (l.quantity - l.received_quantity)::int as left
+      from public.purchase_orders po
+      join public.purchase_order_lines l on l.purchase_order_id = po.id
+      where l.title_id = ${titleId}::uuid and po.status in ('ordered', 'partially_received')`;
+    expect(await open()).toEqual([{ status: "partially_received", left: 10 }]);
+
+    // Resten kommer aldrig: "They are not coming" på raden On the way.
+    await page
+      .getByRole("button", { name: `It arrived, ${title}` })
+      .first()
+      .click();
+    const way = page.getByRole("dialog");
+    expect(await way.getByLabel("Number of packs").inputValue()).toBe("10");
+    await way.getByRole("button", { name: /They are not coming/ }).waitFor();
+    await settled(page);
+    await expectPhoneFit(page, "dialog[open]");
+    expect(await way.innerText()).not.toMatch(SWEDISH);
+    await screenshot(page, "18-t3-not-coming-iphonese");
+    await way.getByRole("button", { name: /They are not coming/ }).click();
+    await page
+      .getByText(/^No longer waiting for 10\spacks /)
+      .first()
+      .waitFor();
+    await until(async () => (await open()).length === 0, "inget är på väg längre");
+    expect(await level()).toBe(before + 10);
+    await page.reload();
+    await item.waitFor();
+    expect(await page.getByText(/On the way:/).count()).toBe(0);
+    await expectPhoneFit(page, "main");
+    await page.screenshot({
+      path: `${process.env.E2E_SCREENSHOT_DIR ?? ".data/e2e"}/18-t3-buy-list-full.png`,
+      fullPage: true,
+      caret: "initial",
+    });
+    await owner.reload();
+    await owner.getByRole("button", { name: `Beställt, ${title}` }).waitFor();
+    await owner.screenshot({
+      path: `${process.env.E2E_SCREENSHOT_DIR ?? ".data/e2e"}/18-t3-inkop-full.png`,
+      fullPage: true,
+      caret: "initial",
+    });
+    await owner.goto("/vart-lager");
+    await owner.locator(`#rad-${titleId}:visible`).waitFor();
+    await owner.screenshot({
+      path: `${process.env.E2E_SCREENSHOT_DIR ?? ".data/e2e"}/18-t3-vart-lager-full.png`,
+      fullPage: true,
+      caret: "initial",
+    });
+  });
 });
