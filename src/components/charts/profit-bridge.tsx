@@ -135,13 +135,19 @@ export function ProfitBars(props: ProfitBridgeProps) {
   return (
     <div data-profit-bars>
       <p className="sr-only">{text}</p>
-      <ul className="flex flex-col gap-2.5" aria-hidden>
+      <ul className="flex flex-col gap-2" aria-hidden>
         {rows.map((r) => {
-          const strong = r.kind === "result" || r.kind === "loss" || r.kind === "revenue";
+          const result = r.kind === "result" || r.kind === "loss";
+          const strong = result || r.kind === "revenue";
           return (
             <li key={r.label} className="flex flex-col gap-1">
               <span className="flex items-baseline justify-between gap-3 text-sm">
-                <span className={strong ? "min-w-0 text-fg" : "min-w-0 text-muted"}>{r.label}</span>
+                <span className={strong ? "min-w-0 text-fg" : "min-w-0 text-muted"}>
+                  {r.label}
+                  {result && marginBp !== undefined ? (
+                    <span className="text-muted">{` · ${formatMarginBp(marginBp)}`}</span>
+                  ) : null}
+                </span>
                 <span
                   className={
                     r.kind === "loss"
@@ -165,14 +171,9 @@ export function ProfitBars(props: ProfitBridgeProps) {
           );
         })}
       </ul>
-      {marginBp !== undefined || unpricedRevenue ? (
-        <p className="meta mt-2.5 text-subtle" aria-hidden>
-          {[
-            marginBp !== undefined ? `Marginal ${formatMarginBp(marginBp)}` : null,
-            unpricedRevenue ? `${unpricedLabel}: ${format(unpricedRevenue)}, ingår inte` : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
+      {unpricedRevenue ? (
+        <p className="meta mt-2 text-subtle" aria-hidden>
+          {`${unpricedLabel}: ${format(unpricedRevenue)}, ingår inte`}
         </p>
       ) : null}
     </div>
