@@ -228,4 +228,43 @@ describe("Inköpslistan räknar med delarna som mystery packs äter upp", () => 
     );
     await expect(plan(refiller)).rejects.toThrow();
   });
+
+  it("−14 hemma och ett tomt fack: planen, Vårt lager och delägarens lista säger 2 omgångar i det lagret", async () => {
+    // Någon har fyllt på en omgång utan att trycka Packa: 0 räknat, sedan 14 ut.
+    await count(mp, 0);
+    await asUser(owner, (tx) =>
+      tx.insert(s.stockEvents).values({
+        organizationId: orgId,
+        locationId: hemma,
+        titleId: mp,
+        kind: "adjustment",
+        quantity: -14,
+        note: "Påfyllt utan att packa (test)",
+      }),
+    );
+    const p = await plan(owner);
+    // 1 omgång rättar minuset + 1 till det tomma facket, som Mystery-kortet säger.
+    expect(p.lines.find((l) => l.titleId === mp)?.packNow).toEqual({
+      batches: 2,
+      packs: 28,
+      fixPlaceId: hemma,
+    });
+    // Delarna köps för minst de 2 omgångarna.
+    expect(partBatches(p)).toBeGreaterThanOrEqual(2);
+    const v = await viewerFor(owner, orgId);
+    const lager = await loadVartLagerFor(v);
+    const row = lager.rows.find((r) => r.titleId === mp)!;
+    expect(row).toMatchObject({ home: -14, negative: false, needQty: 28 });
+    expect(row.action).toMatchObject({ batches: 2, packs: 28, placeId: hemma });
+    expect(buyList(lager.rows).items.find((i) => i.titleId === mp)).toMatchObject({
+      qty: 28,
+      batches: 2,
+      countFirst: false,
+      packPlaceId: hemma,
+    });
+    const data = await loadPrognosFor(v, { period: { start: lager.today, end: lager.today } });
+    const line = buildPageModel(data, new Date()).plan.packLines.find((l) => l.titleId === mp)!;
+    expect(line.negative).toBe(false);
+    expect(line.action).toMatchObject({ batches: 2, placeId: hemma });
+  });
 });
