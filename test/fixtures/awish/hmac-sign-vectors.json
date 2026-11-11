@@ -1,0 +1,134 @@
+{
+  "about": "Signering av indata i panelen 1.30.5 (HmacSha256Signer). body = texten som signeras, sign = hex(HMAC-SHA256(appKey, timestamp + '.' + body)). Signaturerna är uträknade med openssl och Pythons hmac, oberoende av Binderlabs kod.",
+  "appKey": "dsc6805f597d8c411e",
+  "vectors": [
+    {
+      "name": "GoodInput som Binderlab skickar (Ny produkt)",
+      "timestamp": 1794300000,
+      "input": {
+        "name": "Pokémon Booster",
+        "description": "Pokémon Booster",
+        "thumb": "https://dash.awish.vip/storage/p50v9ggY/a.png",
+        "content": "<p>Pokémon Booster</p>",
+        "media": ["https://dash.awish.vip/storage/p50v9ggY/a.png"],
+        "multi_currency_enabled": false,
+        "slug": "",
+        "unit_id": null,
+        "attributes": [],
+        "is_tax_exempt": true,
+        "tax_rate": 0,
+        "is_returnable": false,
+        "prices": [
+          {
+            "id": 0,
+            "currency_id": 7,
+            "price": 79.5,
+            "original_price": 0,
+            "member_price": 0,
+            "cost_price": 0
+          }
+        ]
+      },
+      "body": "{\"attributes\":[],\"content\":\"<p>Pokémon Booster</p>\",\"description\":\"Pokémon Booster\",\"is_returnable\":false,\"is_tax_exempt\":true,\"media\":[\"https://dash.awish.vip/storage/p50v9ggY/a.png\"],\"multi_currency_enabled\":false,\"name\":\"Pokémon Booster\",\"prices\":[{\"cost_price\":0,\"currency_id\":7,\"id\":0,\"member_price\":0,\"original_price\":0,\"price\":79.5}],\"slug\":\"\",\"tax_rate\":0,\"thumb\":\"https://dash.awish.vip/storage/p50v9ggY/a.png\",\"unit_id\":null}",
+      "sign": "460f7aab96fe141d0319ebbec39424b8f743360687187fdf95572307d9208889"
+    },
+    {
+      "name": "ProductInput (Fyll på): vara, status, antal",
+      "timestamp": 1794300000,
+      "input": {
+        "good_id": 42,
+        "status": true,
+        "current_inventory": 12
+      },
+      "body": "{\"current_inventory\":12,\"good_id\":42,\"status\":true}",
+      "sign": "a4d5e7dc8abfdc9651c0cc8a6f0292118ebb91f4fc3ff5864a0068b1e019dad9"
+    },
+    {
+      "name": "ProductInput med null och false",
+      "timestamp": 1794300001,
+      "input": {
+        "good_id": null,
+        "status": false,
+        "current_inventory": 0
+      },
+      "body": "{\"current_inventory\":0,\"good_id\":null,\"status\":false}",
+      "sign": "5f3dff9d04b50de5eccdd889527e318b6b7159d520a2d772655b04fef10dcd8b"
+    },
+    {
+      "name": "tomt objekt",
+      "timestamp": 1700000000,
+      "input": {},
+      "body": "{}",
+      "sign": "1bc9811fa1f97c929b6eb1866cd47a6a604c4d1b9f06982ab7d335d1dd424aa2"
+    },
+    {
+      "name": "nycklarna sorteras (b före a i indata)",
+      "timestamp": 1700000000,
+      "input": {
+        "b": 2,
+        "a": 1
+      },
+      "body": "{\"a\":1,\"b\":2}",
+      "sign": "4e9484385fa71458b4d3bc1f515b36778714fbdc38007f8fb4ff0cce10e01be6"
+    },
+    {
+      "name": "timestamp och sign på översta nivån räknas inte med",
+      "timestamp": 1700000000,
+      "input": {
+        "a": 1,
+        "sign": "gammal",
+        "b": 2,
+        "timestamp": 5
+      },
+      "body": "{\"a\":1,\"b\":2}",
+      "sign": "4e9484385fa71458b4d3bc1f515b36778714fbdc38007f8fb4ff0cce10e01be6"
+    },
+    {
+      "name": "nästlat: listor behåller ordningen, objekt sorteras, null och tom text är kvar",
+      "timestamp": 1700000000,
+      "input": {
+        "z": [],
+        "a": {
+          "y": true,
+          "x": [
+            1,
+            {
+              "c": "",
+              "b": null
+            }
+          ]
+        }
+      },
+      "body": "{\"a\":{\"x\":[1,{\"b\":null,\"c\":\"\"}],\"y\":true},\"z\":[]}",
+      "sign": "baaea152405e62dea70ea370f135b55ccccc66b0eb3256f09a63023f403fec47"
+    },
+    {
+      "name": "å ä ö, emoji och styrtecken",
+      "timestamp": 1700000000,
+      "input": {
+        "å": "ö",
+        "name": "Räksmörgås 🍤 \"x\" \n\u000f/"
+      },
+      "body": "{\"name\":\"Räksmörgås 🍤 \\\"x\\\" \\n\\u000f/\",\"å\":\"ö\"}",
+      "sign": "42b3e1aecf2e1486c87a230388f1a4ac369112a77929076b746ab253f107c65a"
+    },
+    {
+      "name": "tal som JavaScript skriver dem (exemplet i RFC 8785 plus heltal)",
+      "timestamp": 1700000000,
+      "input": {
+        "n": [333333333.3333333, 1e30, 4.5, 0.002, 1e-27, -1, 0, 79.0]
+      },
+      "body": "{\"n\":[333333333.3333333,1e+30,4.5,0.002,1e-27,-1,0,79]}",
+      "sign": "4467e55385a28615069adc987d12bec587e505d8156dfa9c74ee583627001788"
+    },
+    {
+      "name": "negativ tid",
+      "timestamp": -5,
+      "input": {
+        "a": 1
+      },
+      "body": "{\"a\":1}",
+      "sign": "cf94b2ef9d27a9ae4e9452c85abc50bd21c04f87246adf7086ee40beade510e6"
+    }
+  ]
+}

@@ -13,12 +13,18 @@ const { DASHBOARD_DOCUMENTS } = await import("./testing/dashboard-documents");
 const docs = await import("./web-documents");
 const { awishWebBaseUrlFromEnv, createAwishWebClient } = await import("./web-client");
 const { checkGoodImage, encodeGoodInput } = await import("./goods");
-const { awishEncode } = await import("./web-sign");
+const { awishEncode, awishSignInput } = await import("./web-sign");
+const { AwishApiError } = await import("./grpc-client");
+const { MISSING_TIMESTAMP_MESSAGE } = await import("./testing/fake-web-server");
 
 let fake: FakeWeb;
 
+const NOW = 1_762_250_000_000;
+
 beforeEach(async () => {
   fake = await startFakeAwishWeb({
+    // Samma klocka som klienten: signaturens tidsfönster räknas mot den.
+    now: () => NOW,
     products: {
       "1001": [
         {
@@ -50,13 +56,14 @@ afterEach(async () => {
   await fake.stop();
 });
 
-const NOW = 1_762_250_000_000;
-
 async function loggedIn() {
   const c = createAwishWebClient({ baseUrl: fake.baseUrl, now: () => NOW });
   await c.login({ email: fake.state.email, password: fake.state.password });
   return c;
 }
+
+/** Indata signerat som panelen 1.30.5 gör (timestamp + sign), med testets klocka. */
+const signed = <T extends object>(value: T) => awishSignInput(value, fake.state.appKey, NOW);
 
 /** Ett rått anrop till låtsas-panelen, som klienten skulle göra det. */
 async function raw(operationName: string, query: string, variables: Record<string, unknown>) {
@@ -307,7 +314,7 @@ describe("låtsas-panelen är lika sträng som riktiga Awish", () => {
       [{ ...input(), prices: [] }, /prices is required/],
     ];
     for (const [value, error] of cases) {
-      const r = await raw("CreateGood", docs.CREATE_GOOD_DOCUMENT, { input: value });
+      const r = await raw("CreateGood", docs.CREATE_GOOD_DOCUMENT, { input: signed(value) });
       expect(r.errors?.[0]?.message).toMatch(error);
     }
     expect(fake.state.goods.some((g) => g.name === "Ny")).toBe(false);
@@ -316,17 +323,150 @@ describe("låtsas-panelen är lika sträng som riktiga Awish", () => {
   it("ProductInput med okänt fält eller antal över kapaciteten nekas, facket rörs inte", async () => {
     const extra = await raw("UpdateProduct", docs.UPDATE_PRODUCT_DOCUMENT, {
       id: 11,
-      input: { good_id: 6, status: true, current_inventory: 2, price: 10 },
+      input: signed({ good_id: 6, status: true, current_inventory: 2, price: 10 }),
     });
     expect(extra.errors?.[0]?.message).toMatch(
       /Field "price" is not defined by type "ProductInput"/,
     );
     const over = await raw("UpdateProduct", docs.UPDATE_PRODUCT_DOCUMENT, {
       id: 11,
-      input: { good_id: 6, status: true, current_inventory: 11 },
+      input: signed({ good_id: 6, status: true, current_inventory: 11 }),
     });
     expect(over.errors?.[0]?.message).toMatch(/exceeds capacity/);
     expect(fake.state.products["1001"]![0]!.currentInventory).toBe(5);
+  });
+
+  it("osignerad skrivning nekas med riktiga Awishs egen text, och inget ändras", async () => {
+    const good = await raw("CreateGood", docs.CREATE_GOOD_DOCUMENT, { input: input() });
+    expect(good.errors?.[0]?.message).toBe(
+      'Invalid value for argument "input", field "timestamp" of type "Int!" is required but not provided',
+    );
+    expect(good.errors?.[0]?.message).toBe(MISSING_TIMESTAMP_MESSAGE);
+    const update = await raw("UpdateGood", docs.UPDATE_GOOD_DOCUMENT, { id: 6, input: input() });
+    expect(update.errors?.[0]?.message).toBe(MISSING_TIMESTAMP_MESSAGE);
+    const slot = await raw("UpdateProduct", docs.UPDATE_PRODUCT_DOCUMENT, {
+      id: 11,
+      input: { good_id: 6, status: true, current_inventory: 2 },
+    });
+    expect(slot.errors?.[0]?.message).toBe(MISSING_TIMESTAMP_MESSAGE);
+    expect(fake.state.goods.some((g) => g.name === "Ny")).toBe(false);
+    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(5);
+  });
+
+  it("fel signatur, ändrat fält efter signeringen, fel nyckel och gammal tid nekas", async () => {
+    const slot = { good_id: 6, status: true, current_inventory: 2 };
+    const send = (value: object) =>
+      raw("UpdateProduct", docs.UPDATE_PRODUCT_DOCUMENT, { id: 11, input: value });
+    const cases: Array<[object, RegExp]> = [
+      [{ ...signed(slot), current_inventory: 3 }, /signature mismatch/],
+      [{ ...signed(slot), sign: "0".repeat(64) }, /signature mismatch/],
+      [awishSignInput(slot, "fel-nyckel", NOW), /signature mismatch/],
+      [awishSignInput(slot, fake.state.appKey, NOW - 3_600_000), /out of time window/],
+      [{ ...signed(slot), sign: "INTE-HEX" }, /expected hexadecimal/],
+      [{ ...slot, timestamp: Math.trunc(NOW / 1000) }, /field "sign"/],
+      [{ ...signed(slot), timestamp: String(Math.trunc(NOW / 1000)) }, /Int cannot represent/],
+    ];
+    for (const [value, error] of cases) {
+      expect((await send(value)).errors?.[0]?.message).toMatch(error);
+    }
+    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(5);
+    // Rätt signerat går igenom.
+    expect((await send(signed(slot))).data).toEqual({ updateProduct: true });
+    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(2);
+  });
+
+  it("klienten signerar CreateGood, UpdateGood och UpdateProduct som panelen 1.30.5", async () => {
+    fake.state.goods.push({
+      id: 6,
+      name: "Mystery Pack",
+      price: "49.00",
+      thumb: "",
+      media: [],
+      description: "",
+      content: "",
+    });
+    const c = await loggedIn();
+    const good = encodeGoodInput({
+      name: "Signerad",
+      salePriceOre: 7950,
+      currencyId: 2,
+      imageUrl: null,
+    });
+    await c.createGood(good);
+    await c.setProductInventory(11, { goodId: 6, status: true, currentInventory: 3 });
+    expect(fake.state.rejected).toEqual([]);
+    const sent = (op: string) =>
+      fake.state.calls.find((x) => x.operationName === op)!.variables.input as Record<
+        string,
+        unknown
+      >;
+    expect(sent("CreateGood")).toEqual(signed(good));
+    expect(sent("CreateGood").timestamp).toBe(1_762_250_000);
+    expect(sent("CreateGood").sign).toMatch(/^[0-9a-f]{64}$/);
+    expect(sent("UpdateProduct")).toEqual(
+      signed({ good_id: 6, status: true, current_inventory: 3 }),
+    );
+    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(3);
+  });
+
+  it("ändrar Awish formen igen blir felet enkel svenska; den tekniska texten går till loggen", async () => {
+    const c = await loggedIn();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const technical =
+        'Invalid value for argument "input", field "nonce" of type "String!" is required but not provided';
+      const good = encodeGoodInput({
+        name: "Ny",
+        salePriceOre: 100,
+        currencyId: 2,
+        imageUrl: null,
+      });
+      fake.state.failOn.CreateGood = { message: technical };
+      const error = await c.createGood(good).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(AwishApiError);
+      const e = error as InstanceType<typeof AwishApiError>;
+      expect(e.message).toBe(
+        "Awish har ändrat sitt system. Produkten skapades inte. Säg till så rättar vi appen.",
+      );
+      expect(e.kind).toBe("changed");
+      expect(e.retryable).toBe(false);
+      expect(e.technical).toBe(technical);
+      expect(log).toHaveBeenCalledWith(`[awish-webb] Awish nekade CreateGood: ${technical}`);
+
+      fake.state.failOn.UpdateProduct = { message: "signature verification failed" };
+      await expect(
+        c.setProductInventory(11, { goodId: 6, status: true, currentInventory: 3 }),
+      ).rejects.toThrow(
+        "Awish har ändrat sitt system. Antalet skickades inte till Awish. Säg till så rättar vi appen.",
+      );
+      fake.state.failOn.UpdateGood = { message: 'Field "x" is not defined by type "GoodInput".' };
+      await expect(c.updateGood(6, good)).rejects.toThrow(
+        "Awish har ändrat sitt system. Ändringen sparades inte. Säg till så rättar vi appen.",
+      );
+      // Ett vanligt nej från Awish (inte formen) visas som förut.
+      fake.state.failOn.CreateGood = { message: "The name has already been taken." };
+      await expect(c.createGood(good)).rejects.toThrow(
+        "Awish svarade med ett fel: The name has already been taken.",
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("loggen får aldrig långa kodade värden (t.ex. en inloggnings-payload)", async () => {
+    const c = await loggedIn();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const secret = Buffer.from(JSON.stringify({ email: "a@b.se", password: "hemligt-lösen" }))
+        .toString("base64")
+        .padEnd(60, "A");
+      fake.state.failOn.Goods = { message: `Variable "$input" got invalid value "${secret}".` };
+      await expect(c.goods(1)).rejects.toThrow("Awish har ändrat sitt system.");
+      expect(JSON.stringify(log.mock.calls)).not.toContain(secret);
+      expect(JSON.stringify(log.mock.calls)).toContain("[dolt]");
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("CreateProduct (synka fack) är bara för root; Categories tar machine_id", async () => {
@@ -415,7 +555,8 @@ describe("Redigera vara (UpdateGood)", () => {
     expect(fake.state.rejected).toEqual([]);
     const call = fake.state.calls.find((x) => x.operationName === "UpdateGood")!;
     expect(call.query).toBe(DASHBOARD_DOCUMENTS.UpdateGood);
-    expect(call.variables).toEqual({ id: 42, input });
+    // Hela varan plus panelens två signaturfält (1.30.5).
+    expect(call.variables).toEqual({ id: 42, input: signed(input) });
 
     const after = (await c.allGoodsFull()).find((g) => g.id === 42)!;
     expect(after).toEqual({
@@ -441,17 +582,17 @@ describe("Redigera vara (UpdateGood)", () => {
     const withSelection = await raw(
       "UpdateGood",
       "mutation UpdateGood($id: Int!, $input: GoodInput!) { updateGood(id: $id, input: $input) { id } }",
-      { id: 42, input },
+      { id: 42, input: signed(input) },
     );
     expect(withSelection.errors?.[0]?.message).toBeTruthy();
     const extra = await raw("UpdateGood", DASHBOARD_DOCUMENTS.UpdateGood!, {
       id: 42,
-      input: { ...input, category_id: 1 },
+      input: signed({ ...input, category_id: 1 }),
     });
     expect(extra.errors?.[0]?.message).toMatch(/category_id/);
     const wrongPrice = await raw("UpdateGood", DASHBOARD_DOCUMENTS.UpdateGood!, {
       id: 42,
-      input: { ...input, prices: [{ ...input.prices[0]!, id: 999 }] },
+      input: signed({ ...input, prices: [{ ...input.prices[0]!, id: 999 }] }),
     });
     expect(wrongPrice.errors?.[0]?.message).toBe("price not found");
     expect(fake.state.goods.find((g) => g.id === 42)!.name).toBe("Delta Reign");

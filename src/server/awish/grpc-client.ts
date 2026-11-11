@@ -427,17 +427,27 @@ export type AwishErrorKind =
   | "invalid_response"
   | "server"
   /** Körningens tidsgräns (deadlineAt) nåddes; fortsätter nästa körning. */
-  | "budget";
+  | "budget"
+  /** Awish har ändrat sitt API (fält, typer eller signering) så att anropet inte längre passar. */
+  | "changed";
 
 export class AwishApiError extends Error {
   readonly kind: AwishErrorKind;
   readonly grpcCode: number | null;
+  /** Awishs egen feltext, för loggen. Visas aldrig för användaren. */
+  readonly technical: string | null;
 
-  constructor(kind: AwishErrorKind, message: string, grpcCode: number | null = null) {
+  constructor(
+    kind: AwishErrorKind,
+    message: string,
+    grpcCode: number | null = null,
+    technical: string | null = null,
+  ) {
     super(message);
     this.name = "AwishApiError";
     this.kind = kind;
     this.grpcCode = grpcCode;
+    this.technical = technical;
   }
 
   get retryable(): boolean {

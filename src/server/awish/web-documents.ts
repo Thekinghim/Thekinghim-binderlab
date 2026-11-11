@@ -1,6 +1,6 @@
 /**
  * GraphQL-dokumenten som Awishs webbpanel (dash.awish.vip) själv skickar, ordagrant ur
- * panelens publika JavaScript (index-*.js, version 1.30.4). Binderlab skickar exakt samma
+ * panelens publika JavaScript (index-*.js, version 1.30.4; oförändrade i 1.30.5). Binderlab skickar exakt samma
  * text, variabeltyper och urval, så att servern får samma form som från panelen.
  *
  * Mutationerna svarar med ett skalärt värde (inget urval), precis som i panelen; ett urval
@@ -27,7 +27,7 @@ export const UNITS_AND_CURRENCIES_DOCUMENT =
 export const GOODS_DOCUMENT =
   "query Goods($input: GoodsQueryInput!) { goods(input: $input) { total currentPage perPage lastPage data { id name description multi_currency_enabled prices { id price original_price member_price cost_price currency { id name code symbol } } thumb media content slug updated_at age_verification_enabled age_verification_min unit { id name display_name multiplier base_unit description } attributes { id label_name label_value immutable } is_tax_exempt tax_rate is_returnable } } goodsStatistics { id title header_extra value footer link disabled } }";
 
-/** Ny vara. Svarar med ett skalärt värde (inget urval). */
+/** Ny vara. Svarar med ett skalärt värde (inget urval). Indata HMAC-signeras (web-sign.ts). */
 export const CREATE_GOOD_DOCUMENT =
   "mutation CreateGood($input: GoodInput!) { createGood(input: $input) }";
 
@@ -49,7 +49,10 @@ export const CATEGORIES_DOCUMENT =
 export const PRODUCTS_DOCUMENT =
   "query Products($input: String!) { products(input: $input) { id machine_id status floor_status lock_status lock_id current_inventory inventory channel { id model_id name total sort_id motor_id x y addr is_dc is_lp } locker { id model_id name total sort_id motor_id x y addr } good { id name description price original_price multi_currency_enabled prices { id price original_price currency { id name code symbol } } thumb media content slug updated_at age_verification_enabled age_verification_min unit { id name display_name multiplier base_unit description immutable } attributes { id label_name label_value immutable } is_returnable } } }";
 
-/** Ett facks vara, status och antal: input { good_id, status, current_inventory }. Skalärt svar. */
+/**
+ * Ett facks vara, status och antal: input { good_id, status, current_inventory } plus
+ * timestamp och sign (HMAC, web-sign.ts). Skalärt svar.
+ */
 export const UPDATE_PRODUCT_DOCUMENT =
   "mutation UpdateProduct($id: Int!, $input: ProductInput!) { updateProduct(id: $id, input: $input) }";
 

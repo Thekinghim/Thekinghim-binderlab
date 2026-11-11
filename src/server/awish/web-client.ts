@@ -7,7 +7,9 @@
  *
  * Bara det Binderlab behöver: logga in (Signin), förnya token (RefreshToken), lista
  * automater (Machines) och fack (Products), och sätta ett facks antal (UpdateProduct).
- * Varje anrop skickar panelens headers och en signerad, base64-kodad payload (web-sign.ts).
+ * Varje anrop skickar panelens headers. Inloggningen och läsningen av fack skickar en
+ * signerad, base64-kodad payload; skrivningarna (CreateGood, UpdateGood, UpdateProduct) får
+ * fälten `timestamp` och `sign` i sitt indata, som panelen sedan 1.30.5 (web-sign.ts).
  *
  * Nätverksadressen och appid/appKey kommer ur miljön men har panelens publika standard
  * som förval. Basadressen går att skicka in, så testerna kör mot en lokal låtsas-server
@@ -33,11 +35,11 @@ import {
   UPDATE_GOOD_DOCUMENT,
   UPLOAD_PATH,
 } from "./web-documents";
-import { AWISH_WEB_APP_KEY, awishEncode } from "./web-sign";
+import { AWISH_WEB_APP_KEY, awishEncode, awishSignInput } from "./web-sign";
 
 export const DEFAULT_AWISH_WEB_BASE_URL = "https://dash.awish.vip";
 export const AWISH_WEB_APP_ID = "dsc6805f597d8c411e";
-export const AWISH_WEB_APP_VERSION = "1.30.4";
+export const AWISH_WEB_APP_VERSION = "1.30.5";
 
 export interface AwishWebLogin {
   readonly email: string;
@@ -137,14 +139,45 @@ function toApiError(message: string, kind: AwishErrorKind): AwishApiError {
   return new AwishApiError(kind, message);
 }
 
-function classifyGraphqlError(errors: GraphqlError[]): AwishApiError {
+/**
+ * Fel som betyder att Awish har ändrat sitt API: GraphQL nekar anropets form (ett fält som
+ * saknas eller är okänt, fel typ, fel urval) eller signaturen. Det kan användaren inte göra
+ * något åt, så texten blir enkel och Awishs egen text går till loggen.
+ */
+const CHANGED_PATTERN =
+  /invalid value for argument|is required but not provided|got invalid value|is not defined by type|cannot query field|unknown argument|unknown type|must not have a selection|must have a selection|was not provided|signature|out of time window/i;
+
+/** Vad som inte blev gjort, per operation, i meddelandet om att Awish har ändrat sig. */
+const NOT_DONE: Record<string, string> = {
+  CreateGood: "Produkten skapades inte.",
+  UpdateGood: "Ändringen sparades inte.",
+  UpdateProduct: "Antalet skickades inte till Awish.",
+};
+
+export function awishChangedMessage(operationName: string): string {
+  const what = NOT_DONE[operationName] ?? "Det gick inte den här gången.";
+  return `Awish har ändrat sitt system. ${what} Säg till så rättar vi appen.`;
+}
+
+/** Awishs feltext i en form som går att logga: kort, och utan långa kodade värden. */
+function technicalForLog(raw: string): string {
+  return raw.replace(/[A-Za-z0-9+/=_-]{40,}/g, "[dolt]").slice(0, 500);
+}
+
+function classifyGraphqlError(operationName: string, errors: GraphqlError[]): AwishApiError {
   const first = errors[0];
   const raw = (first?.message ?? "").trim();
   const code = (first?.extensions?.code ?? "").toUpperCase();
   const lowered = raw.toLowerCase();
+  const explicitAuth = code === "UNAUTHENTICATED" || code === "UNAUTHORIZED";
+  if (!explicitAuth && code !== "FORBIDDEN" && CHANGED_PATTERN.test(raw)) {
+    const technical = technicalForLog(raw);
+    // Den tekniska texten hamnar i loggen (Vercel/Sentry), inte hos användaren.
+    console.error(`[awish-webb] Awish nekade ${operationName || "anropet"}: ${technical}`);
+    return new AwishApiError("changed", awishChangedMessage(operationName), null, technical);
+  }
   if (
-    code === "UNAUTHENTICATED" ||
-    code === "UNAUTHORIZED" ||
+    explicitAuth ||
     /unauthenticated|unauthorized|token|invalid credentials|incorrect|password|login/.test(lowered)
   ) {
     return toApiError(
@@ -275,7 +308,9 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
     } catch {
       throw toApiError("Awish svarade med något oväntat.", "server");
     }
-    if (body.errors && body.errors.length > 0) throw classifyGraphqlError(body.errors);
+    if (body.errors && body.errors.length > 0) {
+      throw classifyGraphqlError(operationName, body.errors);
+    }
     if (!body.data) throw toApiError("Awish svarade utan data.", "server");
     return body.data as T;
   }
@@ -470,8 +505,9 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
     },
 
     async createGood(input) {
+      // Panelen 1.30.5: { ...input, ...sign(input) }, annars saknas timestamp (Int!).
       const data = await call<{ createGood: unknown }>("CreateGood", CREATE_GOOD_DOCUMENT, {
-        input,
+        input: awishSignInput(input, appKey, now()),
       });
       if (data.createGood === false || data.createGood == null) {
         throw toApiError("Awish skapade inte varan.", "server");
@@ -483,7 +519,7 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
       if (!Number.isInteger(id) || id <= 0) throw toApiError("Ogiltig vara.", "server");
       const data = await call<{ updateGood: unknown }>("UpdateGood", UPDATE_GOOD_DOCUMENT, {
         id,
-        input,
+        input: awishSignInput(input, appKey, now()),
       });
       if (data.updateGood === false || data.updateGood == null) {
         throw toApiError("Awish sparade inte ändringen av varan.", "server");
@@ -525,11 +561,16 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
     async setProductInventory(id, input) {
       await call<{ updateProduct: unknown }>("UpdateProduct", UPDATE_PRODUCT, {
         id,
-        input: {
-          good_id: input.goodId,
-          status: input.status,
-          current_inventory: input.currentInventory,
-        },
+        // Samma tre fält som panelens facksida, signerade som där (1.30.5).
+        input: awishSignInput(
+          {
+            good_id: input.goodId,
+            status: input.status,
+            current_inventory: input.currentInventory,
+          },
+          appKey,
+          now(),
+        ),
       });
     },
   };

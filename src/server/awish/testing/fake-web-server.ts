@@ -10,6 +10,10 @@
  * Indata (GoodInput, ProductInput, GoodsQueryInput) kontrolleras fält för fält, och svaren
  * innehåller bara de fält som frågades efter.
  *
+ * Skrivningarna (CreateGood, UpdateGood, UpdateProduct) måste vara signerade som i panelen
+ * 1.30.5: indata utan `timestamp` nekas med riktiga Awishs egen text (field "timestamp" of
+ * type "Int!" is required but not provided), och fel signatur eller för gammal tid nekas.
+ *
  * Används av enhetstester, databastester och lokalt i dev (scripts/dev/fake-awish-web.ts);
  * aldrig av appen i drift, och den når aldrig riktiga Awish.
  */
@@ -17,7 +21,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { AWISH_WEB_APP_KEY, awishCheckSignature, awishDecode } from "../web-sign";
+import { AWISH_WEB_APP_KEY, awishCheckSignature, awishDecode, awishVerifyInput } from "../web-sign";
 
 import {
   DASHBOARD_DOCUMENTS,
@@ -107,6 +111,8 @@ export interface FakeWebState {
   products: Record<string, FakeWebProduct[]>;
   goods: FakeWebGood[];
   nextGoodId: number;
+  /** Serverns klocka i ms för signaturens tidsfönster (standard Date.now). */
+  now: () => number;
   /** Vad createGood svarar med (riktiga Awish: ett skalärt värde; standard true). */
   createGoodResult: unknown;
   /** Vad updateGood svarar med (skalärt; standard true). */
@@ -173,6 +179,49 @@ function checkInputObject(
     }
   }
   return value as Record<string, unknown>;
+}
+
+/** Riktiga Awishs svar när indata saknar tidsstämpeln (ordagrant, november 2026). */
+export const MISSING_TIMESTAMP_MESSAGE =
+  'Invalid value for argument "input", field "timestamp" of type "Int!" is required but not provided';
+
+/**
+ * Signaturen på en skrivnings indata (panelen 1.30.5): `timestamp` (Int!) och `sign` måste
+ * finnas och stämma. Svarar med indata utan de två fälten, för fältkontrollerna efteråt.
+ * Texten för saknad timestamp är riktiga Awishs; texterna för fel signatur är signerarens
+ * egna (hur riktiga Awish ordar dem är inte känt).
+ */
+function checkHmacInput(
+  typeName: string,
+  value: unknown,
+  appKey: string,
+  nowMs: number,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new GqlShapeError(
+      `Variable "$input" got invalid value; Expected type "${typeName}" to be an object.`,
+    );
+  }
+  const input = value as Record<string, unknown>;
+  if (input.timestamp === undefined || input.timestamp === null) {
+    throw new GqlShapeError(MISSING_TIMESTAMP_MESSAGE);
+  }
+  if (!isInt(input.timestamp)) {
+    throw new GqlShapeError(
+      'Variable "$input" got invalid value at "input.timestamp"; Int cannot represent non-integer value.',
+    );
+  }
+  if (typeof input.sign !== "string" || input.sign === "") {
+    throw new GqlShapeError(
+      'Invalid value for argument "input", field "sign" of type "String!" is required but not provided',
+    );
+  }
+  const problem = awishVerifyInput(input, appKey, nowMs);
+  if (problem) throw new GqlShapeError(problem);
+  const rest = { ...input };
+  delete rest.timestamp;
+  delete rest.sign;
+  return rest;
 }
 
 function checkGoodInput(input: unknown, currencyIds: number[]): Record<string, unknown> {
@@ -246,6 +295,7 @@ export async function startFakeAwishWeb(
     products: {},
     goods: [],
     nextGoodId: 500,
+    now: () => Date.now(),
     createGoodResult: true,
     updateGoodResult: true,
     dropNextUpdate: false,
@@ -615,7 +665,7 @@ export async function startFakeAwishWeb(
 
       case "CreateGood": {
         const g = checkGoodInput(
-          variables.input,
+          checkHmacInput("GoodInput", variables.input, state.appKey, state.now()),
           state.currencies.map((c) => c.id),
         );
         const prices = g.prices as Array<{ price: number; currency_id: number }>;
@@ -638,13 +688,15 @@ export async function startFakeAwishWeb(
           reject('Variable "$id" got invalid value; Int cannot represent non-integer value.');
           return;
         }
+        // Signaturen kontrolleras före allt annat, som formen i riktiga Awish.
+        const unsigned = checkHmacInput("GoodInput", variables.input, state.appKey, state.now());
         const good = state.goods.find((x) => x.id === variables.id);
         if (!good) {
           send(res, 200, { errors: [{ message: "good not found" }] });
           return;
         }
         const g = checkGoodInput(
-          variables.input,
+          unsigned,
           state.currencies.map((c) => c.id),
         );
         // Panelens redigering skickar varans priser tillbaka med sina id:n. Ett id som inte
@@ -766,7 +818,11 @@ export async function startFakeAwishWeb(
           reject('Variable "$id" got invalid value; Int cannot represent non-integer value.');
           return;
         }
-        const input = checkInputObject("ProductInput", variables.input, PRODUCT_INPUT_FIELDS) as {
+        const input = checkInputObject(
+          "ProductInput",
+          checkHmacInput("ProductInput", variables.input, state.appKey, state.now()),
+          PRODUCT_INPUT_FIELDS,
+        ) as {
           good_id?: unknown;
           status?: unknown;
           current_inventory?: unknown;
