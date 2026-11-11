@@ -37,7 +37,8 @@ import {
   undoRefillsFor,
   type RefillSyncResult,
 } from "@/server/data/field-refills";
-import { pushMachinesToAwish } from "@/server/awish/web-service";
+import { summariseAwishPush, type AwishPushStatus } from "@/server/awish/push-status";
+import { pushMachinesToAwish, recordAwishPushFailure } from "@/server/awish/web-service";
 import { withUserDb } from "@/server/session";
 
 import { currentViewer } from "../lager/_lib/session";
@@ -341,60 +342,27 @@ export async function syncRefills(
     revalidatePath("/", "layout");
     // Skicka de påfyllda automaternas antal till Awish. Bäst-möjligt: påfyllningen är
     // redan sparad i Binderlab, så ett fel här får aldrig fälla hela inskicket.
+    // Automater som väntar sedan en tidigare sändning inte gick fram följer med (nytt försök).
     try {
-      const pushed = await pushMachinesToAwish(viewer.organization.id, result.savedMachineIds);
+      const pushed = await pushMachinesToAwish(viewer.organization.id, result.savedMachineIds, {
+        withPending: true,
+      });
       awish = summariseAwishPush(pushed);
     } catch {
-      awish = { state: "error", kind: "error", message: "Kunde inte skicka till Awish just nu." };
+      // Felet sparas, så att det syns på automaten i Fyll på och försöks igen.
+      await recordAwishPushFailure(viewer.organization.id, result.savedMachineIds).catch(() => {});
+      awish = {
+        state: "error",
+        kind: "error",
+        message: "Kunde inte skicka till Awish just nu.",
+        failedMachineIds: result.savedMachineIds,
+      };
     }
   }
   return { ok: result.ok, results: result.results, awish };
 }
 
-/** Kort status om Awish-push, för Fyll på. */
-export interface AwishPushStatus {
-  state: "off" | "sent" | "partial" | "error";
-  /** Vilket besked (för översättning i Fyll på): skickat, redan rätt, inte kopplad, fel. */
-  kind?: "sent" | "alreadyRight" | "notLinked" | "partial" | "error";
-  /** Antal fack som skickades (kind "sent"). */
-  slots?: number;
-  message: string;
-}
-
-function summariseAwishPush(
-  pushed: Awaited<ReturnType<typeof pushMachinesToAwish>>,
-): AwishPushStatus | undefined {
-  if (pushed.status === "off") {
-    // Push avstängd eller ingen inloggning: inget att visa i appen.
-    return undefined;
-  }
-  const errors = pushed.machines.filter((m) => m.status === "error");
-  const noMachine = pushed.machines.filter((m) => m.status === "no_awish_machine");
-  const slots = pushed.machines.reduce((n, m) => n + m.slotsUpdated, 0);
-  if (errors.length > 0) {
-    return {
-      state: "partial",
-      kind: "partial",
-      message: `Sparat i Binderlab. Till Awish gick det inte: ${errors[0]?.error ?? "okänt fel"}. Skriv antalet i Awish den här gången.`,
-    };
-  }
-  if (noMachine.length > 0 && slots === 0) {
-    return {
-      state: "partial",
-      kind: "notLinked",
-      message: "Sparat i Binderlab. Automaten är inte kopplad till Awish ännu.",
-    };
-  }
-  if (slots === 0) {
-    return { state: "sent", kind: "alreadyRight", message: "Sparat. Awish hade redan rätt antal." };
-  }
-  return {
-    state: "sent",
-    kind: "sent",
-    slots,
-    message: `Sparat och skickat till Awish (${slots} fack).`,
-  };
-}
+export type { AwishPushStatus };
 
 /** Ångra efter Klar i Fyll på: motbokar egna påfyllningar (klient-id) från de senaste 30 minuterna. */
 export async function undoRefills(

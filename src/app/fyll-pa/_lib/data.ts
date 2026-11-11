@@ -43,6 +43,25 @@ export interface FillData {
    * "Packade du en omgång?" när de färdiga packen inte räcker i lagret man fyller från.
    */
   readonly recipes: Readonly<Record<string, FillRecipe>>;
+  /**
+   * Automater som väntar på Awish: senaste sändningen efter en påfyllning gick inte fram
+   * (automatens id → när felet uppstod, ISO). Raden "Awish fick inte antalen för BL-003".
+   */
+  readonly awishPending: Readonly<Record<string, string>>;
+}
+
+/** Automaterna som väntar på Awish (public.awish_push_pending, som användaren). */
+async function queryAwishPending(tx: Tx, orgId: string): Promise<Record<string, string>> {
+  const result = await tx.execute(
+    sql`select machine_id::text as machine_id, failed_at
+        from public.awish_push_pending(${orgId}::uuid)`,
+  );
+  const out: Record<string, string> = {};
+  for (const r of Array.from(result) as { machine_id: string; failed_at: Date | string }[]) {
+    const at = r.failed_at instanceof Date ? r.failed_at : new Date(r.failed_at);
+    out[r.machine_id] = Number.isFinite(at.getTime()) ? at.toISOString() : "";
+  }
+  return out;
 }
 
 /** Gällande innehåll (senaste versionen) per aktiv egen produkt, med delarna. Bara antal. */
@@ -113,6 +132,7 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       sales,
       responsibles,
       recipes,
+      awishPending,
     ] = await Promise.all([
       tx
         .select({ id: s.machines.id, code: s.machines.code, name: s.machines.name })
@@ -191,6 +211,7 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
         .groupBy(s.stockEvents.locationId, s.stockEvents.titleId),
       queryResponsibles(tx, orgId),
       queryFillRecipes(tx, orgId),
+      queryAwishPending(tx, orgId),
     ]);
 
     const storeOf = new Map(placements.map((p) => [p.machineId, p.storeName]));
@@ -253,6 +274,7 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       hasWarehouse: sources.places.length > 0,
       hasOthers: list.some((m) => !m.mine),
       recipes,
+      awishPending,
     };
   });
 }

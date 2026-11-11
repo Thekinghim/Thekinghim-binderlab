@@ -23,6 +23,9 @@
  *   "Awish-påfyllning <kod> <butik>" (./refill-deduction). Aldrig vid första läsningen,
  *   aldrig vid minskning, och en påfyllning som redan registrerats i appen ger 0.
  *   Saldot i vårt lager får bli negativt (Vårt lager visar då "Räkna om").
+ * - Väntar automaten på Awish (en sändning efter en påfyllning i appen gick inte fram, se
+ *   unsentRefillTitles) sänks inte saldot för de påfyllda titlarna: Awish visar det gamla
+ *   antalet tills sändningen går fram, och påfyllningen ska inte försvinna under tiden.
  * - stock_locations.awish_synced_at sätts, så att Lager vet att saldot är känt.
  * - Kapaciteten per titel (fyllnadsgraden) skrivs till machine_slot_capacity
  *   (./slot-capacity).
@@ -158,6 +161,52 @@ export interface MachineStockResult {
   readonly titlesCreated: number;
   readonly slotsChanged: boolean;
   readonly skipped: "empty" | null;
+  /**
+   * Titlar vars saldo INTE sänktes till Awish antal: påfyllda i appen, men sändningen till
+   * Awish gick inte fram (automaten väntar, se unsentRefillTitles).
+   */
+  readonly heldBack?: number;
+}
+
+/**
+ * Titlar som fyllts på i appen men som Awish inte har fått än: automatens senaste sändning
+ * gick inte fram (automation_log: senaste raden är 'awish_push_failed') och titeln har en
+ * påfyllning på platsen efter den senaste inventeringen från Awish. För dem får läsningen
+ * inte sänka saldot: Awish visar det gamla antalet tills sändningen går fram ("Försök igen"
+ * i Fyll på). Tom mängd när automaten inte väntar.
+ */
+export async function unsentRefillTitles(
+  tx: Tx | Db,
+  organizationId: string,
+  machineId: string,
+  locationId: string,
+): Promise<Set<string>> {
+  const rows = await query<{ title_id: string }>(
+    tx,
+    sql`
+      with last as (
+        select a.kind
+        from public.automation_log a
+        where a.organization_id = ${organizationId}::uuid
+          and a.machine_id = ${machineId}::uuid
+          and a.kind in ('awish_push', 'awish_push_failed', 'awish_push_cleared')
+        order by a.occurred_at desc, a.created_at desc, a.id desc
+        limit 1
+      )
+      select distinct e.title_id::text as title_id
+      from public.stock_events e
+      where (select kind from last) = 'awish_push_failed'
+        and e.organization_id = ${organizationId}::uuid
+        and e.location_id = ${locationId}::uuid
+        and e.kind = 'refill'
+        and not exists (
+          select 1 from public.stock_events c
+          where c.organization_id = e.organization_id and c.location_id = e.location_id
+            and c.title_id = e.title_id and c.kind = 'count' and c.source = 'awish'
+            and (c.occurred_at, c.seq) > (e.occurred_at, e.seq)
+        )`,
+  );
+  return new Set(rows.map((r) => r.title_id));
 }
 
 /** Titlar för varornas namn via alias (samma fråga som importen), okända skapas. */
@@ -338,9 +387,16 @@ export async function applyMachineStock(
           where organization_id = ${org}::uuid and location_id = ${location.id}::uuid`,
     );
     const level = new Map(levels.map((l) => [l.title_id, l]));
+    // Påfyllt i appen men inte framme i Awish (sändningen misslyckades): sänk inte saldot.
+    const unsent = await unsentRefillTitles(tx, org, input.machineId, location.id);
+    let heldBack = 0;
     const counts: { titleId: string; quantity: number }[] = [];
     for (const [titleId, w] of wanted) {
       const l = level.get(titleId);
+      if (l && l.last_counted_at !== null && unsent.has(titleId) && w.units < Number(l.quantity)) {
+        heldBack += 1;
+        continue;
+      }
       if (!l || l.last_counted_at === null || Number(l.quantity) !== w.units) {
         counts.push({ titleId, quantity: w.units });
       }
@@ -432,6 +488,7 @@ export async function applyMachineStock(
       titlesCreated: created,
       slotsChanged,
       skipped: null,
+      ...(heldBack > 0 ? { heldBack } : {}),
     };
   });
 }
