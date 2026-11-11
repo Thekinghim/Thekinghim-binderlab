@@ -1,0 +1,312 @@
+{
+  "about": "Signering av indata i panelen 1.30.5 (HmacSha256Signer). body = texten som signeras, sign = hex(HMAC-SHA256(appKey, timestamp + '.' + body)). Signaturerna är uträknade med openssl och Pythons hmac, oberoende av Binderlabs kod.",
+  "appKey": "dsc6805f597d8c411e",
+  "vectors": [
+    {
+      "name": "GoodInput som Binderlab skickar (Ny produkt)",
+      "timestamp": 1794300000,
+      "input": {
+        "name": "Pokémon Booster",
+        "description": "Pokémon Booster",
+        "thumb": "https://dash.awish.vip/storage/p50v9ggY/a.png",
+        "content": "<p>Pokémon Booster</p>",
+        "media": ["https://dash.awish.vip/storage/p50v9ggY/a.png"],
+        "multi_currency_enabled": false,
+        "slug": "",
+        "unit_id": null,
+        "attributes": [],
+        "is_tax_exempt": true,
+        "tax_rate": 0,
+        "is_returnable": false,
+        "prices": [
+          {
+            "id": 0,
+            "currency_id": 7,
+            "price": 79.5,
+            "original_price": 0,
+            "member_price": 0,
+            "cost_price": 0
+          }
+        ]
+      },
+      "body": "{\"attributes\":[],\"content\":\"<p>Pokémon Booster</p>\",\"description\":\"Pokémon Booster\",\"is_returnable\":false,\"is_tax_exempt\":true,\"media\":[\"https://dash.awish.vip/storage/p50v9ggY/a.png\"],\"multi_currency_enabled\":false,\"name\":\"Pokémon Booster\",\"prices\":[{\"cost_price\":0,\"currency_id\":7,\"id\":0,\"member_price\":0,\"original_price\":0,\"price\":79.5}],\"slug\":\"\",\"tax_rate\":0,\"thumb\":\"https://dash.awish.vip/storage/p50v9ggY/a.png\",\"unit_id\":null}",
+      "sign": "460f7aab96fe141d0319ebbec39424b8f743360687187fdf95572307d9208889"
+    },
+    {
+      "name": "ProductInput (Fyll på): vara, status, antal",
+      "timestamp": 1794300000,
+      "input": {
+        "good_id": 42,
+        "status": true,
+        "current_inventory": 12
+      },
+      "body": "{\"current_inventory\":12,\"good_id\":42,\"status\":true}",
+      "sign": "a4d5e7dc8abfdc9651c0cc8a6f0292118ebb91f4fc3ff5864a0068b1e019dad9"
+    },
+    {
+      "name": "ProductInput med null och false",
+      "timestamp": 1794300001,
+      "input": {
+        "good_id": null,
+        "status": false,
+        "current_inventory": 0
+      },
+      "body": "{\"current_inventory\":0,\"good_id\":null,\"status\":false}",
+      "sign": "5f3dff9d04b50de5eccdd889527e318b6b7159d520a2d772655b04fef10dcd8b"
+    },
+    {
+      "name": "tomt objekt",
+      "timestamp": 1700000000,
+      "input": {},
+      "body": "{}",
+      "sign": "1bc9811fa1f97c929b6eb1866cd47a6a604c4d1b9f06982ab7d335d1dd424aa2"
+    },
+    {
+      "name": "nycklarna sorteras (b före a i indata)",
+      "timestamp": 1700000000,
+      "input": {
+        "b": 2,
+        "a": 1
+      },
+      "body": "{\"a\":1,\"b\":2}",
+      "sign": "4e9484385fa71458b4d3bc1f515b36778714fbdc38007f8fb4ff0cce10e01be6"
+    },
+    {
+      "name": "timestamp och sign på översta nivån räknas inte med",
+      "timestamp": 1700000000,
+      "input": {
+        "a": 1,
+        "sign": "gammal",
+        "b": 2,
+        "timestamp": 5
+      },
+      "body": "{\"a\":1,\"b\":2}",
+      "sign": "4e9484385fa71458b4d3bc1f515b36778714fbdc38007f8fb4ff0cce10e01be6"
+    },
+    {
+      "name": "nästlat: listor behåller ordningen, objekt sorteras, null och tom text är kvar",
+      "timestamp": 1700000000,
+      "input": {
+        "z": [],
+        "a": {
+          "y": true,
+          "x": [
+            1,
+            {
+              "c": "",
+              "b": null
+            }
+          ]
+        }
+      },
+      "body": "{\"a\":{\"x\":[1,{\"b\":null,\"c\":\"\"}],\"y\":true},\"z\":[]}",
+      "sign": "baaea152405e62dea70ea370f135b55ccccc66b0eb3256f09a63023f403fec47"
+    },
+    {
+      "name": "å ä ö, emoji och styrtecken",
+      "timestamp": 1700000000,
+      "input": {
+        "å": "ö",
+        "name": "Räksmörgås 🍤 \"x\" \n\u000f/"
+      },
+      "body": "{\"name\":\"Räksmörgås 🍤 \\\"x\\\" \\n\\u000f/\",\"å\":\"ö\"}",
+      "sign": "42b3e1aecf2e1486c87a230388f1a4ac369112a77929076b746ab253f107c65a"
+    },
+    {
+      "name": "tal som JavaScript skriver dem (exemplet i RFC 8785 plus heltal)",
+      "timestamp": 1700000000,
+      "input": {
+        "n": [333333333.3333333, 1e30, 4.5, 0.002, 1e-27, -1, 0, 79.0]
+      },
+      "body": "{\"n\":[333333333.3333333,1e+30,4.5,0.002,1e-27,-1,0,79]}",
+      "sign": "4467e55385a28615069adc987d12bec587e505d8156dfa9c74ee583627001788"
+    },
+    {
+      "name": "negativ tid",
+      "timestamp": -5,
+      "input": {
+        "a": 1
+      },
+      "body": "{\"a\":1}",
+      "sign": "cf94b2ef9d27a9ae4e9452c85abc50bd21c04f87246adf7086ee40beade510e6"
+    },
+    {
+      "name": "granskning: UpdateGood utan extra behörigheter (två valutor, enhet, moms 25)",
+      "timestamp": 1794402947,
+      "input": {
+        "name": "Lorcana Ursula’s Return 2",
+        "description": "Lorcana Ursula’s Return 2",
+        "thumb": "https://dash.awish.vip/storage/a/é.png",
+        "content": "<p>Lorcana Ursula's Return</p>\n<p>rad två</p>",
+        "media": ["https://dash.awish.vip/storage/a/é.png", "b.png"],
+        "multi_currency_enabled": true,
+        "slug": "lorcana-ursulas-return",
+        "unit_id": 3,
+        "attributes": [],
+        "is_tax_exempt": false,
+        "tax_rate": 25,
+        "is_returnable": true,
+        "prices": [
+          {
+            "id": 11,
+            "currency_id": 7,
+            "price": 64.9,
+            "original_price": 0,
+            "member_price": 0,
+            "cost_price": 0
+          },
+          {
+            "id": 12,
+            "currency_id": 2,
+            "price": 5.49,
+            "original_price": 0,
+            "member_price": 0,
+            "cost_price": 0
+          }
+        ]
+      },
+      "body": "{\"attributes\":[],\"content\":\"<p>Lorcana Ursula's Return</p>\\n<p>rad två</p>\",\"description\":\"Lorcana Ursula’s Return 2\",\"is_returnable\":true,\"is_tax_exempt\":false,\"media\":[\"https://dash.awish.vip/storage/a/é.png\",\"b.png\"],\"multi_currency_enabled\":true,\"name\":\"Lorcana Ursula’s Return 2\",\"prices\":[{\"cost_price\":0,\"currency_id\":7,\"id\":11,\"member_price\":0,\"original_price\":0,\"price\":64.9},{\"cost_price\":0,\"currency_id\":2,\"id\":12,\"member_price\":0,\"original_price\":0,\"price\":5.49}],\"slug\":\"lorcana-ursulas-return\",\"tax_rate\":25,\"thumb\":\"https://dash.awish.vip/storage/a/é.png\",\"unit_id\":3}",
+      "sign": "9444c715d1e1b227cc5211241e62c85534f4c7bdfdca3c14c7ac58cd8b52e622"
+    },
+    {
+      "name": "granskning: UpdateGood med alla behörigheter (attribut, ordinarie pris, medlemspris, inköpspris)",
+      "timestamp": 1794410866,
+      "input": {
+        "name": "Lorcana Ursula’s Return 2",
+        "description": "Lorcana Ursula’s Return 2",
+        "thumb": "https://dash.awish.vip/storage/a/é.png",
+        "content": "<p>Lorcana Ursula's Return</p>\n<p>rad två</p>",
+        "media": ["https://dash.awish.vip/storage/a/é.png", "b.png"],
+        "multi_currency_enabled": true,
+        "slug": "lorcana-ursulas-return",
+        "unit_id": 3,
+        "attributes": [
+          {
+            "id": 5,
+            "label_name": "weight",
+            "label_value": ["100g", "200 g"],
+            "immutable": false
+          },
+          {
+            "id": 6,
+            "label_name": "färg",
+            "label_value": [],
+            "immutable": true
+          }
+        ],
+        "is_tax_exempt": false,
+        "tax_rate": 25,
+        "is_returnable": true,
+        "prices": [
+          {
+            "id": 11,
+            "currency_id": 7,
+            "price": 64.9,
+            "original_price": 69.9,
+            "member_price": 55.55,
+            "cost_price": 31.2
+          },
+          {
+            "id": 12,
+            "currency_id": 2,
+            "price": 5.49,
+            "original_price": 0,
+            "member_price": 0,
+            "cost_price": 0
+          }
+        ]
+      },
+      "body": "{\"attributes\":[{\"id\":5,\"immutable\":false,\"label_name\":\"weight\",\"label_value\":[\"100g\",\"200 g\"]},{\"id\":6,\"immutable\":true,\"label_name\":\"färg\",\"label_value\":[]}],\"content\":\"<p>Lorcana Ursula's Return</p>\\n<p>rad två</p>\",\"description\":\"Lorcana Ursula’s Return 2\",\"is_returnable\":true,\"is_tax_exempt\":false,\"media\":[\"https://dash.awish.vip/storage/a/é.png\",\"b.png\"],\"multi_currency_enabled\":true,\"name\":\"Lorcana Ursula’s Return 2\",\"prices\":[{\"cost_price\":31.2,\"currency_id\":7,\"id\":11,\"member_price\":55.55,\"original_price\":69.9,\"price\":64.9},{\"cost_price\":0,\"currency_id\":2,\"id\":12,\"member_price\":0,\"original_price\":0,\"price\":5.49}],\"slug\":\"lorcana-ursulas-return\",\"tax_rate\":25,\"thumb\":\"https://dash.awish.vip/storage/a/é.png\",\"unit_id\":3}",
+      "sign": "48400d97e8ffce44c1781c432c33f1e06b82777ea1374f9b55acad8175089907"
+    },
+    {
+      "name": "granskning: ProductInput med stora tal",
+      "timestamp": 1794434623,
+      "input": {
+        "good_id": 987654,
+        "status": true,
+        "current_inventory": 255
+      },
+      "body": "{\"current_inventory\":255,\"good_id\":987654,\"status\":true}",
+      "sign": "d85cf288f9262b0ea46dc84e8a8a0847f528fa3d242ed8b435199d9f80bef2d3"
+    },
+    {
+      "name": "granskning: tal i ytterkanterna (1e21, 5e-324, -0, 2^53-1, 2^63, 2^64, negativa)",
+      "timestamp": 1794450461,
+      "input": {
+        "a": 79.5,
+        "b": 100,
+        "c": 0,
+        "d": 1e21,
+        "e": -3,
+        "f": -0.5,
+        "g": 1e-7,
+        "h": 1e-6,
+        "i": 123456789012345680000,
+        "j": 0.30000000000000004,
+        "k": 5e-324,
+        "l": 1.7976931348623157e308,
+        "m": 0,
+        "n": 9007199254740991,
+        "o": 100000000000000000000,
+        "p": 4.35,
+        "q": 9223372036854776000,
+        "r": 18446744073709552000,
+        "s": -9223372036854776000,
+        "t": 1.5e300
+      },
+      "body": "{\"a\":79.5,\"b\":100,\"c\":0,\"d\":1e+21,\"e\":-3,\"f\":-0.5,\"g\":1e-7,\"h\":0.000001,\"i\":123456789012345680000,\"j\":0.30000000000000004,\"k\":5e-324,\"l\":1.7976931348623157e+308,\"m\":0,\"n\":9007199254740991,\"o\":100000000000000000000,\"p\":4.35,\"q\":9223372036854776000,\"r\":18446744073709552000,\"s\":-9223372036854776000,\"t\":1.5e+300}",
+      "sign": "cb3396cb7d98e2854bc3dfb498cf6761e5d90e36c753b177fd4b9bdd41ef1d17"
+    },
+    {
+      "name": "granskning: tomma listor och objekt på djupet, timestamp och sign kvar längre in",
+      "timestamp": 1794458380,
+      "input": {
+        "nested": {
+          "z": [],
+          "y": [[]],
+          "x": [{}],
+          "w": {},
+          "v": [null, false, "", 0, [1, [2, [3]]]]
+        },
+        "nul": null,
+        "timestamp": 5,
+        "sign": "x",
+        "inner": {
+          "timestamp": 1,
+          "sign": "kvar"
+        }
+      },
+      "body": "{\"inner\":{\"sign\":\"kvar\",\"timestamp\":1},\"nested\":{\"v\":[null,false,\"\",0,[1,[2,[3]]]],\"w\":{},\"x\":[{}],\"y\":[[]],\"z\":[]},\"nul\":null}",
+      "sign": "e68b200ccc4211d67bd7571c37b484f237fbc0beadb613a0f7c458a2a5e0be20"
+    },
+    {
+      "name": "granskning: nyckelordning med å ä ö, siffror, tom nyckel, emoji och U+E000/U+FB01",
+      "timestamp": 1794466299,
+      "input": {
+        "1": 18,
+        "9": 7,
+        "10": 6,
+        "ö": 1,
+        "o": 2,
+        "Z": 3,
+        "a": 4,
+        "": 5,
+        "é": 8,
+        "é": 9,
+        "😀": 10,
+        "ﬁ": 11,
+        "": 12,
+        "A a": 13,
+        "\"": 14,
+        "\\": 15,
+        "\n": 16,
+        "€": 17,
+        "-1": 19,
+        "01": 20
+      },
+      "body": "{\"\":5,\"\\n\":16,\"\\\"\":14,\"-1\":19,\"01\":20,\"1\":18,\"10\":6,\"9\":7,\"A a\":13,\"Z\":3,\"\\\\\":15,\"a\":4,\"é\":9,\"o\":2,\"é\":8,\"ö\":1,\"€\":17,\"😀\":10,\"\":12,\"ﬁ\":11}",
+      "sign": "6387aa704c1eb651b711ba121df1e880a937bc52a55b6506f50630f6cb95e64a"
+    }
+  ]
+}

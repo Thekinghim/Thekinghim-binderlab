@@ -41,6 +41,7 @@ const { checkGoodImage, NewProductError } = await import("../../src/server/awish
 const { startFakeAwishWeb } = await import("../../src/server/awish/testing/fake-web-server");
 type FakeWeb = Awaited<ReturnType<typeof startFakeAwishWeb>>;
 const { createAwishWebClient } = await import("../../src/server/awish/web-client");
+const { awishVerifyInput } = await import("../../src/server/awish/web-sign");
 
 async function viewerFor(u: TestUser, orgId: string): Promise<Viewer> {
   const user = { userId: u.id, email: u.email };
@@ -50,6 +51,19 @@ async function viewerFor(u: TestUser, orgId: string): Promise<Viewer> {
 }
 
 let fake: FakeWeb;
+
+/**
+ * Anropets variabler utan signaturfälten (panelen 1.30.5), efter kontroll att `timestamp`
+ * och `sign` finns och stämmer för det som skickades.
+ */
+function unsigned(variables: Record<string, unknown> | undefined): Record<string, unknown> {
+  const input = (variables?.input ?? {}) as Record<string, unknown>;
+  expect(awishVerifyInput(input, fake.state.appKey, fake.state.now())).toBeNull();
+  const rest = { ...input };
+  delete rest.timestamp;
+  delete rest.sign;
+  return { ...variables, input: rest };
+}
 const NOW = new Date("2026-11-05T10:00:00Z");
 const deps = () => ({
   serviceDb: db(),
@@ -116,6 +130,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   fake = await startFakeAwishWeb({
+    // Samma klocka som klienten: signaturens tidsfönster räknas mot den.
+    now: () => NOW.getTime(),
     products: {
       "1001": [
         {
@@ -262,7 +278,7 @@ describe("Ny produkt: hela flödet", () => {
       "mutation CreateGood($input: GoodInput!) { createGood(input: $input) }",
     );
     const url = fake.state.uploads[0]!.url;
-    expect(create?.variables).toEqual({
+    expect(unsigned(create?.variables)).toEqual({
       input: {
         name: "Prismatic Pack",
         description: "Prismatic Pack",
@@ -320,6 +336,28 @@ describe("Ny produkt: hela flödet", () => {
       np.createNewProductFor(viewer, input, IMG(), preview.fingerprint, deps()),
     ).rejects.toThrow("Awish svarade med ett fel: The name has already been taken.");
     expect(await titleRows("Felvara")).toEqual([]);
+  });
+
+  it("Awish har ändrat formen (felet ägaren fick): enkel svenska, inget sparas, tekniken i loggen", async () => {
+    const viewer = await viewerFor(owner, orgId);
+    const input = { name: "Formfel", salePrice: "50", purchasePrice: "20", ownProduct: false };
+    const preview = await np.previewNewProductFor(viewer, input, IMG(), deps());
+    const technical =
+      'Invalid value for argument "input", field "nonce" of type "Int!" is required but not provided';
+    fake.state.failOn.CreateGood = { message: technical };
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        np.createNewProductFor(viewer, input, IMG(), preview.fingerprint, deps()),
+      ).rejects.toThrow(
+        "Awish har ändrat sitt system. Produkten skapades inte. Säg till så rättar vi appen.",
+      );
+      expect(log).toHaveBeenCalledWith(`[awish-webb] Awish nekade CreateGood: ${technical}`);
+    } finally {
+      log.mockRestore();
+    }
+    expect(await titleRows("Formfel")).toEqual([]);
+    expect(fake.state.goods.some((g) => g.name === "Formfel")).toBe(false);
   });
 
   it("bilden går inte att ladda upp: ingen vara i Awish och inget i Binderlab", async () => {
@@ -479,7 +517,7 @@ describe("Lägg i fack", () => {
     const r = await np.applySlotChangeFor(viewer, input, preview.fingerprint, true, deps());
     expect(r.message).toBe("Klart! Fack A1: Ny i fack 7 st.");
     const update = fake.state.calls.find((c) => c.operationName === "UpdateProduct");
-    expect(update?.variables).toEqual({
+    expect(unsigned(update?.variables)).toEqual({
       id: 11,
       input: { good_id: 88, status: true, current_inventory: 7 },
     });

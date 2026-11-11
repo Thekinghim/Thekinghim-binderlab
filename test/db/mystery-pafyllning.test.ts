@@ -178,6 +178,8 @@ describe("Fyll på-laddaren: mystery packs", () => {
 describe("push till Awish och dagliga kontrollen", () => {
   beforeAll(async () => {
     fake = await startFakeAwishWeb({
+      // Samma klocka som klienten: signaturens tidsfönster räknas mot den.
+      now: () => 1_762_250_000_000,
       products: {
         "1001": [
           {

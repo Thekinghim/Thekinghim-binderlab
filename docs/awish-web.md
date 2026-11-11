@@ -17,11 +17,14 @@ inloggning:
    `Appid`, `APP-VERSION`, `X-Sent-At-Time`, `Authorization: Bearer <token>`, `Lang`.
 2. **Läsa fack.** `query Products($input)` (signerad `machine_id`) ger facken med `good`, `channel.total`
    (kapacitet) och `current_inventory`.
-3. **Sätta antal.** `mutation UpdateProduct($id, $input)` med `current_inventory`.
+3. **Sätta antal.** `mutation UpdateProduct($id, $input)` med `current_inventory`. Indata är
+   signerat med HMAC sedan panelen 1.30.5, se "Signering av skrivningar" nedan.
 
 Koden:
 
-- `src/server/awish/web-sign.ts` – signering (ren, testad mot en oberoende port av panelens kod).
+- `src/server/awish/web-sign.ts` – båda signeringarna (rena funktioner): base64 + MD5 för
+  inloggning och läsning av fack, HMAC-SHA256 för skrivningarna. Testade mot en oberoende port av
+  panelens kod och mot fasta vektorer (`test/fixtures/awish/hmac-sign-vectors.json`).
 - `src/server/awish/web-client.ts` – `createAwishWebClient`: login, products, setProductInventory.
   Bas-URL, appId/appKey och `fetch`/klocka går att skicka in (tester mot låtsas-server).
 - `src/server/awish/web-push.ts` – `planAwishPush`: ren funktion som räknar ut vilka fack som ska
@@ -30,6 +33,79 @@ Koden:
 - `src/server/awish/web-service.ts` – `pushMachinesToAwish(orgId, machineIds)`: läser inloggningen
   ur Vault, hämtar Binderlabs maskinlager, planerar och skickar. Bäst-möjligt.
 - `src/server/awish/testing/fake-web-server.ts` – låtsas-panel för tester (aldrig riktiga Awish).
+
+## Signering av skrivningar (panelen 1.30.5, november 2026)
+
+Awish uppdaterade panelen till 1.30.5 och kräver sedan dess att **indata till varje skrivning är
+signerat**. Utan det svarar Awish:
+
+```
+Invalid value for argument "input", field "timestamp" of type "Int!" is required but not provided
+```
+
+Panelen gör så här på varje sida som sparar något (ur dess publika JavaScript, t.ex. sidan
+"Ny vara"):
+
+```js
+const e = signer.sign(input); // { timestamp, sign }
+await createGood({ input: { ...input, ...e } });
+```
+
+`signer` är `new HmacSha256Signer("dsc6805f597d8c411e")`, en wasm-modul
+(`/assets/hmac_signer_bg-*.wasm`, Rust). Vad den gör, läst ur modulens kod:
+
+1. `JSON.stringify(input)` och tolka tillbaka (fält som är `undefined` försvinner).
+2. Ta bort `timestamp` och `sign` på översta nivån.
+3. Skriv resten som **kanonisk JSON enligt RFC 8785 (JCS)**: nycklarna sorterade på alla nivåer,
+   listor i sin ordning, inga mellanslag, tal som JavaScript skriver dem (`79.5`, `79`, `0`),
+   `null`, `false` och tom text är kvar, å ä ö och emoji står som de är (UTF-8).
+4. `sign` = HMAC-SHA256 med nyckeln appKey (`dsc6805f597d8c411e`, som text) över texten
+   `<timestamp>.<kanonisk JSON>`, som 64 hex-tecken i gemener.
+5. `timestamp` = `Math.trunc(Date.now() / 1000)` (sekunder, ett tal). Signeraren har också en
+   kontroll med tidsfönster, så klockan måste gå rätt.
+
+Exempel (fack 42 får 12 st, tid 1794300000):
+
+```
+text:  1794300000.{"current_inventory":12,"good_id":42,"status":true}
+sign:  a4d5e7dc8abfdc9651c0cc8a6f0292118ebb91f4fc3ff5864a0068b1e019dad9
+input: { good_id: 42, status: true, current_inventory: 12, timestamp: 1794300000, sign: "a4d5…" }
+```
+
+Vad panelen signerar nu och vad Binderlab skickar:
+
+| Anrop                                    | Panelen 1.30.5                                                   | Binderlab                      |
+| ---------------------------------------- | ---------------------------------------------------------------- | ------------------------------ |
+| `Signin` (inloggning)                    | base64 + MD5 (oförändrat)                                        | samma                          |
+| `Products` (läsa fack)                   | base64 + MD5 av `{ machine_id, addr }`                           | samma, utan `addr` (som förut) |
+| `Profile`, `Goods`, `UnitsAndCurrencies` | ingen signering                                                  | samma                          |
+| `CreateGood` (ny vara)                   | `{ ...GoodInput, timestamp, sign }` (HMAC)                       | samma (`awishSignInput`)       |
+| `UpdateGood` (redigera vara)             | `{ ...GoodInput, timestamp, sign }` (HMAC)                       | samma                          |
+| `UpdateProduct` (antal/vara i fack)      | `{ good_id, status, current_inventory, timestamp, sign }` (HMAC) | samma                          |
+| `CreateProduct` (synka fack)             | bara `machine_id`, ingen signering                               | anropas aldrig                 |
+| Bilduppladdning `/api/v1/files`          | headers `Authorization`, `Appid`, `timestamp` (oförändrat)       | samma                          |
+
+Panelen signerar på samma sätt i ett nittiotal andra dialoger (t.ex. `BatchUpdateProducts`, som
+byter vara eller status på flera fack); dem anropar Binderlab inte. GraphQL-dokumenten för anropen
+ovan är oförändrade mellan 1.30.4 och 1.30.5 (jämförda ordagrant).
+
+Låtsas-panelen (`testing/fake-web-server.ts`) nekar en skrivning utan `timestamp` med Awishs egen
+text ovan, och nekar fel signatur, fel nyckel, ändrat fält och för gammal tid. Skulle signeringen
+tas bort ur klienten faller testerna.
+
+**Känt och inte bevisat.** Uträkningen är läst ur panelens wasm-modul (isärplockad till text), inte
+körd: ingen har kört panelens signerare på samma indata och jämfört, och inget anrop har gjorts mot
+riktiga Awish från den här koden. Vid granskningen lästes modulen en gång till av en annan person, och
+Binderlabs uträkning jämfördes med en fristående uträkning i Python på nya indata (vektorerna som
+heter "granskning: …"); de stämmer tecken för tecken, men det är fortfarande läsning, inte körning. Hur Awishs server räknar om texten ur det den tar emot syns inte
+utifrån. Första riktiga "Skicka till Awish" visar om det stämmer.
+
+**När Awish ändrar sig igen.** Ett svar där Awish nekar anropets form eller signatur (t.ex.
+"is required but not provided", "is not defined by type", "signature …") visas för användaren som
+"Awish har ändrat sitt system. Produkten skapades inte. Säg till så rättar vi appen." (eller
+"Ändringen sparades inte." / "Antalet skickades inte till Awish."). Awishs egen text skrivs i
+loggen på raden `[awish-webb] Awish nekade <anrop>: …`. Gör då så här: hämta panelens `index-*.js`
+och sidans `create-*.js`, leta efter `.sign(` och jämför med tabellen ovan.
 
 ## När push sker
 
@@ -168,7 +244,7 @@ försäljningen under det nya namnet hamna på en ny titel). Går varan inte att
 sparas Binderlab (aliaset är ofarligt) och användaren ombeds kontrollera. Samma lås per organisation
 som Ny produkt stoppar dubbelklick.
 
-### Anropen (ordagrant panelens, ur dess publika JavaScript, version 1.30.4)
+### Anropen (ordagrant panelens, ur dess publika JavaScript; oförändrade i 1.30.5)
 
 Dokumenten finns i `src/server/awish/web-documents.ts`. Låtsas-panelen har en egen kopia
 (`testing/dashboard-documents.ts`) och nekar allt som avviker: annan operation, andra variabler eller
@@ -304,6 +380,7 @@ mutation CreateGood($input: GoodInput!) {
 #     multi_currency_enabled: false, slug: "", unit_id: null, attributes: [], is_tax_exempt: true,
 #     tax_rate: 0, is_returnable: false,
 #     prices: [{ id: 0, currency_id: <SEK>, price: 79.5, original_price: 0, member_price: 0, cost_price: 0 }] }
+#   plus timestamp och sign (HMAC, se "Signering av skrivningar").
 
 mutation UpdateGood($id: Int!, $input: GoodInput!) {
   updateGood(id: $id, input: $input)
@@ -317,7 +394,7 @@ mutation UpdateGood($id: Int!, $input: GoodInput!) {
 #     { name, description, thumb: thumb ?? media[0], content, media, multi_currency_enabled, slug,
 #       unit_id, attributes: hasPermission(["goods:attributes:update"]) ? attributes : [],
 #       is_tax_exempt, tax_rate: parseFloat(tax_rate), is_returnable, prices }
-#     await updateGood({ id, input })
+#     await updateGood({ id, input: { ...input, ...signer.sign(input) } })   (1.30.5)
 #   Vid läsningen gör panelen om priserna till tal (parseFloat), currency_id = currency?.id ?? 1,
 #   unit_id = unit?.id. good_id finns inte i panelens prisfråga och blir undefined (utelämnas i JSON),
 #   så Binderlab skickar det inte heller. Behörigheterna är Profile.permissions (lista strängar;
@@ -413,6 +490,7 @@ mutation UpdateProduct($id: Int!, $input: ProductInput!) {
   updateProduct(id: $id, input: $input)
 }
 #   skalärt svar. input som panelens facksida: { good_id, status (oförändrad), current_inventory }
+#   plus timestamp och sign (HMAC, se "Signering av skrivningar").
 ```
 
 Bilden laddas upp som panelens MediumUpload: `POST https://dash.awish.vip/api/v1/files`

@@ -1,6 +1,6 @@
 /**
  * Låtsas-panelens "schema": panelens egna GraphQL-dokument, inklistrade ordagrant ur
- * panelens publika JavaScript (dash.awish.vip, index-*.js, version 1.30.4). Medvetet en egen
+ * panelens publika JavaScript (dash.awish.vip, index-*.js, version 1.30.4; oförändrade i 1.30.5). Medvetet en egen
  * kopia, skild från ../web-documents.ts som klienten skickar: låtsas-panelen ska neka det
  * klienten gör fel, inte jämföra klienten med sig själv.
  */

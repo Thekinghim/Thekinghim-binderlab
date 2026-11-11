@@ -46,6 +46,7 @@ const ALL_GOOD_PERMISSIONS = Object.values(GOOD_PERMISSIONS);
 const { startFakeAwishWeb } = await import("../../src/server/awish/testing/fake-web-server");
 type FakeWeb = Awaited<ReturnType<typeof startFakeAwishWeb>>;
 const { createAwishWebClient } = await import("../../src/server/awish/web-client");
+const { awishVerifyInput } = await import("../../src/server/awish/web-sign");
 
 async function viewerFor(u: TestUser, orgId: string): Promise<Viewer> {
   const user = { userId: u.id, email: u.email };
@@ -55,6 +56,19 @@ async function viewerFor(u: TestUser, orgId: string): Promise<Viewer> {
 }
 
 let fake: FakeWeb;
+
+/**
+ * Anropets variabler utan signaturfälten (panelen 1.30.5), efter kontroll att `timestamp`
+ * och `sign` finns och stämmer för det som skickades.
+ */
+function unsigned(variables: Record<string, unknown> | undefined): Record<string, unknown> {
+  const input = (variables?.input ?? {}) as Record<string, unknown>;
+  expect(awishVerifyInput(input, fake.state.appKey, fake.state.now())).toBeNull();
+  const rest = { ...input };
+  delete rest.timestamp;
+  delete rest.sign;
+  return { ...variables, input: rest };
+}
 const NOW = new Date("2026-11-05T10:00:00Z");
 const deps = () => ({
   serviceDb: db(),
@@ -170,7 +184,8 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  fake = await startFakeAwishWeb({ products: {} });
+  // Samma klocka som klienten: signaturens tidsfönster räknas mot den.
+  fake = await startFakeAwishWeb({ products: {}, now: () => NOW.getTime() });
   // Ett konto med alla varubehörigheter (det panelen visar alla fält för).
   fake.state.permissions = [...ALL_GOOD_PERMISSIONS];
   const viewer = await viewerFor(owner, orgId);
@@ -325,7 +340,7 @@ describe("Redigera vara: hela flödet", () => {
     expect(call.query).toBe(
       "mutation UpdateGood($id: Int!, $input: GoodInput!) { updateGood(id: $id, input: $input) }",
     );
-    expect(call.variables).toEqual({
+    expect(unsigned(call.variables)).toEqual({
       id: 42,
       input: encodeUpdateGoodInput(
         before,
