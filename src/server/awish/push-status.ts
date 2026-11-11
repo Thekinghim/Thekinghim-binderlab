@@ -42,7 +42,9 @@ export function summariseAwishPush(
     return {
       state: "partial",
       kind: "partial",
-      message: `Sparat i Binderlab. Till Awish gick det inte: ${errors[0]?.error ?? "okänt fel"}. Tryck Försök igen på automaten.`,
+      // Felet kan sluta med punkt ("Försök igen om en stund."): ingen dubbel punkt. Samma
+      // råd som rutan på automaten ("Appen försöker igen själv"), inte ett annat.
+      message: `Sparat i Binderlab. Till Awish gick det inte: ${(errors[0]?.error ?? "okänt fel").trim().replace(/[.!\s]+$/, "")}. Appen försöker igen själv.`,
       failedMachineIds: failed,
     };
   }

@@ -35,11 +35,22 @@ describe("summariseAwishPush", () => {
     expect(out?.failedMachineIds).toEqual(["b"]);
   });
 
+  it("ett fel som redan slutar med punkt ger ingen dubbel punkt", () => {
+    const failed = {
+      ...machine("a", "error"),
+      error: "Awish svarar inte just nu. Försök igen om en stund.",
+    };
+    const out = summariseAwishPush(done(failed), ["a"]);
+    expect(out?.message).toBe(
+      "Sparat i Binderlab. Till Awish gick det inte: Awish svarar inte just nu. Försök igen om en stund. Appen försöker igen själv.",
+    );
+  });
+
   it("den påfyllda automaten gick inte fram: felet, och alla som väntar", () => {
     const out = summariseAwishPush(done(machine("a", "error"), machine("b", "error")), ["a"]);
     expect(out).toMatchObject({ state: "partial", kind: "partial" });
     expect(out?.message).toContain("Till Awish gick det inte: Awish svarar inte.");
-    expect(out?.message).toContain("Tryck Försök igen på automaten.");
+    expect(out?.message).toContain("Appen försöker igen själv.");
     expect(out?.failedMachineIds).toEqual(["a", "b"]);
   });
 

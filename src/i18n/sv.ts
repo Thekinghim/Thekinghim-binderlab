@@ -189,7 +189,7 @@ export const sv = {
     awishAlreadyRight: "Sparat. Awish hade redan rätt antal.",
     awishNotLinked: "Sparat i Binderlab. Automaten är inte kopplad till Awish ännu.",
     awishPartial: (error: string) =>
-      `Sparat i Binderlab. Till Awish gick det inte: ${error}. Tryck Försök igen på automaten.`,
+      `Sparat i Binderlab. Till Awish gick det inte: ${error.trim().replace(/[.!\s]+$/, "")}. Appen försöker igen själv.`,
     awishError: "Kunde inte skicka till Awish just nu.",
     onlyRefillers: "Bara för dem som fyller på.",
     toApp: "Till Binderlab",

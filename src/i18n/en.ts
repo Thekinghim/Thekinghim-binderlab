@@ -319,7 +319,7 @@ export const en: Messages = {
     awishSent: () => "Saved. The machine is updated.",
     awishAlreadyRight: "Saved. The machine already had the right count.",
     awishNotLinked: "Saved. The machine itself is not connected yet.",
-    awishPartial: () => "Saved. The machine itself was not updated. Press Try again.",
+    awishPartial: () => "Saved. The machine itself was not updated. The app tries again by itself.",
     awishError: "Could not update the machine right now.",
     onlyRefillers: "Only for those who refill.",
     toApp: "To Binderlab",
