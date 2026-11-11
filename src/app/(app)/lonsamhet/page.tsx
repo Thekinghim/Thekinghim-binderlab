@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/frame";
 import { MobileFold } from "@/components/ui/mobile-fold";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { cn } from "@/lib/cn";
 import { NBSP } from "@/lib/format";
 import { loadProfitAdjustments } from "@/server/data/adjustments";
 import { requestPageLoaders } from "@/server/data/page-loaders";
@@ -159,8 +160,12 @@ export default async function LonsamhetPage({
           title={model.headline.title}
           aside={model.headline.aside}
           meta={meta}
-          // Mobil: perioden och filtret står i raden överst.
-          className="max-md:pr-10 max-md:[&_dl]:hidden"
+          // Mobil: perioden och filtret står i raden överst. En varning (en produkt ger
+          // mer än halva vinsten) skrivs i varningsfärg.
+          className={cn(
+            "max-md:pr-10 max-md:[&_dl]:hidden",
+            model.headline.warning && "[&_h1>span:last-child]:text-signal-fg",
+          )}
         />
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 max-md:contents">
           {/* Mobil: AI-frågan och butikernas andel bakom "⋯" uppe till höger. */}

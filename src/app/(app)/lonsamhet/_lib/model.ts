@@ -54,6 +54,8 @@ import {
 // Typer
 // ---------------------------------------------------------------------------
 
+import { monthForecast } from "./run-rate";
+
 export type ViewKey = "title" | "machine" | "store";
 export type TrendKey = "day" | "week" | "month";
 
@@ -535,6 +537,8 @@ export function buildLonsamhetModel(
       ? coverageDays(period, options.dataStart, today, options.hasOrdersToday ?? false) ||
         periodDays(period)
       : periodDays(period);
+  // "I den här takten": bara månaden hittills och de senaste 30 dagarna (./run-rate.ts).
+  const forecast = monthForecast({ period, today, days, profitOre: totalsRow.profitOre });
   const headline = lonsamhetHeadline({
     days,
     periodLabel: periodText(period, today),
@@ -560,6 +564,13 @@ export function buildLonsamhetModel(
         : null,
     previous: prevTotals
       ? { profitOre: prevTotals.profitOre, marginBp: prevTotals.marginBp }
+      : null,
+    topKind: hv,
+    forecast: forecast
+      ? {
+          monthName: formatMonth(isoDateToShellDate(`${forecast.month}-01`), { year: "never" }),
+          amountOre: forecast.amountOre,
+        }
       : null,
   });
 

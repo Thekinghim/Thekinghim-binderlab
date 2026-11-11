@@ -4,6 +4,7 @@ import type { OrderLine, ProfitabilityInput } from "@/domain";
 import type { MachineRecord, StoreRecord, TitleRecord } from "@/server/data/core/types";
 
 import { lonsamhetHeadline, sentence, shareOfProfitText, trendTitle, viewTitle } from "./headline";
+import { monthForecast } from "./run-rate";
 import { buildLonsamhetModel, priceHref, type LonsamhetInput } from "./model";
 import {
   canonicalLonsamhetQuery,
@@ -202,6 +203,58 @@ describe("lonsamhetHeadline", () => {
     expect(h.aside).toBe(`Upp 12${NBSP}% mot perioden innan.`);
   });
 
+  it("med en period att jämföra med börjar den grå raden med Upp eller Ned och procent", () => {
+    const up = lonsamhetHeadline({ ...base, previous: { profitOre: 28_000, marginBp: 3000 } });
+    expect(up.aside).toBe(`Upp 12${NBSP}% mot perioden innan.`);
+    expect(up.warning).toBeUndefined();
+    const down = lonsamhetHeadline({ ...base, previous: { profitOre: 40_000, marginBp: 3000 } });
+    expect(down.aside).toMatch(/^Ned \d+\s% mot perioden innan\.$/);
+    expect(
+      lonsamhetHeadline({ ...base, previous: { profitOre: 31_400, marginBp: 3000 } }).aside,
+    ).toBe("Samma som perioden innan.");
+  });
+
+  it("i den här takten: bara när modellen ger en prognos, efter jämförelsen", () => {
+    const h = lonsamhetHeadline({
+      ...base,
+      previous: { profitOre: 28_000, marginBp: 3000 },
+      forecast: { monthName: "november", amountOre: 3_800_000 },
+    });
+    expect(h.aside).toBe(
+      `Upp 12${NBSP}% mot perioden innan. I den här takten: ca${NBSP}38${NBSP}000${NBSP}kr i november.`,
+    );
+    // Utan period att jämföra med står prognosen ensam.
+    expect(
+      lonsamhetHeadline({ ...base, forecast: { monthName: "november", amountOre: 3_800_000 } })
+        .aside,
+    ).toBe(`I den här takten: ca${NBSP}38${NBSP}000${NBSP}kr i november.`);
+  });
+
+  it("en produkt med mer än halva vinsten blir en varning; en automat blir det inte", () => {
+    const top = { name: "Pokémon 151", profitOre: 20_000, shareOfProfitBp: 6400 };
+    const h = lonsamhetHeadline({ ...base, top, topKind: "title" });
+    expect(h.aside).toBe(
+      "Pokémon 151: nästan två tredjedelar av vinsten. Mycket hänger på en produkt.",
+    );
+    expect(h.warning).toBe(true);
+    expect(lonsamhetHeadline({ ...base, top, topKind: "machine" }).warning).toBeUndefined();
+    expect(
+      lonsamhetHeadline({ ...base, top: { ...top, shareOfProfitBp: 5000 }, topKind: "title" })
+        .warning,
+    ).toBeUndefined();
+  });
+
+  it("med butikernas andel på står andelen kvar i den grå raden", () => {
+    const h = lonsamhetHeadline({
+      ...base,
+      showStoreShare: true,
+      previous: { profitOre: 28_000, marginBp: 3000 },
+      forecast: { monthName: "november", amountOre: 3_800_000 },
+    });
+    expect(h.title).toMatch(/^Vår del /);
+    expect(h.aside).toBe(`Butikernas andel: 286${NBSP}kr.`);
+  });
+
   it("namnger förlusten och den största kostnaden", () => {
     const h = lonsamhetHeadline({ ...base, profitOre: -12_000, marginBp: -1200, top: null });
     expect(h.kind).toBe("loss");
@@ -298,7 +351,7 @@ describe("buildLonsamhetModel", () => {
     expect(unallocated).toMatchObject({ name: "Ej fördelad hyra", profitOre: -6096 });
   });
 
-  it("svarar 'Automat 1 står för nästan hälften av vinsten' med två automater", () => {
+  it("svarar vart det är på väg med en period att jämföra med, annars vem som ger mest", () => {
     // Utan vyknappen (som laddaren): vår vinst före butikernas andel.
     const two = twoMachines(true);
     const off = <T extends ProfitabilityInput | null>(i: T): T =>
@@ -307,7 +360,18 @@ describe("buildLonsamhetModel", () => {
       { ...two, current: off(two.current), previous: off(two.previous) },
       { today: "2026-11-02" },
     );
+    // En egen period (13 okt.–1 nov., inte månaden eller 30 dagar): ingen månadsprognos.
     expect(m.headline).toEqual({
+      kind: "profit",
+      title: expect.stringMatching(/^Vår vinst .+ på 20\sdagar\.$/),
+      aside: `Upp 25${NBSP}% mot perioden innan.`,
+    });
+    // Utan period att jämföra med: största bidragsgivaren (en automat, alltså ingen varning).
+    const alone = buildLonsamhetModel(
+      { ...two, current: off(two.current), previous: null },
+      { today: "2026-11-02" },
+    );
+    expect(alone.headline).toEqual({
       kind: "profit",
       title: expect.stringMatching(/^Vår vinst .+ på 20\sdagar\.$/),
       aside: "Automat 2: drygt hälften av vinsten.",
@@ -452,5 +516,58 @@ describe("parseAnalysisTab", () => {
     expect(parseAnalysisTab("utveckling")).toBe("trend");
     expect(parseAnalysisTab(["rytm"])).toBe("rhythm");
     expect(parseAnalysisTab("RYTM")).toBe("rhythm");
+  });
+});
+
+describe("monthForecast (i den här takten)", () => {
+  const TODAY = "2026-11-12";
+
+  it("månaden hittills: vinsten per dag gånger månadens dagar, i hela tusental", () => {
+    const f = monthForecast({
+      period: { start: "2026-11-01", end: TODAY },
+      today: TODAY,
+      days: 12,
+      profitOre: 1_530_000,
+    });
+    // 15 300 kr på 12 dagar = 1 275 kr per dag, 30 dagar = 38 250 kr → 38 000 kr.
+    expect(f).toEqual({ month: "2026-11", amountOre: 3_800_000 });
+    expect(f!.amountOre % 100_000).toBe(0);
+  });
+
+  it("de senaste 30 dagarna (till i dag eller i går) ger prognosen för innevarande månad", () => {
+    for (const period of [
+      { start: "2026-10-14", end: "2026-11-12" },
+      { start: "2026-10-13", end: "2026-11-11" },
+    ]) {
+      const f = monthForecast({ period, today: TODAY, days: 30, profitOre: 3_000_000 });
+      expect(f).toEqual({ month: "2026-11", amountOre: 3_000_000 });
+    }
+    // Automaten har bara data för 20 av dagarna: takten räknas på dem.
+    expect(
+      monthForecast({
+        period: { start: "2026-10-14", end: TODAY },
+        today: TODAY,
+        days: 20,
+        profitOre: 2_000_000,
+      })?.amountOre,
+    ).toBe(3_000_000);
+  });
+
+  it("en egen gammal period, förra månaden och 7 dagar ger ingen prognos", () => {
+    for (const period of [
+      { start: "2026-09-01", end: "2026-09-30" },
+      { start: "2026-10-01", end: "2026-10-31" },
+      { start: "2026-11-06", end: TODAY },
+      { start: "2026-01-01", end: TODAY },
+    ]) {
+      expect(monthForecast({ period, today: TODAY, days: 30, profitOre: 3_000_000 })).toBeNull();
+    }
+  });
+
+  it("för få dagar, förlust eller under 500 kr i månaden ger ingen prognos", () => {
+    const period = { start: "2026-11-01", end: TODAY };
+    expect(monthForecast({ period, today: TODAY, days: 6, profitOre: 900_000 })).toBeNull();
+    expect(monthForecast({ period, today: TODAY, days: 12, profitOre: -5_000 })).toBeNull();
+    expect(monthForecast({ period, today: TODAY, days: 12, profitOre: 10_000 })).toBeNull();
   });
 });

@@ -18,6 +18,8 @@ export interface Headline {
   readonly aside: string;
   /** Vilket fall som gällde (för test och för sidans tonläge). */
   readonly kind: "empty" | "no-prices" | "loss" | "profit";
+  /** Den grå delen är en varning (en produkt ger mer än halva vinsten). */
+  readonly warning?: boolean;
 }
 
 export interface HeadlineInput {
@@ -57,7 +59,17 @@ export interface HeadlineInput {
     readonly shareOfProfitBp: number | null;
   } | null;
   readonly previous: { readonly profitOre: number; readonly marginBp: number | null } | null;
+  /** Vad största bidragsgivaren är. Bara en produkt ("title") kan ge varningen. */
+  readonly topKind?: "title" | "machine" | "store";
+  /**
+   * Hela innevarande månad i den här takten (./run-rate.ts), bara för månaden hittills och
+   * de senaste 30 dagarna. `monthName` är månaden i löptext ("november").
+   */
+  readonly forecast?: { readonly monthName: string; readonly amountOre: number } | null;
 }
+
+/** Över så stor andel av vinsten från en enda produkt blir raden en varning. */
+const ONE_PRODUCT_WARNING_BP = 5_000;
 
 /** Bråk som läses bättre än procent. Andel i bp. */
 const FRACTIONS: ReadonlyArray<readonly [number, string]> = [
@@ -131,6 +143,13 @@ function largestDeduction(input: HeadlineInput): string {
   return `${label} tog ${formatPercent(part / 10_000)} av intäkten.`;
 }
 
+/** "Upp 12 % mot perioden innan." / "Ned 8 % …" / "Samma som perioden innan." */
+function trendText(bp: number): string {
+  const pct = Math.round(Math.abs(bp) / 100);
+  if (pct === 0) return "Samma som perioden innan.";
+  return `${bp > 0 ? "Upp" : "Ned"} ${formatPercent(pct / 100, 0)} mot perioden innan.`;
+}
+
 export function lonsamhetHeadline(input: HeadlineInput): Headline {
   if (input.orders === 0) {
     return {
@@ -173,21 +192,44 @@ export function lonsamhetHeadline(input: HeadlineInput): Headline {
   const deducted = input.showStoreShare ?? false;
   const title = `${deducted ? "Vår del" : "Vår vinst"} ${sek(input.profitOre)} på ${days(input.days)}.`;
 
-  let aside: string;
+  // Den grå raden säger vart det är på väg: först mot perioden innan och månaden i den här
+  // takten, sedan (när inget av det finns) var vinsten kommer ifrån.
   const share = input.top?.shareOfProfitBp ?? null;
+  const trend =
+    input.previous && input.previous.profitOre > 0
+      ? trendText(changeBp(input.profitOre, input.previous.profitOre) ?? 0)
+      : null;
+  const pace = input.forecast
+    ? `I den här takten: ca${NBSP}${sek(input.forecast.amountOre)} i ${input.forecast.monthName}.`
+    : null;
   if (deducted && input.compensationOre !== 0) {
     // Med andelen: vad butikerna fick (eller butikens villkor och belopp med vald butik).
-    aside = `${input.storeShareLabel ?? "Butikernas andel"}: ${sek(input.compensationOre)}.`;
-  } else if (input.top && share !== null) {
-    aside = `${input.top.name}: ${shareOfProfitText(share)}.`;
-  } else if (input.previous && input.previous.profitOre > 0) {
-    const bp = changeBp(input.profitOre, input.previous.profitOre) ?? 0;
-    aside = `${bp >= 0 ? "Upp" : "Ned"} ${formatPercent(Math.abs(bp) / 10_000, 0)} mot perioden innan.`;
-  } else {
-    aside = input.marginBp === null ? "" : `Marginal ${formatMarginBp(input.marginBp)}.`;
+    return {
+      kind: "profit",
+      title,
+      aside: `${input.storeShareLabel ?? "Butikernas andel"}: ${sek(input.compensationOre)}.`,
+    };
   }
-
-  return { kind: "profit", title, aside };
+  if (trend || pace) {
+    return { kind: "profit", title, aside: [trend, pace].filter(Boolean).join(" ") };
+  }
+  if (input.top && share !== null) {
+    // En enda produkt som ger mer än halva vinsten är en risk: säg det rakt ut.
+    if (input.topKind === "title" && share > ONE_PRODUCT_WARNING_BP) {
+      return {
+        kind: "profit",
+        title,
+        aside: `${input.top.name}: ${shareOfProfitText(share)}. Mycket hänger på en produkt.`,
+        warning: true,
+      };
+    }
+    return { kind: "profit", title, aside: `${input.top.name}: ${shareOfProfitText(share)}.` };
+  }
+  return {
+    kind: "profit",
+    title,
+    aside: input.marginBp === null ? "" : `Marginal ${formatMarginBp(input.marginBp)}.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
