@@ -69,6 +69,10 @@ export const t1 = {
     readyHome: (n: number) =>
       n === 1 ? "1 omgång ligger klar hemma." : `${f.int(n)} omgångar ligger klara hemma.`,
     nothingToPack: "Inget att packa den här veckan.",
+    /** Under "Senast packat" när en packning är äldre än 30 minuter. */
+    tooLateToUndo: "Äldre packningar går inte att ångra längre.",
+    countInstead: "Räkna om lagret i stället",
+    countInsteadText: "Räkna om lagret i stället.",
     /** Måndag först. */
     weekdays: [
       "måndag",

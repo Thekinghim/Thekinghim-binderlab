@@ -52,6 +52,9 @@ export const t1: R2T1 = {
     readyHome: (n) =>
       n === 1 ? "1 batch is packed and ready." : `${f.int(n)} batches are packed and ready.`,
     nothingToPack: "Nothing to pack this week.",
+    tooLateToUndo: "Older packings can no longer be undone.",
+    countInstead: "Count the stock instead",
+    countInsteadText: "Count the stock instead.",
     weekdays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
   },
 };

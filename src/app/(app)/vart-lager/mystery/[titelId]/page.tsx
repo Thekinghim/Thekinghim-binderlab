@@ -235,6 +235,21 @@ export default async function MysteryPackPage({
               </li>
             ))}
           </ul>
+          {detail.packings.some((p) => p.tooLate) ? (
+            <p className="text-base text-muted">
+              {m.r2.t1.mystery.tooLateToUndo}{" "}
+              {canSetCost ? (
+                <Link
+                  href="/vart-lager/inventering"
+                  className="inline-flex min-h-11 items-center text-fg underline underline-offset-4"
+                >
+                  {m.r2.t1.mystery.countInstead}
+                </Link>
+              ) : (
+                m.r2.t1.mystery.countInsteadText
+              )}
+            </p>
+          ) : null}
         </section>
       ) : null}
     </div>

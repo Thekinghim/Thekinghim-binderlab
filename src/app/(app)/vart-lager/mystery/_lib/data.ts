@@ -266,6 +266,11 @@ export interface PackingRow {
   readonly undone: boolean;
   /** Går att ångra nu (inom 30 minuter, inte ångrad). */
   readonly undoable: boolean;
+  /**
+   * Packningen är äldre än 30 minuter och inte ångrad: "Går inte att ångra längre. Räkna om
+   * lagret i stället."
+   */
+  readonly tooLate: boolean;
 }
 
 export interface MysteryDetail {
@@ -336,6 +341,40 @@ async function querySalePrice(
     .orderBy(desc(s.orders.orderedAt))
     .limit(1);
   return row ? { ore: row.amountOre, machineId: null, differs: false } : null;
+}
+
+/** Den inloggades egna packningar av titeln de senaste 30 minuterna, utan kostnad. */
+async function queryMyRecentPackings(tx: Tx, orgId: string, titleId: string, userId: string) {
+  const result = await tx.execute(
+    sql`select id::text as id, packed_at, batches, packs, location_name, recipe_version, undone_at
+        from public.my_recent_mystery_packings(${orgId}::uuid, ${titleId}::uuid)`,
+  );
+  return (
+    Array.from(result) as {
+      id: string;
+      packed_at: Date | string;
+      batches: number;
+      packs: number;
+      location_name: string;
+      recipe_version: number;
+      undone_at: Date | string | null;
+    }[]
+  ).map((r) => ({
+    id: r.id,
+    packedAt: r.packed_at instanceof Date ? r.packed_at : new Date(r.packed_at),
+    batches: Number(r.batches),
+    packs: Number(r.packs),
+    placeName: r.location_name,
+    version: Number(r.recipe_version),
+    costPerPackOre: null as number | null,
+    undoneAt:
+      r.undone_at === null
+        ? null
+        : r.undone_at instanceof Date
+          ? r.undone_at
+          : new Date(r.undone_at),
+    packedBy: userId as string | null,
+  }));
 }
 
 /**
@@ -413,7 +452,11 @@ export async function loadMysteryDetailFor(
             )
             .orderBy(desc(s.mysteryPackings.packedAt))
             .limit(5)
-        : [];
+        : overview.canPack
+          ? // Påfyllaren ser inte packningarna (de har kostnad per pack), men får ångra sina
+            // egna inom 30 minuter: de läses utan belopp genom en egen funktion.
+            await queryMyRecentPackings(tx, orgId, titleId, viewer.user.userId)
+          : [];
       const price = overview.seesMoney
         ? await querySalePrice(tx, orgId, titleId, overview.today)
         : null;
@@ -439,6 +482,7 @@ export async function loadMysteryDetailFor(
       p.undoneAt === null &&
       new Date(p.packedAt).getTime() >= limit &&
       (canUndoAny || p.packedBy === viewer.user.userId),
+    tooLate: p.undoneAt === null && new Date(p.packedAt).getTime() < limit,
   }));
 
   return {

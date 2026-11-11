@@ -89,6 +89,9 @@ const RPCS = [
   "machine_connectivity",
   "merge_titles",
   "my_invitations",
+  // Runda 2, spår T1: påfyllarens egna packningar de senaste 30 minuterna, utan kostnad
+  // (20261201000100_mina_packningar.sql; ägare, admin, påfyllare).
+  "my_recent_mystery_packings",
   // Abonnemang: organisationens egen plan och automater (ägare, admin).
   "my_subscription",
   // Mystery packs (20261115000000_mystery_packs.sql): packa (ägare, admin, påfyllare).
@@ -638,6 +641,7 @@ describe("anon", () => {
       machine_connectivity: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       my_invitations: sql``,
+      my_recent_mystery_packings: sql`gen_random_uuid(), gen_random_uuid()`,
       my_subscription: sql`gen_random_uuid()`,
       pack_mystery: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       platform_overview_data: sql``,
