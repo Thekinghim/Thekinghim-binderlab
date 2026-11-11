@@ -16,6 +16,7 @@ import * as s from "../../src/db/schema";
 import { listOrganizationsFor } from "../../src/server/access";
 import type { Viewer } from "../../src/server/data/core/loaders";
 import {
+  ALREADY_RECEIVED,
   loadPurchasePlanFor,
   notComingFor,
   onTheWay,
@@ -298,5 +299,110 @@ describe("Beställt och Kom fram på inköpslistan", () => {
       onTheWay(await loadPurchasePlanFor(v)).find((w) => w.titleId === titleId),
     ).toBeUndefined();
     await expect(notComingFor(v, { titleId })).rejects.toThrow("Inget är på väg");
+  });
+
+  // Granskningen av runda 2: inget inköp får skrivas två gånger.
+  it("Kom fram två gånger samtidigt, och en tredje gång efteråt: leveransen läggs in en gång", async () => {
+    const v = await viewerFor(owner, orgId);
+    const before = await level(hemma);
+    await quickOrderFor(v, { titleId, quantity: 36, clientId: crypto.randomUUID() });
+    // Två flikar (olika id) trycker "Kom fram" på samma rad samtidigt.
+    const both = await Promise.allSettled([
+      receiveArrivalFor(v, {
+        titleId,
+        quantity: 36,
+        closeShort: true,
+        clientId: crypto.randomUUID(),
+      }),
+      receiveArrivalFor(v, {
+        titleId,
+        quantity: 36,
+        closeShort: true,
+        clientId: crypto.randomUUID(),
+      }),
+    ]);
+    expect(both.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const refused = both.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(String(refused.reason.message)).toBe(ALREADY_RECEIVED);
+    // Ett nytt försök utan id (en äldre flik): vägras också.
+    await expect(receiveArrivalFor(v, { titleId, quantity: 36, closeShort: true })).rejects.toThrow(
+      ALREADY_RECEIVED,
+    );
+    expect(await level(hemma)).toBe(before + 36);
+  });
+
+  it("samma inskick en gång till (svaret kom aldrig fram) ger samma svar och inga nya pack", async () => {
+    const v = await viewerFor(owner, orgId);
+    const before = await level(hemma);
+    const events = async () =>
+      (
+        await one<{ n: number }>(
+          db(),
+          sql`select count(*)::int as n from public.stock_events
+              where organization_id = ${orgId}::uuid and title_id = ${titleId}::uuid`,
+        )
+      ).n;
+    const eventsBefore = await events();
+    // "Köpt, har dem här" (inget är på väg): samma id tre gånger, två av dem samtidigt.
+    const clientId = crypto.randomUUID();
+    const [a, b] = await Promise.all([
+      receiveArrivalFor(v, { titleId, quantity: 36, clientId }),
+      receiveArrivalFor(v, { titleId, quantity: 36, clientId }),
+    ]);
+    const c = await receiveArrivalFor(v, { titleId, quantity: 36, clientId });
+    expect(b).toEqual(a);
+    expect(c).toEqual(a);
+    expect(a).toMatchObject({ previous: before, onHand: before + 36, fromOrders: 0 });
+    expect(await level(hemma)).toBe(before + 36);
+    expect(await events()).toBe(eventsBefore + 1);
+    // "+ Inköp" på Vårt lager och delägarens leverans går samma väg.
+    const viaStock = crypto.randomUUID();
+    const first = await registerReceiptWithPriceFor(v, {
+      titleId,
+      quantity: 5,
+      clientId: viaStock,
+    });
+    const second = await registerReceiptWithPriceFor(v, {
+      titleId,
+      quantity: 5,
+      clientId: viaStock,
+    });
+    expect(second).toMatchObject({ onHand: (first as { onHand: number }).onHand });
+    expect(await level(hemma)).toBe(before + 41);
+    // Ett nytt id är ett nytt inköp.
+    await receiveArrivalFor(v, { titleId, quantity: 1, clientId: crypto.randomUUID() });
+    expect(await level(hemma)).toBe(before + 42);
+  });
+
+  it("Beställt med samma id blir en order hur lång tid som än gått, och två olika id blir två", async () => {
+    const v = await viewerFor(owner, orgId);
+    const count = (await orders()).length;
+    const clientId = crypto.randomUUID();
+    const a = await quickOrderFor(v, { titleId, quantity: 36, clientId });
+    // Som om det första skapades för två minuter sedan (utanför det gamla tidsfönstret).
+    await db().execute(
+      sql`update public.purchase_orders set created_at = now() - interval '2 minutes'
+          where id = ${a.orderId}::uuid`,
+    );
+    const again = await quickOrderFor(v, { titleId, quantity: 36, clientId });
+    expect(again).toEqual(a);
+    expect((await orders()).length).toBe(count + 1);
+    // Ett medvetet andra köp av samma antal direkt efteråt (nytt formulär, nytt id) sparas.
+    const b = await quickOrderFor(v, { titleId, quantity: 36, clientId: crypto.randomUUID() });
+    expect(b.orderId).not.toBe(a.orderId);
+    expect((await orders()).length).toBe(count + 2);
+    // Ett id från "Beställt" kan inte användas för en leverans.
+    await expect(receiveArrivalFor(v, { titleId, quantity: 1, clientId })).rejects.toThrow(
+      "Ogiltigt inskick",
+    );
+    // En läsare får inte skriva något inskick.
+    await expect(
+      asUser(reader, (tx) =>
+        tx.execute(
+          sql`insert into public.purchase_requests (organization_id, client_id, kind, title_id, result)
+              values (${orgId}::uuid, gen_random_uuid(), 'order', ${titleId}::uuid, '{}'::jsonb)`,
+        ),
+      ),
+    ).rejects.toThrow();
   });
 });

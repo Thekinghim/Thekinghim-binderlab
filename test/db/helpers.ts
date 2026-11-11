@@ -1144,6 +1144,11 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
     );
     // Logg över "Exportera all data" (20261111020100_granskning_dataexport.sql).
     await tx.execute(sql`insert into public.data_exports (organization_id) values (${orgId})`);
+    // Inköp: ett inskick per formulär (20261210000000_inkop_en_gang.sql).
+    await tx.execute(
+      sql`insert into public.purchase_requests (organization_id, client_id, kind, title_id, result)
+          values (${orgId}, gen_random_uuid(), 'arrival', ${title!.id}, '{}'::jsonb)`,
+    );
     // Daglig kontroll (20261114000000_daglig_kontroll.sql), skrivs bara av servern.
     await tx.execute(
       sql`insert into public.self_check_runs (organization_id, trigger, status, checks)

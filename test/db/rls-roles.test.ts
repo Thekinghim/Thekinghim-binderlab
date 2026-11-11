@@ -87,6 +87,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   "free_pack_codes",
   "import_upload_chunks",
   "import_uploads",
+  // Inköp: inskicken syns bara för ägare och admin.
+  "purchase_requests",
   "push_subscriptions",
   // Daglig kontroll: resultaten syns bara för ägare och admin.
   "self_check_runs",

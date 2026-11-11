@@ -18,6 +18,7 @@ import { expectedWhen } from "@/analytics/purchasing/on-the-way";
 import { PlaceButtons } from "@/components/stock/place-buttons";
 import { pickPlace } from "@/components/stock/place-text";
 import { Icon } from "@/components/ui/icon";
+import { useSubmitIds } from "@/lib/hooks/use-submit-ids";
 import { useToast } from "@/components/ui/toast";
 import type { IsoDate } from "@/domain";
 import { useFormat, useT } from "@/i18n/client";
@@ -252,6 +253,7 @@ function OrderedForm({ target, onDone }: { target: BuyTarget; onDone: () => void
   const [qty, setQty] = useState(target.qty === null ? "" : String(target.qty));
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
+  const ids = useSubmitIds();
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -261,7 +263,12 @@ function OrderedForm({ target, onDone }: { target: BuyTarget; onDone: () => void
       return;
     }
     start(async () => {
-      const res = await markOrdered({ titleId: target.titleId, quantity: n }).catch(() => ({
+      // Samma id tills svaret kommit: ett nytt försök blir aldrig en andra beställning.
+      const res = await markOrdered({
+        titleId: target.titleId,
+        quantity: n,
+        clientId: ids.idFor(String(n)),
+      }).catch(() => ({
         ok: false as const,
         error: t.common.offlineRetry,
       }));
@@ -269,6 +276,7 @@ function OrderedForm({ target, onDone }: { target: BuyTarget; onDone: () => void
         setError(t.serverError(res.error));
         return;
       }
+      ids.done();
       toast({ title: r2.orderedToast(n, target.name), tone: "ok" });
       router.refresh();
       onDone();
@@ -322,6 +330,7 @@ function ArrivedForm({
   const [chosen, setChosen] = useState<string | null>(null);
   const placeId = places.length > 1 ? pickPlace(places, chosen, undefined, last) : null;
   const price = useReceiptPrice(target.unitCostOre, true);
+  const ids = useSubmitIds();
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -341,6 +350,8 @@ function ArrivedForm({
         ...(price.ore === undefined ? {} : { unitCostOre: price.ore, confirmed }),
         // "Kom fram": det här var leveransen. Kom färre väntas resten inte längre.
         ...(fromWay ? { closeShort: true } : {}),
+        // Samma id tills svaret kommit: ett nytt försök lägger aldrig in packen igen.
+        clientId: ids.idFor(`${n}|${placeId ?? ""}`),
       }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
       if ("doubt" in res) {
         price.setDoubt(res.doubt);
@@ -350,6 +361,7 @@ function ArrivedForm({
         setError(t.serverError(res.error));
         return;
       }
+      ids.done();
       if (placeId) setLast(placeId);
       const d = res.data;
       const kr = (ore: number) => (ore % 100 === 0 ? f.sek(ore / 100) : f.kronor(ore / 100));

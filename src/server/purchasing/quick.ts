@@ -18,6 +18,12 @@
  *   listan ber om packen igen.
  * - onTheWay (src/analytics/purchasing/on-the-way.ts): det som är på väg per titel.
  *
+ * Inget skrivs två gånger: formuläret skickar ett eget id (`clientId`) och behåller det tills
+ * svaret kommit. Samma id en gång till (dubbeltryck, eller ett nytt försök efter ett svar som
+ * aldrig kom fram) ger samma svar och ingen ny order eller lagerhändelse
+ * (public.purchase_requests). "Kom fram" på en rad där inget längre är på väg vägras: den
+ * leveransen är redan inlagd.
+ *
  * Allt skrivs som användaren med RLS (ägare och admin, som övriga inköp).
  */
 
@@ -40,7 +46,10 @@ import { PurchasingError } from "./service";
 export const OWN_SUPPLIER_NAME = "Eget inköp";
 /** "kommer om ca 7 dagar" */
 export const ARRIVES_IN_DAYS = 7;
-/** Samma "Beställt" (titel och antal) inom så här många sekunder är ett omtryck, inte en ny order. */
+/**
+ * Utan `clientId` (en äldre flik): samma "Beställt" (titel och antal) inom så här många
+ * sekunder är ett omtryck, inte en ny order. Med `clientId` avgör id:t.
+ */
 const SAME_ORDER_SECONDS = 60;
 
 const uuid = z
@@ -52,7 +61,12 @@ const packs = z
   .min(1, "Ange antal pack, minst 1.")
   .max(10_000, "Högst 10 000 pack.");
 
-export const quickOrderSchema = z.object({ titleId: uuid, quantity: packs });
+export const quickOrderSchema = z.object({
+  titleId: uuid,
+  quantity: packs,
+  /** Formulärets id för inskicket: samma id två gånger ger en order, inte två. */
+  clientId: uuid.optional(),
+});
 export type QuickOrderInput = z.infer<typeof quickOrderSchema>;
 
 export const arrivalSchema = z.object({
@@ -68,6 +82,8 @@ export const arrivalSchema = z.object({
    * beställt väntas resten inte längre. Annars står resten kvar som på väg.
    */
   closeShort: z.boolean().optional(),
+  /** Formulärets id för inskicket: samma id två gånger lägger in packen en gång. */
+  clientId: uuid.optional(),
 });
 export type ArrivalInput = z.infer<typeof arrivalSchema>;
 
@@ -96,6 +112,54 @@ async function assertTitle(tx: Tx, orgId: string, titleId: string): Promise<void
     )
     .limit(1);
   if (!title) throw new PurchasingError("Titeln finns inte i organisationen.");
+}
+
+/** Svaret när "Kom fram" trycks för en leverans som redan är inlagd. */
+export const ALREADY_RECEIVED = "Leveransen är redan inlagd. Ladda om sidan.";
+
+/**
+ * Kör `fn` en gång per `clientId`. Finns inskicket redan (public.purchase_requests) körs
+ * ingenting: svaret från första gången returneras. Utan id körs `fn` som vanligt.
+ */
+async function once<T extends object>(
+  tx: Tx,
+  viewer: Viewer,
+  request: { clientId: string | undefined; kind: s.PurchaseRequestKind; titleId: string },
+  fn: () => Promise<T>,
+): Promise<T> {
+  const orgId = viewer.organization.id;
+  const { clientId } = request;
+  if (!clientId) return fn();
+  // Två samtidiga inskick med samma id: det andra väntar här och hittar sedan raden.
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`inkop:${orgId}:${clientId}`}, 0))`,
+  );
+  const [seen] = await tx
+    .select({
+      kind: s.purchaseRequests.kind,
+      titleId: s.purchaseRequests.titleId,
+      result: s.purchaseRequests.result,
+    })
+    .from(s.purchaseRequests)
+    .where(
+      and(eq(s.purchaseRequests.organizationId, orgId), eq(s.purchaseRequests.clientId, clientId)),
+    )
+    .limit(1);
+  if (seen) {
+    if (seen.kind !== request.kind || seen.titleId !== request.titleId) {
+      throw new PurchasingError("Ogiltigt inskick. Ladda om sidan och försök igen.");
+    }
+    return seen.result as T;
+  }
+  const result = await fn();
+  await tx.insert(s.purchaseRequests).values({
+    organizationId: orgId,
+    clientId,
+    kind: request.kind,
+    titleId: request.titleId,
+    result: result as Record<string, unknown>,
+  });
+  return result;
 }
 
 /** "Eget inköp": finns den inte (eller är arkiverad) skapas den. */
@@ -146,12 +210,31 @@ export async function quickOrderFor(
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`eget-inkop:${orgId}`}, 0))`,
     );
+    return once<QuickOrderResult>(
+      tx,
+      viewer,
+      { clientId: input.clientId, kind: "order", titleId: input.titleId },
+      () => placeOrder(tx, orgId, input, today, expectedOn),
+    );
+  });
+}
+
+async function placeOrder(
+  tx: Tx,
+  orgId: string,
+  input: QuickOrderInput,
+  today: IsoDate,
+  expectedOn: IsoDate,
+): Promise<QuickOrderResult> {
+  {
     const supplierId = await ownSupplierId(tx, orgId);
-    // Samma beställning igen inom en minut (svaret kom aldrig fram och man tryckte en gång
-    // till): den första gäller, ingen ny order.
-    const same = Array.from(
-      await tx.execute(
-        sql`select po.id, po.expected_on::text as expected_on
+    // Utan id från formuläret: samma beställning igen inom en minut (svaret kom aldrig fram
+    // och man tryckte en gång till) är den första, ingen ny order.
+    const same = input.clientId
+      ? undefined
+      : (Array.from(
+          await tx.execute(
+            sql`select po.id, po.expected_on::text as expected_on
             from public.purchase_orders po
             join public.purchase_order_lines l
               on l.organization_id = po.organization_id and l.purchase_order_id = po.id
@@ -161,8 +244,8 @@ export async function quickOrderFor(
               and l.title_id = ${input.titleId}::uuid and l.quantity = ${input.quantity}
               and l.received_quantity = 0
             order by po.created_at desc limit 1`,
-      ),
-    )[0] as { id: string; expected_on: string | null } | undefined;
+          ),
+        )[0] as { id: string; expected_on: string | null } | undefined);
     if (same) {
       return {
         orderId: same.id,
@@ -198,7 +281,7 @@ export async function quickOrderFor(
       unitCostOre: price ? Number(price.ore) : 0,
     });
     return { orderId: po!.id, quantity: input.quantity, expectedOn };
-  });
+  }
 }
 
 export interface ArrivalResult {
@@ -225,13 +308,30 @@ export interface ArrivalResult {
  */
 export async function receiveArrivalFor(
   viewer: Viewer,
-  input: Pick<ArrivalInput, "titleId" | "quantity" | "warehouseId" | "closeShort">,
+  input: Pick<ArrivalInput, "titleId" | "quantity" | "warehouseId" | "closeShort" | "clientId">,
   now: Date = new Date(),
 ): Promise<ArrivalResult> {
   const orgId = viewer.organization.id;
   const today = businessToday(now, viewer.organization.timezone);
   return asBuyer(viewer, async (tx) => {
     await assertTitle(tx, orgId, input.titleId);
+    return once<ArrivalResult>(
+      tx,
+      viewer,
+      { clientId: input.clientId, kind: "arrival", titleId: input.titleId },
+      () => bookArrival(tx, viewer, input, today),
+    );
+  });
+}
+
+async function bookArrival(
+  tx: Tx,
+  viewer: Viewer,
+  input: Pick<ArrivalInput, "titleId" | "quantity" | "warehouseId" | "closeShort">,
+  today: IsoDate,
+): Promise<ArrivalResult> {
+  const orgId = viewer.organization.id;
+  {
     const places = await tx
       .select({
         id: s.stockLocations.id,
@@ -294,6 +394,9 @@ export async function receiveArrivalFor(
       own: boolean;
     }[];
     const expected = open.reduce((sum, l) => sum + (l.quantity - l.received), 0);
+    // "Kom fram" på en rad där inget längre är på väg: leveransen är redan inlagd (ett
+    // dubbeltryck, eller en annan flik hann före). Skriv ingenting.
+    if (input.closeShort === true && expected === 0) throw new PurchasingError(ALREADY_RECEIVED);
     let left = input.quantity;
     let missing = 0;
     const touched = new Map<string, { own: boolean; note: string | null; short: number }>();
@@ -378,7 +481,7 @@ export async function receiveArrivalFor(
       missing,
       stillOnTheWay: expected - fromOrders - missing,
     };
-  });
+  }
 }
 
 export interface NotComingResult {

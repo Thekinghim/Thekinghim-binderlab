@@ -70,6 +70,9 @@ export const t3: R2T3 = {
  */
 export const serverErrors: Record<string, string> = {
   "Inget är på väg för titeln.": "Nothing is on the way for this product. Reload the page.",
+  "Leveransen är redan inlagd. Ladda om sidan.": "These packs are already saved. Reload the page.",
+  "Ogiltigt inskick. Ladda om sidan och försök igen.":
+    "Something went wrong. Reload the page and try again.",
   "Beställningen har fler titlar. Avsluta den under Inköp, Mer.":
     "This order has more products in it. Ask the owner to close it.",
   // The packs are already saved when this shows: do not say "try again".

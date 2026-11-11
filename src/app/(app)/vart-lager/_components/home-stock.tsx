@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 import { formatInt, formatKronor, formatSek, MINUS, NBSP } from "@/lib/format";
+import { useSubmitIds } from "@/lib/hooks/use-submit-ids";
 import { rememberKey, useRemembered } from "@/lib/remembered";
 
 import { Sheet } from "../../lager/_components/sheet";
@@ -284,7 +285,9 @@ function StockRow({
   const [buyPlace, setBuyPlace] = useState<string | null>(null);
   const buyTo = pickPlace(places, buyPlace, place?.id, lastBuy);
   // "+ Inköp" frågar vad packen kostade (inte för egna produkter: de packas, priset räknas).
-  const r2 = useT().r2.t3;
+  const t = useT();
+  const r2 = t.r2.t3;
+  const ids = useSubmitIds();
   const price = useReceiptPrice(row.unitCostOre, canEdit && !row.own);
 
   useEffect(() => {
@@ -340,7 +343,9 @@ function StockRow({
         quantity: n,
         ...(buyTo ? { warehouseId: buyTo } : {}),
         ...(price.ore === undefined ? {} : { unitCostOre: price.ore, confirmed }),
-      });
+        // Samma id tills svaret kommit: ett nytt försök lägger aldrig in packen igen.
+        clientId: ids.idFor(`${n}|${buyTo ?? ""}`),
+      }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
       // Priset ser konstigt ut: inget är sparat, frågan visas under fältet.
       if ("doubt" in res) {
         price.setDoubt(res.doubt);
@@ -350,6 +355,7 @@ function StockRow({
         toast({ title: "Inköpet sparades inte", description: res.error, tone: "critical" });
         return;
       }
+      ids.done();
       if (buyTo) setLastBuy(buyTo);
       setBuy("");
       setBuyPlace(null);

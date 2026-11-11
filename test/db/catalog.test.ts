@@ -40,6 +40,8 @@ const APPEND_ONLY = [
   "mystery_recipes",
   "payout_imports",
   "payout_lines",
+  // Inköp: ett inskick skrivs aldrig två gånger (20261210000000_inkop_en_gang.sql).
+  "purchase_requests",
   "report_approvals",
   "report_deliveries",
   "report_files",
@@ -229,6 +231,8 @@ describe("tabeller", () => {
         "purchase_order_lines",
         "purchase_orders",
         "purchase_prices",
+        // Inköp: ett inskick per formulär (20261210000000_inkop_en_gang.sql).
+        "purchase_requests",
         "price_experiment_machines",
         "price_experiments",
         "push_subscriptions",

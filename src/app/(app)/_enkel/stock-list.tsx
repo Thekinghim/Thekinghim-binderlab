@@ -5,6 +5,7 @@ import { useId, useState, useTransition, type FormEvent } from "react";
 
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { Icon } from "@/components/ui/icon";
+import { useSubmitIds } from "@/lib/hooks/use-submit-ids";
 import { useToast } from "@/components/ui/toast";
 import { useFormat, useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
@@ -224,6 +225,7 @@ function StockForms({
   const f = useFormat();
   // Leveransen frågar vad packen kostade (förifyllt med dagens pris); inte för egna produkter.
   const price = useReceiptPrice(row.unitCostOre ?? null, row.own !== true);
+  const submitIds = useSubmitIds();
 
   const fail = (error: string | undefined) =>
     toast({
@@ -250,6 +252,8 @@ function StockForms({
         ...(place ? { warehouseId: place.id } : {}),
         quantity: parsed.n,
         ...(price.ore === undefined ? {} : { unitCostOre: price.ore, confirmed }),
+        // Samma id tills svaret kommit: ett nytt försök lägger aldrig in packen igen.
+        clientId: submitIds.idFor(`${parsed.n}|${place?.id ?? ""}`),
       }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
       setBusy(null);
       if ("doubt" in res) {
@@ -257,6 +261,7 @@ function StockForms({
         return;
       }
       if (!res.ok) return fail(res.error);
+      submitIds.done();
       const p = res.data.price;
       const kr = (ore: number) => (ore % 100 === 0 ? f.sek(ore / 100) : f.kronor(ore / 100));
       const notes = [

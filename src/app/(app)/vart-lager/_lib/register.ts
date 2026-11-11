@@ -81,6 +81,8 @@ export const receiptSchema = z.object(
       .optional(),
     /** true = användaren har sett varningen om ett konstigt pris och sparar ändå. */
     confirmed: z.boolean().optional(),
+    /** Formulärets id för inskicket: samma id två gånger lägger in packen en gång. */
+    clientId: uuid.optional(),
   },
   { error: INVALID },
 );

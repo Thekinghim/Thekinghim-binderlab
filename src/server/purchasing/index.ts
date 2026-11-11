@@ -33,6 +33,7 @@ export {
   type ReceiveResult,
 } from "./service";
 export {
+  ALREADY_RECEIVED,
   ARRIVES_IN_DAYS,
   arrivalSchema,
   notComingFor,
