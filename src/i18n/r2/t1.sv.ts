@@ -36,6 +36,15 @@ export const t1 = {
     /** Tomt mystery-fack och ingen hel omgång färdig: "0 färdiga i Kontoret." */
     mysteryReady: (n: number, place: string) => `${f.int(n)} färdiga ${inPlace(place)}.`,
     mysteryFillBatch: (batch: number) => `Fyll på en omgång (${f.int(batch)}${NBSP}st)`,
+    /** Sändningen till Awish gick inte fram: raden på automaten tills den gått fram. */
+    awishPending: (machine: string) => `Awish fick inte antalen för ${machine}.`,
+    awishPendingHint: "Påfyllningen är sparad här. Appen försöker igen själv.",
+    retry: "Försök igen",
+    retrying: "Skickar…",
+    retrySent: (slots: number) => `Skickat till Awish (${f.int(slots)} fack).`,
+    retryNothing: "Awish har rätt antal nu.",
+    retryFailedTitle: "Det gick inte nu heller",
+    retryFailedHint: "Försök igen om en stund. Påfyllningen ligger kvar här.",
   },
   /** Mystery packs (Vårt lager): minus i lagret och vad som ska packas. */
   mystery: {

@@ -59,6 +59,9 @@ const RPCS = [
   // Flera lager (20261104210000_flera_lager.sql): ta bort/ta tillbaka ett eget lager (ägare, admin).
   "archive_warehouse",
   "attach_contract_file",
+  // Runda 2, spår T1: automater som väntar på Awish efter en misslyckad sändning
+  // (20261201000000_awish_push_misslyckad.sql; ägare, admin, påfyllare).
+  "awish_push_pending",
   // Datakällor: Awish gRPC-uppgifter till Vault (ägare, admin), returnerar aldrig hemligheten.
   "awish_save_credentials",
   // Awish webbpanel: e-post/lösenord till Vault och push på/av (ägare, admin).
@@ -666,6 +669,8 @@ describe("anon", () => {
       undo_mystery_packing: sql`gen_random_uuid(), gen_random_uuid()`,
       undo_transfer: sql`gen_random_uuid(), gen_random_uuid()`,
       varde_automation_counts: sql`gen_random_uuid(), '2026-10-01'::date, '2026-10-31'::date`,
+      // Runda 2, spår T1.
+      awish_push_pending: sql`gen_random_uuid()`,
     };
     const outcome = await asAnon((tx) =>
       attempt(tx, (sp) =>

@@ -23,6 +23,15 @@ export const t1: R2T1 = {
     packFailedHint: "Nothing is saved. Press Done again.",
     mysteryReady: (n, place) => `${f.int(n)} ready ${inPlace(place)}.`,
     mysteryFillBatch: (batch) => `Refill one batch (${f.int(batch)})`,
+    awishPending: (machine) => `${machine} did not get the new numbers.`,
+    awishPendingHint: "The refill is saved here. The app tries again by itself.",
+    retry: "Try again",
+    retrying: "Sending…",
+    retrySent: (slots) =>
+      `Sent to the machine (${f.int(slots)} ${slots === 1 ? "slot" : "slots"}).`,
+    retryNothing: "The machine has the right numbers now.",
+    retryFailedTitle: "It did not work this time either",
+    retryFailedHint: "Try again in a while. The refill is still saved here.",
   },
   mystery: {
     minus: (n, place) =>

@@ -1283,4 +1283,11 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [{ organizationId: c.A.orgId, email: "x-rodteam@example.se", role: "owner" }],
   },
+  // Runda 2, spår T1: "Försök igen" i Fyll på (sändningen till Awish gick inte fram).
+  {
+    module: "@/app/fyll-pa/actions",
+    name: "retryAwishPush",
+    allowed: FIELD,
+    args: (c) => [{ machineId: c.A.machineId }],
+  },
 ];

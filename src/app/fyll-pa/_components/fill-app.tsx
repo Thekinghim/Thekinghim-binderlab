@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type CSSProperties,
@@ -34,7 +35,7 @@ import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { registerCount } from "@/app/(app)/lager/actions";
 import { packMystery } from "@/app/(app)/vart-lager/mystery/actions";
 
-import { refreshFill } from "../actions";
+import { refreshFill, retryAwishPush } from "../actions";
 import { bringStore, useBring, useDone, type Done } from "../_lib/done-store";
 import {
   applyAdjustments,
@@ -89,6 +90,8 @@ export interface FillAppProps {
 const BASE = FILL_BASE;
 /** En Awish-läsning yngre än så här pulserar. */
 const FRESH_MS = 30 * 60_000;
+/** Appen försöker själv skicka till Awish igen högst så här ofta. */
+const AUTO_RETRY_MS = 5 * 60_000;
 /** Uppdatera väntar högst så här länge på servern (Awish har en egen, kortare gräns). */
 const REFRESH_TIMEOUT_MS = 15_000;
 
@@ -225,12 +228,148 @@ export function FillApp({
     },
     [rememberSaved, toast, t],
   );
+
+  // Automater som väntar på Awish: serverns lista, plus det som hänt här sedan sidan
+  // hämtades (en sändning som just misslyckades, eller ett försök som just gick fram).
+  const [pushLocal, setPushLocal] = useState<{
+    base: FillData;
+    failed: readonly string[];
+    cleared: readonly string[];
+  }>({ base: data, failed: [], cleared: [] });
+  const notePush = useCallback(
+    (failed: readonly string[], cleared: readonly string[]) => {
+      if (failed.length === 0 && cleared.length === 0) return;
+      setPushLocal((prev) => {
+        const same = prev.base === data;
+        const gone = new Set(cleared);
+        const bad = new Set(failed);
+        return {
+          base: data,
+          failed: [...(same ? prev.failed.filter((id) => !gone.has(id)) : []), ...failed],
+          cleared: [...(same ? prev.cleared.filter((id) => !bad.has(id)) : []), ...cleared],
+        };
+      });
+    },
+    [data],
+  );
+  const pendingPush = useMemo(() => {
+    const out = new Set(Object.keys(data.awishPending));
+    if (pushLocal.base === data) {
+      for (const id of pushLocal.failed) out.add(id);
+      for (const id of pushLocal.cleared) out.delete(id);
+    }
+    return out;
+  }, [data, pushLocal]);
+
+  /** Beskedet om Awish efter att påfyllningar sparats (Klar, eller kön i bakgrunden). */
+  const reportAwish = useCallback(
+    (awish: AwishPushStatus | undefined) => {
+      if (!awish) return;
+      if (awish.failedMachineIds?.length) notePush(awish.failedMachineIds, []);
+      if (awish.state !== "sent") {
+        // Gick det inte hela vägen till Awish: säg till. Raden på automaten ligger kvar.
+        toast({
+          title: t.fill.sendToAwish,
+          description: awishText(t, awish),
+          tone: awish.state === "error" ? "critical" : "neutral",
+        });
+      } else {
+        toast({ title: awishText(t, awish), tone: "ok" });
+      }
+    },
+    [notePush, toast, t],
+  );
+
   const q = useRefillQueue(scope, {
-    onBackgroundSaved: (items) => {
+    onBackgroundSaved: (items, awish) => {
       onQueueSaved(items);
+      reportAwish(awish);
       router.refresh();
     },
   });
+
+  const pendingRef = useRef(pendingPush);
+  useEffect(() => {
+    pendingRef.current = pendingPush;
+  }, [pendingPush]);
+
+  // "Försök igen": skicka antalen till Awish en gång till (en automat, eller alla som väntar).
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const retryBusy = useRef(false);
+  const retryPush = useCallback(
+    async (machineId: string | null, quiet = false) => {
+      if (retryBusy.current) return;
+      retryBusy.current = true;
+      if (!quiet) setRetrying(machineId ?? "alla");
+      try {
+        const res = await retryAwishPush(machineId ? { machineId } : {}).catch(() => ({
+          ok: false as const,
+          error: t.common.offlineRetry,
+        }));
+        if (!res.ok) {
+          if (!quiet) {
+            toast({
+              title: t.r2.t1.fill.retryFailedTitle,
+              description: t.serverError(res.error),
+              tone: "critical",
+            });
+          }
+          return;
+        }
+        const still = new Set(res.data.pending);
+        const asked = machineId ? [machineId] : [...pendingRef.current];
+        notePush(
+          asked.filter((id) => still.has(id)),
+          asked.filter((id) => !still.has(id)),
+        );
+        if (res.data.cleared) {
+          const slots = res.data.awish?.kind === "sent" ? (res.data.awish.slots ?? 0) : 0;
+          toast({
+            title: slots > 0 ? t.r2.t1.fill.retrySent(slots) : t.r2.t1.fill.retryNothing,
+            tone: "ok",
+          });
+        } else if (!quiet) {
+          toast({
+            title: t.r2.t1.fill.retryFailedTitle,
+            description: t.r2.t1.fill.retryFailedHint,
+            tone: "critical",
+          });
+        }
+        if (res.data.cleared || !quiet) router.refresh();
+      } finally {
+        retryBusy.current = false;
+        setRetrying(null);
+      }
+    },
+    [notePush, router, toast, t],
+  );
+  // Appen försöker igen själv: strax efter att sidan öppnats och sedan var femte minut,
+  // så länge någon automat väntar och det finns nät.
+  const lastAutoRetry = useRef(0);
+  const waitingPush = pendingPush.size;
+  useEffect(() => {
+    if (waitingPush === 0 || !q.online) return;
+    const run = () => {
+      if (Date.now() - lastAutoRetry.current < AUTO_RETRY_MS) return;
+      lastAutoRetry.current = Date.now();
+      void retryPush(null, true);
+    };
+    const first = window.setTimeout(run, 3_000);
+    const timer = window.setInterval(run, 60_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+    };
+  }, [q.online, retryPush, waitingPush]);
+  const pendingLine = (m: { id: string; code: string }) =>
+    pendingPush.has(m.id) ? (
+      <AwishPendingLine
+        code={m.code}
+        busy={retrying === m.id || retrying === "alla"}
+        disabled={!q.online}
+        onRetry={() => void retryPush(m.id)}
+      />
+    ) : null;
 
   // Awish-läsningen per automat ("Awish läst 14:50") och den senaste av alla.
   const syncLabels = useMemo(() => {
@@ -258,12 +397,15 @@ export function FillApp({
   const reloadData = useCallback(async () => {
     try {
       const out = await syncQueue();
-      if (out.saved.length > 0) onQueueSaved(out.saved);
+      if (out.saved.length > 0) {
+        onQueueSaved(out.saved);
+        reportAwish(out.awish);
+      }
     } catch {
       // Kön ligger kvar och skickas nästa gång.
     }
     startRefresh(() => router.refresh());
-  }, [onQueueSaved, router, syncQueue]);
+  }, [onQueueSaved, reportAwish, router, syncQueue]);
   // Appen öppnas igen (synlig, fokus, bfcache, nät tillbaka): hämta om, högst var 30:e s.
   useFreshData({ renderedAt, refresh: () => void reloadData() });
 
@@ -362,7 +504,12 @@ export function FillApp({
             <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
           </div>
         }
-        notice={noticeLine}
+        notice={
+          <>
+            {noticeLine}
+            {pendingLine(selected)}
+          </>
+        }
         onBack={() => go(BASE)}
         onCounted={(titleId, value) => {
           setCounted((prev) => {
@@ -436,16 +583,7 @@ export function FillApp({
             });
           }
           if (out.saved.length > 0) rememberSaved(out.saved);
-          if (out.awish && out.awish.state !== "sent") {
-            // Gick det inte hela vägen till Awish: säg till så antalet kan skrivas där.
-            toast({
-              title: t.fill.sendToAwish,
-              description: awishText(t, out.awish),
-              tone: out.awish.state === "error" ? "critical" : "neutral",
-            });
-          } else if (out.awish?.state === "sent") {
-            toast({ title: awishText(t, out.awish), tone: "ok" });
-          }
+          reportAwish(out.awish);
           // Först tillbaka till listan (bekräftelsen syns direkt), sedan hämtas datan om för
           // den adressen.
           go(BASE);
@@ -644,7 +782,7 @@ export function FillApp({
 
       <ul className="flex flex-col gap-3" aria-label={t.fill.machines}>
         {shown.map((m, i) => (
-          <li key={m.id} className="rise" style={rise(i + 1)}>
+          <li key={m.id} className="rise flex flex-col gap-2" style={rise(i + 1)}>
             <MachineCard
               machine={m}
               syncLabel={syncLabels[m.id]}
@@ -654,9 +792,50 @@ export function FillApp({
                 go(`${BASE}/${m.id}`);
               }}
             />
+            {pendingLine(m)}
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Sändningen till Awish gick inte fram för automaten: raden ligger kvar tills den gått fram
+ * ("Awish fick inte antalen för BL-003." med Försök igen). Påfyllningen är sparad i appen.
+ */
+function AwishPendingLine({
+  code,
+  busy,
+  disabled,
+  onRetry,
+}: {
+  code: string;
+  busy: boolean;
+  disabled: boolean;
+  onRetry: () => void;
+}) {
+  const t = useT();
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border border-signal-line bg-surface p-3"
+    >
+      <p className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
+        <span className="text-md font-medium text-signal-fg">
+          {t.r2.t1.fill.awishPending(code)}
+        </span>
+        <span className="text-sm text-muted">{t.r2.t1.fill.awishPendingHint}</span>
+      </p>
+      <button
+        type="button"
+        disabled={busy || disabled}
+        aria-busy={busy}
+        onClick={onRetry}
+        className="min-h-11 shrink-0 rounded-md border border-line-strong bg-raised px-4 text-md font-medium text-fg active:bg-hover disabled:text-disabled"
+      >
+        {busy ? t.r2.t1.fill.retrying : t.r2.t1.fill.retry}
+      </button>
     </div>
   );
 }
