@@ -188,6 +188,31 @@ export function lastsDays(packs: number, perDayTenths: number | null): number | 
   return Math.floor((Math.max(0, packs) * 10) / perDayTenths);
 }
 
+/**
+ * "Räcker" och "slut om N dagar" för en titel, samma regel på Vårt lager, Inköp och
+ * delägarens lista:
+ * - Inget hemma och allt står i automaterna: dagarna tills det sista facket är slutsålt,
+ *   precis som Lager visar dem (`machinesDaysLeft`: samma sellOut med veckoform). Då säger
+ *   sidorna samma dag för samma fack.
+ * - Annars: allt vi har (hemma + automaterna) delat på takten (lastsDays).
+ */
+export function lastsDaysFor(x: {
+  readonly home: number;
+  readonly inMachines: number;
+  readonly perDayTenths: number | null;
+  readonly machinesDaysLeft?: number | null | undefined;
+}): number | null {
+  if (
+    x.home <= 0 &&
+    x.inMachines > 0 &&
+    x.machinesDaysLeft !== null &&
+    x.machinesDaysLeft !== undefined
+  ) {
+    return Math.max(0, x.machinesDaysLeft);
+  }
+  return lastsDays(x.home + x.inMachines, x.perDayTenths);
+}
+
 /** En rad i listan "Att göra" överst på Vårt lager. */
 export interface StockTodo {
   readonly titleId: string;
@@ -457,7 +482,14 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
       const eAt = e ? (e.locationId ?? defaultPlace?.id) : undefined;
       const runsOut = status !== "ok";
       const lasts =
-        retired || sold7 <= 0 ? null : lastsDays(home + inMachines, r?.perDayTenths ?? null);
+        retired || sold7 <= 0
+          ? null
+          : lastsDaysFor({
+              home,
+              inMachines,
+              perDayTenths: r?.perDayTenths ?? null,
+              machinesDaysLeft: r?.machinesDaysLeft,
+            });
       // Inköps antal (samma regel och siffra som /prognos); utgången titel köps inte.
       // En utgången titel kan ändå vara en del i ett mystery pack: då gäller planens antal.
       const mysteryNeed = input.mysteryNeed?.get(t.id) ?? null;

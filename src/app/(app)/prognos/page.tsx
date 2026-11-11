@@ -127,7 +127,10 @@ export default async function PrognosPage({
         stockHome.set(titleId, (stockHome.get(titleId) ?? 0) + n);
       }
     }
-    m = buildPageModel(data, new Date(ctx.now), { stockPace, stockHome });
+    const stockSlotDays = new Map(
+      our.rows.map((r) => [r.titleId, r.machinesDaysLeft ?? null] as const),
+    );
+    m = buildPageModel(data, new Date(ctx.now), { stockPace, stockHome, stockSlotDays });
     stock = our;
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;

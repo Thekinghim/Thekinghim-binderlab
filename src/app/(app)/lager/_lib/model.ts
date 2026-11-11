@@ -469,6 +469,15 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     }
   }
   const warehouseTitleIds = new Set<string>([...centralRows.keys(), ...weekNeed.keys()]);
+  // Dagar tills sista facket med titeln är slutsålt (cellernas egna "N d").
+  const cellsByTitle = new Map(allRows.map((r) => [r.title.id, r.cells]));
+  const machinesDaysLeft = (titleId: string): number | null => {
+    const holding = (cellsByTitle.get(titleId) ?? []).filter(
+      (c) => c.stocked && c.known && !c.retired && c.onHand > 0,
+    );
+    if (holding.length === 0 || holding.some((c) => c.daysLeft === null)) return null;
+    return Math.max(...holding.map((c) => c.daysLeft ?? 0));
+  };
   const warehouse: WarehouseRow[] = hasWarehouse
     ? [...warehouseTitleIds]
         .filter((id) => titleById.get(id) && !titleById.get(id)!.archived)
@@ -492,6 +501,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
             shortBy: need.short,
             status: warehouseStatus(onHand, daysLeft, need),
             lastCountedAt: row?.lastCountedAt ?? null,
+            machinesDaysLeft: machinesDaysLeft(titleId),
           };
         })
         .sort(

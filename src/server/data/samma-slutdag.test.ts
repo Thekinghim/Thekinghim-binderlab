@@ -23,6 +23,7 @@ import { input, machine, order, title } from "@/analytics/todos/test-helpers";
 import type { AnalyticsOrder } from "@/analytics/todos/types";
 import { stockLines } from "@/app/(app)/automater/_lib/model";
 import { buildLagerModel } from "@/app/(app)/lager/_lib/model";
+import { lastsDays, lastsDaysFor } from "@/app/(app)/vart-lager/_lib/model";
 import { slotInputs, SLOT_WINDOW_DAYS } from "@/app/(app)/vart-lager/mystery/_lib/model";
 import { addDays, dayOfWeek, mysteryBatchesToPack, type IsoDate } from "@/domain";
 import type { MasterData, SalesCountRow, StockRow } from "@/server/data/core/types";
@@ -220,6 +221,60 @@ describe("samma slutdag på alla sidor (R2-9)", () => {
     expect(s.pack?.before).toBe("2026-11-14");
     // Besöksplanen: mystery-automaten ska besökas den dagen ("Åk till BL-002 senast lördag").
     expect(s.mysteryStop?.needBy).toBe(s.pack?.before);
+  });
+
+  it("Vårt lager och Inköp: inget hemma, så 'slut om N dagar' är samma N som Lager visar för facket", () => {
+    // Granskningen av runda 2: de två sidorna räknade allt vi har delat på ett platt snitt
+    // och sa en annan dag än Lager för samma fack. Nu tar de fackets egna dagar.
+    const central: StockRow = {
+      locationId: "hemma",
+      locationName: "Hemma",
+      locationKind: "warehouse",
+      isCentral: true,
+      machineId: null,
+      titleId: T1,
+      onHand: 0,
+      lastCountedAt: "2026-11-11T08:00:00Z",
+      lastEventAt: null,
+      lastRestockedAt: null,
+    };
+    const lager = buildLagerModel({
+      now: NOW,
+      timeZone: TZ,
+      today: TODAY,
+      master,
+      stock: [row(M1, T1), row(M2, MP), central],
+      sales: salesRows(recent),
+      scope: { storeId: null, machineId: null },
+      hasCentral: true,
+      weekShares: shapes,
+    });
+    const cell = lager.cells.flat().find((c) => c.machineId === M1 && c.titleId === T1)!;
+    const home = lager.warehouse.find((r) => r.titleId === T1)!;
+    expect(home.machinesDaysLeft).toBe(cell.daysLeft);
+    const lasts = lastsDaysFor({
+      home: 0,
+      inMachines: ON_HAND,
+      perDayTenths: home.perDayTenths,
+      machinesDaysLeft: home.machinesDaysLeft,
+    });
+    expect(lasts).toBe(cell.daysLeft);
+    // Fackets dag är fredag 13 nov. (formen), inte det platta snittets lördag.
+    expect(cell.stockoutDate).toBe(facit(M1, shapes.get(M1)!));
+    // Granskarens fall: 14 pack, 3 om dagen. Det platta talet är 4, fackets (Lager) 5.
+    expect(lastsDays(14, 30)).toBe(4);
+    expect(lastsDaysFor({ home: 0, inMachines: 14, perDayTenths: 30, machinesDaysLeft: 5 })).toBe(
+      5,
+    );
+    // Med pack hemma finns inget enskilt fack att jämföra med: allt vi har / takten.
+    expect(
+      lastsDaysFor({
+        home: 10,
+        inMachines: ON_HAND,
+        perDayTenths: home.perDayTenths,
+        machinesDaysLeft: home.machinesDaysLeft,
+      }),
+    ).toBe(lastsDays(ON_HAND + 10, home.perDayTenths));
   });
 
   it("utan formerna: alla sidor faller tillbaka på samma platta dag (lördag 14 nov.)", () => {

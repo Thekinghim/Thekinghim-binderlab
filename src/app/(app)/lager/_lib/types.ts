@@ -80,6 +80,13 @@ export interface WarehouseRow {
   readonly shortBy: number;
   readonly status: StockStatus;
   readonly lastCountedAt: string | null;
+  /**
+   * Dagar tills det SISTA facket med titeln är slutsålt: det största "N d" bland automaternas
+   * celler här på Lager (samma sellOut, med veckoform). null = inget fack har pack, eller
+   * något fack saknar takt. Vårt lager och Inköp visar det när inget ligger hemma, så att
+   * de säger samma dag som Lager för samma fack.
+   */
+  readonly machinesDaysLeft?: number | null;
 }
 
 /** En rad i påfyllningslistan (alltid minst 1 pack att ta med). */

@@ -23,7 +23,7 @@ import type {
 
 import { dateText, periodShort } from "./dates";
 import { evidenceView, type EvidenceOptions, type EvidenceView, type NameLookup } from "./evidence";
-import { lastsDays } from "../../vart-lager/_lib/model";
+import { lastsDaysFor } from "../../vart-lager/_lib/model";
 import {
   factLine,
   countFirst,
@@ -822,6 +822,8 @@ function planModel(
   names: ReturnType<typeof lookup>,
   stockPace?: ReadonlyMap<string, number | null>,
   stockHome?: ReadonlyMap<string, number>,
+  /** Dagar tills sista facket är slutsålt (WarehouseRow.machinesDaysLeft), per titel. */
+  stockSlotDays?: ReadonlyMap<string, number | null>,
 ): PlanModel {
   const p = data.plan;
   const ownIds = new Set(data.titles.filter((t) => t.ownProduct).map((t) => t.id));
@@ -873,7 +875,12 @@ function planModel(
     const fixPlaceId = l.packNow?.fixPlaceId ?? null;
     const negative = countFirst(home, own ? fixPlaceId : null);
     // Samma summa som Vårt lager (hemma som det är + i automaterna), så raden blir densamma.
-    const lasts = lastsDays(home + l.machineOnHand, stockPace?.get(l.titleId) ?? null);
+    const lasts = lastsDaysFor({
+      home,
+      inMachines: l.machineOnHand,
+      perDayTenths: stockPace?.get(l.titleId) ?? null,
+      machinesDaysLeft: stockSlotDays?.get(l.titleId),
+    });
     const action = needAction({
       own,
       needQty: purchaseQty(l),
@@ -1322,12 +1329,14 @@ export function buildPageModel(
     readonly stockPace?: ReadonlyMap<string, number | null>;
     /** Pack hemma per titel som de är (även under 0), som Vårt lager. */
     readonly stockHome?: ReadonlyMap<string, number>;
+    /** Dagar tills sista facket är slutsålt, per titel (som Lager visar dem). */
+    readonly stockSlotDays?: ReadonlyMap<string, number | null>;
   } = {},
 ): PageModel {
   const names = lookup(data);
   const lost = lostModel(data, names, now);
   const { forecast, accuracy } = forecastModel(data, names);
-  const plan = planModel(data, names, opts.stockPace, opts.stockHome);
+  const plan = planModel(data, names, opts.stockPace, opts.stockHome, opts.stockSlotDays);
   const orders = ordersModel(data, names, now);
   const valuation = valuationModel(data, names);
   const suppliers = suppliersModel(data, names);
