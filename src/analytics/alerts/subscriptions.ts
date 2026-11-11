@@ -10,9 +10,12 @@
  *   - 'resolved' bara med `notifyResolved`, 'reminder' bara om `reminders` inte är avstängt.
  *
  * Tysta timmar (lokal tid i prenumerationens tidszon): aviseringen skjuts upp till slutet av de
- * tysta timmarna, utom kritiska larm när `criticalDuringQuietHours` (standard sant).
+ * tysta timmarna, utom kritiska larm om att en automat står still (`WAKE_KINDS`: ur drift och
+ * fel) när `criticalDuringQuietHours` (standard sant). "Slut i automat" är kritiskt men väcker
+ * ingen: det går inte att fylla på mitt i natten, så det väntar till de tysta timmarna är slut.
  * Tider (`deliveryWindows`, t.ex. vardagar 07–18): utanför dem skjuts aviseringen upp till
- * nästa tids början; samma undantag för kritiska larm. Båda villkoren gäller samtidigt.
+ * nästa tids början, utom kritiska larm (alla slag) när `criticalDuringQuietHours`: "slut i
+ * automat" på lördagen kommer på lördagen. Båda villkoren gäller samtidigt.
  * Alla aviseringar till samma användare med samma sändtid samlas i ett utskick.
  */
 
@@ -22,6 +25,7 @@ import { localDayStartMs } from "@/analytics/health/calendar";
 import { SEVERITY_RANK } from "./rules";
 import type {
   AlertDelivery,
+  AlertKind,
   AlertNotification,
   AlertSubscription,
   DeliveryWindow,
@@ -158,18 +162,28 @@ export function nextDeliveryAt(
 }
 
 /**
+ * Larmtyperna som får komma under tysta timmar när de är kritiska: automaten står still och
+ * säljer ingenting. Allt annat (slut i ett fack, misslyckad import) väntar till morgonen.
+ */
+export const WAKE_KINDS: readonly AlertKind[] = ["machine_offline", "machine_fault"];
+
+/**
  * Sändtid för en prenumeration: första tidpunkten ≥ nu som varken är inom de tysta timmarna
- * eller utanför tiderna. Kritiska larm skickas direkt när `criticalDuringQuietHours` (standard
- * sant).
+ * eller utanför tiderna. Med `criticalDuringQuietHours` (standard sant) skickas kritiska larm
+ * om att automaten står still (`WAKE_KINDS`) direkt, och övriga kritiska larm ("slut i
+ * automat") så snart de tysta timmarna är slut, även utanför tiderna.
  */
 export function sendTimeFor(
-  n: Pick<AlertNotification, "severity">,
+  n: Pick<AlertNotification, "severity" | "kind">,
   s: AlertSubscription,
   nowMs: number,
 ): number {
-  if (n.severity === "critical" && s.criticalDuringQuietHours !== false) return nowMs;
+  const direct = n.severity === "critical" && s.criticalDuringQuietHours !== false;
+  if (direct && WAKE_KINDS.includes(n.kind)) return nowMs;
   const tz = s.timeZone ?? DEFAULT_TIME_ZONE;
-  const windows = s.deliveryWindows ?? null;
+  // Övriga kritiska larm ("slut i automat") väntar bara ut natten, inte tiderna: med tiderna
+  // vardagar 07–18 skulle ett fack som tar slut på lördagen annars vänta till måndag.
+  const windows = direct ? null : (s.deliveryWindows ?? null);
   let t = nowMs;
   // Växla mellan villkoren tills båda håller (några varv räcker; tak mot oändlig loop).
   for (let i = 0; i < 16; i++) {

@@ -13,6 +13,11 @@
  *   - ett offlinelarm är öppet för en automat med Awish-läge (så att det stängs när
  *     automaten är tillbaka).
  * Annars görs ingenting extra; en vanlig dag kostar det en fråga.
+ *
+ * "Slut i automat" går samma väg: när synken ser att ett fack just BLEV tomt (eller nådde
+ * larmgränsen) utvärderas organisationen direkt (`stockOrgIds`). Bara ändringen räknas, så
+ * ett fack som står tomt i en vecka kör inte larmjobbet var femte minut. Notisen följer de
+ * tysta timmarna: bara "automaten står still" får väcka någon (WAKE_KINDS).
  */
 
 import "server-only";
@@ -66,6 +71,20 @@ export async function orgsNeedingOfflineEvaluation(
   return rows.map((r) => r.id);
 }
 
+/** Organisationerna (av de givna) som finns och inte är arkiverade. */
+async function activeOrgs(db: Db, orgIds: readonly string[]): Promise<string[]> {
+  const ids = [...new Set(orgIds.filter((id) => id !== ""))];
+  if (ids.length === 0) return [];
+  const rows = Array.from(
+    await db.execute(
+      sql`select o.id from public.organizations o
+          where o.id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid)
+            and o.archived_at is null`,
+    ),
+  ) as { id: string }[];
+  return rows.map((r) => r.id);
+}
+
 type Dispatcher = NonNullable<Parameters<typeof deliverDue>[1]["dispatch"]>;
 
 export interface OfflineAlertRun {
@@ -74,22 +93,39 @@ export interface OfflineAlertRun {
 }
 
 /**
- * Utvärderar larmen för organisationerna som behöver det och skickar det som är på tur.
+ * Utvärderar larmen för organisationerna som behöver det och skickar det som är på tur
+ * (alltid, även när ingen organisation behövde utvärderas).
  * Utan `baseUrl` köas utskicken (larmjobbet skickar dem senare). Kastar inte för en
  * organisation som misslyckas (evaluateOrganization loggar i alert_runs).
  */
 export async function runOfflineAlerts(
   db: Db,
   orgIds: readonly string[],
-  options: { now?: Date; baseUrl: string | null; dispatch?: Dispatcher },
+  options: {
+    now?: Date;
+    baseUrl: string | null;
+    dispatch?: Dispatcher;
+    /**
+     * Organisationer där ett fack just blev tomt i synken (AwishSyncResult.stockDropped):
+     * de utvärderas också, så att "Slut i automat" kommer direkt och inte nästa morgon.
+     */
+    stockOrgIds?: readonly string[];
+  },
 ): Promise<OfflineAlertRun> {
   const now = options.now ?? new Date();
-  const due = await orgsNeedingOfflineEvaluation(db, orgIds, now);
-  if (due.length === 0) return { organizations: [], deliveries: null };
+  const due = [
+    ...new Set([
+      ...(await orgsNeedingOfflineEvaluation(db, orgIds, now)),
+      ...(await activeOrgs(db, options.stockOrgIds ?? [])),
+    ]),
+  ];
   const organizations: EvaluationSummary[] = [];
   for (const orgId of due) {
     organizations.push(await evaluateOrganization(db, orgId, now));
   }
+  // Utskicken som är på tur skickas i varje körning, även utan ny utvärdering: ett larm som
+  // väntade över natten (tysta timmar) går ut när natten är slut, inte först när larmjobbet
+  // körs nästa gång (en gång om dygnet). En vanlig körning kostar det en fråga.
   const deliveries =
     options.baseUrl === null
       ? null

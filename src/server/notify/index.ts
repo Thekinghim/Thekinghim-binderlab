@@ -13,7 +13,7 @@ import "server-only";
 import type { AlertDelivery } from "@/analytics/alerts";
 import { getMailer, mailerStatus, type MailerStatus } from "@/server/mail/report-mailer";
 
-import { alertEmail, pushPayload, smsText } from "./content";
+import { alertEmail, pushPayloads, smsText, type PushContext } from "./content";
 import { getPushSender, pushStatus, type PushStatus, type PushTarget } from "./push";
 import { getSmsSender, smsStatus, type SmsStatus } from "./sms";
 
@@ -69,6 +69,8 @@ export interface DispatchOptions {
   readonly organizationName: string;
   /** Idempotensnyckel för e-post (t.ex. utskickets id). */
   readonly idempotencyKey?: string;
+  /** Automaternas namn, butik och läge: push om påfyllning blir en notis per automat. */
+  readonly push?: PushContext;
 }
 
 export function overallStatus(results: readonly ChannelResult[]): DispatchResult["status"] {
@@ -97,18 +99,27 @@ export async function dispatchDelivery(
     } else if (recipient.pushDevices.length === 0) {
       results.push({ channel: "push", status: "skipped", detail: "Ingen enhet har push påslaget" });
     } else {
-      const payload = pushPayload(delivery);
+      // En notis om påfyllning (per automat) och en för övriga larm: högst två.
+      const payloads = pushPayloads(delivery, options.push);
       let ok = 0;
       const errors: string[] = [];
       for (const device of recipient.pushDevices) {
-        const out = await sender.send(device, payload);
-        if (out.ok) {
+        let delivered = false;
+        let gone = false;
+        for (const payload of payloads) {
+          const out = await sender.send(device, payload);
+          if (out.ok) delivered = true;
+          else {
+            errors.push(out.detail);
+            if (out.gone) gone = true;
+          }
+          // Enheten finns inte längre: nästa notis går inte heller fram.
+          if (gone) break;
+        }
+        if (delivered) {
           ok += 1;
           okDevices.push(device.id);
-        } else {
-          errors.push(out.detail);
-          if (out.gone) goneDevices.push(device.id);
-        }
+        } else if (gone) goneDevices.push(device.id);
       }
       results.push({
         channel: "push",

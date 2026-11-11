@@ -65,6 +65,7 @@ import {
   syncSourceStock,
   type AwishStockSummary,
 } from "./stock";
+import { machinesJustLow, type SlotBalance } from "./stock-drop";
 
 type Row = Record<string, unknown>;
 
@@ -133,6 +134,12 @@ export interface AwishSyncState {
    * organisation: högst en läsning per FILL_READ_INTERVAL_MS.
    */
   fillReadAt: string | null;
+  /**
+   * Uppdatera i Fyll på såg ett fack bli tomt (readFillStock). Den läsningen körs i
+   * användarens anrop och larmar inte själv; nästa synk tar med det i `stockDropped` och
+   * nollställer flaggan.
+   */
+  alertCheckDue?: boolean;
 }
 
 export interface AwishLastRun {
@@ -167,6 +174,13 @@ export interface AwishSyncResult {
   historyDone: boolean;
   /** Saldot från Awish (Products), om det lästes i körningen. */
   stock?: AwishStockSummary | null;
+  /**
+   * Automater där en titel just blev slut (eller nådde larmgränsen) i den här läsningen:
+   * larmen ska utvärderas direkt (cron-routen). Tom eller saknas: inget nytt är slut.
+   */
+  stockDropped?: string[];
+  /** Ett fack blev tomt vid Uppdatera i Fyll på sedan förra synken: utvärdera larmen. */
+  alertCheckDue?: boolean;
 }
 
 export function parseState(text: unknown): AwishSyncState {
@@ -192,7 +206,85 @@ export function parseState(text: unknown): AwishSyncState {
     amountFormat: value.amountFormat === "decimal" ? "decimal" : null,
     stockSyncedAt: typeof value.stockSyncedAt === "string" ? value.stockSyncedAt : null,
     fillReadAt: typeof value.fillReadAt === "string" ? value.fillReadAt : null,
+    ...(value.alertCheckDue === true ? { alertCheckDue: true } : {}),
   };
+}
+
+/**
+ * Saldot i organisationens automater (per automat och titel) med larmgränsen. Läses före och
+ * efter syncSourceStock: skillnaden säger vilka fack som just blev tomma (machinesJustLow).
+ */
+export async function readMachineBalances(
+  db: Db | Tx,
+  organizationId: string,
+): Promise<SlotBalance[]> {
+  const found = await query<{
+    machine_id: string;
+    title_id: string;
+    quantity: number;
+    alert_at: number | null;
+  }>(
+    db,
+    sql`select l.machine_id::text as machine_id, sl.title_id::text as title_id,
+               sl.quantity, a.alert_at_units as alert_at
+        from public.stock_levels sl
+        join public.stock_locations l
+          on l.organization_id = sl.organization_id and l.id = sl.location_id
+        left join public.slot_alerts a
+          on a.organization_id = sl.organization_id and a.machine_id = l.machine_id
+         and a.title_id = sl.title_id
+        where sl.organization_id = ${organizationId}::uuid and l.machine_id is not null`,
+  );
+  return found.map((r) => ({
+    machineId: r.machine_id,
+    titleId: r.title_id,
+    onHand: Number(r.quantity),
+    alertAt: r.alert_at === null ? null : Number(r.alert_at),
+  }));
+}
+
+/** Saldot i automaterna, eller null när det inte går att läsa (jämförelsen hoppas då över). */
+async function balancesOrNull(
+  db: Db,
+  organizationId: string,
+  when: string,
+): Promise<SlotBalance[] | null> {
+  try {
+    return await readMachineBalances(db, organizationId);
+  } catch (error) {
+    console.error(`[awish] saldot ${when} kunde inte läsas`, error);
+    return null;
+  }
+}
+
+/**
+ * Automaterna där en titel just blev slut sedan `before` lästes. Jämförelsen får aldrig
+ * stoppa synken: går saldot inte att läsa blir svaret tomt.
+ */
+async function droppedSince(
+  db: Db,
+  organizationId: string,
+  before: SlotBalance[] | null,
+): Promise<string[]> {
+  if (before === null) return [];
+  const after = await balancesOrNull(db, organizationId, "efter läsningen");
+  return after === null ? [] : machinesJustLow(before, after);
+}
+
+/**
+ * syncSourceStock med jämförelse före och efter (Uppdatera i Fyll på, som inte läser order):
+ * vilka automater fick just en titel som är slut?
+ */
+async function syncStockWatchingDrops(
+  db: Db,
+  api: AwishApi,
+  source: { id: string; organization_id: string },
+  opts: { now: () => Date; deadlineAt: number },
+): Promise<{ stock: AwishStockSummary; dropped: string[] }> {
+  const before = await balancesOrNull(db, source.organization_id, "före läsningen");
+  const stock = await syncSourceStock(db, api, source, opts);
+  const dropped = stock.counts > 0 ? await droppedSince(db, source.organization_id, before) : [];
+  return { stock, dropped };
 }
 
 /**
@@ -490,7 +582,18 @@ export async function syncAwishSource(
           ? extra.stock.at
           : before.stockSyncedAt,
       fillReadAt: before.fillReadAt,
+      // "Synka nu" svarar den som tryckte och startar inga larm: flaggan (och det som just
+      // blev slut i den här körningen) sparas till nästa schemalagda synk. I en schemalagd
+      // körning tas flaggan inte med: den rapporteras i resultatet nedan och är förbrukad.
+      ...(trigger === "manual" &&
+      (before.alertCheckDue === true || (result.stockDropped?.length ?? 0) > 0)
+        ? { alertCheckDue: true }
+        : {}),
     };
+    // Flaggan från Uppdatera i Fyll på eller Synka nu: följer med resultatet en gång, även
+    // när orderna misslyckades (cron-routen utvärderar larmen ändå).
+    const flagged =
+      trigger !== "manual" && before.alertCheckDue === true ? { alertCheckDue: true } : {};
     try {
       // Bara om läget är det vi låste med. Har någon sparat ett nytt AppId under
       // körningen (läget nollställt) skrivs inte det gamla kontots sidor tillbaka;
@@ -510,6 +613,7 @@ export async function syncAwishSource(
         );
         return {
           ...result,
+          ...flagged,
           organizationId: source.organization_id,
           dataSourceId: source.id,
           skipped: null,
@@ -526,6 +630,7 @@ export async function syncAwishSource(
     }
     return {
       ...result,
+      ...flagged,
       organizationId: source.organization_id,
       dataSourceId: source.id,
       skipped: null,
@@ -610,6 +715,10 @@ export async function syncAwishSource(
       );
     }
 
+    // Saldot FÖRE orderna: varje såld order drar ett pack direkt (stock_events 'sale'), så
+    // det är oftast orderna, inte läsningen av facken, som tar ett fack till 0. Läses saldot
+    // först efter orderna är facket redan tomt och ingenting ser ut att ha ändrats.
+    const balancesBefore = await balancesOrNull(deps.db, source.organization_id, "före synken");
     const outcome = await importOrders(deps.db, source, {
       orders: collected.orders,
       machines,
@@ -632,6 +741,12 @@ export async function syncAwishSource(
         console.error("[awish] saldot kunde inte läsas", error);
       }
     }
+    // Jämförs efter både orderna och facken: Awish är facit, så en order som drog saldot
+    // till 0 men där facket visar sig ha pack kvar larmar inte.
+    const stockDropped =
+      (outcome.summary?.new ?? 0) > 0 || (stock?.counts ?? 0) > 0
+        ? await droppedSince(deps.db, source.organization_id, balancesBefore)
+        : [];
     // Awish-kontots slutdag, högst en gång per dygn.
     await refreshMerchantExpiry(deps.db, api, source, now());
     return finish(
@@ -645,6 +760,7 @@ export async function syncAwishSource(
         otherSourceDuplicates: outcome.otherSourceDuplicates,
         historyDone: collected.cursor.historyDone,
         stock,
+        stockDropped,
       },
       collected.cursor,
       outcome.refundReported,
@@ -742,12 +858,16 @@ export async function readFillStock(
     return { status: "busy", stock: null };
   }
 
-  const release = async (stock: AwishStockSummary | null) => {
+  const release = async (stock: AwishStockSummary | null, dropped: readonly string[] = []) => {
     const complete = stock !== null && stock.deferred === 0 && stock.failed === 0;
     const state: AwishSyncState = {
       ...leased,
       leaseUntil: null,
       stockSyncedAt: complete ? stock.at : before.stockSyncedAt,
+      // Ett fack blev tomt i den här läsningen: nästa synk utvärderar larmen (den som står
+      // vid automaten och fyller på ska inte få en notis mitt i, och har den fyllt på innan
+      // dess blir det inget larm).
+      ...(dropped.length > 0 ? { alertCheckDue: true } : {}),
     };
     try {
       if (await writeState(deps.db, source, state, leasedText)) return;
@@ -759,7 +879,12 @@ export async function readFillStock(
       );
       const fresh = parseState(current?.cursor ?? null);
       if (fresh.leaseUntil === leased.leaseUntil) {
-        await writeState(deps.db, source, { ...fresh, leaseUntil: null }, current?.cursor ?? null);
+        await writeState(
+          deps.db,
+          source,
+          { ...fresh, leaseUntil: null, ...(dropped.length > 0 ? { alertCheckDue: true } : {}) },
+          current?.cursor ?? null,
+        );
       }
     } catch (error) {
       console.error("[awish] läget kunde inte sparas", error);
@@ -779,14 +904,15 @@ export async function readFillStock(
 
   const clock = () => now().getTime();
   let stock: AwishStockSummary | null = null;
+  let dropped: string[] = [];
   const api = (deps.connect ?? defaultConnect)(creds, { deadlineAt, clock, maxAttempts: 1 });
   try {
-    stock = await syncSourceStock(deps.db, api, source, { now, deadlineAt });
+    ({ stock, dropped } = await syncStockWatchingDrops(deps.db, api, source, { now, deadlineAt }));
   } catch (error) {
     if (!(error instanceof AwishApiError)) console.error("[awish] facken kunde inte läsas", error);
   } finally {
     api.close();
-    await release(stock);
+    await release(stock, dropped);
   }
   if (stock === null) return { status: "failed", stock: null };
   if (stock.read === 0 && (stock.failed > 0 || stock.deferred > 0)) {

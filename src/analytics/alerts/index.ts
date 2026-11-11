@@ -33,5 +33,6 @@ export {
   quietEndsAt,
   routeNotifications,
   sendTimeFor,
+  WAKE_KINDS,
 } from "./subscriptions";
 export type * from "./types";

@@ -294,7 +294,7 @@ export function SettingsForm({
           <Check
             checked={v.criticalDuringQuiet}
             onChange={(x) => set("criticalDuringQuiet", x)}
-            hint="Ur drift, fel och slut kommer direkt."
+            hint="Ur drift och fel kommer direkt, även på natten. Slut i automat väntar till morgonen."
           >
             Kritiska larm alltid direkt
           </Check>

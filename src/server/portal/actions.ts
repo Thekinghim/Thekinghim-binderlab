@@ -6,6 +6,7 @@
  * - reportFault: butiksanvändaren felanmäler en automat i sin butik (blir ett
  *   ärende i incidents, syns i Inkorgen). Kontrolleras i databasen
  *   (portal_report_fault: rollen store för just den butiken, automaten står där i dag).
+ *   Direkt efteråt får ägare, admin och automatens ansvariga en push (fault-push.ts).
  * - selectPortalStore: byter visad butik för den som är butiksanvändare i flera.
  * - inviteStoreUser: ägare/admin bjuder in en butiksanvändare från /butiker
  *   (create_store_invitation). Mejlet skickas i samma transaktion som inbjudan
@@ -22,6 +23,7 @@ import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { getServiceDb } from "@/db/client";
 import { getServerEnv } from "@/lib/env";
 
 import { SIMPLE_VIEW_TEAM_MESSAGE, requireTeamManagerFor, withUserDbFor } from "../access";
@@ -32,6 +34,7 @@ import { resolveAppBaseUrl } from "../request-info";
 import { getActiveOrganization, getSessionUser, type SessionUser } from "../session";
 
 import { deleteStorePortalInvitation, deleteStorePortalUser } from "./access";
+import { notifyFaultReported } from "./fault-push";
 import { FAULT_KINDS } from "./faults";
 import { insertPortalFault, insertStoreInvitation, queryPortalStores } from "./queries";
 import { PORTAL_STORE_COOKIE } from "./session";
@@ -105,6 +108,9 @@ export async function reportFault(input: {
     const id = await withUserDbFor(user, (tx) =>
       insertPortalFault(tx, { storeId, machineId, kind, description }),
     );
+    // Plingar direkt hos ägare, admin och automatens ansvariga. Kastar aldrig: felanmälan är
+    // redan sparad och ska inte se misslyckad ut för butiken.
+    await notifyFaultReported(getServiceDb(), id);
     revalidatePath("/portal/felanmalan");
     return { ok: true, id };
   } catch (error) {

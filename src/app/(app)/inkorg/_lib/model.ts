@@ -199,3 +199,20 @@ export function validateIncident(
 export function kronorOfOre(ore: number, decimals = 2): string {
   return formatKronor(ore / 100, { decimals });
 }
+
+/** Är ärendet en felanmälan från butiksportalen (kind = store_*)? */
+export function isStoreFault(kind: string): boolean {
+  return kind.startsWith("store_");
+}
+
+/**
+ * Länken som ringer butiken: "040-12 34 56" → "tel:040123456", "+46 40 12 34 56" →
+ * "tel:+4640123456". null när numret saknas eller inte går att ringa (färre än 5 siffror).
+ */
+export function telHref(phone: string | null | undefined): string | null {
+  const raw = (phone ?? "").trim();
+  if (raw === "") return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 5 || digits.length > 15) return null;
+  return `tel:${raw.startsWith("+") ? "+" : ""}${digits}`;
+}

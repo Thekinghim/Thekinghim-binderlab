@@ -172,6 +172,9 @@ export class OutboxPushSender implements PushSender {
   }
 }
 
+/** Så länge väntar ett utskick på push-tjänsten. */
+export const PUSH_TIMEOUT_MS = 8_000;
+
 /** Riktig Web Push med VAPID (web-push). */
 export class WebPushSender implements PushSender {
   readonly kind = "webpush" as const;
@@ -189,6 +192,9 @@ export class WebPushSender implements PushSender {
         JSON.stringify(payload),
         {
           vapidDetails: this.vapid,
+          // En push-tjänst som inte svarar får inte hålla kvar anropet (butikens felanmälan
+          // väntar på notisen).
+          timeout: PUSH_TIMEOUT_MS,
           TTL: payload.severity === "critical" ? 24 * 3600 : 6 * 3600,
           urgency: payload.severity === "critical" ? "high" : "normal",
           topic: payload.tag.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || undefined,

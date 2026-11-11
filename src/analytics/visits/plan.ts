@@ -3,7 +3,10 @@
  * ordning.
  *
  * 1. Behov per automat och titel (domain.salesVelocity över `windowDays` dagar t.o.m. i dag):
- *      slutdatum   = domain.stockoutDate(i dag, i lager, takt)
+ *      slutdatum   = sellOut(i lager, takt, från i dag, automatens veckoform): samma funktion
+ *                    som Att göra och larmen, så att alla sidor säger samma dag. Med
+ *                    veckoformen (helgen säljer mer) räknas dagen dag för dag; utan den är
+ *                    det domain.stockoutDate. weeklyVisitPlan skickar i går som "i dag".
  *      senast      = slutdatum − bufferDays (eller ExtraVisit.needBy)
  *    Automatens `needBy` är den tidigaste av titlarnas och extrabesökens. Automaten behöver
  *    besök om needBy ligger inom planens 7 dagar (eller tidigare).
@@ -39,10 +42,11 @@ import {
   floorDiv,
   mysteryEmptyText,
   salesVelocity,
-  stockoutDate,
   type IsoDate,
   type SalesVelocity,
 } from "@/domain";
+import { sellOut } from "@/analytics/sellout";
+import { weekShapes } from "@/analytics/sellout/week-shape";
 import { evidence, isMachineActive, links, nameLookup } from "@/analytics/todos/common";
 import { isFullSlot, mysteryBatches } from "@/analytics/todos/refill";
 import { plural, ratioTenths, sentence, weekdayDay } from "@/analytics/todos/text";
@@ -272,6 +276,10 @@ function machineNeeds(
     stockByPair.set(k, (stockByPair.get(k) ?? 0) + s.onHand);
   }
   const batches = mysteryBatches(input.titles);
+  // Veckans form per automat: från anroparen, annars ur orderna (28 dagar t.o.m. `today`;
+  // med bara de senaste dagarnas order blir det platt snitt).
+  const shapes =
+    input.weekShares ?? weekShapes(input.orders, { asOf: today, machines: input.machines });
   const out: MachineNeed[] = [];
   for (const m of input.machines) {
     if (!isMachineActive(m, today)) continue;
@@ -291,7 +299,10 @@ function machineNeeds(
         ...(m.activeFrom !== null ? { activeFrom: m.activeFrom } : {}),
       });
       if (v.units === 0 && !capacity.has(k)) continue;
-      const stockout = stockoutDate(today, onHand, v);
+      // EN slutdag för alla sidor (sellOut), med automatens veckoform när den finns.
+      const stockout =
+        sellOut({ onHand, dailyAvg: v, from: today, weekShare: shapes.get(m.id) ?? null })?.date ??
+        null;
       const windowOrders = orders.filter(
         (x) => x.businessDate >= v.start && x.businessDate <= v.end,
       );

@@ -7,6 +7,7 @@ import {
   mergeDeliveries,
   quietEndsAt,
   routeNotifications,
+  WAKE_KINDS,
   type AlertNotification,
   type AlertSubscription,
 } from "./index";
@@ -131,6 +132,26 @@ describe("routeNotifications", () => {
     expect(strict[0]?.deferred).toBe(true);
   });
 
+  it("slut i automat kl. 02 väntar till de tysta timmarna är slut; bara 'står still' väcker", () => {
+    const sleepy: AlertSubscription = { ...owner, quietHours: { start: "22:00", end: "07:00" } };
+    const at02 = Date.parse("2026-11-03T01:00:00Z"); // 02:00 svensk tid
+    const empty = { ...lowStock, severity: "critical" as const };
+    const fault = note({ key: "machine:m3", kind: "machine_fault", severity: "critical" });
+    const res = routeNotifications([empty, importFail, offline, fault], [sleepy], at02);
+    expect(res.map((d) => [d.sendAt, d.deferred, d.items.map((n) => n.key)])).toEqual([
+      ["2026-11-03T01:00:00.000Z", false, ["machine:m1", "machine:m3"]],
+      // 07:00 svensk tid
+      ["2026-11-03T06:00:00.000Z", true, ["import:s1", "low_stock:m2:t1"]],
+    ]);
+    // På dagen kommer det direkt.
+    const noon = Date.parse("2026-11-03T11:00:00Z");
+    expect(routeNotifications([empty], [sleepy], noon)[0]).toMatchObject({
+      sendAt: "2026-11-03T11:00:00.000Z",
+      deferred: false,
+    });
+    expect(WAKE_KINDS).toEqual(["machine_offline", "machine_fault"]);
+  });
+
   it("'resolved' och påminnelser enligt prenumerationen; inaktiv får inget", () => {
     const resolved = { ...offline, reason: "resolved" as const };
     const reminder = { ...offline, reason: "reminder" as const, incidentId: "y" };
@@ -226,6 +247,22 @@ describe("tider för aviseringar", () => {
       ["2026-11-07T09:00:00.000Z", false, ["machine:m1"]],
       ["2026-11-09T06:00:00.000Z", true, ["low_stock:m2:t1"]],
     ]);
+    // "Slut i automat" (kritiskt) på lördagen väntar inte till måndag: bara natten väntas ut.
+    const empty = { ...lowStock, severity: "critical" as const };
+    expect(routeNotifications([empty], [sub], sat).map((x) => [x.sendAt, x.deferred])).toEqual([
+      ["2026-11-07T09:00:00.000Z", false],
+    ]);
+    const sleepy = { ...sub, quietHours: { start: "22:00", end: "07:00" } };
+    // Lör 02:00 svensk tid → lör 07:00, inte mån 07:00.
+    expect(
+      routeNotifications([empty], [sleepy], "2026-11-07T01:00:00Z").map((x) => x.sendAt),
+    ).toEqual(["2026-11-07T06:00:00.000Z"]);
+    // Med "Kritiska larm alltid direkt" avstängt följer det tiderna som allt annat.
+    expect(
+      routeNotifications([empty], [{ ...sub, criticalDuringQuietHours: false }], sat).map(
+        (x) => x.sendAt,
+      ),
+    ).toEqual(["2026-11-09T06:00:00.000Z"]);
     // Tider 06–22 alla dagar och tysta timmar 05–08: mån 05:30 → 08:00 (07:00Z).
     const both: AlertSubscription = {
       ...sub,

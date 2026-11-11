@@ -46,6 +46,9 @@ import {
   stockoutDate,
   type IsoDate,
 } from "@/domain";
+import { sellOut, type WeekShare } from "@/analytics/sellout";
+import { sellOutPhrase } from "@/analytics/sellout/text";
+import { weekShapes } from "@/analytics/sellout/week-shape";
 import { assortmentKey, retiredPairs, type SlotPeriod } from "./assortment";
 import { evidence, isMachineActive, links, machineNames, titleNames } from "./common";
 import { HORIZON_DAYS, sortTodos, urgencyOf, type TodoContext } from "./context";
@@ -131,6 +134,12 @@ export interface RefillOptions {
    * 3 nov.)". Att göra, Hem och automatsidan använder det (computeTodos).
    */
   readonly visitDue?: boolean;
+  /**
+   * Veckans form per automat (sellout/week-shape). Utelämnad: räknas ur `input.orders`
+   * (28 dagar t.o.m. i går; automater med för lite historik får platt snitt). Den som bara
+   * har de senaste dagarnas order (Lager) skickar formerna från laddaren.
+   */
+  readonly weekShares?: ReadonlyMap<string, WeekShare>;
 }
 
 /** Påfyllningspunkter. */
@@ -139,6 +148,9 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
   const machines = new Map(input.machines.map((m) => [m.id, m]));
   const asOf = addDays(today, -1);
   const windowStart = addDays(asOf, -(options.refillWindowDays - 1));
+
+  // Veckans form per automat: helgen säljer mer, så slutdagen räknas dag för dag (sellOut).
+  const shapes = opts.weekShares ?? weekShapes(input.orders, { asOf, machines: input.machines });
 
   const byPair = new Map<string, AnalyticsOrder[]>();
   for (const o of input.orders) {
@@ -203,10 +215,24 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
     if (isFullSlot(onHand, s.capacity)) continue;
     const alertAt = alerts.get(assortmentKey(s.machineId, s.titleId));
     const underAlert = alertAt !== undefined && onHand <= alertAt;
+    // EN slutdag för alla sidor: sellOut() från i går (dagens försäljning är inte klar),
+    // med automatens veckoform när den finns.
+    const so =
+      v.units > 0 && v.days > 0
+        ? sellOut({
+            onHand,
+            dailyAvg: v,
+            from: asOf,
+            weekShare: shapes.get(s.machineId) ?? null,
+          })
+        : null;
+    const weekday = so !== null && so.basis === "weekday";
     const byRate =
       v.units > 0 &&
       v.days > 0 &&
-      onHand * v.days * 100 < options.refillThresholdCentidays * v.units;
+      (onHand * v.days * 100 < options.refillThresholdCentidays * v.units ||
+        // Helgen kan tömma facket fortare än snittet säger.
+        (weekday && so.daysLeft * 100 < options.refillThresholdCentidays));
     if (!byRate) {
       if (underAlert) {
         out.push(alertTodo(s, alertAt, ctx.titleName(s.titleId), ctx.machineName(s.machineId)));
@@ -220,19 +246,20 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
 
     const windowOrders = orders.filter((o) => o.businessDate >= v.start && o.businessDate <= v.end);
     const revenueOre = revenue(windowOrders, input.settings);
-    const daysLeft = daysOfStockLeft(onHand, v) ?? 0;
+    const daysLeft = so?.daysLeft ?? daysOfStockLeft(onHand, v) ?? 0;
     const daysLeftTenths = floorDiv(onHand * v.days * 10, v.units);
     const lostDaysNumerator = HORIZON_DAYS * v.units - onHand * v.days; // (7 − räcker) × units
     const atStakeOre = Math.max(0, roundHalfUp(revenueOre * lostDaysNumerator, v.days * v.units));
     const empty = onHand === 0;
     // Domänens konvention: saldot räknas som saldot efter asOf (i går), så sista packet
     // säljs dag asOf + tak(räcker). 2,3 dagar räknat från i går kväll → slut 4 nov. om i dag är 2 nov.
-    const outDate = stockoutDate(asOf, onHand, v);
+    const outDate = so?.date ?? stockoutDate(asOf, onHand, v);
     // Besöksplanen: besök senast dagen före slutdatum. Har den dagen passerat är besöket
     // försenat, och då står punkten under "I dag" (Lager: "Besök senast 3 nov. (passerat)").
     const visitBy = outDate === null ? null : addDays(outDate, -VISIT_BUFFER_DAYS);
     const visitLate = opts.visitDue === true && visitBy !== null && visitBy < today;
-    const level: TodoLevel = daysLeftTenths < 10 || visitLate ? "now" : "soon";
+    const level: TodoLevel =
+      daysLeftTenths < 10 || (weekday && daysLeft < 1) || visitLate ? "now" : "soon";
     const titleName = ctx.titleName(s.titleId);
     const machineName = ctx.machineName(s.machineId);
     const perDay = ratioTenths(v.units, v.days);
@@ -242,8 +269,13 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
 
     const rateDetail = empty
       ? `Slut i lager. Säljer i snitt ${perDay} pack och ${revenuePerDay} per dag (${v.days} dagar t.o.m. ${day(asOf)}).`
-      : `${plural(onHand, "pack", "pack")} kvar räcker ca ${tenths(daysLeftTenths)} dagar vid ${perDay} pack per dag ` +
-        `(${v.days} dagar t.o.m. ${day(asOf)}). ${sentence(`Väntas ta slut ${day(outDate ?? today)}`)}`;
+      : weekday
+        ? // Med veckoform stämmer inte "räcker ca N dagar" (snittet): dagen säger allt.
+          `${plural(onHand, "pack", "pack")} kvar, säljer i snitt ${perDay} pack per dag ` +
+          `(${v.days} dagar t.o.m. ${day(asOf)}). ${sentence(sellOutPhrase(outDate ?? today, today))} ` +
+          `Räknat med vilka veckodagar automaten säljer mest.`
+        : `${plural(onHand, "pack", "pack")} kvar räcker ca ${tenths(daysLeftTenths)} dagar vid ${perDay} pack per dag ` +
+          `(${v.days} dagar t.o.m. ${day(asOf)}). ${sentence(sellOutPhrase(outDate ?? today, today))}`;
     const detail = `${underAlert ? `${alertText(onHand, alertAt)} ` : ""}${rateDetail}${visitText}`;
 
     out.push({
