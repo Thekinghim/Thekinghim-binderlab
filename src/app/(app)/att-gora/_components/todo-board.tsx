@@ -16,6 +16,9 @@ import { formatInt, NBSP } from "@/lib/format";
 
 import type { PersonOption } from "@/analytics/team";
 
+// Samma varning som Fyll på för mystery-facket (läses bara).
+import { mysteryNote } from "@/app/fyll-pa/_lib/model";
+
 import { PersonPicker } from "../../_team/person-picker";
 import { dismissTodo, mergeTitles, registerRefill, undoDismissTodo } from "../actions";
 import type {
@@ -553,8 +556,11 @@ function TodoRow({
 function RefillDialog({ action }: { action: RefillActionView }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [quantity, setQuantity] = useState(String(action.suggested));
+  const suggestedText = action.suggested > 0 ? String(action.suggested) : "";
+  const [quantity, setQuantity] = useState(suggestedText);
   const hasWarehouse = action.warehouseOnHand !== null;
+  /** Lagret packen tas från: "Kontoret", annars "vårt lager". */
+  const warehouse = action.warehouseName ?? "vårt lager";
   const [fromWarehouse, setFromWarehouse] = useState(
     hasWarehouse && (action.warehouseOnHand ?? 0) > 0,
   );
@@ -573,7 +579,7 @@ function RefillDialog({ action }: { action: RefillActionView }) {
 
   /** Varje öppning börjar från dagens förslag (det kan ha ändrats sedan sist). */
   const openDialog = () => {
-    setQuantity(String(action.suggested));
+    setQuantity(suggestedText);
     setFromWarehouse(hasWarehouse && (action.warehouseOnHand ?? 0) > 0);
     setQuantityError(undefined);
     setError(undefined);
@@ -583,14 +589,24 @@ function RefillDialog({ action }: { action: RefillActionView }) {
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const n = Number(quantity.trim());
-    if (!Number.isInteger(n) || n < 1 || n > 10_000) {
-      setQuantityError("Ange antal pack som ett heltal mellan 1 och 10 000.");
+    if (quantity.trim() === "" || !Number.isInteger(n) || n < 1) {
+      setQuantityError("Skriv hur många pack du fyllde på.");
+      inputRef.current?.focus();
+      return;
+    }
+    // Samma tak som Fyll på: det som får plats i facket (en hel omgång för mystery pack).
+    if (n > action.max) {
+      setQuantityError(
+        action.capacity !== null
+          ? `Det får bara plats ${formatInt(action.max)}${NBSP}pack till. Facket rymmer ${formatInt(action.capacity)}.`
+          : `Ange högst ${formatInt(action.max)}${NBSP}pack.`,
+      );
       inputRef.current?.focus();
       return;
     }
     if (fromWarehouse && action.warehouseOnHand !== null && n > action.warehouseOnHand) {
       setQuantityError(
-        `Vårt lager har bara ${formatInt(action.warehouseOnHand)}${NBSP}pack. Minska antalet eller bocka ur vårt lager.`,
+        `${warehouse} har bara ${formatInt(Math.max(0, action.warehouseOnHand))}${NBSP}pack. Minska antalet eller bocka ur lagret.`,
       );
       inputRef.current?.focus();
       return;
@@ -617,9 +633,29 @@ function RefillDialog({ action }: { action: RefillActionView }) {
     });
   };
 
-  const after = Number.isInteger(Number(quantity)) ? action.onHand + Number(quantity) : null;
-  const capped =
-    action.unitsInWindow !== null && action.suggested < action.unitsInWindow - action.onHand;
+  const typed = quantity.trim() === "" ? null : Number(quantity);
+  const valid = typed !== null && Number.isInteger(typed) && typed > 0;
+  const now = Math.max(0, action.onHand);
+  // "Efter: 25 av 25" med känd kapacitet, annars "Efter: 12 pack".
+  const afterText = valid
+    ? action.capacity !== null
+      ? `Efter: ${formatInt(now + typed)} av ${formatInt(action.capacity)}.`
+      : `Efter: ${formatInt(now + typed)}${NBSP}pack.`
+    : null;
+  const soldText =
+    action.unitsInWindow !== null && action.windowDays !== null
+      ? `Sålt ${formatInt(action.windowDays)}${NBSP}d: ${formatInt(action.unitsInWindow)}${NBSP}pack.`
+      : null;
+  // Mystery pack: facket fylls bara på när det är tomt, med en hel omgång (som Fyll på).
+  const mystery = mysteryNote(
+    { now, capacity: action.capacity, batchSize: action.batchSize },
+    valid ? typed : 0,
+  );
+  const hint =
+    [afterText, soldText, mystery]
+      .filter((t): t is string => Boolean(t))
+      .map((t) => (/[.!?]$/.test(t) ? t : `${t}.`))
+      .join(" ") || undefined;
 
   return (
     <>
@@ -641,17 +677,16 @@ function RefillDialog({ action }: { action: RefillActionView }) {
             type="number"
             inputMode="numeric"
             min={1}
-            max={10_000}
+            max={action.max}
             step={1}
             suffix="pack"
             value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
+            onChange={(e) => {
+              setQuantity(e.target.value);
+              setQuantityError(undefined);
+            }}
             error={quantityError}
-            hint={
-              action.unitsInWindow !== null && action.windowDays !== null
-                ? `Sålt ${formatInt(action.windowDays)}${NBSP}d: ${formatInt(action.unitsInWindow)}${NBSP}pack.${capped ? " Mer finns inte i lagret." : ""}${after !== null && after > 0 ? ` Efter: ${formatInt(after)}${NBSP}pack.` : ""}`
-                : undefined
-            }
+            hint={hint}
             required
             autoFocus
           />
@@ -671,10 +706,10 @@ function RefillDialog({ action }: { action: RefillActionView }) {
               className="mt-0.5 size-4 shrink-0 accent-[var(--bl-fg)]"
             />
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-base text-fg">Ta packen från vårt lager</span>
+              <span className="text-base text-fg">{`Ta packen från ${warehouse}`}</span>
               <span className="text-sm text-muted">
                 {hasWarehouse
-                  ? `${formatInt(action.warehouseOnHand ?? 0)}${NBSP}pack kvar hemma.`
+                  ? `${formatInt(Math.max(0, action.warehouseOnHand ?? 0))}${NBSP}pack finns där.`
                   : "Inget eget lager."}
               </span>
             </span>

@@ -16,9 +16,11 @@ import {
 } from "@/server/data/core";
 import { MineToggle } from "@/components/ui/mine-toggle";
 import { loadTeamStateFor } from "@/server/data/team";
+import { slotCapacitiesInRequest } from "@/server/data/core/loaders";
 import { hasOwnStockRows, ownStockTotals } from "@/server/data/core/own-stock";
+import { queryRefillSources } from "@/server/data/core/places";
 import { loadRankedTodoState, loadTodoVisitPlan } from "@/server/data/todos";
-import { getActiveOrganization, requireUser } from "@/server/session";
+import { getActiveOrganization, requireUser, withUserDb } from "@/server/session";
 
 import { Suggestions } from "@/app/(app)/assistent/_components/suggestions";
 import { BokforingReady } from "@/app/(app)/ekonomi/_components/bokforing-ready";
@@ -103,6 +105,17 @@ export default async function TodoPage({
       ])
     : [null, null, null, null];
 
+  // Påfyllningsrutan räknar som Fyll på: fackens kapacitet och lagret automaten fylls på
+  // från. Läses bara när det finns något att fylla på; fel ger rutan utan förslag.
+  const hasRefills = todos.some((t) => t.kind === "refill");
+  const [capacities, sources] =
+    hasRefills && viewer
+      ? await Promise.all([
+          slotCapacitiesInRequest(viewer, now).catch(() => []),
+          withUserDb((tx) => queryRefillSources(tx, ctx.organization.id)).catch(() => null),
+        ])
+      : [[], null];
+
   // Vårt lager: summan av alla egna lager per titel.
   const warehouse = hasOwnStockRows(stock.rows)
     ? new Map(ownStockTotals(stock.rows).map((r) => [r.titleId, r.onHand]))
@@ -116,6 +129,8 @@ export default async function TodoPage({
     machines: master.machines,
     machineStock: stock.machineStock,
     warehouse,
+    capacities,
+    sources,
     unknownStockMachineIds: [
       ...new Set(
         stock.rows

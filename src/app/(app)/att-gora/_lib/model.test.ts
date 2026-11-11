@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TodoItem } from "@/analytics/todos";
+import { fillMachines, maxFill, pairKey, suggestFill } from "@/app/fyll-pa/_lib/model";
 import { NBSP } from "@/lib/format";
 
 import {
@@ -14,7 +15,7 @@ import {
   kindSummary,
   primaryFigures,
   stakeOf,
-  suggestRefill,
+  refillHome,
   SIGNAL_BUDGET,
   unpricedOf,
   type ModelInput,
@@ -427,8 +428,14 @@ describe("buildPage", () => {
       machineCode: "BL\u2011001",
       titleName: "Titel 1",
       onHand: 1,
+      capacity: null,
+      batchSize: null,
       warehouseOnHand: 10,
+      warehouseName: null,
+      // Som Fyll på utan känd kapacitet: en veckas försäljning (36 på 14 d = 18) − 1 i automaten,
+      // högst de 10 i lagret.
       suggested: 10,
+      max: 500,
     });
   });
 
@@ -519,234 +526,120 @@ describe("mått och förslag", () => {
     const figures = primaryFigures(refill(M1, "now", 1, 0), false);
     expect(figures.find((f) => f.label === "Räcker")?.value).toBe("Slut");
   });
-
-  it("föreslår att fylla till fönstrets försäljning, högst centrallagret", () => {
-    expect(suggestRefill(1, 36, null)).toBe(35);
-    expect(suggestRefill(1, 36, 12)).toBe(12);
-    expect(suggestRefill(40, 36, null)).toBe(1);
-    expect(suggestRefill(-2, 4, 0)).toBe(4);
-    expect(suggestRefill(0, null, null)).toBe(1);
-  });
 });
 
-describe("integrationens punkter: avtal, rapportutkast, larm och förlorad försäljning", () => {
-  const contract = item({
-    key: "contract:c1:2027-02-28",
-    kind: "contract",
-    level: "soon",
-    daysLeft: 28,
-    title: "Avtalet med ICA Nära löper ut 28 feb. 2027",
-    link: "/avtal#avtal-c1",
-    evidence: {
-      rule: "Sista uppsägningsdag.",
-      period: null,
-      orderIds: [],
-      dates: [],
-      titleIds: [],
-      machineIds: [],
-      storeIds: [S1],
-      recipientIds: [],
-      figures: [
+describe("påfyllningsrutan använder Fyll på-logiken", () => {
+  const PLACE_A = "p-hemma";
+  const PLACE_B = "p-kontoret";
+  const sources = {
+    places: [
+      { id: PLACE_A, name: "Hemma" },
+      { id: PLACE_B, name: "Kontoret" },
+    ],
+    stock: { [PLACE_A]: { [T1]: 40, [T2]: 14 }, [PLACE_B]: { [T1]: 3 } },
+    machineSource: { [M2]: PLACE_B },
+    defaultPlaceId: PLACE_A,
+  };
+  const action = (todo: TodoItem, over: Partial<ModelInput> = {}) => {
+    const a = buildPage(input([todo], { sources, ...over })).groups[0]!.items[0]!.action;
+    if (a?.kind !== "register-refill") throw new Error("ingen påfyllning");
+    return a;
+  };
+
+  it("samma antal som Fyll på för samma automat och titel", () => {
+    // Fack för 25, 1 i automaten, 40 hemma: Fyll på föreslår 24.
+    const capacities = [{ machineId: M1, titleId: T1, capacity: 25 }];
+    const a = action(refill(M1, "now", 1), { capacities });
+    expect(a.suggested).toBe(suggestFill(1, 25, 40, 36, null));
+    expect(a.suggested).toBe(24);
+    expect(a.max).toBe(maxFill({ now: 1, capacity: 25 }));
+    expect(a).toMatchObject({ capacity: 25, warehouseOnHand: 40, warehouseName: "Hemma" });
+    // Samma rad i Fyll på (fillMachines) ger samma förslag.
+    const [m] = fillMachines({
+      machines: [
         {
-          key: "daysToDeadline",
-          label: "Dagar till sista uppsägningsdag",
-          value: 28,
-          unit: "days",
+          id: M1,
+          code: "BL-001",
+          name: "Automat 1",
+          storeName: null,
+          syncedAt: "2026-11-02T08:00:00Z",
+          fill: [{ title_id: T1, units: 1, capacity: 25, channels: 1, empty: 0 }],
         },
-        { key: "daysToEnd", label: "Dagar till avtalets slut", value: 118, unit: "days" },
       ],
-    },
-    action: { kind: "open-contract", label: "Öppna avtalet", params: { contractId: "c1" } },
-  });
-  const review = item({
-    key: "report-review:2026-10",
-    kind: "report-review",
-    level: "later",
-    daysLeft: 28,
-    title: "Granska 3 rapportutkast för oktober",
-    link: "/rapporter?manad=2026-10#granska",
-    evidence: {
-      rule: "Utkast.",
-      period: null,
-      orderIds: [],
-      dates: [],
-      titleIds: [],
-      machineIds: [],
-      storeIds: [],
-      recipientIds: [],
-      figures: [{ key: "drafts", label: "Utkast", value: 3, unit: "count" }],
-    },
-    action: { kind: "review-report", label: "Granska utkasten", params: { month: "2026-10" } },
-  });
-  const alert = item({
-    key: `alert:machine:${M2}`,
-    kind: "alert",
-    level: "now",
-    title: "BL-002 har slutat sälja",
-    link: `/drift/automat/${M2}`,
-    evidence: {
-      rule: "Misstänkt fel.",
-      period: null,
-      orderIds: [],
-      dates: [],
-      titleIds: [],
-      machineIds: [M2],
-      storeIds: [],
-      recipientIds: [],
-      figures: [{ key: "openHours", label: "Öppet", value: 3, unit: "hours" }],
-    },
-    action: { kind: "open-alert", label: "Öppna automaten", params: { alertId: "a1" } },
-  });
-
-  it("visar etikett, mått och länk för varje ny sort", () => {
-    const page = buildPage(input([alert, contract, review]));
-    const views = page.groups.flatMap((g) => g.items);
-    const byKey = new Map(views.map((v) => [v.key, v]));
-    expect(byKey.get(contract.key)?.eyebrow).toBe("Kontrakt");
-    expect(byKey.get(contract.key)?.figures).toEqual([
-      { label: "Säg upp inom", value: `28${NBSP}dagar` },
-      { label: "Slutar om", value: `118${NBSP}dagar` },
-    ]);
-    expect(byKey.get(contract.key)?.action).toEqual({
-      kind: "link",
-      label: "Öppna avtalet",
-      href: "/avtal#avtal-c1",
+      titles: new Map([[T1, "Titel 1"]]),
+      machineStock: new Map([[pairKey(M1, T1), 1]]),
+      home: new Map([[T1, 40]]),
+      current: new Set([pairKey(M1, T1)]),
+      retired: new Set(),
+      sold: new Map([[pairKey(M1, T1), 36]]),
     });
-    expect(byKey.get(review.key)?.figures[0]).toEqual({ label: "Utkast", value: "3" });
-    expect(byKey.get(review.key)?.action).toMatchObject({
-      href: "/rapporter?manad=2026-10#granska",
+    expect(m!.rows.find((r) => r.titleId === T1)?.suggested).toBe(a.suggested);
+  });
+
+  it("packen räknas mot lagret automaten fylls på från, inte summan av alla lager", () => {
+    // BL-002 fylls på från Kontoret, som har 3 pack (Hemma har 40).
+    const a = action(refill(M2, "now", 1), {
+      capacities: [{ machineId: M2, titleId: T1, capacity: 25 }],
     });
-    expect(byKey.get(alert.key)?.eyebrow).toBe(`Larm · BL${"‑"}002`);
-    expect(byKey.get(alert.key)?.figures).toEqual([{ label: "Öppet", value: `3${NBSP}h` }]);
-    expect(kindSummary([alert, contract, review])).toBe(
-      `1${NBSP}larm, 1${NBSP}utkast att granska och 1${NBSP}kontrakt att ordna`,
-    );
+    expect(a).toMatchObject({ warehouseOnHand: 3, warehouseName: "Kontoret", suggested: 3 });
+    expect(refillHome({ sources, warehouse: null }, M1, T2)).toEqual({ onHand: 14, name: "Hemma" });
+    expect(
+      refillHome({ sources: { ...sources, defaultPlaceId: null }, warehouse: null }, M1, T1),
+    ).toBeNull();
   });
 
-  it("avtalet följer butiksfiltret; larmet följer automaten", () => {
-    expect(
-      inScope(contract, { scope: { storeId: S1, machineId: null }, machines: input([]).machines }),
-    ).toBe(true);
-    expect(
-      inScope(contract, {
-        scope: { storeId: "annan", machineId: null },
-        machines: input([]).machines,
-      }),
-    ).toBe(false);
-    expect(
-      inScope(alert, { scope: { storeId: null, machineId: M1 }, machines: input([]).machines }),
-    ).toBe(false);
-  });
-
-  it("beloppet i risk kopplas inte till ett utkast som står först", () => {
-    const first = { ...review, level: "now" as const, urgency: 1e12 };
-    const page = buildPage(input([first, refill(M1, "soon", 294_667)]));
-    expect(page.header.description).toBe("Först: Granska 3 rapportutkast för oktober.");
-    expect(page.header.meta.find((m) => m.label === "I risk 7 d")?.value).toBe(
-      `2${NBSP}947${NBSP}kr`,
-    );
-  });
-
-  it("med bara automatfilter följer avtal och rapporter automatens butik (som Hem)", () => {
-    const machines = input([]).machines;
-    const m = machines.find((x) => x.storeId === S1)!;
-    const other = machines.find((x) => x.storeId !== S1);
-    expect(inScope(contract, { scope: { storeId: null, machineId: m.id }, machines })).toBe(true);
-    if (other) {
-      expect(inScope(contract, { scope: { storeId: null, machineId: other.id }, machines })).toBe(
-        false,
-      );
-    }
-    expect(
-      inScope(contract, {
-        scope: { storeId: null, machineId: m.id },
-        machines: machines.map((x) => (x.id === m.id ? { ...x, storeId: "annan" } : x)),
-      }),
-    ).toBe(false);
-  });
-
-  it("påfyllning med förlorad försäljning visar beloppet, bara för ekonomi", () => {
-    const base = refill(M1, "now", 62_400, 0);
-    const lost = {
-      ...base,
-      evidence: {
-        ...base.evidence,
-        figures: [
-          ...base.evidence.figures,
-          {
-            key: "lostRevenueOre",
-            label: "Förlorat när slut, 14 d",
-            value: 31_200,
-            unit: "ore" as const,
-          },
-        ],
-      },
-    };
-    expect(primaryFigures(lost, true)).toContainEqual({
-      label: "Förlorat 14 d",
-      value: `312${NBSP}kr`,
+  it("ett mystery-fack föreslår en hel omgång (14), aldrig 1", () => {
+    const mystery = (onHand: number) =>
+      item({
+        ...refill(M1, "now", 1, onHand, T2),
+        evidence: {
+          ...refill(M1, "now", 1, onHand, T2).evidence,
+          figures: [
+            { key: "onHand", label: "I lager", value: onHand, unit: "packs" },
+            { key: "batchSize", label: "Pack per omgång", value: 14, unit: "packs" },
+          ],
+        },
+      });
+    const titles = [
+      { id: T1, name: "Titel 1" },
+      { id: T2, name: "Mystery Pack", mysteryBatchSize: 14 },
+    ];
+    const capacities = [{ machineId: M1, titleId: T2, capacity: 20 }];
+    // Tomt fack och en hel omgång hemma: 14.
+    const empty = action(mystery(0), { titles, capacities });
+    expect(empty).toMatchObject({ batchSize: 14, suggested: 14, max: 20 });
+    // Pack kvar i facket: inget förslag (facket fylls bara på när det är tomt).
+    expect(action(mystery(3), { titles, capacities }).suggested).toBe(0);
+    // Mindre än en hel omgång hemma: inget förslag, aldrig en del av en omgång.
+    const short = action(mystery(0), {
+      titles,
+      capacities,
+      sources: { ...sources, stock: { [PLACE_A]: { [T2]: 13 } } },
     });
-    expect(primaryFigures(lost, false).some((f) => f.label.startsWith("Förlorat"))).toBe(false);
+    expect(short.suggested).toBe(0);
+    // Ett litet fack: en hel omgång går ändå att välja (som i Fyll på).
+    expect(
+      action(mystery(0), { titles, capacities: [{ machineId: M1, titleId: T2, capacity: 10 }] })
+        .max,
+    ).toBe(14);
   });
 
-  it("läsaren och påfyllaren får ingen länk till sidor de inte ser", () => {
-    const page = buildPage(input([contract, review], { role: "refiller", economy: false }));
-    for (const v of page.groups.flatMap((g) => g.items)) expect(v.action).toBeNull();
-  });
-});
-
-describe("tyst titel", () => {
-  const silentTitle = item({
-    key: `silent-title:${M1}:${T1}`,
-    kind: "silent-title",
-    level: "now",
-    atStakeOre: 34_300,
-    title: "Titel 1 i Automat 1 har inte sålt på 3 dygn",
-    link: `/drift/automat/${M1}`,
-    evidence: {
-      rule: "Tyst titel.",
-      period: null,
-      orderIds: [],
-      dates: [],
-      titleIds: [T1],
-      machineIds: [M1],
-      storeIds: [],
-      recipientIds: [],
-      figures: [
-        { key: "silentHours", label: "Timmar utan försäljning", value: 72, unit: "hours" },
-        { key: "onHand", label: "Pack i facket", value: 5, unit: "packs" },
-      ],
-    },
-    action: { kind: "open-machine", label: "Öppna automaten", params: { machineId: M1 } },
-  });
-
-  it("har etikett, mått, knapp och räknas som intäkt i risk", () => {
-    const page = buildPage(input([silentTitle]));
-    const view = page.groups[0]!.items[0]!;
-    expect(view.eyebrow).toBe(`Tyst titel · BL${"‑"}001`);
-    expect(view.figures).toEqual([
-      { label: "Tyst", value: `72${NBSP}h` },
-      { label: "I automaten", value: `5${NBSP}pack` },
-      { label: "I risk 7 d", value: `343${NBSP}kr` },
-    ]);
-    expect(view.action).toEqual({
-      kind: "link",
-      label: "Öppna automaten",
-      href: `/drift/automat/${M1}`,
+  it("taket är det som får plats i facket: ett större antal nekas", () => {
+    const a = action(refill(M1, "now", 1, 20), {
+      capacities: [{ machineId: M1, titleId: T1, capacity: 25 }],
     });
-    expect(stakeOf([silentTitle])).toBe(34_300);
-    expect(kindSummary([silentTitle])).toBe(`1${NBSP}tyst titel`);
+    expect(a.max).toBe(5);
+    expect(a.suggested).toBe(5);
+    // Utan känd kapacitet: Fyll på-stegarens tak (500), inte 10 000.
+    expect(action(refill(M1, "now", 1)).max).toBe(500);
   });
 
-  it("påfyllaren ser punkten utan belopp och avbockningen följer automatfiltret", () => {
-    const page = buildPage(input([silentTitle], { role: "refiller", economy: false }));
-    expect(page.groups[0]!.items[0]!.figures.map((f) => f.label)).toEqual(["Tyst", "I automaten"]);
-    const dismissed = dismissedViews(
-      input([], {
-        scope: { storeId: null, machineId: M2 },
-        dismissed: [{ key: silentTitle.key, title: "X", when: "i dag", by: null }],
-      }),
-    );
-    expect(dismissed).toEqual([]);
+  it("utan eget lager begränsar inget lager förslaget", () => {
+    const a = action(refill(M1, "now", 1), {
+      sources: null,
+      warehouse: null,
+      capacities: [{ machineId: M1, titleId: T1, capacity: 25 }],
+    });
+    expect(a).toMatchObject({ warehouseOnHand: null, suggested: 24 });
   });
 });

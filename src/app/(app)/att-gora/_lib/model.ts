@@ -25,6 +25,9 @@ import type { Status } from "@/components/ui/status-tag";
 import { sumOre, type IsoDate } from "@/domain";
 import { formatDecimal, formatInt, formatPercent, formatSek, NBSP } from "@/lib/format";
 
+// Samma förslag och samma tak som Fyll på (läses bara, ändras aldrig här).
+import { maxFill, suggestFill } from "@/app/fyll-pa/_lib/model";
+
 // ---------------------------------------------------------------------------
 // Typer
 // ---------------------------------------------------------------------------
@@ -44,13 +47,24 @@ export interface RefillActionView {
   readonly titleName: string;
   /** Pack i automaten nu. */
   readonly onHand: number;
-  /** Pack av titeln i centrallagret, eller null om det saknas ett centrallager. */
+  /** Fackens kapacitet för titeln i automaten (Awish), eller null om den är okänd. */
+  readonly capacity: number | null;
+  /** Mystery pack: pack per omgång (fylls bara på när facket är tomt), annars null. */
+  readonly batchSize: number | null;
+  /**
+   * Pack av titeln i lagret automaten fylls på från ("Fylls på från", annars standardlagret),
+   * eller null om det saknas ett eget lager.
+   */
   readonly warehouseOnHand: number | null;
+  /** Lagrets namn ("Kontoret"), eller null. */
+  readonly warehouseName: string | null;
   /** Sålda pack de senaste 14 dagarna (underlaget), eller null. */
   readonly unitsInWindow: number | null;
   readonly windowDays: number | null;
-  /** Förslag på antal: fyll till 14 dagars försäljning, högst det som finns i centrallagret. */
+  /** Förslaget, samma som Fyll på (suggestFill): det som får plats, högst packen i lagret. */
   readonly suggested: number;
+  /** Största antal som går att fylla på, samma tak som Fyll på (maxFill). */
+  readonly max: number;
 }
 
 export interface MergeActionView {
@@ -234,7 +248,7 @@ export interface ModelInput {
   readonly todos: readonly TodoItem[];
   readonly role: Role;
   readonly economy: boolean;
-  readonly titles: ReadonlyArray<{ id: string; name: string }>;
+  readonly titles: ReadonlyArray<{ id: string; name: string; mysteryBatchSize?: number | null }>;
   readonly machines: ReadonlyArray<{
     id: string;
     name: string;
@@ -245,6 +259,22 @@ export interface ModelInput {
   readonly machineStock: ReadonlyArray<{ machineId: string; titleId: string; onHand: number }>;
   /** Saldo i centrallagret per titel, eller null om det saknas ett centrallager. */
   readonly warehouse: ReadonlyMap<string, number> | null;
+  /** Fackens kapacitet per automat och titel (Awish). Utelämnad = okänd. */
+  readonly capacities?: ReadonlyArray<{
+    readonly machineId: string;
+    readonly titleId: string;
+    readonly capacity: number;
+  }>;
+  /**
+   * Våra lager: saldo per lager och titel, automatens "Fylls på från" och standardlagret.
+   * Påfyllningen tar packen därifrån (register_refill). Utelämnad = `warehouse` används.
+   */
+  readonly sources?: {
+    readonly places: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+    readonly stock: Readonly<Record<string, Readonly<Record<string, number>>>>;
+    readonly machineSource: Readonly<Record<string, string>>;
+    readonly defaultPlaceId: string | null;
+  } | null;
   /**
    * Automater med platser vars saldo är okänt (bara försäljning, ingen inventering).
    * Påfyllningsregeln hoppar över dem, så sidan får inte påstå att lagret räcker.
@@ -544,16 +574,26 @@ function canOpen(role: Role, id: Parameters<typeof routeById>[0]): boolean {
   return routeById(id).roles.includes(role);
 }
 
-/** Förslag på antal vid påfyllning: fyll till fönstrets försäljning, minst 1, högst centrallagret. */
-export function suggestRefill(
-  onHand: number,
-  unitsInWindow: number | null,
-  warehouseOnHand: number | null,
-): number {
-  const target = unitsInWindow !== null && unitsInWindow > 0 ? unitsInWindow : 1;
-  let n = Math.max(target - Math.max(onHand, 0), 1);
-  if (warehouseOnHand !== null && warehouseOnHand > 0) n = Math.min(n, warehouseOnHand);
-  return n;
+/**
+ * Lagret en påfyllning i automaten tar packen från och hur många pack av titeln som finns
+ * där: automatens "Fylls på från", annars standardlagret (samma val som register_refill).
+ * null = inget eget lager.
+ */
+export function refillHome(
+  input: Pick<ModelInput, "sources" | "warehouse">,
+  machineId: string,
+  titleId: string,
+): { readonly onHand: number; readonly name: string | null } | null {
+  const src = input.sources;
+  if (src) {
+    const placeId = src.machineSource[machineId] ?? src.defaultPlaceId;
+    if (!placeId) return null;
+    return {
+      onHand: src.stock[placeId]?.[titleId] ?? 0,
+      name: src.places.find((p) => p.id === placeId)?.name ?? null,
+    };
+  }
+  return input.warehouse ? { onHand: input.warehouse.get(titleId) ?? 0, name: null } : null;
 }
 
 function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
@@ -580,7 +620,13 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         input.machineStock.find((s) => s.machineId === machineId && s.titleId === titleId)
           ?.onHand ??
         0;
-      const warehouseOnHand = input.warehouse ? (input.warehouse.get(titleId) ?? 0) : null;
+      const home = refillHome(input, machineId, titleId);
+      const capacity =
+        input.capacities?.find((c) => c.machineId === machineId && c.titleId === titleId)
+          ?.capacity ?? null;
+      const batchSize =
+        input.titles.find((t) => t.id === titleId)?.mysteryBatchSize ??
+        figureValue(item, "batchSize");
       const unitsInWindow = figureValue(item, "unitsInWindow");
       return {
         kind: "register-refill",
@@ -592,10 +638,21 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         machineCode: machine ? unbreakable(machine.code) : "",
         titleName: input.titles.find((t) => t.id === titleId)?.name ?? titleId,
         onHand,
-        warehouseOnHand,
+        capacity,
+        batchSize,
+        warehouseOnHand: home?.onHand ?? null,
+        warehouseName: home?.name ?? null,
         unitsInWindow,
         windowDays: figureValue(item, "windowDays"),
-        suggested: suggestRefill(onHand, unitsInWindow, warehouseOnHand),
+        // Utan eget lager begränsar inget lager förslaget: det som får plats.
+        suggested: suggestFill(
+          onHand,
+          capacity,
+          home ? home.onHand : Number.MAX_SAFE_INTEGER,
+          unitsInWindow ?? 0,
+          batchSize,
+        ),
+        max: maxFill({ now: Math.max(0, onHand), capacity, batchSize }),
       };
     }
     case "merge-titles": {
