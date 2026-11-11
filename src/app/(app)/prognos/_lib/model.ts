@@ -329,6 +329,15 @@ export interface PurchaseOrderView {
   }[];
 }
 
+/**
+ * Ska hela ordertabellen stå i huvudvyn? Bara när ett utkast väntar på att beställas eller
+ * tas bort. Beställda order står redan där som "På väg: 36 st, väntas fredag" med
+ * "Kom fram", så tabellen ligger annars under "Mer".
+ */
+export function ordersInMainView(open: readonly Pick<PurchaseOrderView, "status">[]): boolean {
+  return open.some((o) => o.status === "draft");
+}
+
 export interface PurchaseOrdersModel {
   readonly heading: Heading;
   readonly open: readonly PurchaseOrderView[];

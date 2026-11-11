@@ -30,7 +30,7 @@ import { ValuationView } from "./_components/valuation-view";
 import { PageHead } from "../vart-lager/_components/page-head";
 import { packHref } from "../vart-lager/mystery/_lib/model";
 import { TodoList } from "../vart-lager/_components/todo-list";
-import { buildPageModel, type PageModel } from "./_lib/model";
+import { buildPageModel, ordersInMainView, type PageModel } from "./_lib/model";
 import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
 
 /** Inköp och prognos; i Enkel vy Inköpslistan på personens språk. */
@@ -145,8 +145,9 @@ export default async function PrognosPage({
   }
 
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
-  // Öppna inköpsorder står i huvudvyn; utan öppna ligger listan under "Mer".
-  const ordersMain = m.orders.open.length > 0;
+  // Hela ordertabellen ligger under "Mer". Det som är beställt står redan i huvudvyn som
+  // "På väg" med "Kom fram"; bara ett utkast (som måste beställas eller tas bort) lyfter upp den.
+  const ordersMain = ordersInMainView(m.orders.open);
   const orders = (
     <OrdersView
       model={m.orders}

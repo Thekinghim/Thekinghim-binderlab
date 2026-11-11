@@ -25,6 +25,7 @@ import {
   oneSentence,
   purchaseOrderNumber,
   tidy,
+  ordersInMainView,
 } from "./model";
 import { oreToField, parseCount, parseKronor } from "./units";
 import { buildVartLagerModel, stockTodos } from "../../vart-lager/_lib/model";
@@ -842,6 +843,14 @@ describe("delarna som mystery packs äter upp (samma rad på Inköp och Vårt la
     const row = lager.rows.find((r) => r.titleId === T2)!;
     expect(row.needQty).toBe(t2.suggestQty);
     expect(row.toMystery?.text).toBe(t2.toMystery?.text);
+  });
+});
+
+describe("ordertabellen ligger under Mer", () => {
+  it("bara ett utkast lyfter upp hela tabellen; beställt står som På väg", () => {
+    expect(ordersInMainView([])).toBe(false);
+    expect(ordersInMainView([{ status: "ordered" }, { status: "partially_received" }])).toBe(false);
+    expect(ordersInMainView([{ status: "ordered" }, { status: "draft" }])).toBe(true);
   });
 });
 
