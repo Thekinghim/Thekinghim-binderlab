@@ -157,6 +157,19 @@ describe("butik utan mottagare i appen", () => {
     expect(await deliveries(reportId)).toHaveLength(1);
   });
 
+  it("Värde räknar inte en rapport som ägaren delat för hand som appens arbete", async () => {
+    // 20261210000100_varde_bara_mejl.sql: bara utskick från appen (channel 'email') räknas.
+    const counted = await asUser(owner, (tx) =>
+      rows<{ kind: string; n: number }>(
+        tx,
+        sql`select kind, n from public.varde_automation_counts(
+              ${orgId}::uuid, (date_trunc('month', now()) - interval '1 month')::date,
+              (date_trunc('month', now()) + interval '2 months')::date)`,
+      ),
+    );
+    expect(counted.filter((c) => c.kind === "report")).toEqual([]);
+  });
+
   it("raden går inte att ändra eller ta bort, och läsaren kan inte lägga in en egen", async () => {
     const change = await asUser(owner, (tx) =>
       attempt(tx, (sp) =>
