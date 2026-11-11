@@ -117,6 +117,17 @@ export async function loadPushContext(
   return { machines, today };
 }
 
+/** Mottagarens språk i organisationen (profiles.locale). Okänt eller saknas: svenska. */
+async function userLang(tx: Tx | Db, organizationId: string, userId: string): Promise<"sv" | "en"> {
+  const found = Array.from(
+    await tx.execute(
+      sql`select p.locale from public.profiles p
+          where p.organization_id = ${organizationId}::uuid and p.user_id = ${userId}::uuid`,
+    ),
+  ) as { locale: string | null }[];
+  return found[0]?.locale === "en" ? "en" : "sv";
+}
+
 /** Användarens e-post (auth.users). Larmjobbet kör som systemroll och får läsa den. */
 async function userEmail(db: Db, userId: string): Promise<string | null> {
   const rows = await db.execute(
@@ -258,12 +269,15 @@ export async function deliverDue(
         timeZone,
         organizationName: org?.name ?? "Binderlab",
         idempotencyKey: row.id,
-        push: await loadPushContext(
-          tx,
-          row.organizationId,
-          items,
-          businessDateAt(now, timeZone),
-        ),
+        push: {
+          ...(await loadPushContext(
+            tx,
+            row.organizationId,
+            items,
+            businessDateAt(now, timeZone),
+          )),
+          lang: await userLang(tx, row.organizationId, row.userId),
+        },
       });
       await tx
         .update(s.alertDeliveries)

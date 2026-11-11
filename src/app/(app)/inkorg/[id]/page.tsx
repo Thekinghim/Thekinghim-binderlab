@@ -11,7 +11,14 @@ import { isoDateToShellDate, requireRoute } from "@/server/data/core";
 import { formatWhen } from "../../drift/_lib/display";
 import { IncidentForm } from "../_components/incident-form";
 import { loadIncident } from "../_lib/load";
-import { KIND_LABEL, kronorOfOre, STATUS_LABEL, utcToLocalInput } from "../_lib/model";
+import {
+  isStoreFault,
+  KIND_LABEL,
+  kronorOfOre,
+  STATUS_LABEL,
+  telHref,
+  utcToLocalInput,
+} from "../_lib/model";
 
 export const metadata: Metadata = { title: "Ärende" };
 
@@ -34,6 +41,9 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
   if (!i) notFound();
   const now = new Date(ctx.now);
   const machine = data.machines.find((m) => m.id === i.machineId);
+  // Felanmälan från butiken: numret blir en länk som ringer (notisen landar här).
+  const fromStore = isStoreFault(i.kind);
+  const tel = telHref(data.store?.phone);
   const titleName =
     data.titles.find((t) => t.id === (data.order?.titleId ?? i.titleId))?.name ?? null;
 
@@ -57,6 +67,34 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
           { label: "Order", value: data.order?.externalId ?? "–" },
         ]}
       />
+      {fromStore && data.store ? (
+        <div className="flex flex-col gap-2">
+          {tel ? (
+            <a
+              href={tel}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-sm border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover md:w-fit"
+            >
+              <span>{`Ring ${data.store.name}`}</span>
+              <span className="tabular-nums">{data.store.phone}</span>
+            </a>
+          ) : (
+            <p className="text-sm text-muted">
+              {`${data.store.name} har inget telefonnummer. `}
+              {ctx.canEdit ? (
+                <Link
+                  href={`/butiker/${data.store.id}`}
+                  className="rounded-xs text-fg underline underline-offset-4 max-md:tap"
+                >
+                  Lägg in numret under Butiker
+                </Link>
+              ) : null}
+            </p>
+          )}
+          <p className="text-sm text-muted">
+            Butiken ser i sin portal när ärendet är Pågår eller Löst.
+          </p>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <StatusTag
           status={i.status === "resolved" ? "ok" : i.status === "open" ? "warning" : "neutral"}

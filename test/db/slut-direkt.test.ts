@@ -299,4 +299,29 @@ describe("slut i automat kommer direkt", () => {
     now = new Date("2026-11-12T11:25:00Z");
     expect((await sync()).stockDropped).toEqual([]);
   });
+  it("den som har engelska i profilen får notisen på engelska", async () => {
+    // Påfyllt: larmen stängs. Sedan slut igen.
+    fake.state.products["2"] = products(6, 6);
+    now = new Date("2026-11-12T12:00:00Z");
+    await sync();
+    await alerts([orgId]);
+    expect((await lowAlerts()).every((a) => a.status !== "open")).toBe(true);
+    await db().execute(
+      sql`update public.profiles set locale = 'en'
+          where organization_id = ${orgId}::uuid and user_id = ${owner.id}::uuid`,
+    );
+    sent.length = 0;
+    fake.state.products["2"] = products(0, 6);
+    // Mer än två timmar senare: annars räknas det som fladder (samma incident, ingen ny notis).
+    now = new Date("2026-11-12T15:00:00Z");
+    expect((await sync()).stockDropped).toEqual([machineId]);
+    await alerts([orgId]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.push[0]).toMatchObject({
+      title: "BL-003 Automat 3 Sega gubben",
+      body: "1\u00a0empty. Tap to refill.",
+      url: `/fyll-pa/${machineId}`,
+      lang: "en",
+    });
+  });
 });

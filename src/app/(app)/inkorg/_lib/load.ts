@@ -259,6 +259,8 @@ export interface IncidentDetail {
     titleId: string | null;
   } | null;
   readonly history: { at: string; action: string; actor: string | null }[];
+  /** Butiken som automaten stod i när ärendet hände (namn och telefon), om någon. */
+  readonly store: { id: string; name: string; phone: string | null } | null;
 }
 
 /** Ett ärende (eller tomt för ett nytt) med stamdata och ändringshistorik. */
@@ -311,6 +313,25 @@ export async function loadIncident(ctx: AppContext, id: string | null): Promise<
         .where(and(eq(s.orders.organizationId, orgId), eq(s.orders.id, incident.orderId)));
       if (o) order = { ...o, orderedAt: o.orderedAt.toISOString() };
     }
+    // Butiken automaten stod i den dagen: "Ring butiken" på ärendet.
+    let store: IncidentDetail["store"] = null;
+    if (incident) {
+      const found = Array.from(
+        await tx.execute(
+          sql`select st.id::text as id, st.name, st.phone
+              from public.machine_placements p
+              join public.stores st
+                on st.organization_id = p.organization_id and st.id = p.store_id
+              where p.organization_id = ${orgId}::uuid
+                and p.machine_id = ${incident.machineId}::uuid
+                and p.valid_from <= (${incident.startedAt}::timestamptz at time zone ${ctx.timeZone})::date
+                and (p.valid_to is null
+                     or p.valid_to >= (${incident.startedAt}::timestamptz at time zone ${ctx.timeZone})::date)
+              order by p.valid_from desc limit 1`,
+        ),
+      ) as { id: string; name: string; phone: string | null }[];
+      store = found[0] ?? null;
+    }
     const memberList = await members(tx, orgId, incident?.assigneeId ?? null);
     const history = incident
       ? await tx
@@ -346,6 +367,7 @@ export async function loadIncident(ctx: AppContext, id: string | null): Promise<
       titles,
       members: memberList,
       order,
+      store,
       history: history.map((h) => ({
         at: h.at.toISOString(),
         action: h.action,

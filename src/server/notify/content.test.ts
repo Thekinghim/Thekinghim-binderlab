@@ -188,6 +188,32 @@ describe("push om påfyllning", () => {
     expect(pushPayloads(d)).toEqual([pushPayload(d)]);
   });
 
+  it("på engelska för den som har engelska (delägaren): antal, dag och 'Tap to refill.'", () => {
+    const base = {
+      today: TODAY,
+      lang: "en" as const,
+      machines: new Map([["m3", machine("BL-003", "Sega gubben")]]),
+    };
+    const one = refillPush(delivery([low("m3", "t1", "empty")]), base);
+    expect(one).toMatchObject({
+      title: "BL-003 Sega gubben",
+      body: "1\u00a0empty. Tap to refill.",
+      url: "/fyll-pa/m3",
+      lang: "en",
+    });
+    const mixed = refillPush(
+      delivery([low("m3", "t1", "empty"), low("m3", "t2", "soon", SATURDAY)]),
+      base,
+    );
+    expect(mixed?.body).toBe("1\u00a0empty, 1\u00a0runs out on Saturday. Tap to refill.");
+    const many = refillPush(delivery([low("m3", "t1", "empty"), low("m1", "t1", "empty")]), base);
+    expect(many).toMatchObject({ title: "2\u00a0machines need refilling", lang: "en" });
+    // Svenska har ingen lang (som förut).
+    expect(refillPush(delivery([low("m3", "t1", "empty")]), { today: TODAY })).not.toHaveProperty(
+      "lang",
+    );
+  });
+
   it("utan uppgifter om automaten faller notisen tillbaka på larmets rubrik", () => {
     const out = refillPush(delivery([low("m3", "t1", "empty"), low("m3", "t2", "empty")]));
     expect(out).toMatchObject({

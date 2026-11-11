@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { localToUtc, utcToLocalInput, validateIncident, type IncidentInput } from "./model";
+import {
+  isStoreFault,
+  localToUtc,
+  telHref,
+  utcToLocalInput,
+  validateIncident,
+  type IncidentInput,
+} from "./model";
 
 const M = "11111111-1111-4111-8111-111111111111";
 const U = "22222222-2222-4222-8222-222222222222";
@@ -80,5 +87,28 @@ describe("kundärende: innehåll", () => {
     expect(
       validateIncident({ ...input, refunded: "49" }, { ...CTX, orderAmountOre: 4900 }).ok,
     ).toBe(true);
+  });
+});
+
+describe("ring butiken", () => {
+  it("telHref: bara siffror och ett inledande plus", () => {
+    expect(telHref("040-12 34 56")).toBe("tel:040123456");
+    expect(telHref(" +46 (0)40 12 34 56 ")).toBe("tel:+46040123456");
+    expect(telHref("0701234567")).toBe("tel:0701234567");
+  });
+
+  it("telHref: inget nummer eller inget som går att ringa ger null", () => {
+    expect(telHref(null)).toBeNull();
+    expect(telHref("")).toBeNull();
+    expect(telHref("ring mig")).toBeNull();
+    expect(telHref("123")).toBeNull();
+    expect(telHref("1".repeat(16))).toBeNull();
+  });
+
+  it("isStoreFault: bara felanmälningar från portalen", () => {
+    expect(isStoreFault("store_payment")).toBe(true);
+    expect(isStoreFault("store_other")).toBe(true);
+    expect(isStoreFault("machine_fault")).toBe(false);
+    expect(isStoreFault("not_delivered")).toBe(false);
   });
 });

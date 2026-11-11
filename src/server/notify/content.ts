@@ -92,7 +92,14 @@ export interface PushContext {
   readonly machines?: ReadonlyMap<string, PushMachine>;
   /** Dagens datum i organisationens tidszon ("i dag", "i morgon"). */
   readonly today?: IsoDate;
+  /**
+   * Mottagarens språk (profilen). Notisen om påfyllning skrivs på engelska för den som har
+   * engelska (delägaren i enkla vyn); övriga larm är på svenska som förut.
+   */
+  readonly lang?: "sv" | "en";
 }
+
+const WEEKDAYS_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 /** Sidan med veckans besök: dit går notisen när flera automater behöver fyllas på. */
 export const VISIT_PLAN_LINK = "/drift/besok";
@@ -122,13 +129,21 @@ export function machineLabel(m: PushMachine | undefined, fallback: string): stri
 }
 
 /** "i dag", "i morgon", "på lördag" eller "snart" (okänd dag, eller olika dagar). */
-function soonWord(dates: readonly IsoDate[], count: number, today: IsoDate | undefined): string {
+function soonWord(
+  dates: readonly IsoDate[],
+  count: number,
+  today: IsoDate | undefined,
+  en: boolean,
+): string {
   const first = dates[0];
-  if (!today || first === undefined || dates.length < count) return "snart";
-  if (dates.some((d) => d !== first)) return "snart";
-  if (first <= today) return "i dag";
-  if (first === addDays(today, 1)) return "i morgon";
-  return `på ${weekdayName(dayOfWeek(first))}`;
+  const soon = en ? "soon" : "snart";
+  if (!today || first === undefined || dates.length < count) return soon;
+  if (dates.some((d) => d !== first)) return soon;
+  if (first <= today) return en ? "today" : "i dag";
+  if (first === addDays(today, 1)) return en ? "tomorrow" : "i morgon";
+  return en
+    ? `on ${WEEKDAYS_EN[dayOfWeek(first) - 1] ?? ""}`
+    : `på ${weekdayName(dayOfWeek(first))}`;
 }
 
 interface RefillMachine {
@@ -181,12 +196,17 @@ function refillMachines(
   );
 }
 
-/** "3 slut, 2 tar slut i morgon". */
-function countsText(m: RefillMachine, today: IsoDate | undefined): string {
+/** "3 slut, 2 tar slut i morgon" ("3 empty, 2 run out tomorrow"). */
+function countsText(m: RefillMachine, today: IsoDate | undefined, en: boolean): string {
   const parts: string[] = [];
-  if (m.empty > 0) parts.push(`${formatInt(m.empty)}${NBSP}slut`);
+  if (m.empty > 0) parts.push(`${formatInt(m.empty)}${NBSP}${en ? "empty" : "slut"}`);
   if (m.soon > 0) {
-    parts.push(`${formatInt(m.soon)}${NBSP}tar slut ${soonWord(m.soonDates, m.soon, today)}`);
+    const when = soonWord(m.soonDates, m.soon, today, en);
+    parts.push(
+      en
+        ? `${formatInt(m.soon)}${NBSP}${m.soon === 1 ? "runs" : "run"} out ${when}`
+        : `${formatInt(m.soon)}${NBSP}tar slut ${when}`,
+    );
   }
   return parts.join(", ");
 }
@@ -197,14 +217,19 @@ function countsText(m: RefillMachine, today: IsoDate | undefined): string {
  *                  → /fyll-pa/<automat>, samma tagg per automat (en ny ersätter den gamla)
  *   flera:         "3 automater behöver fyllas på" · "BL-003 (5), BL-007 (2), BL-001 (1)"
  *                  → besöksplanen, värst först
+ * Med `ctx.lang` "en": "3 empty, 2 run out tomorrow. Tap to refill." och
+ * "3 machines need refilling".
  */
 export function refillPush(delivery: AlertDelivery, ctx: PushContext = {}): PushPayload | null {
   const machines = refillMachines(delivery.items.filter(isRefill), ctx);
   const first = machines[0];
   if (!first) return null;
   const severity = machines.some((m) => m.empty > 0) ? "critical" : "warning";
+  const en = ctx.lang === "en";
+  const lang = en ? { lang: "en" as const } : {};
   if (machines.length === 1) {
-    const only = first.empty + first.soon === 1 ? first.items[0] : undefined;
+    // På engelska alltid antal: larmets rubrik (med titelns namn) finns bara på svenska.
+    const only = !en && first.empty + first.soon === 1 ? first.items[0] : undefined;
     // En enda titel: säg vilken. Automatens namn står redan i rubriken.
     const m = ctx.machines?.get(first.machineId);
     // Längst namn först, så att "i BL-003 Sega gubben" inte lämnar kvar "BL-003".
@@ -213,13 +238,14 @@ export function refillPush(delivery: AlertDelivery, ctx: PushContext = {}): Push
       .sort((x, y) => y.length - x.length);
     const what = only
       ? sentence(names.reduce((t, n) => t.replace(` i ${n}`, ""), only.title))
-      : sentence(countsText(first, ctx.today));
+      : sentence(countsText(first, ctx.today, en));
     return {
       title: first.label,
-      body: `${what} Tryck för att fylla på.`,
+      body: `${what} ${en ? "Tap to refill." : "Tryck för att fylla på."}`,
       url: fillLink(first.machineId),
       tag: fillTag(first.machineId),
       severity,
+      ...lang,
     };
   }
   const body = machines
@@ -229,11 +255,14 @@ export function refillPush(delivery: AlertDelivery, ctx: PushContext = {}): Push
     })
     .join(", ");
   return {
-    title: `${formatInt(machines.length)}${NBSP}automater behöver fyllas på`,
+    title: en
+      ? `${formatInt(machines.length)}${NBSP}machines need refilling`
+      : `${formatInt(machines.length)}${NBSP}automater behöver fyllas på`,
     body: body.length > 240 ? `${body.slice(0, 239)}…` : body,
     url: VISIT_PLAN_LINK,
     tag: "fyll-flera",
     severity,
+    ...lang,
   };
 }
 
@@ -250,6 +279,57 @@ export function pushPayloads(delivery: AlertDelivery, ctx: PushContext = {}): Pu
   const subject =
     rest.length > 1 && first ? `${rest.length} larm: ${first.title} med flera` : (first?.title ?? "");
   return [refill, pushPayload({ ...delivery, items: rest, subject })];
+}
+
+// ---------------------------------------------------------------------------
+// Push om butikens felanmälan
+// ---------------------------------------------------------------------------
+
+export interface FaultPushInput {
+  readonly incidentId: string;
+  readonly machineId: string;
+  /** Butikens namn, eller automatens när den inte står i någon butik. */
+  readonly place: string;
+  /** Vad som är fel, t.ex. "Betalningen fungerar inte" (FAULT_LABEL). */
+  readonly fault: string;
+  /** Butikens telefonnummer, om det finns. */
+  readonly phone: string | null;
+  /**
+   * Får mottagaren öppna ärendet i Inkorgen (ägare och admin)? Påfyllaren får det inte:
+   * den får numret i texten och länken till automaten i Fyll på.
+   */
+  readonly canOpenCase: boolean;
+}
+
+/** Länken till ärendet i Inkorgen. */
+export function caseLink(incidentId: string): string {
+  return `/inkorg/${incidentId}`;
+}
+
+/**
+ * Notisen när butiken felanmäler en automat:
+ *   ägare/admin: "Sega gubben: Betalningen fungerar inte" · "Tryck för att ringa butiken."
+ *                → ärendet i Inkorgen (där numret är en länk som ringer)
+ *   utan nummer: "Tryck för att öppna ärendet."
+ *   påfyllaren:  "Ring butiken: 040-12 34 56." → Fyll på för automaten
+ */
+export function faultPush(input: FaultPushInput): PushPayload {
+  const phone = input.phone?.trim() ?? "";
+  const body = input.canOpenCase
+    ? phone !== ""
+      ? "Butiken har felanmält automaten. Tryck för att ringa butiken."
+      : "Butiken har felanmält automaten. Tryck för att öppna ärendet."
+    : phone !== ""
+      ? `Butiken har felanmält automaten. Ring butiken: ${phone}.`
+      : "Butiken har felanmält automaten. Säg till ägaren.";
+  const title = `${input.place}: ${input.fault}`;
+  return {
+    title: title.length > 120 ? `${title.slice(0, 119)}…` : title,
+    body,
+    url: input.canOpenCase ? caseLink(input.incidentId) : fillLink(input.machineId),
+    tag: `fel-${input.incidentId}`,
+    severity: "critical",
+  };
 }
 
 /** Sms: ämnet, första larmets text och länken. Högst tre sms-delar. */
