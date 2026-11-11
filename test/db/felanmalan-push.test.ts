@@ -88,6 +88,13 @@ beforeAll(async () => {
   const mod = await import("@/server/portal/actions");
   report = mod.reportFault as typeof report;
   const p = cast.personas;
+  // Fixturens egna enheter stängs av: testet räknar bara dem som skapas här.
+  await asPostgres((tx) =>
+    tx.execute(
+      sql`update public.push_subscriptions set disabled_at = now()
+          where organization_id in (${cast.A.orgId}::uuid, ${cast.B.orgId}::uuid)`,
+    ),
+  );
   await device(cast.A.orgId, p.owner.user!, "owner");
   await device(cast.A.orgId, p.admin.user!, "admin");
   await device(cast.A.orgId, p.refiller.user!, "refiller");
@@ -238,6 +245,7 @@ describe("butikens felanmälan plingar direkt", () => {
       db(),
       sql`select endpoint, disabled_at is not null as off from public.push_subscriptions
           where organization_id = ${cast.A.orgId}::uuid and user_id = ${cast.personas.owner.user!.id}::uuid
+            and endpoint like ${endpointOf("owner") + "%"}
           order by endpoint`,
     );
     expect(state.map((s) => [s.endpoint.split("/").pop(), s.off])).toEqual([
