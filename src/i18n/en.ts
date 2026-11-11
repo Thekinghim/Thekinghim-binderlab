@@ -349,6 +349,7 @@ export const en: Messages = {
     empty: "No mystery packs yet.",
     emptyDetail: "Turn on Own product for the title under Purchase prices.",
     emptySimple: "The owner adds the mystery packs.",
+    openPrices: "Open Purchase prices",
     noOwnStock: "No own stock yet.",
     cannotPack: (place, part) => `Cannot pack ${inPlace(place)}: not enough ${part ?? "parts"}.`,
     canPack: (n, place, limiting) =>

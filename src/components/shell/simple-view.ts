@@ -123,6 +123,9 @@ export function simpleViewAllows(pathname: string): boolean {
     return false;
   }
   const path = trimmed(pathname);
+  // Utskriften av automatens QR-kod (/fyll-pa/<automat>/qr) hör till hela appen: sidan är
+  // på svenska och länkar till Automater, som den enkla vyn inte får öppna.
+  if (isPathOrBelow(path, REFILL_HREF) && path.endsWith("/qr")) return false;
   // Startsidan (Försäljning) bara exakt "/".
   if (path === "/") return true;
   if (ALLOWED_EXACT.includes(path)) return true;

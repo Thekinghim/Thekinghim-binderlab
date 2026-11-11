@@ -23,7 +23,6 @@ describe("Enkel vy: tillåtna sökvägar", () => {
     "/forsaljning",
     "/fyll-pa",
     "/fyll-pa/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f",
-    "/fyll-pa/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f/qr",
     "/vart-lager/mystery",
     "/vart-lager/mystery/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f",
     "/vart-lager/mystery/",
@@ -70,6 +69,9 @@ describe("Enkel vy: tillåtna sökvägar", () => {
     "/vart-lager/mysteryx",
     "/forsaljningar",
     "/fyll-pax",
+    // Utskriften av QR-koden: svensk sida med länk till Automater, inte för den enkla vyn.
+    "/fyll-pa/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f/qr",
+    "/fyll-pa/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f/qr/",
     "/att-gora",
     "/drift",
     "/assistent",

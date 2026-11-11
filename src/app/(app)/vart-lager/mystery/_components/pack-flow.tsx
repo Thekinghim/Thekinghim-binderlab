@@ -91,7 +91,8 @@ export function PackFlow({
       clientId.current = newId();
       // Nästa packning börjar om på en omgång (saldot har minskat).
       setBatches(1);
-      const text = t.mystery.addsLine(res.data.packs, name, placeLabel);
+      // "+14 …": det som lades till, inte saldot (hemma kan stå på 0 efter ett rättat minus).
+      const text = `+${t.mystery.addsLine(res.data.packs, name, placeLabel)}`;
       setDone({ packingId: res.data.packingId, text, undone: false });
       toast({
         title: t.mystery.doneToast(text),

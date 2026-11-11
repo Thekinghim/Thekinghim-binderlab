@@ -77,8 +77,9 @@ export default async function MysteryPacksPage() {
           kind="empty"
           message={t.mystery.empty}
           detail={simple ? t.mystery.emptySimple : t.mystery.emptyDetail}
-          {...(view.canEdit
-            ? { action: { label: "Öppna Inköpspriser", href: "/inkopspriser" } }
+          // Enkel vy: "Ägaren lägger in mystery packs", så ingen knapp dit.
+          {...(view.canEdit && !simple
+            ? { action: { label: t.mystery.openPrices, href: "/inkopspriser" } }
             : {})}
         />
       ) : (

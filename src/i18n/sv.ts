@@ -220,6 +220,7 @@ export const sv = {
     empty: "Inga egna produkter än.",
     emptyDetail: "Slå på Egen produkt för titeln under Inköpspriser.",
     emptySimple: "Ägaren lägger in mystery packs.",
+    openPrices: "Öppna Inköpspriser",
     noOwnStock: "Inget eget lager än.",
     cannotPack: (place: string, part: string | null) =>
       `Kan inte packa ${inPlace(place)}: ${part ?? "delar"} räcker inte.`,

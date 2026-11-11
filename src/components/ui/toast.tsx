@@ -169,7 +169,8 @@ export function ToastCard({
                     item.action?.onClick();
                     onDismiss?.();
                   }}
-                  className="label text-fg underline decoration-line-control underline-offset-4 transition-[text-decoration-color] duration-fast hover:decoration-fg"
+                  // Mobil: osynlig träffyta på minst 44 px runt ordet (t.ex. "Ångra"), som krysset.
+                  className="label relative text-fg underline decoration-line-control underline-offset-4 transition-[text-decoration-color] duration-fast hover:decoration-fg max-md:after:absolute max-md:after:-inset-x-2 max-md:after:-inset-y-3.5 max-md:after:content-['']"
                 >
                   {item.action.label}
                 </button>
