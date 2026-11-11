@@ -11,7 +11,16 @@
 
 import { approxKr } from "@/analytics/forecast/common";
 import { computeInsights, type Insight } from "@/analytics/insights";
-import { todoInScope, type AnalyticsOrder, type TodoItem, type TodoLevel } from "@/analytics/todos";
+import {
+  countWithVisits,
+  groupVisits,
+  todoInScope,
+  visitTitle,
+  type AnalyticsOrder,
+  type TodoItem,
+  type TodoLevel,
+  type VisitPlanDays,
+} from "@/analytics/todos";
 import type { LostSalesSummary } from "@/server/purchasing/types";
 import {
   addDays,
@@ -23,6 +32,7 @@ import {
   profitability,
   vmbPreliminary,
   roundHalfUp,
+  sumOre,
   type IsoDate,
   type KeyMetrics,
   type Period,
@@ -33,7 +43,7 @@ import { todayIn, toIsoDate } from "@/components/shell/period-state";
 import type { DataScope, MachineRecord, SyncInfo, TitleRecord } from "@/server/data/core/types";
 import type { EconomicsSources } from "@/domain";
 import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
-import { formatPercent } from "@/lib/format";
+import { formatInt, formatPercent, NBSP } from "@/lib/format";
 import { STORES_SHARE_LABEL, storeShareLabel, storeShareTerms } from "@/lib/store-share";
 
 import { homeHeadline, homeSpanText, type HomeHeadline } from "./headline";
@@ -174,6 +184,8 @@ export interface HomeTodo {
   readonly href: string;
   /** Punkten gäller hela organisationen fast sidan är filtrerad på butik eller automat. */
   readonly orgWide: boolean;
+  /** Intäkt i risk 7 dagar (öre) för besök och tysta automater och titlar, annars null. */
+  readonly atStakeOre?: number | null;
 }
 
 /**
@@ -229,6 +241,8 @@ export interface HomeModel {
   readonly todoCount: number;
   /** Antal av dem som gäller nu (nivå "now"). */
   readonly todoNowCount: number;
+  /** Intäkt i risk 7 dagar för alla punkter (öre), samma summa som rubriken på Att göra. */
+  readonly todoStakeOre: number;
   /** Butikerna har en andel av vinsten i perioden (vyknappen "Visa butikernas andel" behövs). */
   readonly hasStoreShare: boolean;
   /**
@@ -263,6 +277,8 @@ export interface HomeModelInput {
   readonly todos: readonly TodoItem[] | null;
   /** Raderna i Att göra utanför reglerna (ny automat, bokföringen). Utelämnad = inga. */
   readonly extraTodos?: readonly HomeExtraTodo[];
+  /** Veckans besöksplan (som Drift > Besök): dagen i "Åk till BL-003 senast torsdag". */
+  readonly visitPlan?: VisitPlanDays | null;
   /** Namnet på vald butik (för etiketten "Sega gubben 50 % av vinsten"). */
   readonly storeName?: string;
   /** Hyra och fasta kostnader finns (annars döljs "före fasta kostnader"). Saknas = finns. */
@@ -616,21 +632,30 @@ function buildTodos(
   scope: DataScope,
   machines: readonly MachineRecord[],
   extras: readonly HomeExtraTodo[] = [],
+  visits: { readonly plan: VisitPlanDays | null; readonly today: IsoDate } | null = null,
 ): {
   todos: HomeTodo[] | null;
   payouts: HomePayout[];
   count: number;
   nowCount: number;
+  stakeOre: number;
   staleMachines: Set<string>;
 } {
   if (todos === null) {
-    return { todos: null, payouts: [], count: 0, nowCount: 0, staleMachines: new Set() };
+    return {
+      todos: null,
+      payouts: [],
+      count: 0,
+      nowCount: 0,
+      stakeOre: 0,
+      staleMachines: new Set(),
+    };
   }
   const relevant = todosInScope(todos, scope, machines);
   // Utbetalningen står som egen rad överst (HomePayout), inte en gång till i listan.
   // Att betala först, sedan att skapa (betalningen har en sista dag).
-  const payouts: HomePayout[] = relevant
-    .filter((t) => HOME_PAYOUT_KINDS.has(t.kind))
+  const payoutItems = relevant.filter((t) => HOME_PAYOUT_KINDS.has(t.kind));
+  const payouts: HomePayout[] = payoutItems
     .sort((a, b) => Number(a.kind !== "settlement") - Number(b.kind !== "settlement"))
     .map((t) => ({
       key: t.key,
@@ -640,10 +665,21 @@ function buildTodos(
       late: t.kind === "settlement" && t.daysLeft !== null && t.daysLeft < 0,
     }));
   const filtered = Boolean(scope.machineId || scope.storeId);
-  // En källa för antalet: reglernas punkter plus raderna utanför reglerna (ny automat,
-  // bokföringen), som menyns räknare och Att göra. Raderna utanför står först inom nivån,
-  // som överst på Att göra. computeTodos sorterar redan efter brådska; nivån går ändå först.
-  const all: Array<{ item: HomeTodo; kind: string | null }> = [
+  const machineLabel = (id: string) => {
+    const m = machines.find((x) => x.id === id);
+    return m ? (m.code ? m.code.replace(/-/g, "\u2011") : m.name) : "automaten";
+  };
+  // Påfyllningarna för en automat är ett besök, en rad (som på Att göra): "Åk till BL-003
+  // senast torsdag". Dagen kommer ur besöksplanen, samma som Drift > Besök.
+  const entries = groupVisits(
+    relevant.filter((t) => !HOME_PAYOUT_KINDS.has(t.kind)),
+    visits?.plan ?? null,
+    visits?.today ?? null,
+  );
+  // En källa för antalet: reglernas punkter (ett besök = en sak) plus raderna utanför
+  // reglerna (ny automat, bokföringen), som menyns räknare och Att göra. Raderna utanför
+  // står först inom nivån, som överst på Att göra. Nivån går först, sedan ordningen.
+  const all: Array<{ item: HomeTodo; machineIds: readonly string[]; stale: boolean }> = [
     ...extras.map((e) => ({
       item: {
         key: e.key,
@@ -653,38 +689,80 @@ function buildTodos(
         href: e.href,
         orgWide: filtered,
       },
-      kind: null,
+      machineIds: [],
+      stale: false,
     })),
-    ...relevant.map((t) => ({
-      item: {
-        key: t.key,
-        level: t.level,
-        title: t.title,
-        detail: t.detail,
-        href: appHref(t.link),
-        orgWide: filtered && t.evidence.machineIds.length === 0 && t.evidence.storeIds.length === 0,
-      },
-      kind: t.kind,
-    })),
+    ...entries.map((e) => {
+      if (e.type === "visit") {
+        const v = e.visit;
+        return {
+          item: {
+            key: v.key,
+            level: v.level,
+            title: visitTitle(
+              visits ? v : { needBy: null, level: v.level },
+              machineLabel(v.machineId),
+              visits?.today ?? "1970-01-01",
+            ),
+            detail: visitDetail(v.items.length, v.packs),
+            href: `/att-gora#punkt-visit-${v.machineId}`,
+            orgWide: false,
+            atStakeOre: v.atStakeOre > 0 ? v.atStakeOre : null,
+          },
+          machineIds: [v.machineId],
+          stale: false,
+        };
+      }
+      const t = e.item;
+      return {
+        item: {
+          key: t.key,
+          level: t.level,
+          title: t.title,
+          detail: t.detail,
+          href: appHref(t.link),
+          orgWide:
+            filtered && t.evidence.machineIds.length === 0 && t.evidence.storeIds.length === 0,
+          atStakeOre:
+            HOME_RISK_KINDS.has(t.kind) && t.atStakeOre !== null && t.atStakeOre > 0
+              ? Math.round(t.atStakeOre / 100) * 100
+              : null,
+        },
+        machineIds: t.evidence.machineIds,
+        stale: t.kind === "stale-machine",
+      };
+    }),
   ];
   const shown = all
-    .filter((x) => x.kind === null || !HOME_PAYOUT_KINDS.has(x.kind))
     .map((x, i) => ({ x, i }))
     .sort((a, b) => LEVEL_ORDER[a.x.item.level] - LEVEL_ORDER[b.x.item.level] || a.i - b.i)
     .slice(0, HOME_TODO_COUNT);
-  const shownKeys = new Set(shown.map(({ x }) => x.item.key));
-  const staleMachines = new Set(
-    relevant
-      .filter((t) => t.kind === "stale-machine" && shownKeys.has(t.key))
-      .flatMap((t) => t.evidence.machineIds),
-  );
+  const staleMachines = new Set(shown.filter(({ x }) => x.stale).flatMap(({ x }) => x.machineIds));
   return {
     todos: shown.map(({ x }) => x.item),
     payouts,
-    count: all.length,
-    nowCount: all.filter((x) => x.item.level === "now").length,
+    count: extras.length + countWithVisits(relevant),
+    nowCount:
+      all.filter((x) => x.item.level === "now").length +
+      payoutItems.filter((t) => t.level === "now").length,
+    // Hela kronor per punkt innan summan tas, som rubriken på Att göra (stakeOf).
+    stakeOre: sumOre(
+      relevant
+        .filter((t) => HOME_RISK_KINDS.has(t.kind))
+        .map((t) => Math.round(Math.max(t.atStakeOre ?? 0, 0) / 100) * 100),
+    ),
     staleMachines,
   };
+}
+
+/** Sorterna där intäkt står på spel (som RISK_KINDS på Att göra). */
+const HOME_RISK_KINDS: ReadonlySet<string> = new Set(["refill", "stale-machine", "silent-title"]);
+
+/** "4 titlar · 38 pack" under besöket. */
+function visitDetail(titles: number, packs: number | null): string {
+  const parts = [`${formatInt(titles)}${NBSP}${titles === 1 ? "titel" : "titlar"}`];
+  if (packs !== null && packs > 0) parts.push(`${formatInt(packs)}${NBSP}pack`);
+  return parts.join(" · ");
 }
 
 // ---------------------------------------------------------------------------
@@ -813,11 +891,12 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
   const topTitles = buildTopTitles(byTitle.rows, km.revenueOre, titleName);
   // Iakttagelserna räknas från första dagen med data, så att snitt per dag och antal
   // veckodagar inte späds ut av dagar före datan.
-  const { todos, payouts, count, nowCount, staleMachines } = buildTodos(
+  const { todos, payouts, count, nowCount, stakeOre, staleMachines } = buildTodos(
     input.todos,
     input.scope,
     input.machines,
     input.extraTodos ?? [],
+    { plan: input.visitPlan ?? null, today },
   );
   let insights: HomeInsight[] = [];
   if (coverage && km.orderCount > 0) {
@@ -868,6 +947,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     payouts,
     todoCount: count,
     todoNowCount: nowCount,
+    todoStakeOre: stakeOre,
     hasStoreShare,
     showStoreShare: showShare,
     spanText:

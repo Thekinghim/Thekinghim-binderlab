@@ -16,9 +16,11 @@ import "server-only";
 
 import { cache } from "react";
 
-import { prioritizeByLostSales, TODO_DEFAULTS } from "@/analytics/todos";
+import { countWithVisits, prioritizeByLostSales, TODO_DEFAULTS } from "@/analytics/todos";
+import type { VisitPlan } from "@/analytics/visits";
 import { addDays, DomainError, type Period } from "@/domain";
-import { AuthorizationError } from "@/server/access";
+import { AuthorizationError, withUserDbFor } from "@/server/access";
+import { healthOf, loadHealthData } from "@/server/alerts/inputs";
 import type { AwishExpiryNotice } from "@/server/awish/expiry";
 import { loadAwishExpiryFor } from "@/server/awish/expiry-notice";
 import { readyPackageFor } from "@/server/bokforing/stored";
@@ -34,10 +36,15 @@ import {
   businessToday,
   loadTodoStateFor,
   requireViewerRole,
+  slotCapacitiesInRequest,
+  stockRowsInRequest,
   type TodoState,
   type Viewer,
 } from "./core/loaders";
+import { ownStockTotals } from "./core/own-stock";
 import { ALL_ROLES, canSeeEconomy } from "./core/types";
+import { queryStorePlaces, type StorePlace } from "./team";
+import { weeklyVisitPlan } from "./visit-plan";
 
 /** Fönstret för förlorad försäljning i prioriteringen (dagar t.o.m. i går). */
 export const LOST_SALES_WINDOW_DAYS = TODO_DEFAULTS.refillWindowDays;
@@ -158,8 +165,9 @@ export async function loadTodoCount(): Promise<number> {
     // Som rubriken på Att göra: punkterna plus raderna "Ny automat hittad", bokföringen
     // att ladda ner och Awish-kontot (bara ägare och admin; noll för andra roller).
     const [state, extras] = await Promise.all([loadVisibleTodoState(), loadTodoExtrasFor(viewer)]);
+    // Ett besök (automatens alla påfyllningar) räknas som en sak, som på Att göra och Hem.
     return (
-      state.items.length +
+      countWithVisits(state.items) +
       (extras.bokforingMonth ? 1 : 0) +
       (extras.newMachines > 0 ? 1 : 0) +
       (extras.awishExpiry ? 1 : 0)
@@ -185,12 +193,78 @@ export async function loadTodoCountFor(viewer: Viewer, now: Date = new Date()): 
     periods,
   );
   return (
-    state.items.length +
+    countWithVisits(state.items) +
     (extras.bokforingMonth ? 1 : 0) +
     (extras.newMachines > 0 ? 1 : 0) +
     (extras.awishExpiry ? 1 : 0)
   );
 }
+
+/** Besöksplanen och butikernas plats, som Att göra och Hem behöver dem. */
+export interface TodoVisitPlan {
+  readonly plan: VisitPlan;
+  /** Butikernas adress och plats (butikens id), för "Öppna i Google Maps". */
+  readonly places: Map<string, StorePlace>;
+}
+
+/**
+ * Veckans besöksplan för Att göra och Hem: samma funktion (weeklyVisitPlan) och samma indata
+ * som Drift > Besök (försäljningen ur lagerhändelserna, lagret i automaterna, vårt lager,
+ * maskinhälsan, sortimentet och fackens kapacitet), så att sidorna säger samma dag för
+ * samma automat. Bara läsning, inga belopp: alla roller som har Att göra.
+ */
+export async function loadTodoVisitPlanFor(
+  viewer: Viewer,
+  now: Date = new Date(),
+): Promise<TodoVisitPlan> {
+  const orgId = viewer.organization.id;
+  const timeZone = viewer.organization.timezone;
+  const today = businessToday(now, timeZone);
+  const stockP = stockRowsInRequest(viewer);
+  const capacityP = slotCapacitiesInRequest(viewer, now);
+  stockP.catch(() => {});
+  capacityP.catch(() => {});
+  return withUserDbFor(viewer.user, async (tx) => {
+    const data = await loadHealthData(tx, orgId, today, now);
+    const [slotPeriods, places, stockRows, capacities] = await Promise.all([
+      querySlotPeriods(tx, orgId),
+      queryStorePlaces(tx, orgId),
+      stockP,
+      capacityP,
+    ]);
+    const warehouse = ownStockTotals(stockRows);
+    const plan = weeklyVisitPlan({
+      orders: data.orders,
+      machines: data.machines.filter((m) => !m.archived).map((m) => ({ ...m, location: null })),
+      titles: data.titles,
+      stock: data.stock,
+      warehouseStock: warehouse.length > 0 ? warehouse : null,
+      health: healthOf(data, timeZone, now),
+      slotPeriods,
+      capacities,
+      today,
+      timeZone,
+      now,
+    });
+    return { plan, places };
+  });
+}
+
+/**
+ * Besöksplanen för den inloggade, en gång per förfrågan. null när den inte går att räkna:
+ * besöken står då kvar i listan, utan dag ("Åk till BL-003 snart").
+ */
+export const loadTodoVisitPlan = cache(async (): Promise<TodoVisitPlan | null> => {
+  const ctx = await loadOptionalContext();
+  if (!ctx) return null;
+  try {
+    return await loadTodoVisitPlanFor(await requireViewer(), new Date(ctx.now));
+  } catch (error) {
+    if (error instanceof AuthorizationError) throw error;
+    console.error("[att-gora] Besöksplanen kunde inte läsas:", error);
+    return null;
+  }
+});
 
 /**
  * För serverkomponenter: Att göra prioriterad efter förlorad försäljning, som den

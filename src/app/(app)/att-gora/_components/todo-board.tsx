@@ -24,7 +24,9 @@ import type {
   LinkActionView,
   MergeActionView,
   RefillActionView,
+  RowView,
   TodoView,
+  VisitView,
 } from "../_lib/model";
 
 /** Länk som ser ut som en knapp (sekundär eller ghost, liten). */
@@ -179,8 +181,13 @@ export function TodoBoard({
   return (
     <div className="flex flex-col">
       {groups.map((g) => {
-        const items = g.items.filter((t) => !isHidden(t));
-        if (items.length === 0) return null;
+        // Ett besök visar titlarna som är kvar; är alla avbockade försvinner raden.
+        const rows: RowView[] = g.rows.flatMap((r): RowView[] => {
+          if (r.type === "todo") return isHidden(r.item) ? [] : [r];
+          const left = r.visit.items.filter((t) => !isHidden(t));
+          return left.length > 0 ? [{ type: "visit", visit: { ...r.visit, items: left } }] : [];
+        });
+        if (rows.length === 0) return null;
         return (
           <section
             key={g.level}
@@ -201,7 +208,7 @@ export function TodoBoard({
                 className="label mt-3 flex min-h-11 w-full items-center justify-between border-y border-line text-muted md:hidden"
               >
                 <span>
-                  {laterOpen ? "Dölj" : "Visa"} · {formatInt(items.length)}
+                  {laterOpen ? "Dölj" : "Visa"} · {formatInt(rows.length)}
                 </span>
                 <Icon
                   name="chevronRight"
@@ -216,16 +223,27 @@ export function TodoBoard({
                 g.level === "later" && !laterOpen && "max-md:hidden",
               )}
             >
-              {items.map((item, i) => (
-                <TodoRow
-                  key={item.key}
-                  index={i}
-                  item={item}
-                  canDismiss={canDismiss}
-                  onDismiss={() => dismiss(item)}
-                  people={people}
-                />
-              ))}
+              {rows.map((row, i) =>
+                row.type === "visit" ? (
+                  <VisitRow
+                    key={row.visit.key}
+                    index={i}
+                    visit={row.visit}
+                    canDismiss={canDismiss}
+                    onDismiss={dismiss}
+                    people={people}
+                  />
+                ) : (
+                  <TodoRow
+                    key={row.item.key}
+                    index={i}
+                    item={row.item}
+                    canDismiss={canDismiss}
+                    onDismiss={() => dismiss(row.item)}
+                    people={people}
+                  />
+                ),
+              )}
             </ol>
           </section>
         );
@@ -294,6 +312,94 @@ function DismissedList({
         </ul>
       </div>
     </section>
+  );
+}
+
+/**
+ * Ett besök: "Åk till BL-003 senast torsdag." med en grå rad (titlar, pack, kronor i risk)
+ * och knappen till Fyll på. "Visa titlarna" öppnar vägbeskrivningen, Ta med-listan och
+ * automatens titlar, som bockas av var för sig precis som förut.
+ */
+function VisitRow({
+  visit,
+  index,
+  canDismiss,
+  onDismiss,
+  people,
+}: {
+  visit: VisitView;
+  index: number;
+  canDismiss: boolean;
+  onDismiss: (item: TodoView) => void;
+  people: readonly PersonOption[];
+}) {
+  const titleId = useId();
+  return (
+    <li
+      id={rowId(visit.key)}
+      tabIndex={-1}
+      aria-labelledby={titleId}
+      data-visit={visit.machineId}
+      style={{ "--i": Math.min(index, 8) + 2 } as CSSProperties}
+      className="rise flex min-w-0 flex-col gap-2 border-t border-line py-5 outline-offset-2 first:border-t-0 max-md:py-3"
+    >
+      <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-8">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <StatusTag status={visit.status}>{visit.statusText}</StatusTag>
+          </div>
+          <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
+            {visit.title}
+          </h3>
+          <p className="tnum text-sm text-muted">{visit.facts}</p>
+        </div>
+        <div className="shrink-0 max-md:[&>a]:h-11 max-md:[&>a]:w-full">
+          <Link href={visit.fillHref} className={cn(linkButton, linkVariant.secondary)}>
+            <span>Fyll på</span>
+            <Icon name="chevronRight" className="-mr-0.5 shrink-0" />
+          </Link>
+        </div>
+      </div>
+      <details className="group/visit min-w-0">
+        <summary className="meta inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-xs pr-4 text-subtle hover:text-fg md:min-h-7 [&::-webkit-details-marker]:hidden">
+          <Icon
+            name="chevronRight"
+            size={12}
+            className="shrink-0 transition-transform duration-fast group-open/visit:rotate-90"
+          />
+          <span>{`Visa titlarna (${formatInt(visit.items.length)})`}</span>
+        </summary>
+        <div className="flex flex-col gap-3 pt-2">
+          <div className="flex flex-wrap gap-2 max-md:[&>a]:h-11">
+            {visit.mapsHref ? (
+              <a
+                href={visit.mapsHref}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(linkButton, linkVariant.secondary)}
+              >
+                Öppna i Google Maps
+              </a>
+            ) : null}
+            <Link href={visit.bringHref} className={cn(linkButton, linkVariant.secondary)}>
+              Ta med-lista
+            </Link>
+          </div>
+          <ol className="flex flex-col border-t border-line md:pl-4">
+            {visit.items.map((item, i) => (
+              <TodoRow
+                key={item.key}
+                index={i}
+                item={item}
+                canDismiss={canDismiss}
+                onDismiss={() => onDismiss(item)}
+                people={people}
+              />
+            ))}
+          </ol>
+        </div>
+      </details>
+    </li>
   );
 }
 

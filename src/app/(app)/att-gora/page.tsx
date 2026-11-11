@@ -17,7 +17,7 @@ import {
 import { MineToggle } from "@/components/ui/mine-toggle";
 import { loadTeamStateFor } from "@/server/data/team";
 import { hasOwnStockRows, ownStockTotals } from "@/server/data/core/own-stock";
-import { loadRankedTodoState } from "@/server/data/todos";
+import { loadRankedTodoState, loadTodoVisitPlan } from "@/server/data/todos";
 import { getActiveOrganization, requireUser } from "@/server/session";
 
 import { Suggestions } from "@/app/(app)/assistent/_components/suggestions";
@@ -60,6 +60,8 @@ export default async function TodoPage({
     getActiveOrganization(),
   ]);
   const now = new Date(ctx.now);
+  // Besöksplanen (samma som Drift > Besök) läses bara när det finns något att fylla på.
+  const visits = state.items.some((t) => t.kind === "refill") ? await loadTodoVisitPlan() : null;
   // Vem gör vad: uttrycklig tilldelning, annars automatens ansvariga, annars Båda.
   const teamState = await loadTeamStateFor(user, ctx.organization.id);
   const me = ctx.user.id;
@@ -122,6 +124,9 @@ export default async function TodoPage({
       ),
     ],
     scope: scopeFromSearchParams(sp),
+    today: ctx.today,
+    visitPlan: visits?.plan ?? null,
+    ...(visits ? { places: visits.places } : {}),
     computedAt: formatTime(wall(now)),
     assignees,
     extras: extraTodos({

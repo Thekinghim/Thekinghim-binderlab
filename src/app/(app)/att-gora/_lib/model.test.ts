@@ -56,9 +56,10 @@ function refill(
   level: "now" | "soon",
   atStakeOre: number,
   onHand = 1,
+  titleId: string = T1,
 ): TodoItem {
   return item({
-    key: `refill:${machineId}:${T1}`,
+    key: `refill:${machineId}:${titleId}`,
     kind: "refill",
     level,
     atStakeOre,
@@ -69,7 +70,7 @@ function refill(
       period: null,
       orderIds: [],
       dates: [],
-      titleIds: [T1],
+      titleIds: [titleId],
       machineIds: [machineId],
       storeIds: [],
       recipientIds: [],
@@ -84,7 +85,7 @@ function refill(
     action: {
       kind: "register-refill",
       label: "Registrera påfyllning",
-      params: { machineId, titleId: T1 },
+      params: { machineId, titleId },
     },
   });
 }
@@ -157,6 +158,107 @@ describe("text", () => {
   });
 });
 
+describe("besök: en rad per automat", () => {
+  const T3 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  // 2 nov. 2026 är en måndag.
+  const TODAY = "2026-11-02";
+  const todos = [
+    refill(M1, "now", 50_040, 0, T1),
+    refill(M2, "soon", 20_000, 2, T1),
+    refill(M1, "soon", 30_000, 2, T2),
+    refill(M1, "soon", 149_960, 3, T3),
+    refill(M2, "soon", 10_000, 2, T2),
+    refill(M2, "soon", 0, 2, T3),
+  ];
+  const visitPlan = {
+    days: [
+      {
+        date: "2026-11-02",
+        stops: [{ machineId: M1, needBy: "2026-11-02", late: false, totalPacks: 38 }],
+      },
+      {
+        date: "2026-11-05",
+        stops: [{ machineId: M2, needBy: "2026-11-05", late: false, totalPacks: 12 }],
+      },
+    ],
+  } as const;
+  const page = () =>
+    buildPage(
+      input(todos, {
+        today: TODAY,
+        visitPlan,
+        places: new Map([[S1, { address: "Storgatan 1", city: "Lund", location: null }]]),
+      }),
+    );
+
+  it("6 påfyllningar i 2 automater blir 2 besök med summerade pack och kronor", () => {
+    const p = page();
+    expect(p.total).toBe(2);
+    expect(p.header.title).toBe(`2${NBSP}besök att göra.`);
+    expect(p.header.aside).toBe("1 i dag.");
+    expect(p.header.description).toBe("Först: Åk till BL\u2011001 i dag.");
+    const rows = p.groups.flatMap((g) => g.rows);
+    expect(rows.map((r) => r.type)).toEqual(["visit", "visit"]);
+    const [v1, v2] = rows.map((r) => (r.type === "visit" ? r.visit : null));
+    expect(v1?.title).toBe("Åk till BL\u2011001 i dag.");
+    expect(v1?.facts).toBe(`3${NBSP}titlar · 38${NBSP}pack · 2${NBSP}300${NBSP}kr i risk`);
+    expect(v1?.items.map((t) => t.key)).toEqual([
+      `refill:${M1}:${T1}`,
+      `refill:${M1}:${T2}`,
+      `refill:${M1}:${T3}`,
+    ]);
+    // Dagen är besöksplanens needBy (torsdag 5 nov.), inte punktens egen dag.
+    expect(v2?.title).toBe("Åk till BL\u2011002 senast torsdag.");
+    expect(v2?.facts).toBe(`3${NBSP}titlar · 12${NBSP}pack · 300${NBSP}kr i risk`);
+    // Rubrikens summa är summan av raderna.
+    expect(p.header.meta.find((m) => m.label === "I risk 7 d")?.value).toBe(`2${NBSP}600${NBSP}kr`);
+  });
+
+  it("besöket står i sin mest brådskande punkts grupp, med alla automatens titlar", () => {
+    const p = page();
+    expect(p.groups.map((g) => g.level)).toEqual(["now", "soon"]);
+    expect(p.groups[0]!.aside).toBe(`1${NBSP}besök · 2${NBSP}300${NBSP}kr i risk.`);
+    expect(p.groups[0]!.items).toHaveLength(3);
+    expect(p.header.meta.slice(0, 2)).toEqual([
+      { label: "I dag", value: "1" },
+      { label: "Snart", value: "1" },
+    ]);
+  });
+
+  it("länkar till Fyll på, Ta med-listan och Google Maps när butiken har adress", () => {
+    const [v1, v2] = page()
+      .groups.flatMap((g) => g.rows)
+      .map((r) => (r.type === "visit" ? r.visit : null));
+    expect(v1?.fillHref).toBe(`/fyll-pa/${M1}`);
+    expect(v1?.bringHref).toBe("/fyll-pa");
+    expect(v1?.mapsHref).toContain("https://www.google.com/maps/dir/?");
+    expect(v1?.mapsHref).toContain("Storgatan");
+    // Automaten står inte i någon butik: ingen karta.
+    expect(v2?.mapsHref).toBeNull();
+  });
+
+  it("påfyllaren ser inga kronor, och utan plan står besöket utan dag", () => {
+    const p = buildPage(input(todos, { role: "refiller", economy: false, today: TODAY }));
+    const visits = p.groups
+      .flatMap((g) => g.rows)
+      .flatMap((r) => (r.type === "visit" ? [r.visit] : []));
+    expect(visits.map((v) => v.title)).toEqual([
+      "Åk till BL\u2011001 i dag.",
+      "Åk till BL\u2011002 snart.",
+    ]);
+    expect(visits.map((v) => v.facts)).toEqual([`3${NBSP}titlar`, `3${NBSP}titlar`]);
+  });
+
+  it("andra sorter står kvar som egna rader", () => {
+    const p = buildPage(input([...todos, missingPrice], { today: TODAY, visitPlan }));
+    expect(p.total).toBe(3);
+    expect(p.header.title).toBe(`3${NBSP}saker att göra.`);
+    expect(p.groups.at(-1)!.rows).toMatchObject([
+      { type: "todo", item: { kind: "missing-price" } },
+    ]);
+  });
+});
+
 describe("buildPage", () => {
   it("grupperar efter brådska och skriver rubriken med det mest brådskande först", () => {
     const page = buildPage(
@@ -167,7 +269,7 @@ describe("buildPage", () => {
     expect(page.header.title).toBe(`3${NBSP}saker att göra.`);
     expect(page.header.aside).toBe("1 i dag.");
     // Bara det första; beloppet i risk står i metablocket.
-    expect(page.header.description).toBe(`Först: Fyll på Titel 1 i Automat, räcker 0,3${NBSP}d.`);
+    expect(page.header.description).toBe("Först: Åk till BL\u2011001 i dag.");
     expect(page.header.meta.find((m) => m.label === "I risk 7 d")?.value).toBe(
       `3${NBSP}947${NBSP}kr`,
     );
@@ -197,13 +299,13 @@ describe("buildPage", () => {
     expect(later.aside).not.toContain("i risk");
   });
 
-  it("skriver påfyllningar som påfyllningar och döljer nivåer utan punkter", () => {
+  it("skriver påfyllningar som besök och döljer nivåer utan punkter", () => {
     const page = buildPage(
       input([refill(M1, "soon", 1), refill(M2, "soon", 1)], { role: "refiller", economy: false }),
     );
-    expect(page.header.title).toBe(`2${NBSP}påfyllningar att göra.`);
+    expect(page.header.title).toBe(`2${NBSP}besök att göra.`);
     expect(page.header.aside).toBe("Inget i dag.");
-    expect(page.header.description.startsWith("Först: Fyll på")).toBe(true);
+    expect(page.header.description).toBe("Först: Åk till BL\u2011001 snart.");
     expect(page.header.meta.map((m) => m.label)).toEqual(["Snart", "Beräknat"]);
   });
 
