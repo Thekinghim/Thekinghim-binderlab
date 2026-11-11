@@ -55,6 +55,11 @@ export interface MachineListRow {
   /** Titlar som behöver fyllas på nu / snart (Att göra-regeln). */
   readonly refillNow: number;
   readonly refillSoon: number;
+  /**
+   * Intäkt i risk de närmaste 7 dagarna (öre): automatens påfyllningspunkter och "har slutat
+   * sälja", samma belopp som Att göra. Utelämnad = 0.
+   */
+  readonly atStakeOre?: number;
   /** Pack i automaten just nu. */
   readonly packsOnHand: number;
   /** Senaste ordern (ISO 8601), oavsett period. */

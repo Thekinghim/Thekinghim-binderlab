@@ -43,7 +43,7 @@ import {
   type MachineDetailData,
 } from "../_lib/data";
 import { dayText, hourRange, sentence, unitEconomicsKpis } from "../_lib/model";
-import { stockAsideText } from "../_lib/refill-text";
+import { refillByText, stockAsideText } from "../_lib/refill-text";
 import { currentViewer } from "../_lib/session";
 import { withUserDbFor } from "@/server/access";
 import { queryRefillSources } from "@/server/data/core/places";
@@ -72,6 +72,10 @@ const WEEKDAYS_LONG = [
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const slug = decodeURIComponent((await params).automat);
   return { title: isMachineId(slug) ? "Automat" : slug.toUpperCase() };
+}
+
+function capitalFirst(text: string): string {
+  return text.charAt(0).toLocaleUpperCase("sv-SE") + text.slice(1);
 }
 
 function first(v: string | string[] | undefined): string | undefined {
@@ -413,28 +417,39 @@ function StockSection({ data }: { data: MachineDetailData }) {
   const known = lines.filter((l) => l.daysLeft !== null);
   const minDays = known.length > 0 ? Math.min(...known.map((l) => l.daysLeft ?? 0)) : null;
   const tz = data.ctx.timeZone;
-  const title =
+  // Något ska fyllas på: rubriken är dagen ur besöksplanen (samma som Drift → Besök), och
+  // antalet titlar står i den grå raden.
+  const refillBy =
+    data.refillBy && now.length + soon.length > 0
+      ? refillByText(data.refillBy, data.ctx.today)
+      : null;
+  const count =
     now.length > 0
       ? `${formatInt(now.length)} ${now.length === 1 ? "titel" : "titlar"} behöver fyllas på nu.`
       : soon.length > 0
         ? `${formatInt(soon.length)} ${soon.length === 1 ? "titel" : "titlar"} behöver fyllas på snart.`
-        : minDays !== null
-          ? `Lagret räcker minst ${formatInt(minDays)}${NBSP}${minDays === 1 ? "dag" : "dagar"}.`
-          : packs > 0
-            ? "Lagret räcker."
-            : "Automaten är tom.";
+        : null;
+  const title =
+    refillBy ??
+    count ??
+    (minDays !== null
+      ? `Lagret räcker minst ${formatInt(minDays)}${NBSP}${minDays === 1 ? "dag" : "dagar"}.`
+      : packs > 0
+        ? "Lagret räcker."
+        : "Automaten är tom.");
+  const aside = stockAsideText({
+    packs,
+    lastRefilledAt: data.lastRestockedAt,
+    timeZone: tz,
+    now: data.ctx.now,
+  });
   return (
     <section aria-labelledby="lager" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
         id="lager"
         eyebrow="Lager · nu"
         title={title}
-        aside={stockAsideText({
-          packs,
-          lastRefilledAt: data.lastRestockedAt,
-          timeZone: tz,
-          now: data.ctx.now,
-        })}
+        aside={refillBy && count ? `${count} ${capitalFirst(aside)}` : aside}
       />
       <RefillFrom data={data} />
       {lines.length > 0 ? (

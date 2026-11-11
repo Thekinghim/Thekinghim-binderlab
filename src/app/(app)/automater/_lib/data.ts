@@ -5,6 +5,8 @@
 
 import "server-only";
 
+import { unstable_rethrow } from "next/navigation";
+
 import {
   carriedQuery,
   describePeriod,
@@ -42,6 +44,7 @@ import {
   machineUnitEconomics,
   placementLines,
   recentWindow,
+  refillByDates,
   machineUnpriced,
   salesHeatmap,
   spanOf,
@@ -50,6 +53,7 @@ import {
   titleShares,
   type Span,
 } from "./model";
+import { loadVisitPlan } from "../../drift/_lib/load";
 import { loadLastOrderAtFor, loadMachineOrdersFor } from "./service";
 import { currentViewer } from "./session";
 import type {
@@ -285,6 +289,21 @@ export async function loadOverviewWith(
   };
 }
 
+/**
+ * Besöksplanens senaste dag per automat: samma plan som Drift → Besök och Lager
+ * (loadVisitPlan), så att Automater säger samma dag. Bara i en sidförfrågan (planen läses
+ * som den inloggade). Ett fel här stoppar inte sidan: då visas ingen dag.
+ */
+export async function loadRefillBy(ctx: AppContext): Promise<Map<string, IsoDate> | undefined> {
+  try {
+    return refillByDates((await loadVisitPlan(ctx)).plan);
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error("[automater] Besöksplanen kunde inte läsas:", error);
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // En automat
 // ---------------------------------------------------------------------------
@@ -311,6 +330,11 @@ export interface MachineDetailData {
   readonly stock: StockLine[];
   /** Senaste registrerade påfyllning (påfyllning eller flytt in), aldrig en inventering. */
   readonly lastRestockedAt: string | null;
+  /**
+   * Besöksplanens senaste dag för automaten ("Fyll på senast torsdag."), eller null när den
+   * inte har något besök i veckans plan.
+   */
+  readonly refillBy: IsoDate | null;
   readonly recentOrders: RecentOrder[];
   readonly placements: PlacementLine[];
   readonly unitEconomics: UnitEconomicsView | null;
@@ -483,6 +507,8 @@ export async function loadMachineDetail(
       today,
     }),
     lastRestockedAt,
+    // Bara när något ska fyllas på: annars läses inte planen.
+    refillBy: refill.length > 0 ? ((await loadRefillBy(ctx))?.get(machine.id) ?? null) : null,
     recentOrders: orders.recent,
     placements,
     unitEconomics: machineUnitEconomics(input, machine.id),

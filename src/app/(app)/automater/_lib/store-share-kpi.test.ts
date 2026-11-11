@@ -98,7 +98,7 @@ function overview(deduct: boolean, storeId: string | null) {
     input: input(deduct, storeId),
     master,
     stock,
-    signals: { refill: new Map(), health: new Map() },
+    signals: { refill: new Map(), health: new Map(), stake: new Map() },
     lastOrderAt: new Map(),
     today: "2026-11-02",
     scope: { storeId, machineId: null },

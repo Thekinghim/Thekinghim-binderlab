@@ -22,7 +22,7 @@ import { MachineTable } from "../_components/machine-table";
 import { NeedList } from "../_components/need-list";
 import { ProfitRanking } from "../_components/profit-ranking";
 import { UnpricedNote } from "../_components/unpriced-note";
-import { loadOverview } from "../_lib/data";
+import { loadOverview, loadRefillBy } from "../_lib/data";
 import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
 import { readinessLeft } from "@/server/onboarding/machine-ready";
 import {
@@ -68,7 +68,14 @@ export default async function AutomaterPage({
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const daysLabel = `${formatInt(period.span.days)}${NBSP}d`;
   // Överst: vad som behöver göras (managerfrågan), pengarna som andra rad.
-  const needs = machineNeeds(rows);
+  // Besöksplanens dag ("Fyll på senast torsdag.") för automater som ska fyllas på snart.
+  const refillBy = rows.some((r) => r.status.label === "Fyll på snart")
+    ? await loadRefillBy(ctx)
+    : undefined;
+  const needs = machineNeeds(rows, {
+    economy: ctx.canSeeEconomy,
+    ...(refillBy ? { refillBy, today: ctx.today } : {}),
+  });
   // Rangordningen säger inte "Tjänar bra" om en automat som står still: den visar driftläget.
   const down = new Map(
     active.filter((r) => r.status.health === "offline").map((r) => [r.id, r.status.label]),
