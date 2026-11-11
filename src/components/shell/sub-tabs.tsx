@@ -34,8 +34,9 @@ export type SubTabsProps = {
 
 /**
  * Underflikarna för den aktiva huvudfliken, ovanför sidan. Visas bara när rollen ser minst två.
- * Med många flikar ligger de mindre använda under "Mer" (en meny som fungerar med tangentbord),
- * så att raden får plats på mobilen. Raden rullar i sidled om den ändå inte får plats;
+ * Från md ligger de mindre använda flikarna under "Mer" (en meny som fungerar med tangentbord).
+ * Under md står alla flikar i en enda rad som rullar i sidled (högerkanten tonar ut, så att
+ * man ser att det finns fler);
  * markeringen glider mellan flikarna (bara transform) och flyttas direkt vid klick, innan
  * servern svarat.
  */
@@ -82,6 +83,9 @@ function SubTabsInner({
     </WithCarriedQuery>
   );
 }
+
+/** Nyckel för en Mer-flik som under md står i raden (samma flik finns också i Mer-menyn). */
+const MOBILE_PREFIX = "m:";
 
 const TAB_CLASS =
   "inline-flex h-10 items-center gap-2 px-2.5 max-md:h-11 text-sm whitespace-nowrap transition-colors duration-200 focus-visible:-outline-offset-2 sm:px-3";
@@ -139,8 +143,14 @@ function TabRow({
   const markKey = currentInMore ? MORE_KEY : current;
 
   useLayoutEffect(() => {
+    // Under md står Mer-flikarna i raden (nyckel "m:…") och Mer-knappen är dold.
+    const shown = (el: HTMLElement | undefined) => (el && el.offsetParent !== null ? el : null);
+    const target = () =>
+      shown(itemRefs.current.get(MOBILE_PREFIX + current)) ??
+      shown(itemRefs.current.get(markKey)) ??
+      null;
     const place = () => {
-      const el = itemRefs.current.get(markKey);
+      const el = target();
       const bar = barRef.current;
       const row = rowRef.current;
       if (!el || !bar || !row) return;
@@ -156,7 +166,7 @@ function TabRow({
       }
     };
     const box = scrollRef.current;
-    const el = itemRefs.current.get(markKey);
+    const el = target();
     if (box && el && box.contains(el) && box.scrollWidth > box.clientWidth) {
       const left = el.offsetLeft - 16;
       const right = el.offsetLeft + el.offsetWidth + 16 - box.clientWidth;
@@ -185,15 +195,15 @@ function TabRow({
       box.removeEventListener("scroll", onScroll);
       ro?.disconnect();
     };
-  }, [markKey]);
+  }, [markKey, current]);
 
-  const link = (t: SubTab, onPick?: () => void, extra?: string) => {
+  const link = (t: SubTab, onPick?: () => void, extra?: string, refKey: string = t.key) => {
     const href = withQuery(subTabHref(t), query);
     return (
       <Link
         ref={(el) => {
-          if (el) itemRefs.current.set(t.key, el);
-          else itemRefs.current.delete(t.key);
+          if (el) itemRefs.current.set(refKey, el);
+          else itemRefs.current.delete(refKey);
         }}
         href={href}
         prefetch={false}
@@ -234,26 +244,34 @@ function TabRow({
             {inline.map((t) => (
               <li key={t.key}>{link(t)}</li>
             ))}
+            {/* Under md: Mer-flikarna står i samma rad, som rullar i sidled. */}
+            {more.map((t) => (
+              <li key={MOBILE_PREFIX + t.key} className="md:hidden">
+                {link(t, undefined, undefined, MOBILE_PREFIX + t.key)}
+              </li>
+            ))}
           </ul>
         </div>
         {more.length > 0 ? (
-          <MoreMenu
-            active={currentInMore}
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-            triggerRef={(el) => {
-              if (el) itemRefs.current.set(MORE_KEY, el);
-              else itemRefs.current.delete(MORE_KEY);
-            }}
-            items={more.map((t) => ({
-              key: t.key,
-              node: link(
-                t,
-                () => setMenuOpen(false),
-                "flex h-11 w-full items-center gap-2 rounded-sm px-3 text-sm whitespace-nowrap transition-colors duration-fast hover:bg-hover focus-visible:-outline-offset-2",
-              ),
-            }))}
-          />
+          <div className="flex shrink-0 max-md:hidden">
+            <MoreMenu
+              active={currentInMore}
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              triggerRef={(el) => {
+                if (el) itemRefs.current.set(MORE_KEY, el);
+                else itemRefs.current.delete(MORE_KEY);
+              }}
+              items={more.map((t) => ({
+                key: t.key,
+                node: link(
+                  t,
+                  () => setMenuOpen(false),
+                  "flex h-11 w-full items-center gap-2 rounded-sm px-3 text-sm whitespace-nowrap transition-colors duration-fast hover:bg-hover focus-visible:-outline-offset-2",
+                ),
+              }))}
+            />
+          </div>
         ) : null}
         <span
           ref={barRef}

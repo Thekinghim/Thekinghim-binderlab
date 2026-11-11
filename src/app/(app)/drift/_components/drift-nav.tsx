@@ -8,7 +8,8 @@ import { cn } from "@/lib/cn";
 import { DRIFT_TABS, driftTabActive } from "../_lib/nav";
 
 /**
- * Undersidorna i Drift. Aktiv sida har ett 2 px indexstreck och aria-current. Till höger,
+ * Undersidorna i Drift. Aktiv sida har ett 2 px indexstreck och aria-current. Under md är
+ * raden en segmentknapp (fyra lika breda val), så att den inte ser ut som en andra flikrad. Till höger,
  * från md, "Fyll på" (mobilsidan vid automaten) för den som får registrera påfyllningar; på
  * mobilen är det Påfyllning som har den stora knappen, så att flikarna får plats.
  */
@@ -17,7 +18,7 @@ export function DriftNav({ canRefill = false }: { canRefill?: boolean }) {
   return (
     <div className="flex items-end gap-3">
       <nav aria-label="Drift" className="-mx-4 min-w-0 flex-1 overflow-x-auto px-4 md:mx-0 md:px-0">
-        <ul className="flex min-w-max gap-1 border-b border-line">
+        <ul className="flex min-w-max gap-1 border-b border-line max-md:grid max-md:min-w-0 max-md:auto-cols-fr max-md:grid-flow-col max-md:gap-0.5 max-md:rounded-md max-md:border max-md:border-line-strong max-md:p-0.5">
           {DRIFT_TABS.map((item) => {
             const on = driftTabActive(item.href, pathname);
             return (
@@ -26,8 +27,10 @@ export function DriftNav({ canRefill = false }: { canRefill?: boolean }) {
                   href={item.href}
                   aria-current={on ? "page" : undefined}
                   className={cn(
-                    "-mb-px inline-flex h-9 items-center border-b-2 px-3 text-sm transition-colors duration-fast max-md:h-11",
-                    on ? "border-fg text-fg" : "border-transparent text-muted hover:text-fg",
+                    "-mb-px inline-flex h-9 items-center border-b-2 px-3 text-sm transition-colors duration-fast max-md:mb-0 max-md:h-11 max-md:w-full max-md:justify-center max-md:rounded-sm max-md:border-b-0 max-md:px-1",
+                    on
+                      ? "border-fg text-fg max-md:bg-inverse max-md:font-medium max-md:text-on-inverse"
+                      : "border-transparent text-muted hover:text-fg",
                   )}
                 >
                   {item.label}

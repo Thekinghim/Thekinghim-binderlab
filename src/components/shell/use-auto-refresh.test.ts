@@ -1,14 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { FOCUS_STALE_MS, INTERVAL_MS, isBusy, shouldRefresh } from "./use-auto-refresh";
 
-function doc(opts: { visible?: boolean; tag?: string; modal?: boolean; editable?: boolean } = {}) {
+function doc(
+  opts: {
+    visible?: boolean;
+    tag?: string;
+    modal?: boolean;
+    sheet?: boolean;
+    editable?: boolean;
+  } = {},
+) {
   return {
     visibilityState: opts.visible === false ? "hidden" : "visible",
     activeElement: opts.tag
       ? ({ tagName: opts.tag, isContentEditable: !!opts.editable } as unknown as Element)
       : null,
     querySelector: (sel: string) =>
-      opts.modal && sel.includes("aria-modal") ? ({} as Element) : null,
+      (opts.modal && sel.includes("aria-modal")) || (opts.sheet && sel.includes("dialog[open]"))
+        ? ({} as Element)
+        : null,
   };
 }
 
@@ -34,6 +44,9 @@ describe("shouldRefresh", () => {
     expect(shouldRefresh("interval", late, t0, doc({ tag: "INPUT" }))).toBe(false);
     expect(shouldRefresh("interval", late, t0, doc({ tag: "TEXTAREA" }))).toBe(false);
     expect(shouldRefresh("interval", late, t0, doc({ modal: true }))).toBe(false);
+    // Ett öppet ark (<dialog open>, t.ex. menyn i enkla vyn) räknas också.
+    expect(shouldRefresh("interval", late, t0, doc({ sheet: true }))).toBe(false);
+    expect(shouldRefresh("focus", late, t0, doc({ sheet: true }))).toBe(false);
     expect(shouldRefresh("interval", late, t0, doc({ tag: "BUTTON" }))).toBe(true);
   });
 

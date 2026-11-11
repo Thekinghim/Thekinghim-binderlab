@@ -130,7 +130,17 @@ export function MobileNav(props: ShellNavProps) {
                           active && "font-medium",
                         )}
                       >
-                        {s.label}
+                        {/* Under 360 px: kortare ord, så att inget klipps. */}
+                        {s.short ? (
+                          <>
+                            <span aria-hidden className="min-[360px]:hidden">
+                              {s.short}
+                            </span>
+                            <span className="max-[359px]:sr-only">{s.label}</span>
+                          </>
+                        ) : (
+                          s.label
+                        )}
                       </span>
                     </Link>
                   </li>

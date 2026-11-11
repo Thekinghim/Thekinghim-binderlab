@@ -26,6 +26,7 @@ import { setMyLocale } from "@/server/actions/locale";
 
 import { clearAllRecent } from "./command-recent";
 import { simpleHomeFor, simpleTabActive, simpleTabsFor, type SimpleTabId } from "./simple-view";
+import { useAutoRefresh } from "./use-auto-refresh";
 
 /** Höjden på bottenraden, utan säkerhetsmarginal. */
 export const SIMPLE_NAV_HEIGHT = 64;
@@ -287,6 +288,10 @@ export function SimpleShell({
   // Allt utanför den enkla vyn skickas till startsidan av servern (@/server/data/core,
   // loadViewer), även vid navigering i webbläsaren: varje sida läser sin data där.
   const pathname = usePathname() ?? "/";
+  // Samma regler som hela appen: siffrorna hämtas om när appen kommer tillbaka efter en stund
+  // och var 5:e minut, aldrig medan man skriver eller har ett ark öppet. Fyll på hämtar om
+  // själv (use-fresh-data), tillsammans med kön.
+  useAutoRefresh(!pathname.startsWith("/fyll-pa"));
   return (
     <SimpleShellContext.Provider value={{ email, role }}>
       <div className="min-h-dvh bg-bg text-fg">

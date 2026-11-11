@@ -18,7 +18,8 @@ type DocLike = {
 
 /** Sant när användaren skriver i ett fält eller har en dialog öppen. */
 export function isBusy(doc: DocLike): boolean {
-  if (doc.querySelector('[aria-modal="true"]')) return true;
+  // Egna dialoger (aria-modal) och webbläsarens <dialog> (ark och rutor i enkla vyn).
+  if (doc.querySelector('[aria-modal="true"], dialog[open]')) return true;
   const el = doc.activeElement as (Element & { isContentEditable?: boolean }) | null;
   if (!el) return false;
   if (el.isContentEditable) return true;
