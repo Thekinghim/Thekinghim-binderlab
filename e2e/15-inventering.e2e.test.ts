@@ -250,7 +250,7 @@ describe("Inventering (iPhone SE)", () => {
     ).toBe(true);
     const box = await entry.boundingBox();
     expect(box && box.height >= 44 && box.width >= 44).toBe(true);
-    await screenshot(page, "14-inventering-0-vart-lager");
+    await screenshot(page, "15-inventering-0-vart-lager");
     await entry.click();
     await page.waitForURL((url) => url.pathname === "/vart-lager/inventering");
 
@@ -261,7 +261,7 @@ describe("Inventering (iPhone SE)", () => {
     expect(await hemma.innerText()).toContain("Inte inventerat än");
     await page.getByRole("button", { name: /^Kontoret/ }).waitFor();
     await expectPhonePage(page);
-    await screenshot(page, "14-inventering-1-valj-lager");
+    await screenshot(page, "15-inventering-1-valj-lager");
     await hemma.click();
 
     // 2. En i taget: första produkten, det appen tror står där.
@@ -276,14 +276,14 @@ describe("Inventering (iPhone SE)", () => {
     const firstLevel = await level(target.hemma, first.id);
     await page.getByText(new RegExp(`Appen tror: ${numberPattern(firstLevel)}`)).waitFor();
     await expectPhonePage(page);
-    await screenshot(page, "14-inventering-2-en-i-taget");
+    await screenshot(page, "15-inventering-2-en-i-taget");
     // Skriver ett antal (stämmer med appen) och går vidare; nästa hoppas över.
     // "Stämmer" fyller i det appen tror.
     const field = page.getByLabel(`Antal ${firstName}`);
     await page.getByRole("button", { name: "Stämmer", exact: true }).click();
     expect(await field.inputValue()).toBe(String(Math.max(0, firstLevel)));
     await page.getByText(`1 av ${target.titles} räknade`).waitFor();
-    await screenshot(page, "14-inventering-3-en-i-taget-ifylld");
+    await screenshot(page, "15-inventering-3-en-i-taget-ifylld");
     await page.getByRole("button", { name: "Nästa" }).click();
     await page.getByText(`Produkt 2 av ${target.titles}`).waitFor();
     await page.getByRole("button", { name: "Hoppa över" }).click();
@@ -300,7 +300,7 @@ describe("Inventering (iPhone SE)", () => {
     await page.getByText(`3 av ${target.titles} räknade`).waitFor();
     await listField(page, x.name).scrollIntoViewIfNeeded();
     await expectPhonePage(page);
-    await screenshot(page, "14-inventering-4-lista");
+    await screenshot(page, "15-inventering-4-lista");
     // Ingenting är sparat i databasen än, men utkastet ligger på telefonen.
     expect(await level(target.hemma, x.id)).toBe(xBefore);
     await until(async () => (await draftInStorage(page)) !== null, "utkastet är sparat lokalt");
@@ -320,7 +320,7 @@ describe("Inventering (iPhone SE)", () => {
     const resume = again.getByRole("button", { name: /^Hemma/ });
     await again.getByText("Fortsätt · 3 räknade").waitFor();
     expect(await resume.innerText()).toContain("Fortsätt · 3 räknade");
-    await screenshot(again, "14-inventering-5-fortsatt-utkast");
+    await screenshot(again, "15-inventering-5-fortsatt-utkast");
     await resume.click();
     await again.getByRole("heading", { name: "Räkna hemma." }).waitFor();
     // Samma läge (listan) och samma antal som före.
@@ -343,7 +343,7 @@ describe("Inventering (iPhone SE)", () => {
       )
       .waitFor();
     await expectPhonePage(again);
-    await screenshot(again, "14-inventering-6a-lagret-andrades");
+    await screenshot(again, "15-inventering-6a-lagret-andrades");
     await again.getByRole("button", { name: "Tillbaka och ändra" }).click();
     await listField(again, first.name).fill(String(firstNow));
     await again.getByRole("button", { name: "Visa skillnader (3 räknade)" }).click();
@@ -359,7 +359,7 @@ describe("Inventering (iPhone SE)", () => {
       .getByText(`1 stämmer · ${target.titles - 3} hoppades över och ändras inte`)
       .waitFor();
     await expectPhonePage(again);
-    await screenshot(again, "14-inventering-6-skillnader");
+    await screenshot(again, "15-inventering-6-skillnader");
     expect(await level(target.hemma, x.id)).toBe(xBefore);
 
     // 6. Spara: allt på en gång.
@@ -391,7 +391,7 @@ describe("Inventering (iPhone SE)", () => {
     // Utkastet är borta från telefonen.
     await until(async () => (await draftInStorage(again)) === null, "utkastet är borttaget");
     await expectPhonePage(again);
-    await screenshot(again, "14-inventering-7-sparat");
+    await screenshot(again, "15-inventering-7-sparat");
 
     // 7. Lagret visar att det är inventerat i dag.
     await again.getByRole("button", { name: "Räkna ett lager till" }).click();
@@ -403,7 +403,7 @@ describe("Inventering (iPhone SE)", () => {
         ),
       "Hemma visar Inventerat i dag",
     );
-    await screenshot(again, "14-inventering-8-inventerat-i-dag");
+    await screenshot(again, "15-inventering-8-inventerat-i-dag");
   });
 
   it("delägaren (Enkel vy, engelska) räknar Kontoret under Stock", async () => {
@@ -437,7 +437,7 @@ describe("Inventering (iPhone SE)", () => {
       last = now;
       return same;
     }, "rubrikens siffra står still");
-    await screenshot(page, "14-inventering-en-1-stock");
+    await screenshot(page, "15-inventering-en-1-stock");
     await countLink.click();
     await page.waitForURL((url) => url.pathname === "/vart-lager/inventering");
     expect(await page.evaluate(() => document.documentElement.lang)).toBe("en");
@@ -464,7 +464,7 @@ describe("Inventering (iPhone SE)", () => {
       "page",
     );
     await noSwedish();
-    await screenshot(page, "14-inventering-en-2-pick-place");
+    await screenshot(page, "15-inventering-en-2-pick-place");
 
     await page.getByRole("button", { name: /^Kontoret/ }).click();
     await page.getByRole("heading", { name: "Count at Kontoret." }).waitFor();
@@ -478,7 +478,7 @@ describe("Inventering (iPhone SE)", () => {
     await page.getByLabel(`Count of ${firstName}`).fill(String(before + 7));
     await page.getByText(`1 of ${target.titles} counted`).waitFor();
     await noSwedish();
-    await screenshot(page, "14-inventering-en-3-one-at-a-time");
+    await screenshot(page, "15-inventering-en-3-one-at-a-time");
     await page.getByRole("button", { name: "Next" }).click();
     await page.getByText(`Product 2 of ${target.titles}`).waitFor();
     await page.getByRole("button", { name: "Skip" }).waitFor();
@@ -486,13 +486,13 @@ describe("Inventering (iPhone SE)", () => {
     await page.getByRole("radio", { name: "List" }).click();
     await page.getByRole("list", { name: "Count stock" }).waitFor();
     await noSwedish();
-    await screenshot(page, "14-inventering-en-4-list");
+    await screenshot(page, "15-inventering-en-4-list");
 
     await page.getByRole("button", { name: "See the differences (1 counted)" }).click();
     await page.getByRole("heading", { name: "1 product will change." }).waitFor();
     await page.getByText(`${target.titles - 1} skipped, not changed`).waitFor();
     await noSwedish();
-    await screenshot(page, "14-inventering-en-5-differences");
+    await screenshot(page, "15-inventering-en-5-differences");
     await page.getByRole("button", { name: "Save the count" }).click();
     await page.getByRole("heading", { name: "The count is saved." }).waitFor();
     await page.getByText("1 product counted at Kontoret.").waitFor();
@@ -509,7 +509,7 @@ describe("Inventering (iPhone SE)", () => {
       order by c.counted_at desc limit 1`;
     expect(saved).toEqual({ email: PARTNER, note: "Inventering, Kontoret" });
     await noSwedish();
-    await screenshot(page, "14-inventering-en-6-saved");
+    await screenshot(page, "15-inventering-en-6-saved");
     await page.getByRole("link", { name: "Back to stock" }).last().click();
     await page.waitForURL((url) => url.pathname === "/vart-lager");
   });
@@ -546,7 +546,7 @@ describe("Inventering (iPhone SE)", () => {
     // Hemma och Kontoret är nyss inventerade: ingen punkt för dem.
     expect(await page.getByText(/^Inventera Hemma\.?$/).count()).toBe(0);
     expect(await page.getByText(/^Inventera Kontoret\.?$/).count()).toBe(0);
-    await screenshot(page, "14-inventering-9-att-gora");
+    await screenshot(page, "15-inventering-9-att-gora");
     await page.getByRole("link", { name: "Inventera", exact: true }).first().click();
     await page.waitForURL(
       (url) =>
@@ -556,6 +556,6 @@ describe("Inventering (iPhone SE)", () => {
     await page.getByRole("heading", { name: "Räkna i Garaget." }).waitFor();
     await page.getByRole("button", { name: "Byt lager" }).waitFor();
     await expectPhonePage(page);
-    await screenshot(page, "14-inventering-10-fran-att-gora");
+    await screenshot(page, "15-inventering-10-fran-att-gora");
   });
 });

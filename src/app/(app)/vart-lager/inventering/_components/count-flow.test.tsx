@@ -1,7 +1,7 @@
 /**
  * Inventeringen före hydrering (serverns HTML): lagerväljaren med "Senast inventerat", och
  * räkneskärmen för lagret i länken (?lager=) med "Appen tror", på svenska och engelska.
- * Utkastet läses ur telefonens lagring först i webbläsaren (e2e/14 testar det).
+ * Utkastet läses ur telefonens lagring först i webbläsaren (e2e/15 testar det).
  */
 
 import { renderToString } from "react-dom/server";

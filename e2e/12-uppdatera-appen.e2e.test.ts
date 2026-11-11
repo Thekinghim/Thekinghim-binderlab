@@ -157,7 +157,9 @@ describe.each(DEVICES)("Uppdatera appen på %s", (device) => {
       // 2. Mitt i en påfyllning: ändrat antal, appen öppnas igen. Ingen omladdning.
       await cards.first().click();
       await page.waitForURL((url) => /^\/fyll-pa\/[0-9a-f-]{36}$/.test(url.pathname));
-      const fewer = page.getByRole("button", { name: /^En mindre / }).first();
+      // Första knappen som går att trycka på: ett fack som redan står på 0 (t.ex. en titel
+      // som en annan testfil lagt i automaten) har knappen avstängd.
+      const fewer = page.locator('button[aria-label^="En mindre "]:not([disabled])').first();
       await fewer.waitFor();
       await fewer.click();
       const c = `e2e-c-${run}`;

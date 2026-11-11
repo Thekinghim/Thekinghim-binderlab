@@ -266,7 +266,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await page.getByText(notice).first().waitFor();
     await page.getByText(notice).first().scrollIntoViewIfNeeded();
     await expectNoSideScroll(page);
-    await shot(page, "14-agare-att-gora-mystery-pris-iphonese");
+    await shot(page, "16-agare-att-gora-mystery-pris-iphonese");
 
     // Listan: kortet för mystery-packet har notisen med länk till kalkylen.
     await visit(page, "/vart-lager/mystery");
@@ -275,7 +275,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await card.getByText(notice).scrollIntoViewIfNeeded();
     await expectNoSideScroll(page);
     await expectTapTargets(page, '[data-testid="mystery-kostnad-notis"]');
-    await shot(page, "14-agare-mystery-lista-notis-iphonese");
+    await shot(page, "16-agare-mystery-lista-notis-iphonese");
 
     await visit(page, `/vart-lager/mystery/${mysteryId}`);
     const section = page.locator("#kalkyl");
@@ -295,7 +295,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await expectNoSideScroll(page);
     await expectTapTargets(page, "#kalkyl");
     await section.scrollIntoViewIfNeeded();
-    await shot(page, "14-agare-mystery-kalkyl-iphonese");
+    await shot(page, "16-agare-mystery-kalkyl-iphonese");
 
     // "Rätta priset" skriver om sålda pack: den frågar först, och Avbryt ändrar ingenting.
     await section.getByRole("button", { name: /^Rätta priset/ }).click();
@@ -306,7 +306,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await confirm.getByRole("button", { name: "Ja, rätta priset", exact: true }).waitFor();
     await expectNoSideScroll(page);
     await expectTapTargets(page, '[data-testid="mystery-kostnad-notis"]');
-    await shot(page, "14-agare-mystery-ratta-fraga-iphonese");
+    await shot(page, "16-agare-mystery-ratta-fraga-iphonese");
     await confirm.getByRole("button", { name: "Avbryt", exact: true }).click();
     await section.getByRole("button", { name: /^Uppdatera priset från idag/ }).waitFor();
     expect((await mysteryPrices()).map((p) => p.ore)).toEqual([17_400]);
@@ -323,7 +323,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await page.getByRole("button", { name: `En till ${FLAMES}` }).click();
     await page.getByText(/10\sav\s10 · klart att spara/).waitFor();
     await draft.scrollIntoViewIfNeeded();
-    await shot(page, "14-agare-mystery-kalkyl-vad-hander-om-iphonese");
+    await shot(page, "16-agare-mystery-kalkyl-vad-hander-om-iphonese");
     expect(await plain(draft.locator('[data-testid="kalkyl-per-pack"]'))).toBe("185 kr");
     expect(await plain(draft.locator('[data-testid="kalkyl-per-omgang"]'))).toBe("1 850 kr");
     await expectNoSideScroll(page);
@@ -343,7 +343,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await banner.getByText(notice).waitFor();
     await banner.getByRole("link", { name: "Visa kalkylen" }).waitFor();
     await banner.scrollIntoViewIfNeeded();
-    await shot(page, "14-agare-inkopspriser-notis-iphonese");
+    await shot(page, "16-agare-inkopspriser-notis-iphonese");
   });
 
   it("delägaren (Enkel vy, engelska) ser notisen och kalkylen och uppdaterar priset från i dag", async () => {
@@ -358,14 +358,14 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await banner.getByRole("button", { name: /^Update the price from today/ }).waitFor();
     await expectNoSideScroll(page);
     await expectTapTargets(page, '[data-testid="mystery-kostnad-notis"]');
-    await shot(page, "14-delagare-purchase-prices-notis-iphonese");
+    await shot(page, "16-delagare-purchase-prices-notis-iphonese");
 
     await visit(page, "/vart-lager/mystery");
     const card = page.locator("section").filter({ hasText: MYSTERY }).first();
     await card.getByText(notice).waitFor();
     await card.getByText(notice).scrollIntoViewIfNeeded();
     await expectNoSideScroll(page);
-    await shot(page, "14-delagare-mystery-list-notis-iphonese");
+    await shot(page, "16-delagare-mystery-list-notis-iphonese");
 
     await visit(page, "/inkopspriser");
     await banner.getByRole("link", { name: "Show the calculator" }).click();
@@ -385,7 +385,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await expectNoSideScroll(page);
     await expectTapTargets(page, "#kalkyl");
     await section.scrollIntoViewIfNeeded();
-    await shot(page, "14-delagare-mystery-calculator-iphonese");
+    await shot(page, "16-delagare-mystery-calculator-iphonese");
 
     // "Correct the price" frågar först, på engelska; Cancel ändrar ingenting.
     await section.getByRole("button", { name: /^Correct the price/ }).click();
@@ -397,7 +397,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     expect(await confirm.innerText()).not.toMatch(/Rätta|Avbryt|sålt/);
     await expectNoSideScroll(page);
     await expectTapTargets(page, '[data-testid="mystery-kostnad-notis"]');
-    await shot(page, "14-delagare-mystery-correct-question-iphonese");
+    await shot(page, "16-delagare-mystery-correct-question-iphonese");
     await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
 
     // Före: bara det gamla priset.
@@ -415,7 +415,7 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
       "notisen är borta",
     );
     await section.scrollIntoViewIfNeeded();
-    await shot(page, "14-delagare-mystery-calculator-uppdaterad-iphonese");
+    await shot(page, "16-delagare-mystery-calculator-uppdaterad-iphonese");
 
     // Prisråd ligger på Lönsamhet, som delägaren inte når (Enkel vy skickar honom vidare).
     await page.goto("/lonsamhet");
@@ -448,14 +448,14 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await expectNoSideScroll(page);
     await expectTapTargets(page, "#prisrad");
     await section.scrollIntoViewIfNeeded();
-    await shot(page, "14-agare-lonsamhet-prisrad-iphonese");
+    await shot(page, "16-agare-lonsamhet-prisrad-iphonese");
 
     // Målet sänks till 15 %: mystery-packet (cirka 23 %) når det och försvinner ur listan.
     await section.getByRole("button", { name: "Ändra mål" }).click();
     const field = section.getByLabel("Mål för marginalen");
     await field.fill("15");
     await expectTapTargets(page, "#prisrad form");
-    await shot(page, "14-agare-lonsamhet-prisrad-mal-iphonese");
+    await shot(page, "16-agare-lonsamhet-prisrad-mal-iphonese");
     await section.getByRole("button", { name: "Spara", exact: true }).click();
     await section.getByText("Mål: 15 % marginal").waitFor();
     await until(async () => {
@@ -486,6 +486,6 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     await todo.waitFor();
     await todo.scrollIntoViewIfNeeded();
     await expectNoSideScroll(page);
-    await shot(page, "14-agare-att-gora-prisrad-iphonese");
+    await shot(page, "16-agare-att-gora-prisrad-iphonese");
   });
 });

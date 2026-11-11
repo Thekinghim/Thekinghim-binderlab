@@ -48,8 +48,11 @@ async function signedIn(email: string): Promise<Page> {
 }
 
 async function sectionText(page: Page, selector: string): Promise<string> {
-  await page.locator(selector).waitFor();
-  return text(await page.locator(selector).innerText());
+  // Den synliga: medan sidan strömmas in kan avsnittet ligga dolt i väntan på sin plats
+  // (en kallstartad dev-server), och då finns det en kort stund två gånger.
+  const shown = page.locator(`${selector} >> visible=true`);
+  await shown.waitFor();
+  return text(await shown.innerText());
 }
 
 /** Ingen sidledes scroll, inget som sticker ut ur avsnittet, och tryckytor på minst 44 px. */

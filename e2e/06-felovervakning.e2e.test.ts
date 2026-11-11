@@ -131,8 +131,13 @@ describe("felövervakning", () => {
     const open = alertRows(page, JOB_TITLE).filter({ hasText: /Sedan / });
     await open.first().waitFor();
     expect(await open.first().innerText()).toContain(FAULT);
-    await open.first().getByText("Misslyckat schemalagt jobb").waitFor();
-    await page.getByText("Senaste körningen av larmjobbet misslyckades.").waitFor();
+    // Typen står två gånger i raden (telefonens rad under md, etiketten från md): den synliga.
+    await open
+      .first()
+      .locator("text=/^Misslyckat schemalagt jobb/ >> visible=true")
+      .first()
+      .waitFor();
+    await page.getByText("Larmkollen misslyckades senast.").waitFor();
     await open.first().scrollIntoViewIfNeeded();
     await screenshot(page, "06-felovervakning-drift");
 
@@ -205,7 +210,11 @@ describe("felövervakning", () => {
     await page.getByRole("alert").filter({ hasText: "Något gick fel" }).first().waitFor();
     await screenshot(page, "06-felovervakning-import-fel");
 
+    // Datakällor säger det överst; importen står i loggen under "Mer." (stängd tills man
+    // öppnar den eller kommer dit med #ladda-upp).
     await page.goto("/datakallor");
+    await page.getByText("Senaste importen misslyckades.").first().waitFor();
+    await page.locator("details#ladda-upp > summary").click();
     await page.locator('text="Misslyckades" >> visible=true').first().waitFor();
 
     await until(async () => {

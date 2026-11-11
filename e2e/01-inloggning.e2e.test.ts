@@ -47,12 +47,15 @@ describe("inloggning", () => {
     expect(new URL(page.url()).pathname).toBe("/");
     await page.getByRole("heading", { level: 1 }).waitFor();
 
+    // Ägaren når Datakällor: under Mer i huvudmenyn (sex flikar), som underflik.
+    const nav = page.getByRole("navigation", { name: "Huvudmeny" });
+    await nav.getByRole("link", { name: "Mer", exact: true }).click();
+    await page.getByRole("link", { name: "Datakällor", exact: true }).first().waitFor();
+
     const menu = page.getByRole("button", { name: /kontomeny/ });
     expect(await menu.innerText()).toContain("Ägare");
     await menu.click();
     await page.getByText(e2e().users.owner).waitFor();
-    const nav = page.getByRole("navigation", { name: "System" });
-    await nav.getByRole("link", { name: "Datakällor" }).waitFor();
     await screenshot(page, "01-inloggning-agare-kontomeny");
 
     await page.getByRole("button", { name: "Logga ut", exact: true }).click();

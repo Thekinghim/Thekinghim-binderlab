@@ -110,7 +110,8 @@ function ActionControl({
 
   if (compact) {
     const cls = cn(
-      "inline-flex h-7 items-center rounded-xs px-1.5 font-mono text-sm whitespace-nowrap underline-offset-4 transition-colors duration-fast ease-instrument",
+      // Under md: 44 px att trycka på (design.md §5.1).
+      "inline-flex h-7 items-center rounded-xs px-1.5 font-mono text-sm whitespace-nowrap underline-offset-4 transition-colors duration-fast ease-instrument max-md:h-11 max-md:min-w-11",
       emphasis === "primary"
         ? "text-fg underline decoration-line-control hover:decoration-fg"
         : "text-muted hover:text-fg",

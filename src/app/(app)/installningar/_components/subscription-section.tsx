@@ -91,7 +91,7 @@ export async function SubscriptionSection({
       <SectionHeader id="abonnemang-rubrik" size="md" title={title} aside={aside} />
       {operator ? (
         <p>
-          <Link href="/plattform" className="text-fg underline">
+          <Link href="/plattform" className="text-fg underline max-md:tap">
             Öppna Plattform →
           </Link>{" "}
           <span className="text-muted">Alla kunder, planer, MRR och fakturaunderlag.</span>
