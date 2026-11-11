@@ -744,7 +744,11 @@ export function FillApp({
         pendingLine(waitingShown[0]!)
       ) : waitingShown.length > 1 ? (
         <AwishPendingLine
-          title={t.r2.t1.fill.awishPendingMany(waitingShown.map((m) => m.code))}
+          title={t.r2.t1.fill.awishPendingMany(
+            waitingShown
+              .map((m) => m.code)
+              .sort((a, b) => a.localeCompare(b, "sv", { numeric: true })),
+          )}
           busy={retrying !== null}
           disabled={!q.online}
           onRetry={() => void retryPush(null)}

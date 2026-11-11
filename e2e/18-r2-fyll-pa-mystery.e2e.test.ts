@@ -521,7 +521,8 @@ describe("Awish fick inte antalen", () => {
     };
     await routable.route("**/fyll-pa**", async (route) => {
       if (route.request().method() === "POST") await gate;
-      await route.continue();
+      // En förfrågan som avbröts av omladdningen finns inte kvar att släppa.
+      await route.continue().catch(() => {});
     });
     try {
       for (const id of [machineId, other.id]) {
@@ -529,7 +530,9 @@ describe("Awish fick inte antalen", () => {
                   values (${orgId}::uuid, 'awish_push_failed', ${id}::uuid, 0)`;
       }
       await page.reload();
-      const codes = [machineCode, other.code].sort();
+      const codes = [machineCode, other.code].sort((a, b) =>
+        a.localeCompare(b, "sv", { numeric: true }),
+      );
       const line = page.getByText(`Awish fick inte antalen för ${codes[0]} och ${codes[1]}.`);
       await line.waitFor();
       // En ruta för alla, inte en per automat.

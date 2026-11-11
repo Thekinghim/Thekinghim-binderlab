@@ -411,6 +411,22 @@ describe("nytt försök utan ett tryck", () => {
     expect((await logKinds(m2)).at(-1)).toBe("awish_push_cleared");
     await setAwishWebPushFor(await viewerFor(owner, orgId), true);
   });
+
+  it("två försök samtidigt (två telefoner): ingen väntar efteråt och Awish har rätt antal", async () => {
+    await recordAwishPushFailure(orgId, [m1], { serviceDb: db() });
+    const before = (await logKinds(m1)).length;
+    const viewer = await viewerFor(refiller, orgId);
+    await Promise.all([
+      retryAwishPushFor(viewer, {}, working()),
+      retryAwishPushFor(viewer, {}, working()),
+    ]);
+    expect([...(await pendingAwishPushes(db(), orgId)).keys()]).toEqual([]);
+    const added = (await logKinds(m1)).slice(before);
+    expect(added.length).toBeGreaterThanOrEqual(1);
+    expect(added).not.toContain("awish_push_failed");
+    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(10);
+    expect(await level(loc1)).toBe(10);
+  });
 });
 
 describe("behörighet i databasen", () => {

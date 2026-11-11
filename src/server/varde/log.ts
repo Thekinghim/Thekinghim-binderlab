@@ -99,9 +99,19 @@ export async function logAwishPushOutcomes(
             ? "awish_push_cleared"
             : null;
       if (kind === null) continue;
+      // Villkoret kontrolleras igen i samma sats: två försök samtidigt (två telefoner med
+      // Fyll på öppet) ska inte ge en rad till efter att det andra redan har skrivit sin.
+      const wasFailed = kind === "awish_push_cleared";
       await db.execute(
         sql`insert into public.automation_log (organization_id, kind, machine_id, units)
-            values (${organizationId}::uuid, ${kind}, ${m.machineId}::uuid, 0)`,
+            select ${organizationId}::uuid, ${kind}, ${m.machineId}::uuid, 0
+            where (coalesce((
+                     select a.kind from public.automation_log a
+                     where a.organization_id = ${organizationId}::uuid
+                       and a.machine_id = ${m.machineId}::uuid
+                       and a.kind in ('awish_push', 'awish_push_failed', 'awish_push_cleared')
+                     order by a.occurred_at desc, a.created_at desc, a.id desc
+                     limit 1), '') = 'awish_push_failed') = ${wasFailed}::boolean`,
       );
     }
     return [...(await pendingAwishPushes(db, organizationId)).keys()];
