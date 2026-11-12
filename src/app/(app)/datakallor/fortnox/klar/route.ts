@@ -11,11 +11,16 @@
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 
-import { AccountingError, currentViewer } from "@/server/accounting";
+import { currentViewer } from "@/server/accounting";
 import { AuthorizationError } from "@/server/access";
 import { revalidateAppData } from "@/server/data/core";
+import { safeErrorForLog } from "@/server/errors";
 import { FORTNOX_CALLBACK_PATH } from "@/server/fortnox/config";
-import { finishFortnoxConnectFor, FORTNOX_STATE_COOKIE } from "@/server/fortnox/service";
+import {
+  finishFortnoxConnectFor,
+  FORTNOX_STATE_COOKIE,
+  FortnoxError,
+} from "@/server/fortnox/service";
 
 export const dynamic = "force-dynamic";
 
@@ -44,13 +49,10 @@ export async function GET(request: NextRequest): Promise<Response> {
     revalidateAppData();
     return back(request, { kopplad: result.reconnected ? "igen" : "ja" });
   } catch (error) {
-    if (error instanceof AccountingError || error instanceof AuthorizationError) {
-      return back(request, { fel: error.message.slice(0, 200) });
-    }
-    console.error(
-      "[fortnox] kopplingen misslyckades",
-      error instanceof Error ? `${error.name}: ${error.message}` : "fel",
-    );
-    return back(request, { fel: "Kopplingen gick inte att slutföra. Försök igen." });
+    // Adressen bär bara en kod, aldrig en fri text (sidan slår upp texten själv).
+    if (error instanceof FortnoxError) return back(request, { fel: error.code });
+    if (error instanceof AuthorizationError) return back(request, { fel: "behorighet" });
+    console.error("[fortnox] kopplingen misslyckades", safeErrorForLog(error));
+    return back(request, { fel: "fel" });
   }
 }

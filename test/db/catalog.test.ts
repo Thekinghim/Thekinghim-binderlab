@@ -79,6 +79,8 @@ const RPCS = [
   "create_store_invitation",
   // Flera lager: nytt eget lager (ägare, admin).
   "create_warehouse",
+  // Fortnox: be om att ett skickat verifikat vänds (ägare, admin; 20261220000000_fortnox.sql).
+  "fortnox_request_reversal",
   // Lager (fas 5): visningsnamn för dem som registrerat lagerhändelser, alla roller.
   "lager_performers",
   // Lager (fas 7): sortimentets perioder per automat och titel, alla roller.
@@ -268,6 +270,10 @@ describe("tabeller", () => {
         // Att göra: avbockade punkter (20261102113602_att_gora_todo_dismissals.sql).
         "todo_dismissals",
         "voucher_deliveries",
+        // Fortnox: kopplingen, senaste körningen och utkorgen (20261220000000_fortnox.sql).
+        "fortnox_connections",
+        "fortnox_sync_state",
+        "fortnox_vouchers",
         // Veckosammanfattning: det som skickades per person och vecka
         // (20261123000000_veckosammanfattning.sql).
         "weekly_summaries",
@@ -640,6 +646,7 @@ describe("anon", () => {
       create_warehouse: sql`gen_random_uuid(), 'x'`,
       lager_performers: sql`gen_random_uuid()`,
       lager_slot_periods: sql`gen_random_uuid()`,
+      fortnox_request_reversal: sql`gen_random_uuid(), gen_random_uuid()`,
       list_customer_demos: sql`gen_random_uuid()`,
       list_members: sql`gen_random_uuid()`,
       machine_connectivity: sql`gen_random_uuid()`,

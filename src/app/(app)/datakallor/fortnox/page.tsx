@@ -15,7 +15,11 @@ import {
   FORTNOX_KIND_INFO,
   FORTNOX_KINDS,
 } from "@/server/fortnox/mapping";
-import { loadFortnoxFor } from "@/server/fortnox/service";
+import {
+  FORTNOX_CONNECT_ERRORS,
+  loadFortnoxFor,
+  type FortnoxErrorCode,
+} from "@/server/fortnox/service";
 
 import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
 
@@ -72,8 +76,15 @@ export default async function FortnoxPage({
     );
   }
   const c = view.connection;
-  const notice = first(sp.fel)
-    ? { tone: "bad" as const, text: String(first(sp.fel)).slice(0, 200) }
+  // Adressen bär en kod; texten slås upp här (ingen text ur adressen visas).
+  const errorCode = first(sp.fel);
+  const notice = errorCode
+    ? {
+        tone: "bad" as const,
+        text: FORTNOX_CONNECT_ERRORS[
+          (Object.hasOwn(FORTNOX_CONNECT_ERRORS, errorCode) ? errorCode : "fel") as FortnoxErrorCode
+        ],
+      }
     : first(sp.kopplad)
       ? {
           tone: "good" as const,

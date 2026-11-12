@@ -14,7 +14,7 @@ import { z, ZodError } from "zod";
 import { AccountingError, currentViewer } from "@/server/accounting";
 import { AuthorizationError } from "@/server/access";
 import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
-import { dbErrorMessage } from "@/server/errors";
+import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
 import { FORTNOX_CALLBACK_PATH } from "@/server/fortnox/config";
 import {
   disconnectFortnoxFor,
@@ -38,7 +38,7 @@ function failure(error: unknown): { ok: false; error: string } {
     return { ok: false, error: error.message };
   }
   // Bara felets namn och text: aldrig hela felet (det kan bära en fråga eller ett svar).
-  console.error("[fortnox]", error instanceof Error ? `${error.name}: ${error.message}` : "fel");
+  console.error("[fortnox]", safeErrorForLog(error));
   return { ok: false, error: dbErrorMessage(error) };
 }
 
@@ -95,13 +95,15 @@ export async function runFortnoxNow(): Promise<FortnoxResult<{ message: string }
     const message =
       r.status === "dry_run"
         ? `Torrkörning: ${n(r.wouldSend)} skulle skickas. Inget skickades.`
-        : r.status === "needs_reconnect"
-          ? "Fortnox behöver kopplas igen."
-          : r.error
-            ? r.error
-            : r.blocked > 0
-              ? `${n(r.sent + r.recovered)} bokförda. ${n(r.blocked)} stoppade, se listan.`
-              : `${n(r.sent + r.recovered)} bokförda i Fortnox.`;
+        : r.status === "busy"
+          ? "En körning pågår redan. Titta igen om en stund."
+          : r.status === "needs_reconnect"
+            ? "Fortnox behöver kopplas igen."
+            : r.error
+              ? r.error
+              : r.blocked > 0
+                ? `${n(r.sent + r.recovered)} bokförda. ${n(r.blocked)} stoppade, se listan.`
+                : `${n(r.sent + r.recovered)} bokförda i Fortnox.`;
     return { ok: true, data: { message } };
   } catch (error) {
     return failure(error);

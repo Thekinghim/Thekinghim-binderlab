@@ -1162,6 +1162,23 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
                   'Förra veckan: 2 pack, 68 kr vinst', 'Veckan innan: inget sålt.',
                   '/veckan?v=2025-03-03')`,
     );
+    // Fortnox (20261220000000_fortnox.sql): kopplingen, läget och utkorgen skrivs av servern.
+    await tx.execute(
+      sql`insert into public.fortnox_connections (organization_id, start_month)
+          values (${orgId}, '2025-03-01')`,
+    );
+    await tx.execute(
+      sql`insert into public.fortnox_sync_state (organization_id, last_run_at)
+          values (${orgId}, '2025-04-01T04:00:00Z')`,
+    );
+    await tx.execute(
+      sql`insert into public.fortnox_vouchers
+            (organization_id, idem_key, kind, source_ref, voucher_date, description, rows, fingerprint)
+          values (${orgId}, 'sales:2025-03:v1', 'sales', '2025-03', '2025-03-31',
+                  'Försäljning automater mars 2025',
+                  '[{"account":"1580","amountOre":100,"text":"a"},{"account":"3000","amountOre":-100,"text":"a"}]'::jsonb,
+                  ${"f".repeat(64)})`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {

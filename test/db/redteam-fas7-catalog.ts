@@ -595,6 +595,71 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: id("fixed_costs"),
   },
+  // Fortnox (Datakällor → Fortnox): bara ägare och admin
+  {
+    module: "@/app/(app)/datakallor/fortnox/actions",
+    name: "startFortnoxConnect",
+    allowed: OP,
+    args: () => [],
+  },
+  {
+    module: "@/app/(app)/datakallor/fortnox/actions",
+    name: "saveFortnoxSettings",
+    allowed: OP,
+    args: () => [
+      {
+        startMonth: "2025-03",
+        series: "A",
+        mapping: {
+          accounts: {
+            bank: "1930",
+            bank_fees: "6570",
+            other_fees: "6590",
+            payout_vat: "",
+            payout_reserve: "",
+            payout_capital: "",
+            vat_out: "2611",
+            cogs: "4960",
+            inventory: "1460",
+            fixed_costs: "6990",
+            fixed_payable: "2990",
+          },
+          kinds: {
+            sales: true,
+            payout: true,
+            store_share: true,
+            settlement_paid: true,
+            cogs: false,
+            fixed_costs: false,
+          },
+        },
+      },
+    ],
+  },
+  {
+    module: "@/app/(app)/datakallor/fortnox/actions",
+    name: "setFortnoxLive",
+    allowed: OP,
+    args: () => [{ live: true }],
+  },
+  {
+    module: "@/app/(app)/datakallor/fortnox/actions",
+    name: "runFortnoxNow",
+    allowed: OP,
+    args: () => [],
+  },
+  {
+    module: "@/app/(app)/datakallor/fortnox/actions",
+    name: "requestFortnoxReversal",
+    allowed: OP,
+    args: () => ["00000000-0000-4000-8000-000000000000"].map((id) => ({ id })),
+  },
+  {
+    module: "@/app/(app)/datakallor/fortnox/actions",
+    name: "disconnectFortnox",
+    allowed: OP,
+    args: () => [],
+  },
   // Ekonomi → Bokföring (månadspaket, ingen automatisk bokföring)
   {
     module: "@/app/(app)/ekonomi/bokforing-actions",

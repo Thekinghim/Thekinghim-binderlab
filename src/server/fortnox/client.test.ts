@@ -348,6 +348,15 @@ describe("API", () => {
     });
   });
 
+  it("408 och 425 är ovissa: en mellanserver kan ha gett upp medan anropet gick fram", async () => {
+    const s = source(await connect());
+    const client = new FortnoxClient(config, s.get);
+    for (const status of [408, 425]) {
+      fake.failNext.push({ status });
+      await expect(client.createVoucher(SALES, 2)).rejects.toMatchObject({ definite: false });
+    }
+  });
+
   it("väntar ut 429 och skickar inget två gånger", async () => {
     const s = source(await connect());
     const waits: number[] = [];

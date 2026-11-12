@@ -847,6 +847,7 @@ export * from "./schema/mystery";
 export * from "./schema/inventering";
 
 // Veckosammanfattning (20261123000000_veckosammanfattning.sql).
+export * from "./schema/fortnox";
 export * from "./schema/vecka";
 
 // Inköp: ett inskick skrivs aldrig två gånger (20261210000000_inkop_en_gang.sql).

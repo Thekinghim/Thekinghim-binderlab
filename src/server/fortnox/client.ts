@@ -231,19 +231,50 @@ function basic(config: FortnoxConfig): string {
   return `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`, "utf8").toString("base64")}`;
 }
 
+interface TimedResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  readonly retryAfter: string | null;
+  /** Hela svaret som text, eller null om det inte gick att läsa klart i tid. */
+  readonly text: string | null;
+}
+
+/** Anropet och HELA svaret inom tidsgränsen. null = inget svar alls. */
 async function timedFetch(
   deps: FortnoxDeps,
   url: string,
   init: RequestInit,
-): Promise<Response | null> {
+): Promise<TimedResponse | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   try {
-    return await (deps.fetch ?? fetch)(url, { ...init, signal: controller.signal });
+    const response = await (deps.fetch ?? fetch)(url, { ...init, signal: controller.signal });
+    let text: string | null = null;
+    try {
+      text = await response.text();
+    } catch {
+      text = null;
+    }
+    return {
+      status: response.status,
+      ok: response.ok,
+      retryAfter: response.headers.get("retry-after"),
+      text,
+    };
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+function parseJson(text: string | null): { value: unknown; readable: boolean } {
+  if (text === null) return { value: null, readable: false };
+  if (text === "") return { value: null, readable: true };
+  try {
+    return { value: JSON.parse(text), readable: true };
+  } catch {
+    return { value: null, readable: false };
   }
 }
 
@@ -262,12 +293,7 @@ async function tokenRequest(
     body: new URLSearchParams(form).toString(),
   });
   if (!response) throw new FortnoxAuthError("temporary", "Fortnox svarade inte.");
-  let body: unknown = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
+  const body = parseJson(response.text).value;
   const o = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   if (!response.ok) {
     const error = typeof o.error === "string" ? o.error : "";
@@ -280,8 +306,14 @@ async function tokenRequest(
         "Fortnox godtar inte appens Client-Id eller Client-Secret.",
       );
     }
-    // 400 från token-tjänsten: koden eller refresh-token gäller inte (längre).
-    throw new FortnoxAuthError("invalid_grant", "Fortnox godtar inte längre kopplingen.");
+    // Koden eller refresh-token gäller inte (längre). Fortnox dokumenterar inte felsvarets
+    // form: "invalid_grant" eller en text om ogiltig token/kod räknas hit. Ett annat 4xx
+    // (t.ex. från en mellanserver) är tillfälligt, så att kopplingen inte bryts i onödan.
+    const description = typeof o.error_description === "string" ? o.error_description : "";
+    if (error === "invalid_grant" || /invalid|expired|revoked/i.test(`${error} ${description}`)) {
+      throw new FortnoxAuthError("invalid_grant", "Fortnox godtar inte längre kopplingen.");
+    }
+    throw new FortnoxAuthError("temporary", `Fortnox svarade ${response.status}.`);
   }
   const expiresIn = Number(o.expires_in);
   if (
@@ -412,14 +444,7 @@ export class FortnoxClient {
       if (!response) {
         throw new FortnoxApiError("network", false, null, null, "Fortnox svarade inte.");
       }
-      let parsed: unknown = null;
-      let readable = true;
-      try {
-        const text = await response.text();
-        parsed = text ? JSON.parse(text) : null;
-      } catch {
-        readable = false;
-      }
+      const { value: parsed, readable } = parseJson(response.text);
       if (response.ok) {
         if (!readable) {
           // Fortnox tog emot anropet men svaret gick inte att läsa: ovisst vad som skapades.
@@ -437,7 +462,7 @@ export class FortnoxClient {
       const kind = classifyError(response.status, info);
       if (kind === "rate_limited" && waits < MAX_429_RETRIES) {
         waits += 1;
-        const header = Number(response.headers.get("retry-after"));
+        const header = Number(response.retryAfter);
         const wait =
           Number.isFinite(header) && header > 0 ? Math.min(header, 30) * 1000 : RATE_WINDOW_MS;
         await this.sleep(wait);
@@ -450,7 +475,9 @@ export class FortnoxClient {
       }
       throw new FortnoxApiError(
         kind,
-        response.status < 500,
+        // Säkert "inget gjordes" bara för ett riktigt nej från Fortnox. 408 och 425 (tidsgräns,
+        // för tidigt) kan komma från en mellanserver medan anropet ändå gick fram.
+        response.status < 500 && response.status !== 408 && response.status !== 425,
         response.status,
         info.code,
         info.message || `Fortnox svarade ${response.status}.`,
@@ -585,7 +612,8 @@ export class FortnoxClient {
         });
       }
       const pages = Number(raw?.MetaInformation?.["@TotalPages"]);
-      if (!Number.isFinite(pages) || page >= pages) return out;
+      // Saknas sidantalet läses nästa sida så länge sidan var full.
+      if (Number.isFinite(pages) ? page >= pages : list.length < 500) return out;
     }
     throw new FortnoxApiError("invalid", true, null, null, "För många sidor i Fortnox svar.");
   }

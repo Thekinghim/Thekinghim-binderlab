@@ -48,7 +48,7 @@ export interface VoucherRow {
 
 /** Varför verifikatet inte skickas än. `wait` löser sig självt, övriga kräver en människa. */
 export type HoldCode =
-  "wait" | "missing_cost" | "unmapped_account" | "vat_conflict" | "unclear_payout";
+  "wait" | "missing_cost" | "unmapped_account" | "vat_conflict" | "unclear_payout" | "unbalanced";
 
 export interface DesiredVoucher {
   readonly kind: FortnoxVoucherKind;
@@ -123,7 +123,22 @@ class Builder {
       };
     }
     if (this.rows.length === 0) return null;
-    assertBalanced(this.rows);
+    try {
+      assertBalanced(this.rows);
+    } catch {
+      // Underlaget går inte ihop (ska inte hända): det verifikatet skickas inte, resten går.
+      return {
+        kind,
+        sourceRef,
+        date,
+        description: clip(description, 170),
+        rows: [],
+        hold: {
+          code: "unbalanced",
+          detail: `Underlaget för "${clip(description, 80)}" går inte ihop, så verifikatet skickas inte. Hör av dig till den som sköter appen.`,
+        },
+      };
+    }
     return { kind, sourceRef, date, description: clip(description, 170), rows: this.rows, hold };
   }
 }

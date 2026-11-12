@@ -129,7 +129,7 @@ export function SettingsForm({
           hint={
             startLocked
               ? "Kan inte ändras när verifikat har skickats."
-              : "Välj första månaden som INTE redan är bokförd på annat sätt."
+              : "Välj första månaden som INTE redan är bokförd. Utbetalningar och betalningar till butiker för tidigare månader bokförs inte härifrån."
           }
           onChange={(e) => setValues((v) => ({ ...v, startMonth: e.target.value }))}
         />

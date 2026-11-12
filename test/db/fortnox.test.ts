@@ -509,6 +509,23 @@ describe("torrkörning", () => {
     expect((await connection())?.live).toBe(false);
   });
 
+  it("startar ägaren i november bokförs inget för oktober, inte heller oktobers utbetalning", async () => {
+    // Oktober är då bokförd för hand (försäljning och uppskattad kortavgift). Utbetalningen
+    // för oktober kom in i november, men hör till oktober: den bokförs inte härifrån.
+    await settings("2026-11");
+    expect(await run()).toMatchObject({ status: "dry_run", wouldSend: 0 });
+    expect((await loadFortnoxFor(owner, NOW))?.next).toEqual([]);
+  });
+
+  it("en månad räknas som avslutad först den 3:e i nästa månad", async () => {
+    await settings("2026-10");
+    const at = (iso: string) => runFortnoxFor(db(), orgId, { now: new Date(iso) });
+    // 1 och 2 november: oktober väntar på sena order. 3 november: oktober tas fram.
+    expect(await at("2026-11-01T10:00:00Z")).toMatchObject({ status: "dry_run", wouldSend: 0 });
+    expect(await at("2026-11-02T10:00:00Z")).toMatchObject({ status: "dry_run", wouldSend: 0 });
+    expect(await at("2026-11-03T10:00:00Z")).toMatchObject({ status: "dry_run", wouldSend: 1 });
+  });
+
   it("visar exakt vad som skulle skickas, och skickar ingenting", async () => {
     await settings("2026-10");
     const before = fake.requests.length;
@@ -541,6 +558,8 @@ describe("skarpt läge: exempelmånaden bokförs exakt en gång", () => {
     await setFortnoxLiveFor(owner, true);
     const [a, b] = await Promise.all([run(), run()]);
     expect(a.sent + b.sent).toBe(2);
+    // En körning i taget per organisation: den som kom tvåa gjorde ingenting.
+    expect([a.status, b.status].sort()).toEqual(["busy", "ran"]);
     const again = await run();
     expect(again).toMatchObject({ status: "ran", sent: 0, waiting: 0, blocked: 0, error: null });
     expect(fake.vouchers).toHaveLength(2);
@@ -724,6 +743,63 @@ describe("tappat svar: verifikatet finns i Fortnox men svaret kom aldrig", () =>
   });
 });
 
+describe("databasen felar precis efter att Fortnox har bokfört", () => {
+  it("numret går inte att spara: raden står kvar som oviss och hittas igen, utan dubblett", async () => {
+    const [store] = await asUser(ownerUser, (tx) =>
+      tx
+        .insert(s.stores)
+        .values({ organizationId: orgId, name: "Butik Nio", address: "Storgatan 9" })
+        .returning(),
+    );
+    await asPostgres((tx) =>
+      tx.execute(sql`insert into public.store_settlements
+                       (organization_id, store_id, month, amount_ore, statement, calc_version)
+                     values (${orgId}::uuid, ${store!.id}::uuid, '2026-10-01', 9000, '{}'::jsonb, 'test')`),
+    );
+    await asUser(ownerUser, (tx) =>
+      tx.execute(sql`update public.store_settlements set paid_on = '2026-11-12'
+                     where organization_id = ${orgId}::uuid and store_id = ${store!.id}::uuid`),
+    );
+    // En trigger som bara finns i testet: att skriva "sent" misslyckas, som när databasen
+    // tappar anslutningen mellan Fortnox svar och vår UPDATE.
+    await asPostgres(async (tx) => {
+      await tx.execute(sql`
+        create function public.test_fortnox_fail_sent() returns trigger language plpgsql as $f$
+        begin
+          if new.state = 'sent' then raise exception 'testfel: databasen svarar inte'; end if;
+          return new;
+        end $f$`);
+      await tx.execute(sql`
+        create trigger t99_test_fail before update on public.fortnox_vouchers
+        for each row execute function public.test_fortnox_fail_sent()`);
+    });
+    const before = fake.vouchers.length;
+    let failed;
+    try {
+      failed = await run();
+    } finally {
+      await asPostgres(async (tx) => {
+        await tx.execute(sql`drop trigger t99_test_fail on public.fortnox_vouchers`);
+        await tx.execute(sql`drop function public.test_fortnox_fail_sent()`);
+      });
+    }
+    // Verifikatet finns i Fortnox, men raden säger inte "skickat" och inte "stoppat".
+    expect(fake.vouchers).toHaveLength(before + 1);
+    expect(failed).toMatchObject({ sent: 0, blocked: 0, waiting: 1 });
+    const row = (await outbox()).find((r) => r.state === "sending")!;
+    expect(row).toMatchObject({ kind: "settlement_paid", block_code: null, fortnox_number: null });
+    // Nästa körning (färskt anspråk) rör den inte. När anspråket är gammalt hittas
+    // verifikatet på sitt märke och numret sparas. Aldrig ett andra verifikat.
+    expect(await run()).toMatchObject({ sent: 0, recovered: 0, waiting: 1 });
+    expect(await run({ staleClaimMs: 0 })).toMatchObject({ sent: 0, recovered: 1, waiting: 0 });
+    expect(fake.vouchers).toHaveLength(before + 1);
+    expect((await outbox()).find((r) => r.id === row.id)).toMatchObject({
+      state: "sent",
+      fortnox_number: fake.vouchers.at(-1)!.number,
+    });
+  });
+});
+
 describe("token", () => {
   it("en utgången åtkomsttoken förnyas mitt i körningen: refresh-token byts och inget dubbleras", async () => {
     const before = await readTokens(db(), orgId);
@@ -748,7 +824,7 @@ describe("token", () => {
     const [a, b] = await Promise.all([run(), run()]);
     expect(a.sent + b.sent).toBe(1);
     expect(a.error ?? b.error).toBeNull();
-    expect(fake.vouchers).toHaveLength(6);
+    expect(fake.vouchers).toHaveLength(7);
     const after = await readTokens(db(), orgId);
     expect(after!.refreshToken).not.toBe(before!.refreshToken);
     expect(after!.accessToken).not.toBe(before!.accessToken);
@@ -842,7 +918,7 @@ describe("låst period och konto som saknas", () => {
     const view = await loadFortnoxFor(owner, NOW);
     expect(view?.line.tone).toBe("warn");
     expect(view?.line.text).toMatch(/^Fortnox: 1 verifikat är stoppat\. Perioden är låst/);
-    expect(fake.vouchers).toHaveLength(6);
+    expect(fake.vouchers).toHaveLength(7);
   });
 
   it("Fortnox eget nej till en låst period (om låset sätts mellan kontrollen och anropet) stoppar också", async () => {
@@ -857,7 +933,7 @@ describe("låst period och konto som saknas", () => {
     expect(result).toMatchObject({ sent: 0, blocked: 1 });
     const row = (await outbox()).find((r) => r.id === lockedId)!;
     expect(row).toMatchObject({ state: "blocked", block_code: "locked_period" });
-    expect(fake.vouchers).toHaveLength(6);
+    expect(fake.vouchers).toHaveLength(7);
   });
 
   it("när perioden låses upp bokförs verifikatet nästa natt och larmet stängs", async () => {
@@ -868,7 +944,7 @@ describe("låst period och konto som saknas", () => {
       block_code: null,
     });
     expect(await openAlerts()).toEqual([]);
-    expect(fake.vouchers).toHaveLength(7);
+    expect(fake.vouchers).toHaveLength(8);
   });
 
   it("ett konto som saknas i Fortnox stoppar med kontots nummer", async () => {
@@ -900,7 +976,7 @@ describe("låst period och konto som saknas", () => {
     fake.accounts.set(2990, true);
     expect(await run()).toMatchObject({ sent: 1, blocked: 0 });
     expect(await openAlerts()).toEqual([]);
-    expect(fake.vouchers).toHaveLength(8);
+    expect(fake.vouchers).toHaveLength(9);
   });
 
   it("en serie som saknas i Fortnox stoppar, och rätt serie släpper", async () => {
@@ -926,7 +1002,7 @@ describe("låst period och konto som saknas", () => {
     );
     await settings("2026-10", DEFAULT_MAPPING, "A");
     expect(await run()).toMatchObject({ sent: 1, blocked: 0 });
-    expect(fake.vouchers).toHaveLength(9);
+    expect(fake.vouchers).toHaveLength(10);
   });
 });
 
@@ -973,7 +1049,7 @@ describe("ett skickat verifikat ändras aldrig; rättelser är nya verifikat", (
     await archivePayoutFor(owner, { id: payout.id, note: "Fel rapport, test" });
     const result = await run();
     expect(result).toMatchObject({ sent: 0, blocked: 0 });
-    expect(fake.vouchers).toHaveLength(9);
+    expect(fake.vouchers).toHaveLength(10);
     const view = await loadFortnoxFor(owner, NOW);
     expect(view?.changed.map((c) => [c.row.kind, c.reason])).toEqual([["payout", "gone"]]);
     expect(view?.line.text).toBe(
@@ -1003,7 +1079,7 @@ describe("ett skickat verifikat ändras aldrig; rättelser är nya verifikat", (
     expect(reversals[0]!.idem_key).toBe(`${target.idemKey}:rev`);
     expect(await run()).toMatchObject({ sent: 1, blocked: 0 });
     expect((await run()).sent).toBe(0);
-    expect(fake.vouchers).toHaveLength(10);
+    expect(fake.vouchers).toHaveLength(11);
     const reversed = posted().at(-1)!;
     expect(reversed.date).toBe("2026-11-16");
     expect(reversed.description).toMatch(/^Rättelse av A \d+: Utbetalning Nayax 2026-10/);
@@ -1033,7 +1109,7 @@ describe("ett skickat verifikat ändras aldrig; rättelser är nya verifikat", (
     );
     expect(await run()).toMatchObject({ sent: 1, blocked: 0 });
     expect((await run()).sent).toBe(0);
-    expect(fake.vouchers).toHaveLength(11);
+    expect(fake.vouchers).toHaveLength(12);
     // Netto på 1580 i Fortnox efter allt: försäljningen debet, första utbetalningen kredit,
     // vändningen debet, den nya utbetalningen kredit = 0.
     const on1580 = fake.vouchers
@@ -1059,7 +1135,7 @@ describe("ett skickat verifikat ändras aldrig; rättelser är nya verifikat", (
       ["sales:2026-10:v1:rev", "sent"],
       ["sales:2026-10:v2", "sent"],
     ]);
-    expect(fake.vouchers).toHaveLength(13);
+    expect(fake.vouchers).toHaveLength(14);
     // Försäljningen står kvar en gång på 3000: kredit, debet (vändning), kredit.
     const on3000 = fake.vouchers
       .flatMap((v) => v.rows)
@@ -1091,7 +1167,7 @@ describe("kopplingen gäller inte längre", () => {
     expect(result).toMatchObject({ status: "needs_reconnect", sent: 0, waiting: 1 });
     expect((await connection())?.status).toBe("needs_reconnect");
     expect(await openAlerts()).toEqual(["fortnox:koppling"]);
-    expect(fake.vouchers).toHaveLength(13);
+    expect(fake.vouchers).toHaveLength(14);
     const view = await loadFortnoxFor(owner, NOW);
     expect(view?.line.text).toBe("Fortnox: kopplingen gäller inte längre. Koppla Fortnox igen.");
     // Nästa natt: ingen ny kontakt med Fortnox förrän ägaren kopplat igen.
@@ -1112,7 +1188,7 @@ describe("kopplingen gäller inte längre", () => {
     expect(await connection()).toMatchObject({ status: "connected", live: true });
     const result = await run();
     expect(result).toMatchObject({ status: "ran", sent: 1, waiting: 0, blocked: 0 });
-    expect(fake.vouchers).toHaveLength(14);
+    expect(fake.vouchers).toHaveLength(15);
     expect(await openAlerts()).toEqual([]);
     expect((await run()).sent).toBe(0);
   });
@@ -1138,6 +1214,117 @@ describe("koppla från", () => {
     expect(await run()).toMatchObject({ status: "dry_run", wouldSend: 0 });
     await setFortnoxLiveFor(owner, true);
     expect(await run()).toMatchObject({ status: "ran", sent: 0 });
-    expect(fake.vouchers).toHaveLength(14);
+    expect(fake.vouchers).toHaveLength(15);
+  });
+});
+
+describe("sorter som stängs av, underlag som inte är klart och saknad rättighet", () => {
+  const withKinds = (kinds: Partial<typeof DEFAULT_MAPPING.kinds>) =>
+    settings("2026-10", { ...DEFAULT_MAPPING, kinds: { ...DEFAULT_MAPPING.kinds, ...kinds } });
+
+  it("inköpsvärdet skickas först när ägaren slagit på det: D 4960 / K 1460", async () => {
+    const before = fake.vouchers.length;
+    expect((await run()).sent).toBe(0);
+    await withKinds({ cogs: true });
+    expect(await run()).toMatchObject({ sent: 1, blocked: 0 });
+    const v = posted().at(-1)!;
+    expect(v.description).toMatch(/^Inköpsvärde sålda pack oktober 2026/);
+    // Tre order i oktober med inköpspris 20,00 kr: 60,00 kr.
+    expect(v.rows).toEqual([
+      [4960, 6_000, 0],
+      [1460, 0, 6_000],
+    ]);
+    expect(fake.vouchers).toHaveLength(before + 1);
+  });
+
+  it("en sort som stängs av innan verifikatet hunnit skickas dras tillbaka och larmet stängs", async () => {
+    const before = fake.vouchers.length;
+    await asUser(ownerUser, (tx) =>
+      tx.insert(s.fixedCosts).values({
+        organizationId: orgId,
+        name: "Försäkring",
+        category: "insurance",
+        amountOre: 30_000,
+        interval: "month",
+        startsOn: "2026-10-01",
+      }),
+    );
+    fake.lockedUntil = "2026-12-31";
+    await withKinds({ cogs: true, fixed_costs: true });
+    expect(await run()).toMatchObject({ sent: 0, blocked: 1 });
+    expect(await openAlerts()).toEqual(["fortnox:atgard"]);
+    // Ägaren ångrar sig och stänger av fasta kostnader.
+    await withKinds({ cogs: true, fixed_costs: false });
+    expect(await run()).toMatchObject({ sent: 0, blocked: 0, waiting: 0 });
+    const row = (await outbox()).find((r) => r.idem_key === "fixed_costs:2026-10:v1")!;
+    expect(row).toMatchObject({ state: "blocked", block_code: "withdrawn" });
+    expect(await openAlerts()).toEqual([]);
+    fake.lockedUntil = null;
+    // Avstängd sort skickas inte, även när perioden är öppen igen.
+    expect((await run()).sent).toBe(0);
+    expect(fake.vouchers).toHaveLength(before);
+  });
+
+  it("saknas rättigheten hos Fortnox stoppas verifikatet med ett larm, och bokförs när den finns", async () => {
+    const before = fake.vouchers.length;
+    await withKinds({ cogs: true, fixed_costs: true });
+    fake.failNext.push({
+      status: 403,
+      path: /^\/3\/financialyears$/,
+      body: { ErrorInformation: { error: 1, message: "Api-licens saknas.", code: 2001103 } },
+    });
+    const denied = await run();
+    expect(denied).toMatchObject({ sent: 0, blocked: 1 });
+    const row = (await outbox()).find((r) => r.idem_key === "fixed_costs:2026-10:v1")!;
+    expect(row).toMatchObject({ state: "blocked", block_code: "forbidden" });
+    expect(row.block_detail).toMatch(/rättigheten eller licensen för bokföring saknas/);
+    expect(await openAlerts()).toEqual(["fortnox:atgard"]);
+    expect(fake.vouchers).toHaveLength(before);
+    expect(await run()).toMatchObject({ sent: 1, blocked: 0 });
+    expect(posted().at(-1)!.rows).toEqual([
+      [6990, 30_000, 0],
+      [2990, 0, 30_000],
+    ]);
+    expect(await openAlerts()).toEqual([]);
+    expect((await run()).sent).toBe(0);
+    expect(fake.vouchers).toHaveLength(before + 1);
+  });
+
+  it("når jobbet inte Fortnox tre gånger i rad får ägaren ett larm, som stängs när det går igen", async () => {
+    const [store] = await asUser(ownerUser, (tx) =>
+      tx
+        .insert(s.stores)
+        .values({ organizationId: orgId, name: "Butik Tio", address: "Storgatan 10" })
+        .returning(),
+    );
+    await asPostgres((tx) =>
+      tx.execute(sql`insert into public.store_settlements
+                       (organization_id, store_id, month, amount_ore, statement, calc_version)
+                     values (${orgId}::uuid, ${store!.id}::uuid, '2026-10-01', 7000, '{}'::jsonb, 'test')`),
+    );
+    await asUser(ownerUser, (tx) =>
+      tx.execute(sql`update public.store_settlements set paid_on = '2026-11-12'
+                     where organization_id = ${orgId}::uuid and store_id = ${store!.id}::uuid`),
+    );
+    const before = fake.vouchers.length;
+    for (const expected of [[], [], ["fortnox:fel"]]) {
+      fake.failNext.push({ status: 503, path: /^\/3\/financialyears$/ });
+      const r = await run();
+      expect(r).toMatchObject({ status: "ran", sent: 0, waiting: 1 });
+      expect(r.error).toMatch(/Fortnox nåddes inte/);
+      expect(await openAlerts()).toEqual(expected);
+    }
+    expect(fake.vouchers).toHaveLength(before);
+    expect(await run()).toMatchObject({ sent: 1, waiting: 0, error: null });
+    expect(await openAlerts()).toEqual([]);
+    expect(fake.vouchers).toHaveLength(before + 1);
+  });
+
+  it("går bolaget inte att läsa vid en ny koppling nekas den när verifikat redan har skickats", async () => {
+    const before = await readTokens(db(), orgId);
+    fake.failNext.push({ status: 500, path: /^\/3\/companyinformation$/ });
+    await expect(connect(owner)).rejects.toMatchObject({ code: "okant_bolag" });
+    expect(await readTokens(db(), orgId)).toEqual(before);
+    expect((await connection())?.status).toBe("connected");
   });
 });

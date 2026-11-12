@@ -28,8 +28,9 @@ import { sql } from "drizzle-orm";
 import type { Db, Tx } from "@/db/client";
 import type { IsoDate } from "@/domain";
 import { businessToday } from "@/server/data/core/loaders";
-import { raiseAndNotify, safely } from "@/server/monitoring/failures";
-import { resolveSystemAlert } from "@/server/monitoring/system-alerts";
+import { safeErrorForLog } from "@/server/errors";
+import { safely } from "@/server/monitoring/failures";
+import { raiseSystemAlert, resolveSystemAlert } from "@/server/monitoring/system-alerts";
 
 import {
   FortnoxApiError,
@@ -204,14 +205,23 @@ export function diffOutbox(plan: DesiredPlan, outbox: readonly OutboxRow[]): Out
   const update: OutboxDiff["update"][number][] = [];
   const changed: OutboxDiff["changed"][number][] = [];
   const held: DesiredVoucher[] = [];
+  const withdrawn: string[] = [];
   const wanted = new Set<string>();
   for (const v of plan.vouchers) {
     const k = `${v.kind}:${v.sourceRef}`;
     wanted.add(k);
     const row = latest.get(k) ?? null;
+    const open = row !== null && (row.state === "pending" || row.state === "blocked");
+    if (!plan.enabled[v.kind] && open && !reversedIds.has(row.id)) {
+      // Sorten är avstängd: det som inte hunnit skickas dras tillbaka.
+      if (row.blockCode !== "withdrawn") withdrawn.push(row.id);
+      continue;
+    }
     if (v.hold) {
-      // Inget att skicka än. Ett redan skickat verifikat står kvar som det är.
+      // Inget att skicka än. Ett redan skickat verifikat står kvar som det är; en väntande
+      // rad med äldre innehåll dras tillbaka tills underlaget är klart.
       if (plan.enabled[v.kind] && (!row || row.state !== "sent")) held.push(v);
+      if (open && row.blockCode !== "withdrawn") withdrawn.push(row.id);
       continue;
     }
     const fingerprint = voucherFingerprint(v);
@@ -238,7 +248,7 @@ export function diffOutbox(plan: DesiredPlan, outbox: readonly OutboxRow[]): Out
       update.push({ id: row.id, voucher: v });
     }
   }
-  const withdraw: string[] = [];
+  const withdraw: string[] = [...withdrawn];
   const orphaned: OutboxRow[] = [];
   for (const [k, row] of latest) {
     if (wanted.has(k) || reversedIds.has(row.id)) continue;
@@ -285,7 +295,14 @@ async function applyDiff(tx: Tx, orgId: string, diff: OutboxDiff): Promise<void>
 export interface FortnoxRunResult {
   readonly organizationId: string;
   readonly status:
-    "not_connected" | "not_configured" | "needs_reconnect" | "dry_run" | "ran" | "error";
+    | "not_connected"
+    | "not_configured"
+    | "needs_reconnect"
+    | "dry_run"
+    /** En annan körning håller på för organisationen: den här gjorde ingenting. */
+    | "busy"
+    | "ran"
+    | "error";
   readonly sent: number;
   /** Väntar till nästa körning (inkl. ovissa). */
   readonly waiting: number;
@@ -357,30 +374,60 @@ class Run {
     return this.locked;
   }
 
+  /**
+   * Stoppar en rad vid kontrollen FÖRE anropet. En rad som en annan körning håller på att
+   * skicka ("sending") rörs aldrig här: den kan redan finnas i Fortnox.
+   */
   private async block(row: OutboxRow, code: BlockCode, detail: string): Promise<void> {
     await this.db.execute(sql`
       update public.fortnox_vouchers
       set state = 'blocked', block_code = ${code}, block_detail = ${clip(detail)}
       where organization_id = ${this.orgId}::uuid and id = ${row.id}::uuid
-        and state in ('pending', 'blocked', 'sending')`);
+        and state in ('pending', 'blocked')`);
   }
 
-  private async release(row: OutboxRow): Promise<void> {
-    await this.db.execute(sql`
-      update public.fortnox_vouchers set state = 'pending', block_code = null, block_detail = null
-      where organization_id = ${this.orgId}::uuid and id = ${row.id}::uuid and state = 'sending'`);
-  }
-
-  private async markSent(
+  /**
+   * Stoppar en rad som vi själva tagit i anspråk och som Fortnox säkert sa nej till. `claim`
+   * är anspråkets nummer (attempts): bara den som tog raden får ändra den.
+   */
+  private async reject(
     row: OutboxRow,
-    ref: { series: string; number: number; year: number },
+    claim: number,
+    code: BlockCode,
+    detail: string,
   ): Promise<void> {
     await this.db.execute(sql`
+      update public.fortnox_vouchers
+      set state = 'blocked', block_code = ${code}, block_detail = ${clip(detail)}
+      where organization_id = ${this.orgId}::uuid and id = ${row.id}::uuid
+        and state = 'sending' and attempts = ${claim}`);
+  }
+
+  /** Släpper ett anspråk där inget skickades. true = raden släpptes (den var vår). */
+  private async release(row: OutboxRow, claim: number): Promise<boolean> {
+    const updated = await this.db.execute<{ id: string }>(sql`
+      update public.fortnox_vouchers set state = 'pending', block_code = null, block_detail = null
+      where organization_id = ${this.orgId}::uuid and id = ${row.id}::uuid
+        and state = 'sending' and attempts = ${claim}
+      returning id::text as id`);
+    return Array.from(updated).length > 0;
+  }
+
+  /** Sparar Fortnox nummer. true = sparat (raden var vår och stod som "sending"). */
+  private async markSent(
+    row: OutboxRow,
+    claim: number,
+    ref: { series: string; number: number; year: number },
+  ): Promise<boolean> {
+    const updated = await this.db.execute<{ id: string }>(sql`
       update public.fortnox_vouchers
       set state = 'sent', sent_at = now(), fortnox_series = ${ref.series},
           fortnox_number = ${ref.number}, fortnox_year = ${ref.year},
           block_code = null, block_detail = null
-      where organization_id = ${this.orgId}::uuid and id = ${row.id}::uuid and state = 'sending'`);
+      where organization_id = ${this.orgId}::uuid and id = ${row.id}::uuid
+        and state = 'sending' and attempts = ${claim}
+      returning id::text as id`);
+    return Array.from(updated).length > 0;
   }
 
   /**
@@ -393,27 +440,48 @@ class Run {
     if (age < this.staleMs) return true;
     if (!row.attemptSeries || !row.attemptYear) return true;
     const marker = voucherMarker(this.orgId, row.idemKey);
-    const listed = await this.client.listVouchers(
-      row.attemptSeries,
-      row.attemptYear,
-      row.date,
-      row.date,
-    );
+    let listed;
+    try {
+      listed = await this.client.listVouchers(
+        row.attemptSeries,
+        row.attemptYear,
+        row.date,
+        row.date,
+      );
+    } catch (error) {
+      // Går det inte att se efter (t.ex. serien finns inte kvar) lämnas raden som oviss, och
+      // resten av kön får gå. Den skickas aldrig om utan att ha letats upp.
+      if (error instanceof FortnoxApiError && error.definite && error.kind !== "forbidden") {
+        return true;
+      }
+      throw error;
+    }
     const hits = listed.filter((v) => v.description.includes(marker));
     if (hits.length > 0) {
       const first = hits.sort((a, b) => a.number - b.number)[0]!;
-      await this.markSent(row, first);
-      this.recovered += 1;
+      if (await this.markSent(row, row.attempts, first)) this.recovered += 1;
       return true;
     }
-    await this.release(row);
-    return false;
+    // Släpps bara om anspråket fortfarande är det vi läste (ingen annan har tagit raden).
+    return !(await this.release(row, row.attempts));
   }
 
   /** Skickar en rad. Ger false när körningen ska avbrytas (Fortnox nås inte just nu). */
   async send(row: OutboxRow): Promise<boolean> {
-    if (row.state === "sending" && (await this.recover(row))) return true;
+    try {
+      if (row.state === "sending" && (await this.recover(row))) return true;
+      return await this.sendChecked(row);
+    } catch (error) {
+      if (error instanceof FortnoxApiError && error.kind === "forbidden") {
+        // Rättigheten eller licensen saknas redan vid läsningen: ägaren måste göra något.
+        await this.block(row, "forbidden", BLOCK_TEXT.forbidden(row, ""));
+        return false;
+      }
+      throw error;
+    }
+  }
 
+  private async sendChecked(row: OutboxRow): Promise<boolean> {
     const year = await this.year(row.date);
     if (!year) {
       await this.block(row, "no_financial_year", BLOCK_TEXT.no_financial_year(row, ""));
@@ -447,9 +515,10 @@ class Run {
       }
     }
 
-    // Anspråket: bara en körning får raden. Innehållet låses till det vi just läste.
+    // Anspråket: bara en körning får raden. Innehållet låses till det vi just läste, och
+    // anspråkets nummer (attempts) följer med i varje senare ändring av raden.
     const claimed = Array.from(
-      await this.db.execute<{ id: string }>(sql`
+      await this.db.execute<{ attempts: number }>(sql`
         update public.fortnox_vouchers
         set state = 'sending', claimed_at = now(), attempts = attempts + 1,
             attempt_series = ${series}, attempt_year = ${year.id},
@@ -457,13 +526,15 @@ class Run {
         where organization_id = ${this.orgId}::uuid and id = ${row.id}::uuid
           and state in ('pending', 'blocked')
           and fingerprint = ${row.fingerprint}
-        returning id::text as id`),
+        returning attempts`),
     );
-    if (claimed.length === 0) return true;
+    const claim = claimed[0]?.attempts;
+    if (claim === undefined) return true;
 
     const marker = voucherMarker(this.orgId, row.idemKey);
+    let ref;
     try {
-      const ref = await this.client.createVoucher(
+      ref = await this.client.createVoucher(
         {
           series,
           date: row.date,
@@ -472,19 +543,16 @@ class Run {
         },
         year.id,
       );
-      await this.markSent(row, ref);
-      this.sent += 1;
-      return true;
     } catch (error) {
-      if (error instanceof FortnoxAuthError) {
-        // Token gick inte att få: verifikatet lämnade aldrig servern.
-        await this.release(row);
-        throw error;
-      }
       if (!(error instanceof FortnoxApiError)) {
-        // Vårt eget fel innan anropet (t.ex. obalans): inget skickades.
-        await this.block(row, "rejected", error instanceof Error ? error.message : "Okänt fel.");
-        return true;
+        // Inget lämnade servern: felet kom före anropet (verifikatets form, eller token gick
+        // inte att få) eller efter ett 401 (Fortnox tog inte emot anropet).
+        if (error instanceof RangeError) {
+          await this.reject(row, claim, "rejected", error.message);
+          return true;
+        }
+        await this.release(row, claim);
+        throw error;
       }
       if (!error.definite) {
         // OVISST: raden står kvar som "sending" och letas upp vid nästa körning.
@@ -493,37 +561,60 @@ class Run {
       switch (error.kind) {
         case "locked_period":
           this.locked = undefined;
-          await this.block(
+          await this.reject(
             row,
+            claim,
             "locked_period",
             BLOCK_TEXT.locked_period(row, (await this.lockedUntil().catch(() => null)) ?? row.date),
           );
           return true;
         case "no_financial_year":
-          await this.block(row, "no_financial_year", BLOCK_TEXT.no_financial_year(row, ""));
+          await this.reject(row, claim, "no_financial_year", BLOCK_TEXT.no_financial_year(row, ""));
           return true;
         case "unknown_account":
-          await this.block(
+          await this.reject(
             row,
+            claim,
             "unknown_account",
             `Fortnox tog inte emot ett av kontona (${[...new Set(row.rows.map((r) => r.account))].join(", ")}): ${error.message}`,
           );
           return true;
         case "unknown_series":
-          await this.block(row, "unknown_series", BLOCK_TEXT.unknown_series(row, series));
+          await this.reject(row, claim, "unknown_series", BLOCK_TEXT.unknown_series(row, series));
           return true;
         case "forbidden":
-          await this.block(row, "forbidden", BLOCK_TEXT.forbidden(row, ""));
+          await this.reject(row, claim, "forbidden", BLOCK_TEXT.forbidden(row, ""));
           return false;
         case "rate_limited":
         case "unauthorized":
-          await this.release(row);
+          await this.release(row, claim);
           return false;
         default:
-          await this.block(row, "rejected", `Fortnox tog inte emot verifikatet: ${error.message}`);
+          await this.reject(
+            row,
+            claim,
+            "rejected",
+            `Fortnox tog inte emot verifikatet: ${error.message}`,
+          );
           return true;
       }
     }
+    // Verifikatet FINNS nu i Fortnox. Går numret inte att spara (databasen svarar inte) står
+    // raden kvar som "sending": nästa körning hittar verifikatet på märket och sparar numret.
+    // Raden får aldrig släppas eller stoppas här, då skulle den skickas en gång till.
+    let saved = false;
+    try {
+      saved = await this.markSent(row, claim, ref);
+    } catch (error) {
+      console.error("[fortnox] numret kunde inte sparas, letas upp vid nästa körning", {
+        organizationId: this.orgId,
+        voucher: row.idemKey,
+        error: safeErrorForLog(error),
+      });
+      return false;
+    }
+    if (saved) this.sent += 1;
+    return true;
   }
 }
 
@@ -538,6 +629,47 @@ async function orgRef(db: Db | Tx, orgId: string) {
 
 const KIND_ALERT_KEY = "fortnox:atgard";
 const RECONNECT_ALERT_KEY = "fortnox:koppling";
+const FAILING_ALERT_KEY = "fortnox:fel";
+/** Så många misslyckade körningar i rad innan ägaren får ett larm om att Fortnox inte nås. */
+export const FAILURES_BEFORE_ALERT = 3;
+/** Hur länge en körning håller organisationen (längre än routens maxDuration på 300 s). */
+const LEASE_SECONDS = 360;
+
+type AlertText = Omit<
+  Parameters<typeof raiseSystemAlert>[1],
+  "organizationId" | "kind" | "key" | "link" | "now"
+>;
+
+/**
+ * Larmen skrivs med raiseSystemAlert, UTAN utskick (mejl/push): prenumerationerna på
+ * systemlarm gäller även läsare, och larmen om Fortnox är bara för ägare och admin (de syns
+ * i Att göra och på Drift genom den restriktiva policyn på alerts). null stänger larmet.
+ */
+async function setAlert(
+  db: Db,
+  orgId: string,
+  key: string,
+  alert: AlertText | null,
+  now: Date,
+): Promise<void> {
+  if (!alert) {
+    await safely(`stänga Fortnox-larm (${key})`, () => resolveSystemAlert(db, orgId, key, now), 0);
+    return;
+  }
+  await safely(
+    `Fortnox-larm (${key})`,
+    () =>
+      raiseSystemAlert(db, {
+        ...alert,
+        organizationId: orgId,
+        kind: "job_failed",
+        key,
+        link: "/datakallor/fortnox",
+        now,
+      }),
+    null,
+  );
+}
 
 async function syncAlerts(
   db: Db,
@@ -546,76 +678,81 @@ async function syncAlerts(
   needsReconnect: boolean,
   now: Date,
 ): Promise<void> {
-  if (needsReconnect) {
-    await safely(
-      "Fortnox-larm (koppling)",
-      () =>
-        raiseAndNotify(db, {
-          organizationId: orgId,
-          kind: "job_failed",
-          key: RECONNECT_ALERT_KEY,
+  await setAlert(
+    db,
+    orgId,
+    RECONNECT_ALERT_KEY,
+    needsReconnect
+      ? {
           severity: "critical",
           title: "Fortnox behöver kopplas igen",
           detail:
             "Fortnox godtar inte längre kopplingen, så inget bokförs. Öppna Datakällor → Fortnox och tryck Koppla Fortnox. Inget bokförs dubbelt när du kopplar igen.",
           rule: "Fortnox svarade att kopplingen inte gäller längre.",
-          link: "/datakallor/fortnox",
-          now,
-        }),
-      null,
-    );
-  } else {
-    await safely(
-      "stänga Fortnox-larm (koppling)",
-      () => resolveSystemAlert(db, orgId, RECONNECT_ALERT_KEY, now),
-      0,
-    );
-  }
+        }
+      : null,
+    now,
+  );
   const blocked = outbox.filter(
     (r) => r.state === "blocked" && r.blockCode && HUMAN_BLOCKS.includes(r.blockCode),
   );
-  if (blocked.length > 0) {
-    const first = blocked[0]!;
-    await safely(
-      "Fortnox-larm (stoppat)",
-      () =>
-        raiseAndNotify(db, {
-          organizationId: orgId,
-          kind: "job_failed",
-          key: KIND_ALERT_KEY,
+  await setAlert(
+    db,
+    orgId,
+    KIND_ALERT_KEY,
+    blocked.length > 0
+      ? {
           severity: "warning",
           title:
             blocked.length === 1
               ? "Fortnox: 1 verifikat är stoppat"
               : `Fortnox: ${blocked.length} verifikat är stoppade`,
-          detail: first.blockDetail ?? "Öppna Ekonomi → Bokföring för att se varför.",
+          detail: blocked[0]!.blockDetail ?? "Öppna Datakällor → Fortnox för att se varför.",
           rule: "Ett verifikat kunde inte bokföras i Fortnox och kräver en åtgärd.",
-          link: "/datakallor/fortnox",
           figures: [{ key: "blocked", label: "Stoppade verifikat", value: blocked.length }],
-          now,
-        }),
-      null,
-    );
-  } else {
-    await safely(
-      "stänga Fortnox-larm (stoppat)",
-      () => resolveSystemAlert(db, orgId, KIND_ALERT_KEY, now),
-      0,
-    );
-  }
+        }
+      : null,
+    now,
+  );
 }
 
-async function saveState(db: Db, orgId: string, now: Date, error: string | null): Promise<void> {
+/** Sparar körningens utfall. Ger antalet misslyckade körningar i rad. */
+async function saveState(db: Db, orgId: string, now: Date, error: string | null): Promise<number> {
   const at = now.toISOString();
+  const rows = Array.from(
+    await db.execute<{ failures: number }>(sql`
+      insert into public.fortnox_sync_state as st
+        (organization_id, last_run_at, last_ok_at, last_error, failures, updated_at)
+      values (${orgId}::uuid, ${at}::timestamptz, ${error === null ? at : null}::timestamptz,
+              ${error === null ? null : clip(error)}, ${error === null ? 0 : 1}, ${at}::timestamptz)
+      on conflict (organization_id) do update set
+        last_run_at = excluded.last_run_at,
+        last_ok_at = coalesce(excluded.last_ok_at, st.last_ok_at),
+        last_error = excluded.last_error,
+        failures = case when excluded.last_error is null then 0 else st.failures + 1 end,
+        updated_at = excluded.updated_at
+      returning st.failures as failures`),
+  );
+  return Number(rows[0]?.failures ?? 0);
+}
+
+/** Tar körningen för organisationen. false = en annan körning håller på. */
+async function takeLease(db: Db, orgId: string): Promise<boolean> {
+  const rows = Array.from(
+    await db.execute<{ organization_id: string }>(sql`
+      insert into public.fortnox_sync_state as st (organization_id, lease_until)
+      values (${orgId}::uuid, now() + make_interval(secs => ${LEASE_SECONDS}))
+      on conflict (organization_id) do update set lease_until = excluded.lease_until
+      where st.lease_until is null or st.lease_until < now()
+      returning st.organization_id::text as organization_id`),
+  );
+  return rows.length > 0;
+}
+
+async function dropLease(db: Db, orgId: string): Promise<void> {
   await db.execute(sql`
-    insert into public.fortnox_sync_state (organization_id, last_run_at, last_ok_at, last_error, updated_at)
-    values (${orgId}::uuid, ${at}::timestamptz, ${error === null ? at : null}::timestamptz,
-            ${error === null ? null : clip(error)}, ${at}::timestamptz)
-    on conflict (organization_id) do update set
-      last_run_at = excluded.last_run_at,
-      last_ok_at = coalesce(excluded.last_ok_at, fortnox_sync_state.last_ok_at),
-      last_error = excluded.last_error,
-      updated_at = excluded.updated_at`);
+    update public.fortnox_sync_state set lease_until = null
+    where organization_id = ${orgId}::uuid`);
 }
 
 const EMPTY = { sent: 0, waiting: 0, blocked: 0, recovered: 0, wouldSend: 0, error: null };
@@ -655,62 +792,109 @@ export async function runFortnoxFor(
     return { ...base, status: "not_configured", error: "Fortnox är inte inställt på servern." };
   }
 
-  // 2. Skicka, äldst först. Vändningar och deras nya versioner följer datumordningen.
-  const client = new FortnoxClient(
-    config,
-    tokenSource(db, orgId, config, options.deps),
-    options.deps,
-    orgId,
-  );
-  const run = new Run(
-    db,
-    orgId,
-    connection,
-    client,
-    // Anspråkets ålder mäts mot den riktiga klockan (claimed_at sätts av databasen).
-    Date.now(),
-    options.staleClaimMs ?? STALE_CLAIM_MS,
-  );
+  // 2. En körning i taget per organisation (nattens jobb och "Kör nu" kan annars överlappa).
+  //    Anspråket per rad skyddar ändå; det här håller dem dessutom isär.
+  if (!(await takeLease(db, orgId))) {
+    const rows = await readOutbox(db, orgId);
+    return {
+      ...base,
+      status: "busy",
+      waiting: rows.filter((r) => r.state === "pending" || r.state === "sending").length,
+    };
+  }
+
   let error: string | null = null;
   let needsReconnect = false;
-  const queue = (await readOutbox(db, orgId)).filter(
-    (r) =>
-      r.state === "pending" ||
-      r.state === "sending" ||
-      (r.state === "blocked" && r.blockCode !== "withdrawn"),
-  );
+  let badClient = false;
+  let sent = 0;
+  let recovered = 0;
   try {
-    for (const row of queue) {
-      if (!(await run.send(row))) {
-        error = "Fortnox svarade inte som väntat. Försöker igen i natt.";
-        break;
+    // 3. Skicka, äldst först. Vändningar och deras nya versioner följer datumordningen.
+    const client = new FortnoxClient(
+      config,
+      tokenSource(db, orgId, config, options.deps),
+      options.deps,
+      orgId,
+    );
+    const run = new Run(
+      db,
+      orgId,
+      connection,
+      client,
+      // Anspråkets ålder mäts mot den riktiga klockan (claimed_at sätts av databasen).
+      Date.now(),
+      options.staleClaimMs ?? STALE_CLAIM_MS,
+    );
+    const queue = (await readOutbox(db, orgId)).filter(
+      (r) =>
+        r.state === "pending" ||
+        r.state === "sending" ||
+        (r.state === "blocked" && r.blockCode !== "withdrawn"),
+    );
+    try {
+      for (const row of queue) {
+        if (!(await run.send(row))) {
+          error = "Fortnox svarade inte som väntat. Försöker igen i natt.";
+          break;
+        }
+      }
+    } catch (e) {
+      if (e instanceof FortnoxAuthError && e.kind === "invalid_grant") {
+        needsReconnect = true;
+        error = "Fortnox behöver kopplas igen.";
+      } else if (e instanceof FortnoxAuthError && e.kind === "invalid_client") {
+        badClient = true;
+        error = "Fortnox godtar inte appens Client-Id eller Client-Secret.";
+      } else if (e instanceof FortnoxAuthError || e instanceof FortnoxApiError) {
+        // Felets text är Fortnox egen eller vår egen: aldrig token.
+        error = `Fortnox nåddes inte: ${e.message} Försöker igen i natt.`;
+      } else {
+        // Ett oväntat fel (t.ex. databasen). Loggas utan frågans parametrar.
+        console.error("[fortnox] körningen avbröts", {
+          organizationId: orgId,
+          error: safeErrorForLog(e),
+        });
+        error = "Ett oväntat fel stoppade körningen. Försöker igen i natt.";
       }
     }
-  } catch (e) {
-    if (e instanceof FortnoxAuthError && e.kind === "invalid_grant") {
-      needsReconnect = true;
-      error = "Fortnox behöver kopplas igen.";
-    } else if (e instanceof FortnoxAuthError || e instanceof FortnoxApiError) {
-      error =
-        e instanceof FortnoxApiError && e.kind === "forbidden"
-          ? BLOCK_TEXT.forbidden(queue[0]!, "")
-          : `Fortnox nåddes inte: ${e.message} Försöker igen i natt.`;
-    } else {
-      throw e;
-    }
+    sent = run.sent;
+    recovered = run.recovered;
+  } finally {
+    await safely("släppa Fortnox-körningen", () => dropLease(db, orgId), undefined);
   }
 
   const after = await readOutbox(db, orgId);
   await syncAlerts(db, orgId, after, needsReconnect, now);
-  await saveState(db, orgId, now, error);
+  const failures = await saveState(db, orgId, now, error);
+  // Går det inte flera körningar i rad utan att något är stoppat eller kopplingen bruten får
+  // ägaren veta: annars väntar verifikaten i tysthet.
+  await setAlert(
+    db,
+    orgId,
+    FAILING_ALERT_KEY,
+    !needsReconnect && (badClient || failures >= FAILURES_BEFORE_ALERT)
+      ? {
+          severity: "warning",
+          title: badClient
+            ? "Fortnox: appens nycklar godtas inte"
+            : "Fortnox har inte gått att nå flera gånger i rad",
+          detail: badClient
+            ? "Fortnox godtar inte appens Client-Id eller Client-Secret, så inget bokförs. De sätts på servern (FORTNOX_CLIENT_ID och FORTNOX_CLIENT_SECRET)."
+            : `Inget har bokförts i Fortnox på ${failures} körningar. Senaste felet: ${error ?? "okänt"} Inget går förlorat: det bokförs när Fortnox svarar igen.`,
+          rule: "Körningen mot Fortnox har misslyckats flera gånger i rad.",
+          figures: [{ key: "failures", label: "Misslyckade körningar i rad", value: failures }],
+        }
+      : null,
+    now,
+  );
   const blocked = after.filter(
     (r) => r.state === "blocked" && r.blockCode && HUMAN_BLOCKS.includes(r.blockCode),
   ).length;
   return {
     organizationId: orgId,
     status: needsReconnect ? "needs_reconnect" : "ran",
-    sent: run.sent,
-    recovered: run.recovered,
+    sent,
+    recovered,
     waiting: after.filter((r) => r.state === "pending" || r.state === "sending").length,
     blocked,
     wouldSend: 0,
@@ -737,16 +921,14 @@ export async function runFortnoxForAll(
     try {
       organizations.push(await runFortnoxFor(db, id, { ...options, now }));
     } catch (e) {
-      // Aldrig token eller svar i loggen: bara felets namn och text.
-      const message = e instanceof Error ? `${e.name}: ${e.message}` : "Okänt fel";
-      console.error("[fortnox] körningen misslyckades", { organizationId: id, message });
-      await safely("spara Fortnox-läget", () => saveState(db, id, now, clip(message)), undefined);
-      organizations.push({
+      // Aldrig hela felet i loggen eller svaret: ett databasfel bär frågans parametrar.
+      console.error("[fortnox] körningen misslyckades", {
         organizationId: id,
-        status: "error",
-        ...EMPTY,
-        error: clip(message, 300),
+        error: safeErrorForLog(e),
       });
+      const message = "Ett oväntat fel stoppade körningen.";
+      await safely("spara Fortnox-läget", () => saveState(db, id, now, message), 0);
+      organizations.push({ organizationId: id, status: "error", ...EMPTY, error: message });
     }
   }
   return { ranAt: now.toISOString(), organizations };

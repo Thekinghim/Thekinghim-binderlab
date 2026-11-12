@@ -25,6 +25,14 @@ import {
 } from "./client";
 import type { FortnoxConfig } from "./config";
 
+/** Token gick inte att läsa eller spara. Bär aldrig det ursprungliga felet (det kan innehålla token). */
+export class FortnoxTokenStoreError extends Error {
+  constructor() {
+    super("Fortnox-token gick inte att läsa eller spara i databasen.");
+    this.name = "FortnoxTokenStoreError";
+  }
+}
+
 /** Förnya när mindre än så här återstår av åtkomsttoken. */
 const REFRESH_MARGIN_MS = 120_000;
 
@@ -92,7 +100,12 @@ export function tokenSource(
         return next;
       });
     } catch (error) {
-      if (error instanceof FortnoxAuthError && error.kind === "invalid_grant") {
+      if (!(error instanceof FortnoxAuthError)) {
+        // Ett databasfel här bär frågans parametrar (token) i sitt meddelande: det får aldrig
+        // lämna den här funktionen. Bara ett rent fel går vidare.
+        throw new FortnoxTokenStoreError();
+      }
+      if (error.kind === "invalid_grant") {
         cached = null;
         await db.execute(sql`
           update public.fortnox_connections set status = 'needs_reconnect'

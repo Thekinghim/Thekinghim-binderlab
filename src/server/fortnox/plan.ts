@@ -9,6 +9,8 @@
  * - En utbetalning bokförs när dagen pengarna kom in har varit (och ligger i eller efter
  *   startmånaden). Arkiverade utbetalningar finns inte med.
  * - En avräkning till en butik bokförs när den är markerad som betald.
+ * - Utbetalningar och avräkningar som gäller månader FÖRE startmånaden bokförs inte: de hör
+ *   till det som redan bokförts för hand.
  */
 
 import "server-only";
@@ -92,6 +94,9 @@ export interface DesiredPlan {
   readonly throughMonth: string | null;
 }
 
+/** Dagar efter månadsskiftet innan förra månadens verifikat tas fram. */
+export const SETTLE_DAYS = 2;
+
 const KIND_ORDER = new Map(FORTNOX_KINDS.map((k, i) => [k, i]));
 
 /** VMB-momsen per månad (bara när momssatsen är 0 och VMB används någon månad). */
@@ -147,7 +152,11 @@ export async function computeDesired(
   if (!start) return { vouchers: [], enabled: mapping.kinds, plan, throughMonth: null };
 
   const startDate = `${start}-01`;
-  const lastEnded = addMonths(today.slice(0, 7), -1);
+  // En månad räknas som avslutad först den 3:e i nästa månad: sena order och återbetalningar
+  // från månadens sista dagar hinner komma in innan verifikatet skickas.
+  const settled = new Date(`${today}T00:00:00Z`);
+  settled.setUTCDate(settled.getUTCDate() - SETTLE_DAYS);
+  const lastEnded = addMonths(settled.toISOString().slice(0, 7), -1);
   const months = start <= lastEnded ? eachMonth(startDate, `${lastEnded}-01`) : [];
   const settings = await querySettings(tx, org.id);
   const out: DesiredVoucher[] = [];
@@ -214,7 +223,10 @@ export async function computeDesired(
   const payouts = await queryPayouts(tx, org.id, null);
   for (const p of payouts) {
     const paidOn = p.paidOn ?? p.periodEnd;
-    if (paidOn < startDate || paidOn > today) continue;
+    // Bara utbetalningar för försäljning från och med startmånaden. En utbetalning för en
+    // tidigare månad hör till det som bokförts för hand (där står redan försäljningen och
+    // den uppskattade kortavgiften): den bokförs också för hand, annars blir avgiften dubbel.
+    if (p.periodStart < startDate || paidOn > today) continue;
     const st = p.statement;
     const sideFees = st
       ? st.deductions
@@ -254,7 +266,7 @@ export async function computeDesired(
       join public.stores st on st.organization_id = ss.organization_id and st.id = ss.store_id
       where ss.organization_id = ${org.id}::uuid
         and ss.paid_on is not null
-        and ss.paid_on >= ${startDate}::date
+        and ss.month >= ${startDate}::date
         and ss.paid_on <= ${today}::date
         and ss.amount_ore > 0`),
   );

@@ -85,6 +85,10 @@ const VIEWER_OWN_ROWS_ONLY = [
   "data_exports",
   // Gratis-pack: koderna (värda ett pack var) syns bara för ägare och admin.
   "free_pack_codes",
+  // Fortnox: kopplingen, läget och utkorgen syns bara för ägare och admin.
+  "fortnox_connections",
+  "fortnox_sync_state",
+  "fortnox_vouchers",
   "import_upload_chunks",
   "import_uploads",
   // Inköp: inskicken syns bara för ägare och admin.

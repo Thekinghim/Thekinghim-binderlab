@@ -20,6 +20,7 @@ import type { IsoDate } from "@/domain";
 import { AuthorizationError, requireTeamManagerFor, withUserDbFor } from "@/server/access";
 import { AccountingError } from "@/server/accounting/service";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
+import { safeErrorForLog } from "@/server/errors";
 import { safely } from "@/server/monitoring/failures";
 import { resolveSystemAlert } from "@/server/monitoring/system-alerts";
 
@@ -31,6 +32,7 @@ import {
   FortnoxClient,
   revokeRefreshToken,
   type FortnoxDeps,
+  type FortnoxTokens,
 } from "./client";
 import { fortnoxConfig, fortnoxConfigProblem, FORTNOX_SCOPES, type FortnoxConfig } from "./config";
 import { mappingInputSchema, type FortnoxMapping } from "./mapping";
@@ -49,11 +51,31 @@ import type { DesiredVoucher } from "./vouchers";
 
 /** Fel som visas för ägaren som de är. */
 export class FortnoxError extends AccountingError {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** Kort kod för felet (adressen efter kopplingen bär koden, inte texten). */
+    readonly code: FortnoxErrorCode = "fel",
+  ) {
     super(message);
     this.name = "FortnoxError";
   }
 }
+
+/** Felen som kan visas efter att Fortnox skickat tillbaka ägaren. */
+export const FORTNOX_CONNECT_ERRORS = {
+  avbruten: "Kopplingen avbröts hos Fortnox. Inget är ändrat. Försök igen.",
+  tid: "Kopplingen tog för lång tid eller startades någon annanstans. Försök igen.",
+  klient: "Fortnox godtar inte appens Client-Id eller Client-Secret. Kontrollera dem på servern.",
+  nekad: "Fortnox godtog inte kopplingen. Försök igen.",
+  bolag:
+    "Det här är ett annat bolag i Fortnox än det som verifikaten redan skickats till. Logga in i rätt bolag hos Fortnox och koppla igen.",
+  okant_bolag:
+    "Det gick inte att läsa vilket bolag kopplingen gäller, och verifikat har redan skickats. Inget är ändrat. Försök igen.",
+  demo: "En demo kan inte kopplas till Fortnox.",
+  behorighet: "Bara ägare och administratörer får hantera Fortnox.",
+  fel: "Kopplingen gick inte att slutföra. Försök igen.",
+} as const;
+export type FortnoxErrorCode = keyof typeof FORTNOX_CONNECT_ERRORS;
 
 const NOT_ALLOWED = "Bara ägare och administratörer får hantera Fortnox.";
 
@@ -140,7 +162,7 @@ export async function startFortnoxConnectFor(
   const config = fortnoxConfig();
   if (problem || !config) throw new FortnoxError(problem ?? "Fortnox är inte inställt.");
   if (await withUserDbFor(viewer.user, (tx) => isDemo(tx, viewer.organization.id))) {
-    throw new FortnoxError("En demo kan inte kopplas till Fortnox.");
+    throw new FortnoxError(FORTNOX_CONNECT_ERRORS.demo, "demo");
   }
   const state = randomBytes(24).toString("base64url");
   const verifier = randomBytes(48).toString("base64url");
@@ -178,7 +200,7 @@ export async function finishFortnoxConnectFor(
   if (!config) throw new FortnoxError(fortnoxConfigProblem() ?? "Fortnox är inte inställt.");
   const now = options.now ?? new Date();
   if (input.error) {
-    throw new FortnoxError("Kopplingen avbröts hos Fortnox. Inget är ändrat. Försök igen.");
+    throw new FortnoxError(FORTNOX_CONNECT_ERRORS.avbruten, "avbruten");
   }
   const saved = openState(config, input.cookie);
   if (
@@ -190,9 +212,7 @@ export async function finishFortnoxConnectFor(
     saved.organizationId !== viewer.organization.id ||
     saved.userId !== viewer.user.userId
   ) {
-    throw new FortnoxError(
-      "Kopplingen tog för lång tid eller startades någon annanstans. Försök igen.",
-    );
+    throw new FortnoxError(FORTNOX_CONNECT_ERRORS.tid, "tid");
   }
   const orgId = viewer.organization.id;
   let tokens;
@@ -200,11 +220,9 @@ export async function finishFortnoxConnectFor(
     tokens = await exchangeCode(config, input.code, saved.verifier, options.deps);
   } catch (error) {
     if (error instanceof FortnoxAuthError) {
-      throw new FortnoxError(
-        error.kind === "invalid_client"
-          ? "Fortnox godtar inte appens Client-Id eller Client-Secret. Kontrollera dem på servern."
-          : "Fortnox godtog inte kopplingen. Försök igen.",
-      );
+      throw error.kind === "invalid_client"
+        ? new FortnoxError(FORTNOX_CONNECT_ERRORS.klient, "klient")
+        : new FortnoxError(FORTNOX_CONNECT_ERRORS.nekad, "nekad");
     }
     throw error;
   }
@@ -221,9 +239,27 @@ export async function finishFortnoxConnectFor(
     if (!(error instanceof FortnoxApiError)) throw error;
   }
   const db = getServiceDb();
+  try {
+    return await saveConnection(db, viewer, orgId, tokens, company, now);
+  } catch (error) {
+    if (error instanceof FortnoxError) throw error;
+    // Ett databasfel här bär token i frågans parametrar: det får inte gå vidare som det är.
+    console.error("[fortnox] kopplingen kunde inte sparas", { error: safeErrorForLog(error) });
+    throw new FortnoxError(FORTNOX_CONNECT_ERRORS.fel, "fel");
+  }
+}
+
+function saveConnection(
+  db: ReturnType<typeof getServiceDb>,
+  viewer: Viewer,
+  orgId: string,
+  tokens: FortnoxTokens,
+  company: { name: string | null; tenant: string | null },
+  now: Date,
+): Promise<ConnectResult> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`fortnox-token:${orgId}`}))`);
-    if (await isDemo(tx, orgId)) throw new FortnoxError("En demo kan inte kopplas till Fortnox.");
+    if (await isDemo(tx, orgId)) throw new FortnoxError(FORTNOX_CONNECT_ERRORS.demo, "demo");
     const existing = Array.from(
       await tx.execute<{ fortnox_tenant: string | null }>(sql`
         select fortnox_tenant from public.fortnox_connections
@@ -235,10 +271,13 @@ export async function finishFortnoxConnectFor(
         where organization_id = ${orgId}::uuid and state in ('sent', 'sending') limit 1`),
     ).length;
     const before = existing?.fortnox_tenant ?? null;
+    // Går bolaget inte att läsa när något redan är skickat nekas kopplingen: annars kunde
+    // ett annat bolag kopplas in mot en utkorg som säger "redan bokfört".
+    if (anySent > 0 && !company.tenant) {
+      throw new FortnoxError(FORTNOX_CONNECT_ERRORS.okant_bolag, "okant_bolag");
+    }
     if (anySent > 0 && before && company.tenant && before !== company.tenant) {
-      throw new FortnoxError(
-        "Det här är ett annat bolag i Fortnox än det som verifikaten redan skickats till. Logga in i rätt bolag hos Fortnox och koppla igen.",
-      );
+      throw new FortnoxError(FORTNOX_CONNECT_ERRORS.bolag, "bolag");
     }
     await saveTokens(tx, orgId, tokens);
     await tx.execute(sql`
@@ -281,7 +320,7 @@ export async function disconnectFortnoxFor(
       sql`delete from public.fortnox_connections where organization_id = ${orgId}::uuid`,
     );
   });
-  for (const key of ["fortnox:koppling", "fortnox:atgard"]) {
+  for (const key of ["fortnox:koppling", "fortnox:atgard", "fortnox:fel"]) {
     await safely("stänga Fortnox-larm", () => resolveSystemAlert(db, orgId, key), 0);
   }
 }

@@ -59,11 +59,19 @@ comment on table public.fortnox_connections is
   'Fortnox: kopplingen per organisation (läge, startmånad, serie, kontomappning). Token ligger i Vault.';
 
 create table public.fortnox_sync_state (
-  organization_id uuid primary key references public.organizations (id) on delete restrict,
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations (id) on delete restrict,
   last_run_at timestamptz,
   last_ok_at timestamptz,
   last_error text check (last_error is null or char_length(last_error) <= 500),
-  updated_at timestamptz not null default now()
+  -- Misslyckade körningar i rad (larm efter tre), och vem som kör just nu (en i taget).
+  failures integer not null default 0 check (failures >= 0),
+  lease_until timestamptz,
+  created_at timestamptz not null default now(),
+  created_by uuid references auth.users (id) on delete set null,
+  updated_at timestamptz not null default now(),
+  unique (organization_id, id),
+  unique (organization_id)
 );
 
 comment on table public.fortnox_sync_state is
@@ -152,6 +160,13 @@ create trigger t20_stamp_update before update on public.fortnox_connections
   for each row execute function private.stamp_update();
 create trigger t90_audit after insert or update or delete on public.fortnox_connections
   for each row execute function private.audit();
+
+create trigger t00_forbid_org_change before update on public.fortnox_sync_state
+  for each row execute function private.forbid_org_change();
+create trigger t20_stamp_insert before insert on public.fortnox_sync_state
+  for each row execute function private.stamp_insert();
+create trigger t20_stamp_update before update on public.fortnox_sync_state
+  for each row execute function private.stamp_update();
 
 create trigger t00_forbid_org_change before update on public.fortnox_vouchers
   for each row execute function private.forbid_org_change();
