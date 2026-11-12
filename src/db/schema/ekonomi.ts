@@ -63,6 +63,8 @@ export const payouts = pgTable("payouts", {
   archivedAt: ts("archived_at"),
   /** T5: inskriven för hand på Ekonomi (20261205000200_utbetalning_for_hand.sql). */
   manual: boolean("manual").notNull().default(false),
+  /** Nayax månadsrapport (20261211000000_nayax_rapport.sql); null för övriga utbetalningar. */
+  statement: jsonb("statement").$type<Record<string, unknown>>(),
   ...stamps(),
 });
 

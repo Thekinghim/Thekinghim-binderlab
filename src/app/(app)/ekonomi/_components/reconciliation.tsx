@@ -4,11 +4,21 @@ import type {
   PayoutStatus,
   ReconciliationResult,
 } from "@/analytics/reconciliation";
+import type { PayoutStatement } from "@/server/accounting/nayax-statement";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { formatDate, formatInt } from "@/lib/format";
 
+import {
+  cardFeeBpOf,
+  deductionText,
+  devicesText,
+  nayaxPaysText,
+  nayaxSoldText,
+  salesMatchText,
+} from "../_lib/nayax";
 import { isoToDate, kr, periodText, signedKr } from "../_lib/view";
+import { CardFeeFix } from "./card-fee-fix";
 import { DeviationReview } from "./deviation-review";
 import { PayoutArchive } from "./payout-archive";
 import { EvidenceDetails } from "./evidence";
@@ -73,18 +83,67 @@ function DeviationItem({
   );
 }
 
+/**
+ * Det Nayax-rapporten säger om utbetalningen: vad som betalas och när, vad som drogs (varje
+ * avdrag på en egen rad), försäljningen per automat och om den stämmer med appens.
+ */
+function NayaxFacts({
+  statement,
+  appSalesOre,
+  today,
+  payoutId,
+  cardFeeBp,
+}: {
+  statement: PayoutStatement;
+  appSalesOre: number;
+  today: string;
+  /** Satt för den som får ändra kortavgiften. */
+  payoutId: string | undefined;
+  cardFeeBp: number;
+}) {
+  const match = salesMatchText(statement.reimbursedOre, appSalesOre);
+  return (
+    <div data-nayax-facts className="flex flex-col gap-2 rounded-md border border-line p-4">
+      <p className="text-base text-fg">{nayaxPaysText(statement, today)}</p>
+      <p className="text-sm text-muted">{nayaxSoldText(statement)}</p>
+      {statement.deductions.length > 0 ? (
+        <ul className="flex flex-col gap-1 text-sm text-fg">
+          {statement.deductions.map((d, i) => (
+            <li key={`${d.kind}-${i}`}>{deductionText(d)}</li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="text-sm text-fg">{match.text}</p>
+      {statement.devices.length > 0 ? (
+        <p className="text-sm text-muted">Hos Nayax: {devicesText(statement)}.</p>
+      ) : null}
+      {payoutId ? (
+        <CardFeeFix
+          payoutId={payoutId}
+          statementBp={cardFeeBpOf(statement)}
+          settingBp={cardFeeBp}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function PayoutBlock({
   p,
   today,
   canEdit,
   viewPeriod,
   payoutId,
+  statement,
+  cardFeeBp,
 }: {
   p: PayoutReconciliation;
   today: string;
   canEdit: boolean;
   viewPeriod: { start: string; end: string };
   payoutId: string | undefined;
+  statement: PayoutStatement | undefined;
+  cardFeeBp: number;
 }) {
   const s = STATUS[p.status];
   return (
@@ -126,6 +185,15 @@ function PayoutBlock({
           {canEdit && payoutId ? <PayoutArchive id={payoutId} reference={p.reference} /> : null}
         </div>
       </header>
+      {statement ? (
+        <NayaxFacts
+          statement={statement}
+          appSalesOre={p.expected.salesOre}
+          today={today}
+          payoutId={canEdit ? payoutId : undefined}
+          cardFeeBp={cardFeeBp}
+        />
+      ) : null}
       <p className="text-sm text-muted">{p.summary}</p>
       {p.deviations.length > 0 ? (
         <ul className="flex flex-col pl-0 md:pl-4">
@@ -146,6 +214,8 @@ export function ReconciliationList({
   canEdit,
   period,
   payoutIds,
+  statements,
+  cardFeeBp,
 }: {
   result: ReconciliationResult;
   /** I dag ('ÅÅÅÅ-MM-DD'): en utbetalningsdag efter i dag skrivs "Utbetalas". */
@@ -154,6 +224,10 @@ export function ReconciliationList({
   period: { start: string; end: string };
   /** Utbetalningens id per referens (för arkiveringen). */
   payoutIds: Readonly<Record<string, string>>;
+  /** Nayax-rapportens siffror per referens (för utbetalningar som kom från en rapport). */
+  statements: Readonly<Record<string, PayoutStatement>>;
+  /** Kortavgiften som appen räknar med (inställningen), i baspunkter. */
+  cardFeeBp: number;
 }) {
   return (
     <div className="flex flex-col">
@@ -165,6 +239,8 @@ export function ReconciliationList({
           canEdit={canEdit}
           viewPeriod={period}
           payoutId={p.key === p.reference ? payoutIds[p.reference] : undefined}
+          statement={p.key === p.reference ? statements[p.reference] : undefined}
+          cardFeeBp={cardFeeBp}
         />
       ))}
       {result.uncovered.length > 0 ? (

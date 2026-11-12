@@ -84,7 +84,7 @@ export function payoutSourceStatus(): {
         kind,
         automatic: false,
         detail:
-          "Hämtning från Awish är vald men inte kopplad. Ladda upp utbetalningarna som CSV så länge.",
+          "Hämtning från Awish är vald men inte kopplad. Ladda upp rapporten från Nayax så länge.",
       }
-    : { kind, automatic: false, detail: "Utbetalningarna laddas upp som CSV från Awish." };
+    : { kind, automatic: false, detail: "Utbetalningarna laddas upp som rapport från Nayax (PDF)." };
 }

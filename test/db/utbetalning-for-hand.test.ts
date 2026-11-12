@@ -1,5 +1,5 @@
 /**
- * T5-3, Ekonomi utan fil, mot testdatabasen: "Vad betalade Awish?". Frågan gäller nästa
+ * T5-3, Ekonomi utan fil, mot testdatabasen: "Vad betalade Nayax?". Frågan gäller nästa
  * period utan utbetalning, svaret sparas som en rad i payouts (manual = true), räknas som
  * källa för utbetalningar (payoutsTracked) och avstämningen visar väntat minus utbetalt.
  * Bara ägare och admin, dagar som redan har en utbetalning nekas, och raden går inte att

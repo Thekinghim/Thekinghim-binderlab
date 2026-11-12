@@ -15,6 +15,12 @@ import type { IsoDate, Period } from "@/domain";
 import type { LedgerAccount } from "@/reports";
 import { COUNTED_ORDER } from "@/server/data/core/queries";
 
+import {
+  readPayoutStatement,
+  statementForReconciliation,
+  type PayoutStatement,
+} from "./nayax-statement";
+
 /** En utbetalning som den står i databasen. */
 export interface PayoutRecord {
   readonly id: string;
@@ -29,8 +35,10 @@ export interface PayoutRecord {
   readonly importId: string | null;
   readonly dataSourceId: string | null;
   readonly createdAt: string;
-  /** Inskriven för hand ("Vad betalade Awish?"): avgifterna är okända. */
+  /** Inskriven för hand ("Vad betalade Nayax?"): avgifterna är okända. */
   readonly manual: boolean;
+  /** Siffrorna ur Nayax månadsrapport, om utbetalningen kom därifrån. */
+  readonly statement: PayoutStatement | null;
 }
 
 /**
@@ -78,6 +86,7 @@ export async function queryPayouts(
       dataSourceId: s.payouts.dataSourceId,
       createdAt: s.payouts.createdAt,
       manual: s.payouts.manual,
+      statement: s.payouts.statement,
       lineCount: sql<number>`(select count(*)::int from public.payout_lines pl
         where pl.organization_id = "payouts"."organization_id" and pl.payout_id = "payouts"."id")`,
     })
@@ -86,6 +95,7 @@ export async function queryPayouts(
     .orderBy(asc(s.payouts.periodStart), asc(s.payouts.createdAt), asc(s.payouts.id));
   return rows.map((r) => ({
     ...r,
+    statement: readPayoutStatement(r.statement),
     lineCount: Number(r.lineCount),
     createdAt: r.createdAt.toISOString(),
   }));
@@ -135,7 +145,11 @@ export async function queryPayoutLines(
   return out;
 }
 
-/** Utbetalningarna i den form avstämningen vill ha. */
+/**
+ * Utbetalningarna i den form avstämningen och kassaflödet vill ha. En Nayax-rapport ger
+ * kortavgiften som avgift och det Nayax drog därutöver som kända avdrag
+ * (statementForReconciliation); beloppet är alltid det som kom in på kontot.
+ */
 export function toAnalyticsPayouts(
   records: readonly PayoutRecord[],
   lines: Map<string, { externalId: string; amountOre: number }[]>,
@@ -143,8 +157,9 @@ export function toAnalyticsPayouts(
   return records.map((r) => ({
     reference: r.reference,
     period: { start: r.periodStart, end: r.periodEnd },
-    amountOre: r.amountOre,
-    feesOre: r.feesOre,
+    ...(r.statement
+      ? statementForReconciliation(r.statement)
+      : { amountOre: r.amountOre, feesOre: r.feesOre }),
     ...(r.refundsOre === null ? {} : { refundsOre: r.refundsOre }),
     paidOn: r.paidOn,
     ...(lines.has(r.id) ? { lines: lines.get(r.id)! } : {}),

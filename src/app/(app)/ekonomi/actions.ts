@@ -20,12 +20,17 @@ import {
   BookkeepingNotConfiguredError,
   currentViewer,
   deliverVouchersFor,
+  importNayaxStatementFor,
   importPayoutFileFor,
+  isPdfFile,
   MAX_PAYOUT_FILE_BYTES,
   payoutExpectationFor,
   reviewDeviationFor,
   saveFixedCostFor,
+  statementCardFeeFor,
   type ManualPayoutResult,
+  type NayaxUploadClash,
+  type NayaxUploadResult,
   type PayoutImportResult,
 } from "@/server/accounting";
 import { AuthorizationError } from "@/server/access";
@@ -33,6 +38,7 @@ import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/
 import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage } from "@/server/errors";
 
+import { updateSettingsFor } from "../installningar/_lib/data";
 import { fixedCostSchema, isoDate, kronorToOre, monthSchema } from "./_lib/schemas";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -60,22 +66,71 @@ async function operator() {
   return currentViewer();
 }
 
-/** Utbetalningsfil (CSV): FormData med `file`. */
-export async function uploadPayoutFile(form: FormData): Promise<ActionResult<PayoutImportResult>> {
+/** Svaret från uppladdningen: en CSV-fil, en Nayax-rapport eller frågan om att ersätta. */
+export type PayoutUploadResult =
+  | ({ kind: "csv" } & PayoutImportResult)
+  | ({ kind: "nayax" } & NayaxUploadResult)
+  | ({ kind: "nayax_clash" } & NayaxUploadClash);
+
+/**
+ * Utbetalningar som fil: FormData med `file`. En PDF läses som Nayax månadsrapport
+ * (Reimbursement Statement), allt annat som CSV. `replace` (id) ersätter en utbetalning som
+ * är inskriven för hand för samma dagar. Ägare och admin.
+ */
+export async function uploadPayoutFile(form: FormData): Promise<ActionResult<PayoutUploadResult>> {
   try {
     const viewer = await operator();
     const file = form.get("file");
     if (!(file instanceof File) || file.size === 0) {
-      return { ok: false, error: "Välj en CSV-fil med utbetalningar." };
+      return { ok: false, error: "Välj rapporten från Nayax (PDF) eller en CSV-fil." };
     }
     if (file.size > MAX_PAYOUT_FILE_BYTES) {
       return { ok: false, error: "Filen är för stor (högst 10 MB)." };
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
+    if (isPdfFile(bytes)) {
+      const replace = form.get("replace");
+      const replaceManualId =
+        typeof replace === "string" && z.uuid().safeParse(replace).success ? replace : null;
+      const data = await importNayaxStatementFor(
+        viewer,
+        { name: file.name, bytes },
+        { replaceManualId },
+      );
+      if (data.status === "manual_clash") return { ok: true, data: { kind: "nayax_clash", ...data } };
+      revalidateAppData();
+      return { ok: true, data: { kind: "nayax", ...data } };
+    }
     // Underlaget sparas där orderimporten sparar sina filer (IMPORT_FILE_STORE).
     const data = await importPayoutFileFor(viewer, { name: file.name, bytes });
     revalidateAppData();
-    return { ok: true, data };
+    return { ok: true, data: { kind: "csv", ...data } };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * "Ändra till 4,0 %": sätter kortavgiften till den som står i en sparad Nayax-rapport.
+ * Satsen räknas på servern ur rapporten; ändringen görs av inställningarnas egen funktion
+ * (samma kontroll av rollen, samma logg). Ägare och admin.
+ */
+export async function applyStatementCardFee(
+  raw: unknown,
+): Promise<ActionResult<{ cardFeeBp: number }>> {
+  try {
+    const viewer = await operator();
+    const { payoutId } = z.object({ payoutId: z.uuid() }).parse(raw);
+    const { cardFeeBp, settings } = await statementCardFeeFor(viewer, payoutId);
+    const result = await updateSettingsFor(viewer.user, {
+      organizationId: viewer.organization.id,
+      cardFeeBp,
+      vatRateBp: settings.vatRateBp,
+      fiscalYearStartMonth: settings.fiscalYearStartMonth,
+    });
+    if (!result.ok) return { ok: false, error: result.error };
+    revalidateAppData();
+    return { ok: true, data: { cardFeeBp } };
   } catch (error) {
     return failure(error);
   }
@@ -89,7 +144,7 @@ const manualPayoutSchema = z.object({
 });
 
 /**
- * "Vad betalade Awish?": sparar en utbetalning som skrivits in för hand (belopp i kronor som
+ * "Vad betalade Nayax?": sparar en utbetalning som skrivits in för hand (belopp i kronor som
  * text, dagen pengarna kom och perioden den gäller). Ägare och admin.
  */
 export async function addManualPayout(raw: unknown): Promise<ActionResult<ManualPayoutResult>> {

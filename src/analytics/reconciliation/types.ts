@@ -32,6 +32,12 @@ export interface Payout {
    * precis de återbetalningar vi känner till (`refunds`) i perioden.
    */
   readonly refundsOre?: number;
+  /**
+   * Kända avdrag som leverantören redovisar utöver avgifter och återbetalningar, i öre
+   * (t.ex. en engångsavgift eller bankavgift i en månadsrapport). De dras från den väntade
+   * utbetalningen och är ingen avvikelse. Negativt = ett tillägg. Standard 0.
+   */
+  readonly deductionsOre?: number;
   /** Dagen då pengarna kom in (för kassaflödet). Saknas den används periodens sista dag. */
   readonly paidOn?: IsoDate | null;
   /** Specifikation per order, om leverantören lämnar en. Ger exakta förklaringar per order. */
@@ -146,7 +152,7 @@ export interface ExpectedPayout {
   readonly salesOre: number;
   readonly feesOre: number;
   readonly refundsOre: number;
-  /** Väntad utbetalning = försäljning − avgifter − återbetalningar. */
+  /** Väntad utbetalning = försäljning − avgifter − återbetalningar − kända avdrag. */
   readonly payoutOre: number;
 }
 
@@ -155,7 +161,7 @@ export interface ActualPayout {
   readonly payoutOre: number;
   readonly feesOre: number;
   readonly refundsOre: number;
-  /** Försäljning enligt leverantören = utbetalt + avgifter + återbetalningar. */
+  /** Försäljning enligt leverantören = utbetalt + avgifter + återbetalningar + kända avdrag. */
   readonly salesOre: number;
 }
 

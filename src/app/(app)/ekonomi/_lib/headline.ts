@@ -59,7 +59,7 @@ function coveredText(p: IsoPeriod, today: string): string {
 
 /**
  * Frågan när en period saknar utbetalning: "Sålt för 41 200 kr i oktober efter avgifter."
- * och "Vad betalade Awish?". En hel månad innevarande år skrivs utan årtal.
+ * och "Vad betalade Nayax?". En hel månad innevarande år skrivs utan årtal.
  */
 export function payoutQuestionText(
   period: IsoPeriod,
@@ -71,7 +71,7 @@ export function payoutQuestionText(
   const short = where.startsWith("i ") && sameYear ? where.replace(/\s\d{4}$/, "") : where;
   return {
     title: `Sålt för ${sek(expectedOre)} ${short} efter avgifter.`,
-    aside: "Vad betalade Awish?",
+    aside: "Vad betalade Nayax?",
   };
 }
 
@@ -87,7 +87,7 @@ export function payoutSpan(result: ReconciliationResult): IsoPeriod {
 }
 
 /** Utan källa för utbetalningar: en neutral rad, inga väntade eller saknade utbetalningar. */
-export const NO_PAYOUT_SOURCE_TEXT = "Ladda upp filen från Awish.";
+export const NO_PAYOUT_SOURCE_TEXT = "Ladda upp rapporten från Nayax.";
 
 /**
  * `payoutsTracked` = det finns en källa för utbetalningar (en inläst utbetalning eller fil).

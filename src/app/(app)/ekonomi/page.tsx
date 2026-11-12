@@ -74,7 +74,7 @@ export default async function EkonomiPage({
     loadCashflowFor(viewer, ctx.today, p.dataStart),
     // Vinsten före butikernas andel, efter den med vyknappen (som övriga sidor).
     loadFixedCostsFor(viewer, p.period, ctx.today, { storeShare }),
-    // "Vad betalade Awish?": nästa period utan utbetalning (bara den som får svara).
+    // "Vad betalade Nayax?": nästa period utan utbetalning (bara den som får svara).
     view === "avstamning" && ctx.canEdit ? loadPayoutQuestionFor(viewer, ctx.today) : null,
   ]);
 
@@ -123,6 +123,10 @@ export default async function EkonomiPage({
 
   const scoped = Boolean(p.scope.storeId || p.scope.machineId);
   const payoutIds = Object.fromEntries(rec.payouts.map((x) => [x.reference, x.id]));
+  // Nayax-rapportens egna rader (avdrag, automater) per referens.
+  const statements = Object.fromEntries(
+    rec.payouts.flatMap((x) => (x.statement ? [[x.reference, x.statement] as const] : [])),
+  );
 
   // Loggen visar avvikelsens rubrik, inte den interna nyckeln
   const deviationTitle = new Map<string, string>(
@@ -262,7 +266,7 @@ export default async function EkonomiPage({
               result
                 ? reconciliationFact(result)
                 : askFirst
-                  ? "Inga ännu. Skriv in beloppet ovan, eller ladda upp filen från Awish."
+                  ? "Inga ännu. Ladda upp rapporten från Nayax, eller skriv in beloppet ovan."
                   : undefined
             }
           />
@@ -275,6 +279,8 @@ export default async function EkonomiPage({
                   canEdit={canEdit}
                   period={p.period}
                   payoutIds={payoutIds}
+                  statements={statements}
+                  cardFeeBp={rec.cardFeeBp}
                 />
               ) : askFirst ? null : (
                 // Mobil: uppladdningen står direkt under, så knappen hit behövs inte.
@@ -303,11 +309,15 @@ export default async function EkonomiPage({
               {canEdit ? (
                 // Mobil: med utbetalningar i perioden är uppladdningen hopfälld; utan står
                 // den öppen som sidans enda knapp.
-                <MobileFold summary="Ladda upp fil" defaultOpen={!result && !question}>
+                <MobileFold summary="Ladda upp rapport" defaultOpen={!result && !question}>
                   <Panel>
                     <PanelSection label="Ladda upp utbetalningar">
                       <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
                         <PayoutUpload
+                          today={ctx.today}
+                          shownPayoutIds={
+                            result ? rec.payouts.map((x) => x.id) : []
+                          }
                           columns={{
                             payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),
                             lines: PAYOUT_FILE_COLUMNS.lines.join(", "),

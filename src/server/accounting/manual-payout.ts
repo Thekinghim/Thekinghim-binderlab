@@ -1,5 +1,5 @@
 /**
- * "Vad betalade Awish?": utbetalningar som ägaren skriver in för hand i stället för att
+ * "Vad betalade Nayax?": utbetalningar som ägaren skriver in för hand i stället för att
  * ladda upp en fil. Ren modul (ingen databas): vilken period frågan gäller, radens referens
  * och fingeravtryck.
  */

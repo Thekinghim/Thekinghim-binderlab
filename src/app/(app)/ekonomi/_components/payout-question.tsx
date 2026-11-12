@@ -13,7 +13,7 @@ import { amountField, signedSek } from "../_lib/view";
 import { FormError } from "./bits";
 
 /**
- * "Vad betalade Awish?": ägaren skriver in beloppet som kom in och dagen, i stället för att
+ * "Vad betalade Nayax?": ägaren skriver in beloppet som kom in och dagen, i stället för att
  * ladda upp en fil. "Samma belopp" fyller i det försäljningen ger. Perioden är nästa period
  * utan utbetalning; den går att ändra under "Ändra period" (då räknas det väntade beloppet
  * om på servern). Efter Spara visar avstämningen skillnaden.
@@ -97,7 +97,7 @@ export function PayoutQuestion({
     >
       {lead || period !== initialPeriod ? (
         <div className="flex flex-col gap-1">
-          <p className="text-lg font-medium text-fg">Vad betalade Awish?</p>
+          <p className="text-lg font-medium text-fg">Vad betalade Nayax?</p>
           <p className="text-base text-muted" aria-live="polite">
             {text ? text.title : counting ? "Räknar…" : "Välj en period som är slut."}
           </p>
@@ -161,7 +161,7 @@ export function PayoutQuestion({
           />
         </div>
         <p className="mt-2 text-xs text-subtle">
-          Dagarna som utbetalningen gäller. Betalar Awish varje vecka: välj veckan.
+          Dagarna som utbetalningen gäller. Betalar Nayax varje vecka: välj veckan.
         </p>
       </details>
     </form>

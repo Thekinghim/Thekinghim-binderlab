@@ -112,7 +112,18 @@ import {
   nextPayoutPeriod,
   overlappingPayout,
 } from "./manual-payout";
+import {
+  nayaxReference,
+  nayaxSourceHash,
+  NayaxStatementError,
+  parseNayaxStatement,
+  readPayoutStatement,
+  statementCardFeeBp,
+  statementExtraOre,
+  type PayoutStatement,
+} from "./nayax-statement";
 import { CsvPayoutSource, payoutSourceStatus } from "./payout-source";
+import { extractPdfLines, PdfTextError } from "./pdf-text";
 import { buildSieFile, monthVouchers, type MonthVouchers, type PayoutForBooking } from "./vouchers";
 import {
   activeResolutions,
@@ -310,6 +321,8 @@ async function reconcileIn(
           : {}),
       },
     });
+  // En Nayax-rapport jämförs på försäljning och kortavgift; det Nayax drog därutöver
+  // (bankavgift, engångsavgift) är kända avdrag och ingen avvikelse.
   const analyticsPayouts = toAnalyticsPayouts(payouts, lines);
   let result = run(analyticsPayouts);
   if (manualRefs.size > 0) {
@@ -361,7 +374,7 @@ export async function loadReconciliationFor(
 }
 
 // ---------------------------------------------------------------------------
-// "Vad betalade Awish?": utbetalningen skrivs in för hand
+// "Vad betalade Nayax?": utbetalningen skrivs in för hand
 // ---------------------------------------------------------------------------
 
 /** Frågan överst på Ekonomi: perioden som saknar utbetalning och vad den borde ge. */
@@ -417,7 +430,7 @@ function assertManualPeriod(period: Period, today: IsoDate): void {
 }
 
 /**
- * Frågan "Vad betalade Awish?" för nästa period utan utbetalning (./manual-payout.ts), eller
+ * Frågan "Vad betalade Nayax?" för nästa period utan utbetalning (./manual-payout.ts), eller
  * null när det inte finns något att fråga om: perioden är inte slut, eller inget såldes.
  * Ägare och admin (de som får skriva in svaret).
  */
@@ -775,6 +788,248 @@ export async function importPayoutFileFor(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Nayax månadsrapport (PDF)
+// ---------------------------------------------------------------------------
+
+/** Sant när filen är en PDF (börjar med "%PDF-"). */
+export function isPdfFile(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 5 &&
+    bytes[0] === 0x25 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x44 &&
+    bytes[3] === 0x46 &&
+    bytes[4] === 0x2d
+  );
+}
+
+export interface NayaxUploadResult {
+  /** 'saved' = ny utbetalning, 'duplicate' = samma rapport fanns redan (inget ändrat). */
+  readonly status: "saved" | "duplicate";
+  readonly payoutId: string;
+  readonly reference: string;
+  readonly period: Period;
+  readonly statement: PayoutStatement;
+  /** Appens försäljning för samma dagar, och skillnaden (Nayax − appen). */
+  readonly appSalesOre: number;
+  readonly appOrders: number;
+  readonly salesDifferenceOre: number;
+  /** Sant när avstämningen inte har något att utreda för utbetalningen. */
+  readonly matches: boolean;
+  /** Nayax kortavgift i baspunkter (null = okänd) och appens inställning. */
+  readonly statementCardFeeBp: number | null;
+  readonly settingCardFeeBp: number;
+  /** Referensen på den inskrivna utbetalning som rapporten ersatte, om någon. */
+  readonly replaced: string | null;
+}
+
+/**
+ * Svaret när dagarna redan har en utbetalning som är inskriven för hand: inget är sparat,
+ * och ägaren får välja att ersätta den (samma fil igen med `replaceManualId`).
+ */
+export interface NayaxUploadClash {
+  readonly status: "manual_clash";
+  readonly manualId: string;
+  readonly manualReference: string;
+  readonly manualAmountOre: number;
+  readonly period: Period;
+  readonly totalOre: number;
+}
+
+/**
+ * Läser Nayax månadsrapport (PDF) och sparar den som en utbetalning med rapportens egna
+ * avgifter. Ingenting sparas om rapporten inte går att läsa säkert (./nayax-statement.ts).
+ *
+ * - Samma rapport igen: inget nytt, samma kvitto ('duplicate').
+ * - Dagarna har redan en utbetalning: nekas med besked om att arkivera den först. Är den
+ *   inskriven för hand går den att ersätta: `replaceManualId` arkiverar den i samma
+ *   transaktion (bara just den raden, och bara om den är inskriven för hand).
+ *
+ * Filen sparas som underlag (bucket imports) och uppladdningen loggas i payout_imports.
+ * Ägare och admin.
+ */
+export async function importNayaxStatementFor(
+  viewer: Viewer,
+  file: { readonly name: string; readonly bytes: Uint8Array },
+  options: { readonly replaceManualId?: string | null; readonly fileStore?: FileStore } = {},
+): Promise<NayaxUploadResult | NayaxUploadClash> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
+  let parsed: ReturnType<typeof parseNayaxStatement>;
+  try {
+    parsed = parseNayaxStatement(extractPdfLines(file.bytes));
+  } catch (error) {
+    if (error instanceof NayaxStatementError) throw new AccountingError(error.message);
+    if (error instanceof PdfTextError) {
+      throw new AccountingError(
+        "PDF-filen gick inte att läsa. Ladda upp rapporten som den kom från Nayax (Reimbursement Statement), eller skriv in beloppet för hand.",
+      );
+    }
+    throw error;
+  }
+  const { period, statement } = parsed;
+  if (daysBetween(period.start, period.end) > 366) {
+    throw new AccountingError("Rapportens period är längre än ett år. Inget är sparat.");
+  }
+  const reference = nayaxReference(period);
+  const sourceHash = nayaxSourceHash(parsed);
+  const fileName = file.name.trim().slice(0, 255) || "nayax.pdf";
+  const sha = sha256Hex(file.bytes);
+  const storagePath = `${orgId}/payouts/${sha}.pdf`;
+
+  return asRole(viewer, OPERATOR_ROLES, async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`payouts:${orgId}`}))`);
+    const receipt = async (
+      status: "saved" | "duplicate",
+      payoutId: string,
+      saved: PayoutStatement,
+      replaced: string | null,
+    ): Promise<NayaxUploadResult> => {
+      const rec = await reconcileIn(tx, orgId, period, viewer.organization.timezone);
+      const mine = rec.result?.payouts.find((p) => p.reference === reference);
+      return {
+        status,
+        payoutId,
+        reference,
+        period,
+        statement: saved,
+        appSalesOre: mine?.expected.salesOre ?? 0,
+        appOrders: mine?.expected.orders ?? 0,
+        salesDifferenceOre: saved.reimbursedOre - (mine?.expected.salesOre ?? 0),
+        matches: mine ? mine.deviations.every((d) => !d.requiresAction) : false,
+        statementCardFeeBp: statementCardFeeBp(saved),
+        settingCardFeeBp: rec.settings.cardFeeBp,
+        replaced,
+      };
+    };
+
+    const active = await queryPayouts(tx, orgId, null);
+    const clashes = active.filter(
+      (p) => p.periodStart <= period.end && p.periodEnd >= period.start,
+    );
+    const same = clashes.find((p) => p.reference === reference && p.statement !== null);
+    if (same) {
+      const [row] = await tx
+        .select({ sourceHash: s.payouts.sourceHash })
+        .from(s.payouts)
+        .where(and(eq(s.payouts.organizationId, orgId), eq(s.payouts.id, same.id)));
+      if (row?.sourceHash === sourceHash) {
+        return receipt("duplicate", same.id, same.statement!, null);
+      }
+      throw new AccountingError(
+        `En rapport från Nayax för samma dagar finns redan (${same.reference}) med andra belopp. Arkivera den först, och ladda sedan upp rapporten igen.`,
+      );
+    }
+    let replaced: string | null = null;
+    if (clashes.length > 0) {
+      const only = clashes.length === 1 ? clashes[0]! : null;
+      if (only && only.manual && options.replaceManualId === only.id) {
+        await tx
+          .update(s.payouts)
+          .set({
+            archivedAt: new Date(),
+            note: `Ersatt av rapporten från Nayax (${reference}).`,
+          })
+          .where(
+            and(
+              eq(s.payouts.organizationId, orgId),
+              eq(s.payouts.id, only.id),
+              eq(s.payouts.manual, true),
+              isNull(s.payouts.archivedAt),
+            ),
+          );
+        replaced = only.reference;
+      } else if (only && only.manual) {
+        return {
+          status: "manual_clash",
+          manualId: only.id,
+          manualReference: only.reference,
+          manualAmountOre: only.amountOre,
+          period,
+          totalOre: statement.totalOre,
+        };
+      } else {
+        throw new AccountingError(
+          `Det finns redan en utbetalning för de dagarna (${clashes
+            .map((p) => p.reference)
+            .join(", ")}). Arkivera den först, och ladda sedan upp rapporten igen.`,
+        );
+      }
+    }
+
+    // Underlaget sparas först när rapporten är läst och dagarna är lediga.
+    const store = options.fileStore ?? (await payoutFileStore());
+    await store.put(storagePath, file.bytes, "application/pdf");
+    const [imp] = await tx
+      .insert(s.payoutImports)
+      .values({
+        organizationId: orgId,
+        dataSourceId: null,
+        fileName,
+        fileSha256: sha,
+        storagePath,
+        format: "payouts",
+        rowsTotal: 1,
+        rowsNew: 1,
+        rowsDuplicate: 0,
+        rowsConflict: 0,
+        rowsError: 0,
+        messages: [],
+      })
+      .returning({ id: s.payoutImports.id });
+    const [row] = await tx
+      .insert(s.payouts)
+      .values({
+        organizationId: orgId,
+        // Ingen datakälla: rapporten gäller all kortförsäljning (som en inskriven).
+        dataSourceId: null,
+        importId: imp!.id,
+        reference,
+        periodStart: period.start,
+        periodEnd: period.end,
+        paidOn: statement.payoutUntil,
+        amountOre: statement.totalOre,
+        feesOre: statement.feesOre,
+        refundsOre: null,
+        sourceHash,
+        statement: statement as unknown as Record<string, unknown>,
+      })
+      .returning({ id: s.payouts.id });
+    return receipt("saved", row!.id, statement, replaced);
+  });
+}
+
+/**
+ * Kortavgiften enligt en sparad Nayax-rapport (baspunkter), räknad på servern ur raden, och
+ * organisationens inställningar som de står nu. För knappen "Ändra till 4,0 %": själva
+ * ändringen görs av inställningarnas egen funktion. Ägare och admin.
+ */
+export async function statementCardFeeFor(
+  viewer: Viewer,
+  payoutId: string,
+): Promise<{ cardFeeBp: number; settings: OrgSettings }> {
+  const orgId = viewer.organization.id;
+  return asRole(viewer, OPERATOR_ROLES, async (tx) => {
+    const [row] = await tx
+      .select({ statement: s.payouts.statement })
+      .from(s.payouts)
+      .where(
+        and(
+          eq(s.payouts.organizationId, orgId),
+          eq(s.payouts.id, payoutId),
+          isNull(s.payouts.archivedAt),
+        ),
+      );
+    const statement = readPayoutStatement(row?.statement);
+    const cardFeeBp = statement ? statementCardFeeBp(statement) : null;
+    if (cardFeeBp === null) {
+      throw new AccountingError("Rapporten säger inte vad kortavgiften är.");
+    }
+    return { cardFeeBp, settings: await querySettings(tx, orgId) };
+  });
+}
+
 /**
  * Arkiverar en felaktig utbetalning (med anteckning om varför). Den räknas inte längre i
  * avstämningen, bokföringen eller kassaflödet, och samma referens kan importeras igen rättad.
@@ -970,7 +1225,9 @@ function payoutsForBooking(
       period,
       paidOn: p.paidOn ?? p.periodEnd,
       amountOre: p.amountOre,
-      feesOre: p.feesOre,
+      // Det Nayax drog utöver avgifterna (engångsavgift m.m.) bokförs med avgifterna, så att
+      // utbetalt + avgifter blir försäljningen och avräkningskontot går jämnt ut.
+      feesOre: p.feesOre + (p.statement ? statementExtraOre(p.statement) : 0),
       refundsOre: p.refundsOre ?? known,
       feesKnown: !p.manual,
     };
@@ -1307,7 +1564,7 @@ export interface CashflowView {
   readonly payoutCycleNote: string;
   /**
    * Sant när utbetalningar läses in (queryHasPayoutSource). Falskt: inga utbetalningar visas
-   * som väntade eller saknade (Awish-utbetalningarna är inte inlästa).
+   * som väntade eller saknade (utbetalningarna från Nayax är inte inlästa).
    */
   readonly payoutsTracked: boolean;
 }

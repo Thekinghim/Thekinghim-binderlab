@@ -177,6 +177,9 @@ function normalizePayout(p: Payout): NormalizedPayout {
   assertOre(p.amountOre, `Utbetalt belopp för ${reference}`, true);
   assertOre(p.feesOre, `Avgifterna för ${reference}`, true);
   if (p.refundsOre !== undefined) assertOre(p.refundsOre, `Återbetalningarna för ${reference}`);
+  if (p.deductionsOre !== undefined) {
+    assertOre(p.deductionsOre, `De kända avdragen för ${reference}`, true);
+  }
   let paidOn = period.end;
   if (p.paidOn !== undefined && p.paidOn !== null) {
     if (!isIsoDate(p.paidOn)) {
@@ -513,9 +516,14 @@ export function reconcilePayouts(input: ReconciliationInput): ReconciliationResu
     const salesOre = sumAmounts(own);
     const expectedFees = feesFor(own);
     const ourRefundsOre = sumAmounts(ownRefunds);
-    const expectedPayout = salesOre - expectedFees - ourRefundsOre;
+    // Kända avdrag (t.ex. en engångsavgift i leverantörens rapport) hör till det väntade.
+    const deductions = p.raw.deductionsOre ?? 0;
+    const expectedPayout = salesOre - expectedFees - ourRefundsOre - deductions;
     const reportedRefunds = p.raw.refundsOre ?? ourRefundsOre;
-    const providerSales = addOre(addOre(p.raw.amountOre, p.raw.feesOre), reportedRefunds);
+    const providerSales = addOre(
+      addOre(addOre(p.raw.amountOre, p.raw.feesOre), reportedRefunds),
+      deductions,
+    );
     const gap = providerSales - salesOre;
 
     const collectors = new Map<DeviationKind, Collector>();
@@ -1029,7 +1037,8 @@ function buildPayoutResult(
     payoutOre: p.raw.amountOre,
     feesOre: p.raw.feesOre,
     refundsOre: parts.actualRefunds,
-    salesOre: p.raw.amountOre + p.raw.feesOre + parts.actualRefunds,
+    salesOre:
+      p.raw.amountOre + p.raw.feesOre + parts.actualRefunds + (p.raw.deductionsOre ?? 0),
   };
   // Utbetalningens rad har ören: skillnaderna och avrundningen förklaras på öret.
   const head = `${p.reference} (${periodText(p.period)}): utbetalt ${krExact(

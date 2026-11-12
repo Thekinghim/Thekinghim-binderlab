@@ -137,6 +137,53 @@ describe("reconcilePayouts: grundregel", () => {
   });
 });
 
+describe("kända avdrag (en engångsavgift i leverantörens rapport)", () => {
+  it("avdraget dras från det väntade och är ingen avvikelse", () => {
+    // Försäljning 14 700, kortavgift 2,5 % = 369, engångsavgift 1 000 → väntat 13 331.
+    const p = only(
+      run(
+        [
+          {
+            reference: "N-11",
+            period: "2026-11",
+            amountOre: 13_331,
+            feesOre: 369,
+            deductionsOre: 1_000,
+          },
+        ],
+        { settings: { vatRateBp: 0, cardFeeBp: 250 } },
+      ),
+    );
+    expect(p.expected.payoutOre).toBe(13_331);
+    expect(p.actual.payoutOre).toBe(13_331);
+    // Leverantörens försäljning = utbetalt + avgifter + avdrag = vår försäljning.
+    expect(p.actual.salesOre).toBe(14_700);
+    expect(p.differenceOre).toBe(0);
+    expect(p.status).toBe("matched");
+    expect(p.deviations).toEqual([]);
+  });
+
+  it("med inställningen 0 % är bara kortavgiften en avvikelse, inte avdraget", () => {
+    const p = only(
+      run([
+        { reference: "N-11", period: "2026-11", amountOre: 13_331, feesOre: 369, deductionsOre: 1_000 },
+      ]),
+    );
+    expect(p.expected.payoutOre).toBe(13_700);
+    expect(p.differenceOre).toBe(-369);
+    expect(p.deviations.map((d) => [d.kind, d.impactOre])).toEqual([["fee", -369]]);
+    checkIdentity(p);
+  });
+
+  it("utan avdrag i indata räknas allt som förut", () => {
+    const a = only(run([{ reference: "U", period: "2026-11", amountOre: 14_700, feesOre: 0 }]));
+    const b = only(
+      run([{ reference: "U", period: "2026-11", amountOre: 14_700, feesOre: 0, deductionsOre: 0 }]),
+    );
+    expect(b).toEqual(a);
+  });
+});
+
 describe("avvikelse: avgifter", () => {
   it("leverantören drar 3,00 kr i avgift när inställningen ger 0", () => {
     // Väntat 14 700. Utbetalt 14 400, avgift 300 → skillnad −300, helt förklarad av avgiften.

@@ -114,13 +114,13 @@ describe("Kassaflöde: egen rubrik och inget falskt 'Faktiskt 0 kr' (utvärderin
   });
 });
 
-describe("payoutQuestionText (Vad betalade Awish?)", () => {
+describe("payoutQuestionText (Vad betalade Nayax?)", () => {
   it("hel månad i år: månaden utan årtal", () => {
     expect(
       payoutQuestionText({ start: "2026-10-01", end: "2026-10-31" }, 4_120_000, "2026-11-05"),
     ).toEqual({
       title: `Sålt för 41${NBSP}200${NBSP}kr i oktober efter avgifter.`,
-      aside: "Vad betalade Awish?",
+      aside: "Vad betalade Nayax?",
     });
   });
 
