@@ -51,6 +51,7 @@ export class FakeFortnox {
   readonly clientId: string;
   readonly clientSecret: string;
   companyName = "Testbolaget AB";
+  databaseNumber = 123456;
   /** Konton som finns: nummer → aktivt. */
   accounts = new Map<number, boolean>();
   series = new Set<string>(["A", "B", "C"]);
@@ -90,7 +91,7 @@ export class FakeFortnox {
     for (const n of [1460, 1580, 1930, 2611, 2616, 2990, 3000, 3211, 4010, 4990, 5010, 6040]) {
       this.accounts.set(n, true);
     }
-    for (const n of [6090, 6570, 6590, 6310, 5420, 5610, 6990]) this.accounts.set(n, true);
+    for (const n of [4960, 6090, 6570, 6590, 6310, 5420, 5610, 6990]) this.accounts.set(n, true);
   }
 
   now(): number {
@@ -306,7 +307,9 @@ export class FakeFortnox {
     const yearParam = Number(url.searchParams.get("financialyear"));
 
     if (method === "GET" && path === "/3/companyinformation") {
-      return this.send(res, 200, { CompanyInformation: { CompanyName: this.companyName } });
+      return this.send(res, 200, {
+        CompanyInformation: { CompanyName: this.companyName, DatabaseNumber: this.databaseNumber },
+      });
     }
     if (method === "GET" && path === "/3/financialyears") {
       const date = url.searchParams.get("date");

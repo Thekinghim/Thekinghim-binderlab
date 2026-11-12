@@ -265,7 +265,7 @@ describe("API", () => {
       { series: "A", number: 1, year: 2, date: "2026-10-31", description: SALES.description },
       { series: "A", number: 2, year: 2, date: "2026-10-31", description: SALES.description },
     ]);
-    expect(await client.companyName()).toBe("Testbolaget AB");
+    expect(await client.company()).toEqual({ name: "Testbolaget AB", tenant: "123456" });
   });
 
   it("en utgången åtkomsttoken förnyas en gång och anropet går igenom utan dubblett", async () => {

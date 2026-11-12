@@ -62,6 +62,13 @@ export const CRON_JOBS = {
     checkinMarginMinutes: 30,
     maxRuntimeMinutes: 5,
   },
+  // Fortnox: pg_cron 03:57 UTC varje natt (20261220000000_fortnox.sql).
+  fortnox: {
+    slug: "binderlab-fortnox",
+    schedule: "57 3 * * *",
+    checkinMarginMinutes: 30,
+    maxRuntimeMinutes: 5,
+  },
 } as const satisfies Record<string, CronJob>;
 
 type SentryCron = {

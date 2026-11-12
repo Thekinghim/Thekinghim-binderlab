@@ -458,13 +458,18 @@ export class FortnoxClient {
     }
   }
 
-  /** Företagets namn i Fortnox (visas efter kopplingen, så att ägaren ser att det är rätt bolag). */
-  async companyName(): Promise<string | null> {
+  /** Bolaget i Fortnox: namn och databasnummer (visas efter kopplingen, så att ägaren ser att det är rätt bolag). */
+  async company(): Promise<{ name: string | null; tenant: string | null }> {
     const raw = (await this.request("GET", "/3/companyinformation")) as {
-      CompanyInformation?: { CompanyName?: unknown };
+      CompanyInformation?: { CompanyName?: unknown; DatabaseNumber?: unknown };
     } | null;
     const name = raw?.CompanyInformation?.CompanyName;
-    return typeof name === "string" && name.trim() ? clean(name, 120) : null;
+    const tenant = raw?.CompanyInformation?.DatabaseNumber;
+    return {
+      name: typeof name === "string" && name.trim() ? clean(name, 120) : null,
+      tenant:
+        typeof tenant === "number" || typeof tenant === "string" ? clean(String(tenant), 40) : null,
+    };
   }
 
   /** Räkenskapsåret som innehåller dagen, eller null om Fortnox inte har något. */

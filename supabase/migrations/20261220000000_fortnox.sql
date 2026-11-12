@@ -19,7 +19,8 @@
 -- * private.fortnox_cron_tick: pg_cron en gång per natt → GET /api/cron/fortnox, som
 --   private.bokforing_cron_tick.
 --
--- Läsrätt: bara ägare och admin. Läsare, påfyllare och butiksanvändare ser ingenting.
+-- Läsrätt: bara ägare och admin som inte har Enkel vy. Läsare, påfyllare, butiksanvändare
+-- och den som har Enkel vy ser ingenting.
 -- En demoorganisation kan inte kopplas (triggern nedan).
 -- =============================================================================
 
@@ -40,6 +41,10 @@ create table public.fortnox_connections (
   -- {"accounts": {"bank": "1930", ...}, "kinds": {"cogs": false, ...}}; saknat = standard.
   mapping jsonb not null default '{}'::jsonb
     check (jsonb_typeof(mapping) = 'object' and octet_length(mapping::text) <= 20000),
+  -- Bolaget i Fortnox som kopplingen gäller (Fortnox databasnummer och namn). Inte hemligt:
+  -- visas för ägaren, och hindrar att ett annat bolag kopplas in mot samma utkorg.
+  fortnox_tenant text check (fortnox_tenant is null or char_length(fortnox_tenant) between 1 and 40),
+  company_name text check (company_name is null or char_length(company_name) <= 120),
   connected_at timestamptz not null default now(),
   connected_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
@@ -90,6 +95,10 @@ create table public.fortnox_vouchers (
   block_detail text check (block_detail is null or char_length(block_detail) <= 500),
   attempts integer not null default 0 check (attempts >= 0),
   claimed_at timestamptz,
+  -- Serien och räkenskapsåret som det senaste försöket gick till: där letas verifikatet
+  -- upp om svaret från Fortnox aldrig kom fram.
+  attempt_series text check (attempt_series is null or attempt_series ~ '^[A-Z0-9]{1,6}$'),
+  attempt_year integer check (attempt_year is null or attempt_year >= 1),
   sent_at timestamptz,
   fortnox_series text check (fortnox_series is null or fortnox_series ~ '^[A-Z0-9]{1,6}$'),
   fortnox_number integer check (fortnox_number is null or fortnox_number >= 1),
@@ -109,6 +118,8 @@ create table public.fortnox_vouchers (
   check ((fortnox_number is null) = (fortnox_series is null)),
   check ((fortnox_number is null) = (fortnox_year is null)),
   check ((state = 'blocked') = (block_code is not null)),
+  check (state <> 'sending' or (claimed_at is not null and attempt_series is not null
+                                and attempt_year is not null)),
   check (reverses_id is null or reverses_id <> id)
 );
 
@@ -225,16 +236,21 @@ grant select on table public.fortnox_vouchers to authenticated;
 grant select, insert, update on table public.fortnox_vouchers to service_role;
 
 create policy fortnox_connections_select on public.fortnox_connections for select to authenticated
-  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))));
+  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin')))
+         and not (organization_id = any (array(select private.orgs_in_simple_view()))));
 create policy fortnox_connections_update on public.fortnox_connections for update to authenticated
-  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))))
-  with check (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))));
+  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin')))
+         and not (organization_id = any (array(select private.orgs_in_simple_view()))))
+  with check (organization_id = any (array(select private.orgs_with_role('owner', 'admin')))
+         and not (organization_id = any (array(select private.orgs_in_simple_view()))));
 
 create policy fortnox_sync_state_select on public.fortnox_sync_state for select to authenticated
-  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))));
+  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin')))
+         and not (organization_id = any (array(select private.orgs_in_simple_view()))));
 
 create policy fortnox_vouchers_select on public.fortnox_vouchers for select to authenticated
-  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))));
+  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin')))
+         and not (organization_id = any (array(select private.orgs_in_simple_view()))));
 
 -- -----------------------------------------------------------------------------
 -- Token i Vault. Bara servern (systemrollen) når funktionerna.
@@ -320,7 +336,8 @@ declare
   v_id uuid;
   v_rows jsonb;
 begin
-  if not private.has_role(p_organization_id, 'owner'::public.member_role, 'admin'::public.member_role) then
+  if not private.has_role(p_organization_id, 'owner'::public.member_role, 'admin'::public.member_role)
+     or private.in_simple_view(p_organization_id) then
     raise exception 'Bara ägare och administratörer får rätta verifikat.' using errcode = '42501';
   end if;
   select * into v from public.fortnox_vouchers f
