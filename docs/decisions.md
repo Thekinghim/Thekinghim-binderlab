@@ -474,3 +474,90 @@ en dag mellan Mystery och de andra.
 **Konsekvenser.** En ny migrering: `20261211000000_nayax_rapport.sql` (kolumnen `payouts.statement`, får vara
 tom). Den kan köras medan den gamla koden är live. Rapportens automater kopplas inte till appens automater: de
 visas med Nayax egna namn så att en automat som saknas i appen syns.
+
+## ADR 31. Fortnox: bokföringen skickas som verifikat genom Fortnox eget API
+
+**Bakgrund.** Ägaren vill ha en bokföring som sköter sig själv. Appen hade redan underlaget (bokföringsrapporten,
+kontoplanen och månadspaketet under Ekonomi → Bokföring) men lämnade det som en SIE-fil att importera för hand.
+Fortnox "Claude Connector" (Sidcom) är till för en person som chattar och kan inte användas av en server. Fortnox eget
+API kan (developer.fortnox.se, läst 12 nov. 2026).
+
+**Det Fortnox API ger och inte ger** (allt nedan är kontrollerat mot Fortnox dokumentation om inget annat står):
+
+- OAuth2 med kod: `apps.fortnox.se/oauth-v1/auth` och `/token`, Basic-inloggning med Client-Id och Client-Secret,
+  PKCE. Åtkomsttoken gäller 1 timme. Refresh-token gäller 45 dagar och **byts vid varje förnyelse**: den gamla gäller
+  inte efteråt. En privat (opublicerad) integration för det egna bolaget går bra.
+- Verifikat skapas med `POST /3/vouchers?financialyear={id}`. **Det finns ingen spärr mot dubbletter och ingen
+  idempotency-nyckel.** Verifikat kan inte sökas på text, bara listas per serie, räkenskapsår och datum.
+- Högst 25 anrop per 5 sekunder per token, annars HTTP 429.
+- Låst period läses med `GET /3/settings/lockedperiod`, räkenskapsår med `/3/financialyears`, konton med
+  `/3/accounts/{nr}`, serier med `/3/voucherseries`. Rättigheter (scope): `bookkeeping`, `settings`,
+  `companyinformation`.
+- Inte dokumenterat hos Fortnox (antaget, och därför byggt så att det inte spelar roll): felkoden för låst period,
+  felsvaret när refresh-token inte gäller, och om 429 har `Retry-After`. Appen kontrollerar låst period, år, serie och
+  konton INNAN den skickar, sorterar fel på status och text som reserv, och väntar 5 sekunder på 429.
+- Fortnox har ett nyare flöde utan refresh-token (client credentials med `TenantId`). Det står som "rullas ut" utan
+  besked om att det gäller alla, så det används inte än. Kopplingen görs redan som servicekonto
+  (`account_type=service`), så bytet går att göra senare utan att ägaren kopplar om.
+
+**Beslut.**
+
+1. **Ingen andra bokföringsmodell.** Verifikaten byggs på samma bokföringsrapport (`@/reports`) och samma kontoplan
+   (`bookkeeping_settings.account_plan`) som Ekonomi → Bokföring. `src/server/fortnox/vouchers.ts` bestämmer bara
+   hur underlaget delas i verifikat som kan skickas ett och ett. Sorterna:
+
+   | Sort              | När                              | Kontering (förslag enligt BAS)                                                                        |
+   | ----------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+   | `sales`           | en per avslutad månad            | D 1580 försäljning − återbetalningar; K 3000 en rad per automat; D 3000 återbetalningar               |
+   | `payout`          | en per utbetalning, betaldagen   | D 1930 utbetalt; D 6040 kortavgift; D 6570 bankavgift; D 6590 engångsavgift (egen rad); K 1580 summan |
+   | `store_share`     | en per avslutad månad            | D 6090 andel, D 5010 hyra, K 2990 skuld, per butik                                                    |
+   | `settlement_paid` | när en avräkning markeras betald | D 2990, K 1930                                                                                        |
+   | `cogs`            | en per månad, **av från början** | D 4960, K 1460                                                                                        |
+   | `fixed_costs`     | en per månad, **av från början** | D 6990 per kostnad, K 2990                                                                            |
+
+2. **Kortavgiften bokförs vid utbetalningen**, med Nayax faktiska belopp. Försäljningsverifikatet har därför ingen
+   uppskattad kortavgift (månadspaketets SIE-fil har det, eftersom den saknar verifikat för utbetalningen). Annars
+   skulle avgiften bokföras två gånger. En utbetalning som skrivits in för hand har okända avgifter: då bokförs bara
+   banken mot 1580 och resten står kvar på 1580 tills rapporten laddats upp.
+3. **Momsen följer momssatsen i Inställningar** (`organization_settings.vat_rate_bp`), inget annat. 0 %: ingen
+   momsrad (med "VMB i bokföringen" på: 3211 och 2616 som månadspaketet). Över 0: försäljning exkl. moms per automat
+   och utgående moms på kontot `vat_out` (förslag 2611). Moms och VMB samtidigt stoppas med ett besked: appen väljer
+   inte åt ägaren. Avdrag hos Nayax som appen inte vet hur de ska bokföras (moms, innehållet belopp, Nayax Capital)
+   har inget förslag på konto och stoppar verifikatet tills ett konto valts.
+4. **Inköpsvärde och fasta kostnader är avstängda från början.** Månadspaketet bokför inte inköpen ("bokförs från
+   leverantörsfakturorna"). Bokför redovisningsbyrån fakturorna som kostnad skulle ett verifikat härifrån dubbla
+   kostnaden. Ägaren slår på dem först efter besked från byrån.
+5. **Exakt en gång, utan hjälp från Fortnox.** Utkorgen `fortnox_vouchers` har en stabil nyckel per verifikat
+   (`sales:2026-10:v1`, unik per organisation). Innan ett verifikat skickas tas raden i anspråk med en enda UPDATE
+   (`pending → sending`). Ett fel från Fortnox (4xx) betyder att inget gjordes. Kommer inget svar (nätverk,
+   tidsgräns, 5xx) är det ovisst: raden står kvar som `sending` och skickas aldrig igen förrän nästa körning har
+   letat efter verifikatets märke (`[BL-…]` sist i verifikatets text) bland dagens verifikat i serien. Två körningar
+   samtidigt, en dubbel cron, ett tappat svar och ett tokenbyte mitt i ger alltså aldrig en dubblett.
+6. **Ett skickat verifikat ändras aldrig och raderas aldrig** (trigger i databasen, även för servern). Ändras
+   underlaget efter att det bokförts visar sidan det, och ägaren väljer "Rätta": ett nytt verifikat vänder det gamla
+   (`…:v1:rev`), och när vändningen är bokförd läggs en ny version upp (`…:v2`) om underlaget finns kvar. Rättelser
+   görs inte automatiskt: en ändrad inställning ska inte kunna vända hela historiken av sig själv.
+7. **Period.** Före varje verifikat kontrolleras räkenskapsår, låst period, serie och konton i Fortnox. Går det inte
+   stoppas raden med orsaken i klartext ("Perioden är låst i Fortnox till och med …") och provas igen varje natt.
+8. **Token i Vault.** Åtkomst- och refresh-token ligger i Supabase Vault under `{organisation}/fortnox`, som Awish
+   inloggning. Bara systemrollen når dem (`private.fortnox_*_tokens`). Förnyelsen görs under ett lås per organisation
+   så att två körningar inte förbrukar samma refresh-token. Client-Id och Client-Secret är serverns miljövariabler.
+9. **Börjar säkert.** En ny koppling är alltid i torrkörning: sidan visar exakt vilka verifikat som skulle skickas,
+   och inget skickas förrän ägaren slår på. Startmånaden väljs av ägaren (förslag: månaden efter den senast
+   "skickade"), så att det som redan bokförts för hand inte bokförs igen. Den går inte att ändra när något skickats.
+10. **Vem.** Bara ägare och admin som inte har Enkel vy, i tjänsten och i databasen (RLS). Läsare, påfyllare,
+    butiksanvändare, andra organisationer och demoorganisationer ser och når ingenting, inte heller larmen om
+    Fortnox (restriktiv policy på `alerts`).
+11. **Larm bara när en människa måste göra något**: kopplingen gäller inte längre (`fortnox:koppling`), eller ett
+    verifikat är stoppat (`fortnox:atgard`: låst period, konto eller serie saknas, licens saknas, nekat verifikat).
+    Ingen ny sorts punkt i Att göra: det är vanliga systemlarm som stängs när det löst sig.
+
+**Konsekvenser.** En ny migrering, `20261220000000_fortnox.sql`, bara nya tabeller, funktioner och en restriktiv
+policy för larm med nyckeln `fortnox:…`: den kan köras medan den gamla koden är live. Jobbet körs av pg_cron 03:57
+UTC (`/api/cron/fortnox`). `ACCOUNTING_PROVIDER` och `BookkeepingAdapter` (leverans av en hel månad som SIE-fil)
+ligger kvar orörda; Fortnox går inte den vägen, eftersom en månad inte kan skickas "en gång" som en klump när
+verifikaten har olika dagar och olika källor.
+
+**Det som bara är provat mot den falska Fortnox-servern** (`src/server/fortnox/testing/fake-fortnox.ts`) och ska
+kontrolleras mot riktiga Fortnox i torrkörning och med ett första verifikat: inloggningen och godkännandet som
+servicekonto, att licensen tillåter integrationen, felsvarens exakta form, och att kontona och serien finns.

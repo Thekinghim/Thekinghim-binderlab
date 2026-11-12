@@ -356,6 +356,39 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
   och RLS), `test/db/redteam-ekonomi.test.ts` (granskningens attacktester),
   `src/server/accounting/payout-csv.test.ts` och `src/server/accounting/vouchers.test.ts`.
 
+### Fortnox
+
+Bokföringen skickas som verifikat genom Fortnox eget API (docs/decisions.md, ADR 31; drift i docs/operations.md,
+avsnittet Fortnox). Fortnox går inte genom `ACCOUNTING_PROVIDER`: den variabeln ska stå kvar som `none`.
+
+| Variabel                                        | Vad                                                                                                                                                         | Var                                             |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `FORTNOX_CLIENT_ID`                             | Integrationens Client-Id ur Fortnox utvecklarportal                                                                                                         | Vercel → Environment Variables (Production)     |
+| `FORTNOX_CLIENT_SECRET`                         | Integrationens Client-Secret. **HEMLIG**, bara på servern                                                                                                   | Vercel → Environment Variables, märkt Sensitive |
+| `FORTNOX_REDIRECT_URI`                          | Valfri. Standard `{APP_URL}/datakallor/fortnox/klar`. Måste vara exakt samma adress som står i utvecklarportalen                                            | Vercel, bara om den skiljer sig från standard   |
+| `APP_URL`                                       | Appens adress (finns redan i Production). Ger standardvärdet för adressen ovan                                                                              | finns redan                                     |
+| `CRON_SECRET`                                   | Finns redan. Jobbet `/api/cron/fortnox` kräver den                                                                                                          | finns redan                                     |
+| `FORTNOX_API_BASE_URL`, `FORTNOX_AUTH_BASE_URL` | **Bara test.** Godtas bara om de pekar på den egna datorn (`http://127.0.0.1` eller `http://localhost`); annat ignoreras och Fortnox riktiga adress används | aldrig i Vercel                                 |
+
+Saknas Client-Id eller Client-Secret säger sidan Datakällor → Fortnox det och knappen Koppla är avstängd. Inget annat
+i appen påverkas.
+
+I Fortnox utvecklarportal ska integrationen ha:
+
+- **Redirect URI**: `https://<appens adress>/datakallor/fortnox/klar` (i produktion
+  `https://thekinghim-binderlab.vercel.app/datakallor/fortnox/klar`).
+- **Rättigheter (scopes)**: `bookkeeping`, `settings`, `companyinformation`.
+- **Servicekonto** tillåtet (kopplingen görs med `account_type=service`, så att den inte hänger på en persons
+  inloggning).
+
+Token (åtkomst och refresh) sparas inte som miljövariabler: de hämtas när ägaren kopplar och ligger i Supabase Vault
+under `{organisation}/fortnox`. `scripts/deploy` behöver inte ändras: jobbet använder samma Vault-värden
+(`binderlab_app_url`, `binderlab_cron_secret`) som övriga pg_cron-jobb.
+
+Lokalt: `npx tsx scripts/dev/fake-fortnox.ts` startar en falsk Fortnox på port 4610; variablerna står överst i
+skriptet. Testerna (`src/server/fortnox/*.test.ts`, `test/db/fortnox.test.ts`, `e2e/27-fortnox.e2e.test.ts`) startar
+sin egen och anropar aldrig riktiga Fortnox.
+
 Beställaren: välj bokföringsprogram och skaffa API-åtkomst (Fortnox: integration i
 utvecklarportalen; Visma eEkonomi: Visma Developer; Bokio: API-nyckel), be Awish om
 avräkningens API-dokumentation, och lägg in kontoplanen (BAS) under Inställningar om den
@@ -553,22 +586,23 @@ Varje extern tjänst har en lokal ersättare. Tabellen samlar variablerna som v�
 avsnitten ovan och i `.env.example`; valideringen i `src/lib/env.ts` och i respektive adapter). Arkitekturen bakom
 står i `docs/architecture.md`.
 
-| Variabel              | Värden                                                      | Standard lokalt (`APP_ENV=development`) | Standard i preview och production              |
-| --------------------- | ----------------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
-| `AUTH_PROVIDER`       | `dev`, `supabase`                                           | `dev`                                   | `supabase` (`dev` vägras)                      |
-| `IMPORT_FILE_STORE`   | `local`, `supabase`                                         | `local` (`.data/imports`)               | `supabase` (bucket `imports`)                  |
-| `REPORT_STORAGE`      | `local`, `supabase`                                         | `local` (`.data/reports`)               | `supabase` (bucket `reports`)                  |
-| `CONTRACT_FILE_STORE` | `local`, `supabase`                                         | `local` med `AUTH_PROVIDER=dev`         | `supabase` (bucket `contracts`)                |
-| `MAIL_PROVIDER`       | `outbox`, `resend`                                          | `outbox` (`.data/outbox`)               | `outbox`: sätt `resend`                        |
-| `PDF_RENDERER`        | `local`, `sparticuz`, `off`                                 | `local`                                 | `sparticuz` på Vercel                          |
-| `PUSH_PROVIDER`       | `webpush`, `outbox`                                         | `outbox`                                | `webpush` när VAPID-nycklarna finns, annars av |
-| `SMS_PROVIDER`        | `outbox`, `off`                                             | `outbox`                                | `off` (ingen leverantör vald)                  |
-| `ASSISTANT_PROVIDER`  | `anthropic`, `local`                                        | `anthropic` (utan nyckel avstängd)      | `anthropic` (`local` vägras)                   |
-| `ACCOUNTING_PROVIDER` | `none`, `local`, `fortnox`, `visma_enet`, `bokio`           | `none`                                  | `none` (övriga inte byggda)                    |
-| `PAYOUT_SOURCE`       | `csv`, `awish_api`                                          | `csv`                                   | `csv` (`awish_api` kastar)                     |
-| `MARKET_PRICE_SOURCE` | `none`, `local`, `tcgplayer`, `cardmarket`, `pricecharting` | `none`                                  | `none` (`local` vägras i production)           |
-| `SENTRY_DSN`          | DSN                                                         | tomt (inget skickas)                    | sätt i Vercel                                  |
-| `CRON_SECRET`         | minst 16 tecken                                             | valfritt (cron svarar annars 503)       | krävs i Production                             |
+| Variabel                                     | Värden                                                      | Standard lokalt (`APP_ENV=development`) | Standard i preview och production              |
+| -------------------------------------------- | ----------------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
+| `AUTH_PROVIDER`                              | `dev`, `supabase`                                           | `dev`                                   | `supabase` (`dev` vägras)                      |
+| `IMPORT_FILE_STORE`                          | `local`, `supabase`                                         | `local` (`.data/imports`)               | `supabase` (bucket `imports`)                  |
+| `REPORT_STORAGE`                             | `local`, `supabase`                                         | `local` (`.data/reports`)               | `supabase` (bucket `reports`)                  |
+| `CONTRACT_FILE_STORE`                        | `local`, `supabase`                                         | `local` med `AUTH_PROVIDER=dev`         | `supabase` (bucket `contracts`)                |
+| `MAIL_PROVIDER`                              | `outbox`, `resend`                                          | `outbox` (`.data/outbox`)               | `outbox`: sätt `resend`                        |
+| `PDF_RENDERER`                               | `local`, `sparticuz`, `off`                                 | `local`                                 | `sparticuz` på Vercel                          |
+| `PUSH_PROVIDER`                              | `webpush`, `outbox`                                         | `outbox`                                | `webpush` när VAPID-nycklarna finns, annars av |
+| `SMS_PROVIDER`                               | `outbox`, `off`                                             | `outbox`                                | `off` (ingen leverantör vald)                  |
+| `ASSISTANT_PROVIDER`                         | `anthropic`, `local`                                        | `anthropic` (utan nyckel avstängd)      | `anthropic` (`local` vägras)                   |
+| `ACCOUNTING_PROVIDER`                        | `none`, `local`, `fortnox`, `visma_enet`, `bokio`           | `none`                                  | `none` (övriga inte byggda)                    |
+| `PAYOUT_SOURCE`                              | `csv`, `awish_api`                                          | `csv`                                   | `csv` (`awish_api` kastar)                     |
+| `MARKET_PRICE_SOURCE`                        | `none`, `local`, `tcgplayer`, `cardmarket`, `pricecharting` | `none`                                  | `none` (`local` vägras i production)           |
+| `SENTRY_DSN`                                 | DSN                                                         | tomt (inget skickas)                    | sätt i Vercel                                  |
+| `CRON_SECRET`                                | minst 16 tecken                                             | valfritt (cron svarar annars 503)       | krävs i Production                             |
+| `FORTNOX_CLIENT_ID`, `FORTNOX_CLIENT_SECRET` | Fortnox utvecklarportal                                     | tomt (Fortnox går inte att koppla)      | sätt i Vercel när Fortnox ska kopplas          |
 
 "Sätt" betyder att standardvärdet inte byts av sig självt: `MAIL_PROVIDER` är `outbox` även i production, så
 utan `MAIL_PROVIDER=resend` hamnar rapportmejlen i serverns utkorg i stället för hos mottagarna. Kontrollera den och

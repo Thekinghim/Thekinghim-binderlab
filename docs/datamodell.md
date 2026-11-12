@@ -265,6 +265,19 @@ Detaljerna står i avsnittet "Fas 8" nedan.
 | Kontot `bank` (BAS 1930)          | `…142000`                                                                                             | Läggs in i organisationer som har en kontoplan men saknar det (verifikation per utbetalning).                                                                                                                                 | –                                 |
 | Bucket `contracts`                | `…121731`                                                                                             | Privat, samma policymönster som `imports` och `reports`. Klienter laddar upp och läser, men skriver inte över och raderar inte.                                                                                               | läs Ä/A/L; ladda upp Ä/A; P inget |
 
+### Fortnox (migrering `20261220000000_fortnox.sql`, ADR 31)
+
+| Tabell                | Vad                                                                                                                                                                                                                                                                                               | Skriver                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `fortnox_connections` | En rad per organisation som kopplat Fortnox: `status` (connected, needs_reconnect), `live` (false = torrkörning), `start_month`, `voucher_series`, `mapping` (konton och sorter), bolagets namn och databasnummer hos Fortnox                                                                     | Servern skapar och tar bort; ägare och admin ändrar valen   |
+| `fortnox_sync_state`  | Senaste körningen (tid, fel i klartext)                                                                                                                                                                                                                                                           | Servern                                                     |
+| `fortnox_vouchers`    | Utkorgen: ett verifikat per rad med `idem_key` (unik per organisation), rader (jsonb, öre, positivt = debet), `state` (pending, sending, sent, blocked), orsak när den är stoppad, och Fortnox serie, nummer och år när den är skickad. `reverses_id` pekar på verifikatet som en rättelse vänder | Servern. Ett skickat verifikat ändras aldrig, inget raderas |
+
+Läsrätt: ägare och admin som inte har Enkel vy. Token ligger i Vault (`{organisation}/fortnox`) och nås bara av
+systemrollen genom `private.fortnox_read_tokens`, `private.fortnox_save_tokens` och `private.fortnox_clear_tokens`.
+`public.fortnox_request_reversal(org, verifikat)` lägger upp en rättelse (ägare och admin). Larm med nyckeln
+`fortnox:…` i `alerts` syns bara för samma personer (restriktiv policy `alerts_fortnox_restrict`).
+
 ### Butiksportal
 
 | Funktion                                                                                                                                           | Migrering                                                                   | Innehåll                                                                                                                                                                                                 |

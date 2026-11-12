@@ -11,6 +11,11 @@
  * - `fortnox`, `visma_enet`, `bokio`: känns igen men är inte byggda. De rapporterar
  *   "ej konfigurerad" med vad som behövs, tills beställaren valt program och skaffat
  *   API-nycklar. Gränssnittet nedan är det en riktig implementation ska uppfylla.
+ *
+ * Fortnox är byggt, men inte här: verifikaten skickas ett och ett genom Fortnox eget API med
+ * en utkorg som håller reda på att varje verifikat bokförs exakt en gång (src/server/fortnox,
+ * docs/decisions.md ADR 31). Den här adaptern levererar en hel månad som en fil och är kvar
+ * för `local` och SIE-vägen.
  */
 
 import "server-only";

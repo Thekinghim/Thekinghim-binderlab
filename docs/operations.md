@@ -24,6 +24,7 @@ Inget behöver göras för hand. Det som körs av sig självt:
 | `/api/cron/bokforing` | `37 3 * * *`    | Förra månadens bokföringspaket sparas (pg_cron)                                                                                                                                                                                                                                                                     | Nedladdningen tar fram paketet direkt                                                                             |
 | `/api/cron/kontroll`  | `37 3,4 * * *`  | Daglig kontroll (pg_cron), en gång per org från 05:00 lokal tid: samma vinst överallt, Awish = appen, påfyllningar nådde Awish, synk, avräkningar, datahygien. Läser bara                                                                                                                                           | Larm `self_check:<kontroll>` per röd kontroll, stängs när den går igenom; Inställningar → Kontroll                |
 | `/api/cron/vecka`     | `7 5,6,7 * * 1` | Veckosammanfattning (pg_cron), måndag från 07:00 lokal tid: en notis (push) per ägare/admin med knappen på och en telefon med notiser. Sålt och vinst förra veckan mot veckan innan (före butikernas andel), bästa produkten, antal i Att göra. En rad per person och vecka i `weekly_summaries`: aldrig två gånger | Notisen öppnar Veckan (`/veckan`), i Enkel vy Försäljning på engelska; knappen under Notiser och i Enkel vys meny |
+| `/api/cron/fortnox`   | `57 3 * * *`    | Fortnox (pg_cron): bokför det som ska vara bokfört som verifikat, bara för organisationer som kopplat Fortnox och slagit på. I torrkörning skickas inget. Varje verifikat exakt en gång (utkorgen `fortnox_vouchers`)                                                                                               | Larm `fortnox:koppling` eller `fortnox:atgard` (bara ägare och admin); raden på Ekonomi → Bokföring säger vad     |
 
 `/api/cron/bokforing` schemaläggs av pg_cron i Supabase (`binderlab-bokforing`, migreringen
 `20261104130000_bokforing_paket.sql`). Paketet sparas i bucketen `bookkeeping`; ändras underlaget
@@ -453,20 +454,44 @@ Checklista när panelen lämnas över (till en köpare eller en ny driftansvarig
 
 Kända brister och vad som återstår står sist i `README.md`.
 
+## Fortnox
+
+Ägaren kopplar Fortnox en gång under Datakällor → Fortnox. Därefter bokför jobbet `/api/cron/fortnox` varje natt
+(pg_cron `binderlab-fortnox`, migreringen `20261220000000_fortnox.sql`). Beslut och regler: docs/decisions.md, ADR 31.
+Miljövariabler: docs/miljoer.md, avsnittet Fortnox.
+
+| Läge på Ekonomi → Bokföring                          | Betyder                                                                       | Gör                                                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| "Fortnox: allt bokfört t.o.m. i går."                | Nattens körning gick igenom                                                   | Inget                                                                                    |
+| "Fortnox: torrkörning. N verifikat skulle skickas."  | Inget skickas                                                                 | Titta på listan, slå på under Datakällor → Fortnox                                       |
+| "Fortnox: N verifikat väntar. Försöker igen i natt." | Fortnox svarade inte, eller svaret kom aldrig fram                            | Inget. Nästa körning letar först upp verifikatet i Fortnox, så att inget skickas dubbelt |
+| "Fortnox: N verifikat är stoppade. …"                | Låst period, konto eller serie saknas, licens saknas                          | Det som står i raden. Jobbet provar igen varje natt                                      |
+| "Fortnox: kopplingen gäller inte längre."            | Fortnox tog inte emot refresh-token (45 dagar utan körning, eller återkallad) | Koppla Fortnox igen. Det som väntade bokförs då, inget dubbelt                           |
+| "… har ändrats här efter att det bokfördes."         | Underlaget ändrades efter att verifikatet skickades                           | Välj Rätta: ett nytt verifikat vänder det gamla, och det nya bokförs natten efter        |
+
+- **Inget i Fortnox ändras eller tas bort av appen.** Tas ett verifikat bort för hand i Fortnox vet appen inte om
+  det: utkorgen säger fortfarande "skickat" med numret.
+- **Byt aldrig bolag i Fortnox mot samma organisation.** Kopplingen nekar ett annat bolag när något har skickats.
+- **Koppla från** raderar token ur Vault och ber Fortnox återkalla dem. Utkorgen ligger kvar, så en ny koppling
+  skickar inte om det som redan är bokfört.
+- **Lokalt och i test** används en falsk Fortnox (`npx tsx scripts/dev/fake-fortnox.ts`, port 4610). Testerna
+  anropar aldrig riktiga Fortnox.
+
 ## E2E-tester
 
 Sex flöden plus felövervakningen går genom webbläsaren med Playwright-biblioteket (inte
 `@playwright/test`) och vitest mot en körande server:
 
-| Fil                 | Flöde                                                                                                                                                                                |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `01-inloggning`     | fel och rätt lösenord, rollen i kontomenyn, utloggning, läsaren når inte Datakällor                                                                                                  |
-| `02-import`         | körningens orderlista: förhandsvisning, 12 nya order, ordern under Order, andra gången 0 nya                                                                                         |
-| `03-pafyllning`     | påfyllaren på 375 px: registrera, nytt saldo, ingen ekonomi (och Lönsamhet, Ekonomi, Inköpspriser, Rapporter skickar vidare)                                                         |
-| `04-prisandring`    | nytt inköpspris: Lönsamhet och Hem (seedens fasta period i adressen) ändras, ändringsloggen                                                                                          |
-| `05-rapportutskick` | mottagare, utkast, godkännande (PDF), utskick, mejlet i utkorgen med PDF och hälsning; mottagaren pausas efteråt                                                                     |
-| `06-felovervakning` | framkallat databasfel i `/api/cron/larm` och i en import genom gränssnittet: larm på Drift och i Att göra, påfyllaren ser det inte (375 px, mörkt), nästa körning stänger jobblarmet |
-| `07-fyll-pa`        | Fyll på på iPhone 15 (Playwrights `devices["iPhone 15"]`): automaten med tomma fack först, −, Klar, toasten "Sparat – …", vårt lager och automaten i databasen                       |
+| Fil                 | Flöde                                                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `01-inloggning`     | fel och rätt lösenord, rollen i kontomenyn, utloggning, läsaren når inte Datakällor                                                                                                              |
+| `02-import`         | körningens orderlista: förhandsvisning, 12 nya order, ordern under Order, andra gången 0 nya                                                                                                     |
+| `03-pafyllning`     | påfyllaren på 375 px: registrera, nytt saldo, ingen ekonomi (och Lönsamhet, Ekonomi, Inköpspriser, Rapporter skickar vidare)                                                                     |
+| `04-prisandring`    | nytt inköpspris: Lönsamhet och Hem (seedens fasta period i adressen) ändras, ändringsloggen                                                                                                      |
+| `05-rapportutskick` | mottagare, utkast, godkännande (PDF), utskick, mejlet i utkorgen med PDF och hälsning; mottagaren pausas efteråt                                                                                 |
+| `06-felovervakning` | framkallat databasfel i `/api/cron/larm` och i en import genom gränssnittet: larm på Drift och i Att göra, påfyllaren ser det inte (375 px, mörkt), nästa körning stänger jobblarmet             |
+| `07-fyll-pa`        | Fyll på på iPhone 15 (Playwrights `devices["iPhone 15"]`): automaten med tomma fack först, −, Klar, toasten "Sparat – …", vårt lager och automaten i databasen                                   |
+| `27-fortnox`        | ägaren på 375 px: kopplar Fortnox (en falsk Fortnox på port 4610), torrkörningen visar vad som skulle skickas, slår på, Kör nu bokför en gång, nattens jobb skickar inget mer; läsaren ser inget |
 
 Varje test kontrollerar att sidan inte haft sidfel eller konsolfel (t.ex. Reacts
 hydreringsfel), utom en kort lista kända och ofarliga (`ALLOWED_CONSOLE_ERRORS` i
