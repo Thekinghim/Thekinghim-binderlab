@@ -213,6 +213,39 @@ describe("larm som kräver åtgärd", () => {
     expect(alerts[1]!.link).toBe("/datakallor");
   });
 
+  it("larm om Fortnox länkar till Datakällor → Fortnox (dit bara ägare och admin når)", () => {
+    const todos = computeTodos(
+      input({
+        machines: [machine("m1", "Automat 1")],
+        alerts: [
+          alert({
+            id: "f1",
+            kind: "job_failed",
+            key: "fortnox:atgard",
+            machineId: null,
+            severity: "warning",
+            title: "Fortnox: 1 verifikat är stoppat",
+            detail: "Perioden är låst i Fortnox till och med 2026-10-31.",
+          }),
+          alert({
+            id: "f2",
+            kind: "job_failed",
+            key: "fortnox:koppling",
+            machineId: null,
+            title: "Fortnox behöver kopplas igen",
+          }),
+        ],
+      }),
+      NOW,
+    );
+    const alerts = todos.filter((t) => t.kind === "alert");
+    expect(keys(alerts).sort()).toEqual(["alert:fortnox:atgard", "alert:fortnox:koppling"]);
+    for (const a of alerts) {
+      expect(a.link).toBe("/datakallor/fortnox");
+      expect(a.action?.label).toBe("Öppna Fortnox");
+    }
+  });
+
   it("en automat som redan står som tyst automat får ingen larmpunkt till", () => {
     // m1 sålde senast för fem dagar sedan: stale-machine-punkten finns.
     const orders = daily("t1", "m1", "2026-10-20", 9, 2);

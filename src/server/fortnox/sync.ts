@@ -634,14 +634,13 @@ export async function runFortnoxFor(
 
   // 1. Vad ska finnas, och vad säger utkorgen? Under ett lås, så att två körningar inte
   //    planerar samtidigt (nyckeln skyddar ändå mot dubbletter).
-  const { diff, plan } = await db.transaction(async (tx) => {
+  const diff = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`fortnox-plan:${orgId}`}))`);
     const desired = await computeDesired(tx, org, today, connection);
     const d = diffOutbox(desired, await readOutbox(tx, orgId));
     if (connection.live) await applyDiff(tx, orgId, d);
-    return { diff: d, plan: desired };
+    return d;
   });
-  void plan;
   if (!connection.live) {
     return { ...base, status: "dry_run", wouldSend: diff.insert.length };
   }
