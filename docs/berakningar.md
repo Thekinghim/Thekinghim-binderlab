@@ -749,10 +749,10 @@ butiksersättning och fasta kostnader.
   utbetalningarna (med färre än två antas en per månad): känd försäljning + snittet de senaste 28 dagarna
   (`forecastWindowDays`) × dagar kvar − avgifter, avrundat en gång per period. En passerad utbetalningsdag utan
   registrerad utbetalning läggs som försenad dagen efter i dag. **Utan källa för utbetalningar** (ingen inläst
-  utbetalning och ingen uppladdad utbetalningsfil, `queryHasPayoutSource`; Awish-utbetalningarna importeras inte
+  utbetalning och ingen uppladdad utbetalningsfil, `queryHasPayoutSource`; utbetalningarna från Nayax hämtas inte
   automatiskt) är en passerad utbetalning okänd, inte försenad: den läggs inte in (`payoutsTracked: false`), bara
-  kommande prognostiseras. Ekonomis rubrik visar då bara en neutral rad ("Utbetalningarna från Awish är inte inlästa.
-  Ladda upp dem som CSV för att stämma av.") och ingen väntad eller saknad utbetalning.
+  kommande prognostiseras. Ekonomis rubrik visar då bara en neutral rad ("Inga utbetalningar inlästa. Ladda upp
+  rapporten från Nayax.") och ingen väntad eller saknad utbetalning.
 - **Butiksersättning** för månad M = provision (`storeCompensation`) + hyra (`rentByStoreMonth`), betald månad
   M + 1 (`storeCompensationLagMonths`). Faktiska butiksbetalningar ersätter den beräknade ersättningen för sin
   butik och månad.

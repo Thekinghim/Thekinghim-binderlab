@@ -308,8 +308,8 @@ export default async function EkonomiPage({
             <div className="flex min-w-0 flex-col gap-8 lg:col-span-4">
               {canEdit ? (
                 // Mobil: med utbetalningar i perioden är uppladdningen hopfälld; utan står
-                // den öppen som sidans enda knapp.
-                <MobileFold summary="Ladda upp rapport" defaultOpen={!result && !question}>
+                // den öppen (rapporten från Nayax är det vanliga sättet).
+                <MobileFold summary="Ladda upp rapport" defaultOpen={!result}>
                   <Panel>
                     <PanelSection label="Ladda upp utbetalningar">
                       <div id="ladda-upp-utbetalningar" className="scroll-mt-28">

@@ -291,7 +291,8 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
   importeras rättad med samma referens; referensen är unik bara bland icke arkiverade.
   Avgifter och återbetalningar är avdrag: minustecken eller inte betyder samma sak, så en
   kreditering av avgifter syns i stället som ett högre utbetalt belopp. En period över
-  366 dagar blir en felrad. `PAYOUT_SOURCE=awish_api` är förberedd (`AwishPayoutApi`)
+  366 dagar blir en felrad. En PDF i samma uppladdning läses som Nayax månadsrapport
+  (Reimbursement Statement, se beslut 30 i `docs/decisions.md`). `PAYOUT_SOURCE=awish_api` är förberedd (`AwishPayoutApi`)
   men kastar tills Awish lämnat dokumentation för avräkningen.
 - **Avstämning**: väntad utbetalning = försäljning − avgifter − återbetalningar, per
   utbetalningsperiod. Avvikelser förklaras (avgift, saknade order, tidszon, dubbletter …)

@@ -440,3 +440,37 @@ append-only, ägare och admin) och `20261210000100_varde_bara_mejl.sql`. Båda s
 "Beställt" och "Kom fram" skriver i den nya tabellen. Mystery säger fortfarande "tom om ca N dagar" räknat till
 dagen EFTER slutdagen (ADR 27); Lager, Vårt lager och Inköp säger dagarna packen räcker. Talen kan därför skilja
 en dag mellan Mystery och de andra.
+
+## ADR 30. Nayax betalar ut: månadsrapporten (PDF) läses in på Ekonomi
+
+**Bakgrund.** Kortbetalningarna betalas ut av Nayax, inte av Awish. Nayax mejlar en rapport i PDF varje månad
+("Reimbursement Statement"). Ekonomi tog bara emot CSV och frågade "Vad betalade Awish?".
+
+**Beslut.**
+
+1. **Uppladdningen på Ekonomi tar PDF** (och CSV som förut). En PDF läses som Nayax-rapport: period, försäljning,
+   avgifter, justeringar med orsak, moms, belopp att betala ut, sista utbetalningsdag, antal köp och raderna per
+   automat (`src/server/accounting/nayax-statement.ts`). Saknas en siffra, eller går summan inte ihop på en krona
+   när, nekas filen med ett svenskt besked och inget sparas. Tabellerna (avgifter, justeringar, automater) används
+   bara när raderna summerar till rapportens egen summa.
+2. **PDF-texten läses av egen kod** (`pdf-text.ts`, bara Nodes zlib): inget nytt paket, ingen inbyggd binär och
+   ingen worker att bunta. Den förstår den sortens PDF som Nayax skickar (wkhtmltopdf/Qt); annat nekas.
+3. **Raden i `payouts`**: belopp = det som kommer in på kontot, avgifter = rapportens avgifter, utbetalningsdag =
+   sista utbetalningsdag, referens "Nayax ÅÅÅÅ-MM". Rapportens övriga siffror sparas i den nya kolumnen
+   `payouts.statement` (jsonb). Företagets namn, kundnummer och e-post sparas inte i raden (filen sparas som
+   underlag som en CSV).
+4. **Avstämningen** jämför Nayax försäljning och kortavgift med appens. Det Nayax drog därutöver (bankavgift,
+   engångsavgift) är kända avdrag (`Payout.deductionsOre`): de dras från det väntade och visas som egna rader
+   ("Engångsavgift hos Nayax: 824,72 kr"), inte som en avvikelse. I bokföringen läggs justeringarna ihop med
+   avgifterna.
+5. **Samma rapport två gånger** ger ingen ny rad. Dagar som redan har en utbetalning nekas ("Arkivera den
+   först"); är den inskriven för hand får ägaren frågan "Ersätt med rapporten", som arkiverar den med anteckning.
+6. **Kortavgiften ändras aldrig av uppladdningen.** Skiljer rapportens kortavgift sig från inställningen visas
+   "Nayax tar 4,0 % i kortavgift. Appen räknar med 0 %." med knappen "Ändra till 4,0 %" (ägare och admin, genom
+   inställningarnas egen funktion).
+7. **Orden**: texterna om pengar säger Nayax ("Vad betalade Nayax?"). Awish är fortfarande namnet på automat- och
+   lagersystemet.
+
+**Konsekvenser.** En ny migrering: `20261211000000_nayax_rapport.sql` (kolumnen `payouts.statement`, får vara
+tom). Den kan köras medan den gamla koden är live. Rapportens automater kopplas inte till appens automater: de
+visas med Nayax egna namn så att en automat som saknas i appen syns.
