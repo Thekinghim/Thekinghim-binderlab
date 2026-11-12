@@ -1,3 +1,5 @@
+import { deflateSync } from "node:zlib";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -259,5 +261,83 @@ describe("andra rapporter", () => {
     const parsed = parsePayoutFile(csv);
     expect(parsed.format).toBe("payouts");
     expect(parsed.payouts[0]).toMatchObject({ amountOre: 7_233_048, feesOre: 308_980 });
+  });
+});
+
+describe("en PDF gjord för att ta tid eller minne nekas snabbt", () => {
+  const pdf = (objects: readonly string[]) =>
+    new Uint8Array(
+      Buffer.concat([
+        Buffer.from("%PDF-1.4\n", "latin1"),
+        ...objects.map((o) => Buffer.from(o, "latin1")),
+        Buffer.from("trailer\n<< /Root 1 0 R >>\n%%EOF\n", "latin1"),
+      ]),
+    );
+  const stream = (id: number, body: Buffer) =>
+    Buffer.concat([
+      Buffer.from(`${id} 0 obj\n<< /Length ${body.length} /Filter /FlateDecode >>\nstream\n`),
+      body,
+      Buffer.from("\nendstream\nendobj\n"),
+    ]).toString("latin1");
+  const quick = (bytes: Uint8Array) => {
+    const started = Date.now();
+    expect(() => extractPdfLines(bytes)).toThrow(PdfTextError);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  };
+
+  it("ett sidträd som pekar på sig självt", () => {
+    const kids = Array(40).fill("2 0 R").join(" ");
+    quick(
+      pdf([
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        `2 0 obj\n<< /Type /Pages /Kids [ ${kids} ] >>\nendobj\n`,
+      ]),
+    );
+  });
+
+  it("en liten ström som packas upp till hundratals MB, använd på många sidor", () => {
+    const bomb = deflateSync(Buffer.alloc(300 * 1024 * 1024, 0x20));
+    const pages = Array.from({ length: 40 }, (_, i) => i + 10);
+    quick(
+      pdf([
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        `2 0 obj\n<< /Type /Pages /Kids [ ${pages.map((p) => `${p} 0 R`).join(" ")} ] >>\nendobj\n`,
+        stream(3, bomb),
+        ...pages.map(
+          (p) => `${p} 0 obj\n<< /Type /Page /Contents [ 3 0 R 3 0 R 3 0 R ] >>\nendobj\n`,
+        ),
+      ]),
+    );
+  });
+
+  it("ett typsnitt med en teckentabell av överlappande jätteintervall", () => {
+    const cmap = `1 beginbfrange\n${"<0000> <FFFF> <0020>\n".repeat(20_000)}endbfrange`;
+    quick(
+      pdf([
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        "2 0 obj\n<< /Type /Pages /Kids [ 4 0 R ] >>\nendobj\n",
+        "3 0 obj\n<< /Type /Font /Subtype /Type0 /DescendantFonts [9 0 R] /ToUnicode 5 0 R >>\nendobj\n",
+        "4 0 obj\n<< /Type /Page /Contents 6 0 R /Resources << /Font << /F1 3 0 R >> >> >>\nendobj\n",
+        stream(5, deflateSync(Buffer.from(cmap, "latin1"))),
+        stream(6, deflateSync(Buffer.from("BT /F1 10 Tf <0001> Tj ET", "latin1"))),
+      ]),
+    );
+  });
+
+  it("en sida med miljontals tecken", () => {
+    const text = `BT /F1 10 Tf ${"(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) Tj\n".repeat(20_000)} ET`;
+    quick(
+      pdf([
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        "2 0 obj\n<< /Type /Pages /Kids [ 4 0 R ] >>\nendobj\n",
+        "3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+        "4 0 obj\n<< /Type /Page /Contents 6 0 R /Resources << /Font << /F1 3 0 R >> >> >>\nendobj\n",
+        stream(6, deflateSync(Buffer.from(text, "latin1"))),
+      ]),
+    );
+  });
+
+  it("den riktiga uppställningen ryms med god marginal", () => {
+    expect(extractPdfLines(octoberPdf()).length).toBe(NAYAX_OCTOBER.length);
   });
 });

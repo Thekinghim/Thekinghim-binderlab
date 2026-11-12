@@ -37,9 +37,28 @@ export interface PdfLine {
   readonly cells: readonly PdfCell[];
 }
 
-/** Största uppackade ström (skydd mot en fil som sväller). */
-const MAX_STREAM_BYTES = 30 * 1024 * 1024;
+/**
+ * Gränser mot en fil som är gjord för att svälla eller ta tid (en rapport från Nayax är
+ * några tiotal kB med ett par tusen tecken). Över gränsen: `PdfTextError`, aldrig en halv
+ * läsning.
+ */
+/** Allt uppackat innehåll i filen sammanlagt. */
+const MAX_UNPACKED_BYTES = 16 * 1024 * 1024;
 const MAX_PAGES = 50;
+/** Noder i sidträdet (en slinga i trädet får inte gå runt). */
+const MAX_TREE_NODES = 500;
+/** Tecken på alla sidor sammanlagt. */
+const MAX_GLYPHS = 200_000;
+/** Rader i ett typsnitts tabeller (tecken och bredder). */
+const MAX_FONT_ENTRIES = 70_000;
+
+const TOO_BIG = "PDF-filen är för stor eller för invecklad.";
+
+/** Hur mycket som får packas upp och läsas till i den här filen. */
+interface Budget {
+  unpacked: number;
+  glyphs: number;
+}
 
 type Matrix = readonly [number, number, number, number, number, number];
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
@@ -114,21 +133,29 @@ function readObjects(src: string): Map<number, PdfObject> {
   return objects;
 }
 
-function streamText(obj: PdfObject | undefined): string {
+function streamText(obj: PdfObject | undefined, budget: Budget): string {
   if (!obj || obj.stream === null) throw new PdfTextError("En ström saknas i filen.");
   const filter = /\/Filter\s*(\[[^\]]*\]|\/\w+)/.exec(obj.dict)?.[1];
-  if (!filter) return obj.stream;
+  const spend = (text: string): string => {
+    budget.unpacked -= text.length;
+    if (budget.unpacked < 0) throw new PdfTextError(TOO_BIG);
+    return text;
+  };
+  if (!filter) return spend(obj.stream);
   const names = filter.match(/\/\w+/g) ?? [];
   if (names.length !== 1 || names[0] !== "/FlateDecode") {
     throw new PdfTextError(`Filtret ${names.join(" ")} stöds inte.`);
   }
+  if (budget.unpacked <= 0) throw new PdfTextError(TOO_BIG);
+  let text: string;
   try {
-    return inflateSync(Buffer.from(obj.stream, "latin1"), {
-      maxOutputLength: MAX_STREAM_BYTES,
+    text = inflateSync(Buffer.from(obj.stream, "latin1"), {
+      maxOutputLength: budget.unpacked,
     }).toString("latin1");
   } catch {
     throw new PdfTextError("En ström i filen går inte att packa upp.");
   }
+  return spend(text);
 }
 
 function utf16Hex(hex: string): string {
@@ -141,8 +168,15 @@ function utf16Hex(hex: string): string {
 
 function parseToUnicode(cmap: string): Map<number, string> {
   const map = new Map<number, string>();
+  // Arbetet räknas (inte bara tabellens storlek): många överlappande intervall får inte ta tid.
+  let work = 0;
+  const count = (n: number) => {
+    work += n;
+    if (work > MAX_FONT_ENTRIES) throw new PdfTextError(TOO_BIG);
+  };
   for (const block of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
     for (const pair of block[1]!.matchAll(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/g)) {
+      count(1);
       map.set(parseInt(pair[1]!, 16), utf16Hex(pair[2]!));
     }
   }
@@ -152,6 +186,7 @@ function parseToUnicode(cmap: string): Map<number, string> {
       const from = parseInt(r[1]!, 16);
       const to = parseInt(r[2]!, 16);
       if (to < from || to - from > 65_535) continue;
+      count(to - from + 1);
       if (r[3] !== undefined) {
         const base = utf16Hex(r[3]);
         const head = base.slice(0, -1);
@@ -175,16 +210,22 @@ function ref(dict: string, key: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-function readFont(objects: Map<number, PdfObject>, id: number): Font {
+function readFont(objects: Map<number, PdfObject>, id: number, budget: Budget): Font {
   const obj = objects.get(id);
   if (!obj) throw new PdfTextError("Ett typsnitt saknas i filen.");
   const twoByte = /\/Subtype\s*\/Type0/.test(obj.dict);
   const uni = ref(obj.dict, "ToUnicode");
-  const toUnicode = uni === null ? null : parseToUnicode(streamText(objects.get(uni)));
+  const toUnicode = uni === null ? null : parseToUnicode(streamText(objects.get(uni), budget));
   if (twoByte && !toUnicode) {
     throw new PdfTextError("Ett typsnitt i filen saknar teckentabell.");
   }
   const widths = new Map<number, number>();
+  let work = 0;
+  const setWidth = (code: number, width: number) => {
+    work += 1;
+    if (work > MAX_FONT_ENTRIES) throw new PdfTextError(TOO_BIG);
+    widths.set(code, width);
+  };
   let defaultWidth = twoByte ? 1000 : 500;
   if (twoByte) {
     const d = /\/DescendantFonts\s*\[\s*(\d+)\s+\d+\s+R/.exec(obj.dict);
@@ -208,13 +249,13 @@ function readFont(objects: Map<number, PdfObject>, id: number): Font {
           if (tokens[i + 1] === "[") {
             let c = first;
             i += 2;
-            while (i < tokens.length && tokens[i] !== "]") widths.set(c++, Number(tokens[i++]));
+            while (i < tokens.length && tokens[i] !== "]") setWidth(c++, Number(tokens[i++]));
             i += 1;
           } else {
             const last = Number(tokens[i + 1]);
             const w = Number(tokens[i + 2]);
             if (!Number.isFinite(last) || !Number.isFinite(w) || last - first > 65_535) break;
-            for (let c = first; c <= last; c += 1) widths.set(c, w);
+            for (let c = first; c <= last; c += 1) setWidth(c, w);
             i += 3;
           }
         }
@@ -224,9 +265,7 @@ function readFont(objects: Map<number, PdfObject>, id: number): Font {
     const first = /\/FirstChar\s+(\d+)/.exec(obj.dict);
     const w = /\/Widths\s*\[([^\]]*)\]/.exec(obj.dict);
     if (first && w) {
-      (w[1]!.match(/-?[\d.]+/g) ?? []).forEach((x, i) =>
-        widths.set(Number(first[1]) + i, Number(x)),
-      );
+      (w[1]!.match(/-?[\d.]+/g) ?? []).forEach((x, i) => setWidth(Number(first[1]) + i, Number(x)));
     }
   }
   return { twoByte, toUnicode, widths, defaultWidth };
@@ -357,7 +396,7 @@ function* tokens(src: string): Generator<Token> {
   }
 }
 
-function pageGlyphs(content: string, fonts: Map<string, Font>): Glyph[] {
+function pageGlyphs(content: string, fonts: Map<string, Font>, budget: Budget): Glyph[] {
   const glyphs: Glyph[] = [];
   let ctm: Matrix = IDENTITY;
   const saved: Matrix[] = [];
@@ -391,6 +430,8 @@ function pageGlyphs(content: string, fonts: Map<string, Font>): Glyph[] {
       const after = mul([1, 0, 0, 1, advance, 0], at);
       const em = Math.hypot(at[0], at[1]) * size;
       if (text !== "" && text !== "\0") {
+        budget.glyphs -= 1;
+        if (budget.glyphs < 0) throw new PdfTextError(TOO_BIG);
         glyphs.push({ x: at[4], xEnd: after[4], y: -at[5], em, text });
       }
       tm = mul([1, 0, 0, 1, advance, 0], tm);
@@ -510,9 +551,14 @@ export function extractPdfLines(bytes: Uint8Array): PdfLine[] {
 
   // Sidorna i ordning: från katalogen genom sidträdet.
   const pages: { dict: string; inherited: string }[] = [];
+  const budget: Budget = { unpacked: MAX_UNPACKED_BYTES, glyphs: MAX_GLYPHS };
+  // Varje nod besöks en gång: ett sidträd som pekar på sig självt får inte gå runt.
+  const seen = new Set<number>();
   const walk = (id: number, inherited: string, depth: number) => {
     const obj = objects.get(id);
     if (!obj || depth > 20 || pages.length > MAX_PAGES) return;
+    if (seen.has(id) || seen.size >= MAX_TREE_NODES) throw new PdfTextError(TOO_BIG);
+    seen.add(id);
     if (/\/Type\s*\/Pages\b/.test(obj.dict)) {
       const kids = /\/Kids\s*\[([^\]]*)\]/.exec(obj.dict)?.[1] ?? "";
       const res = /\/Resources\b/.test(obj.dict) ? obj.dict : inherited;
@@ -542,7 +588,7 @@ export function extractPdfLines(bytes: Uint8Array): PdfLine[] {
     const fonts = new Map<string, Font>();
     for (const f of fontDict.matchAll(/\/([^\s/<>[\]]+)\s+(\d+)\s+\d+\s+R/g)) {
       const id = Number(f[2]);
-      if (!fontCache.has(id)) fontCache.set(id, readFont(objects, id));
+      if (!fontCache.has(id)) fontCache.set(id, readFont(objects, id, budget));
       fonts.set(f[1]!, fontCache.get(id)!);
     }
     const one = ref(page.dict, "Contents");
@@ -551,8 +597,8 @@ export function extractPdfLines(bytes: Uint8Array): PdfLine[] {
       one !== null
         ? [one]
         : [...(many ?? "").matchAll(/(\d+)\s+\d+\s+R/g)].map((x) => Number(x[1]));
-    const content = ids.map((id) => streamText(objects.get(id))).join("\n");
-    lines.push(...toLines(index + 1, pageGlyphs(content, fonts)));
+    const content = ids.map((id) => streamText(objects.get(id), budget)).join("\n");
+    lines.push(...toLines(index + 1, pageGlyphs(content, fonts, budget)));
   });
   return lines;
 }
