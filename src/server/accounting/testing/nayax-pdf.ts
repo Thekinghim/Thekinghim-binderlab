@@ -66,7 +66,11 @@ export function buildPdf(lines: readonly FixtureLine[]): Uint8Array {
   const add = (id: number, dict: string, stream?: Buffer) => {
     chunks.push(Buffer.from(`${id} 0 obj\n${dict}\n`, "latin1"));
     if (stream) {
-      chunks.push(Buffer.from("stream\n", "latin1"), stream, Buffer.from("\nendstream\n", "latin1"));
+      chunks.push(
+        Buffer.from("stream\n", "latin1"),
+        stream,
+        Buffer.from("\nendstream\n", "latin1"),
+      );
     }
     chunks.push(Buffer.from("endobj\n", "latin1"));
   };

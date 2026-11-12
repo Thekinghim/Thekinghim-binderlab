@@ -289,7 +289,9 @@ function readDevices(lines: readonly PdfLine[], grossOre: number): StatementDevi
     column(cells, /^processing fee$/, "fee"),
   ];
   if (cols.some((c) => c === null)) return [];
-  const body = lines.filter((l) => l.page >= head.page && (l.page > head.page || l.y > head.y + 10));
+  const body = lines.filter(
+    (l) => l.page >= head.page && (l.page > head.page || l.y > head.y + 10),
+  );
   // Tabellen kan fortsätta på nästa sida: raderna klumpas per sida.
   const pages = [...new Set(body.map((l) => l.page))];
   const rows = pages.flatMap((p) =>

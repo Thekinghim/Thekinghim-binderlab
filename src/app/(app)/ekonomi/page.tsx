@@ -315,9 +315,7 @@ export default async function EkonomiPage({
                       <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
                         <PayoutUpload
                           today={ctx.today}
-                          shownPayoutIds={
-                            result ? rec.payouts.map((x) => x.id) : []
-                          }
+                          shownPayoutIds={result ? rec.payouts.map((x) => x.id) : []}
                           columns={{
                             payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),
                             lines: PAYOUT_FILE_COLUMNS.lines.join(", "),

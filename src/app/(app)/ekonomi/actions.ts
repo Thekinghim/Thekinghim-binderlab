@@ -97,7 +97,8 @@ export async function uploadPayoutFile(form: FormData): Promise<ActionResult<Pay
         { name: file.name, bytes },
         { replaceManualId },
       );
-      if (data.status === "manual_clash") return { ok: true, data: { kind: "nayax_clash", ...data } };
+      if (data.status === "manual_clash")
+        return { ok: true, data: { kind: "nayax_clash", ...data } };
       revalidateAppData();
       return { ok: true, data: { kind: "nayax", ...data } };
     }

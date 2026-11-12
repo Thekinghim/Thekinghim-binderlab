@@ -1323,6 +1323,12 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     module: "@/app/(app)/ekonomi/actions",
+    name: "applyStatementCardFee",
+    allowed: OP,
+    args: () => [{ payoutId: "00000000-0000-4000-8000-000000000000" }],
+  },
+  {
+    module: "@/app/(app)/ekonomi/actions",
     name: "payoutExpectation",
     allowed: OP,
     args: () => [{ start: "2025-01-01", end: "2025-01-31" }],

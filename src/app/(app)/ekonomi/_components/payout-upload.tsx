@@ -169,8 +169,8 @@ export function PayoutUpload({
         >
           <p className="text-sm text-fg">
             Du har redan skrivit in {kr(clash.info.manualAmountOre)} för hand för{" "}
-            {periodText(clash.info.period)}. Rapporten från Nayax säger{" "}
-            {kr(clash.info.totalOre)}. Inget är ändrat ännu.
+            {periodText(clash.info.period)}. Rapporten från Nayax säger {kr(clash.info.totalOre)}.
+            Inget är ändrat ännu.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button

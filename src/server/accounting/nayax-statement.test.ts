@@ -17,7 +17,8 @@ import { extractPdfLines, PdfTextError } from "./pdf-text";
 import { NAYAX_OCTOBER } from "./testing/nayax-fixture";
 import { buildPdf, editLines, octoberPdf, type FixtureLine } from "./testing/nayax-pdf";
 
-const parse = (lines: readonly FixtureLine[]) => parseNayaxStatement(extractPdfLines(buildPdf(lines)));
+const parse = (lines: readonly FixtureLine[]) =>
+  parseNayaxStatement(extractPdfLines(buildPdf(lines)));
 
 describe("belopp och datum på Nayax vis", () => {
   it("engelskt format, parentes är minus", () => {
@@ -188,7 +189,9 @@ describe("andra rapporter", () => {
       text === "01/10/2026 - 31/10/2026" ? "oktober" : undefined,
     );
     expect(() => parse(noPeriod)).toThrow(/perioden \(Reimbursement Period\) saknas/);
-    const noFee = editLines(NAYAX_OCTOBER, (text) => (text === "Processing Fee:" ? null : undefined));
+    const noFee = editLines(NAYAX_OCTOBER, (text) =>
+      text === "Processing Fee:" ? null : undefined,
+    );
     expect(() => parse(noFee)).toThrow(/Processing Fee saknas/);
   });
 
@@ -205,14 +208,18 @@ describe("andra rapporter", () => {
   });
 
   it("automater som inte summerar till försäljningen visas inte (men rapporten läses)", () => {
-    const lines = editLines(NAYAX_OCTOBER, (text) => (text === "72,511.00" ? "72,000.00" : undefined));
+    const lines = editLines(NAYAX_OCTOBER, (text) =>
+      text === "72,511.00" ? "72,000.00" : undefined,
+    );
     const { statement } = parse(lines);
     expect(statement.devices).toEqual([]);
     expect(statement.totalOre).toBe(7_233_048);
   });
 
   it("avgiftstabell som inte summerar: hela avgiften räknas som kortavgift okänd", () => {
-    const lines = editLines(NAYAX_OCTOBER, (text) => (text === "kr 40.00" ? "kr 41.00" : undefined));
+    const lines = editLines(NAYAX_OCTOBER, (text) =>
+      text === "kr 40.00" ? "kr 41.00" : undefined,
+    );
     const { statement } = parse(lines);
     expect(statement.cardFeeOre).toBeNull();
     expect(statementCardFeeBp(statement)).toBeNull();

@@ -203,7 +203,7 @@ function readFont(objects: Map<number, PdfObject>, id: number): Font {
           else if (cid.dict[end] === "]" && (depth -= 1) === 0) break;
         }
         const tokens = cid.dict.slice(from, end).match(/\[|\]|-?[\d.]+/g) ?? [];
-        for (let i = 0; i < tokens.length; ) {
+        for (let i = 0; i < tokens.length;) {
           const first = Number(tokens[i]);
           if (tokens[i + 1] === "[") {
             let c = first;
@@ -224,7 +224,9 @@ function readFont(objects: Map<number, PdfObject>, id: number): Font {
     const first = /\/FirstChar\s+(\d+)/.exec(obj.dict);
     const w = /\/Widths\s*\[([^\]]*)\]/.exec(obj.dict);
     if (first && w) {
-      (w[1]!.match(/-?[\d.]+/g) ?? []).forEach((x, i) => widths.set(Number(first[1]) + i, Number(x)));
+      (w[1]!.match(/-?[\d.]+/g) ?? []).forEach((x, i) =>
+        widths.set(Number(first[1]) + i, Number(x)),
+      );
     }
   }
   return { twoByte, toUnicode, widths, defaultWidth };
@@ -286,7 +288,8 @@ function* tokens(src: string): Generator<Token> {
     let hex = src.slice(i + 1, stop).replace(/[^0-9a-fA-F]/g, "");
     if (hex.length % 2 === 1) hex += "0";
     let out = "";
-    for (let k = 0; k < hex.length; k += 2) out += String.fromCharCode(parseInt(hex.slice(k, k + 2), 16));
+    for (let k = 0; k < hex.length; k += 2)
+      out += String.fromCharCode(parseInt(hex.slice(k, k + 2), 16));
     i = stop + 1;
     return out;
   };
@@ -376,7 +379,9 @@ function pageGlyphs(content: string, fonts: Map<string, Font>): Glyph[] {
     if (!font) throw new PdfTextError("Text utan typsnitt i filen.");
     const step = font.twoByte ? 2 : 1;
     for (let k = 0; k + step <= raw.length; k += step) {
-      const code = font.twoByte ? (raw.charCodeAt(k) << 8) | raw.charCodeAt(k + 1) : raw.charCodeAt(k);
+      const code = font.twoByte
+        ? (raw.charCodeAt(k) << 8) | raw.charCodeAt(k + 1)
+        : raw.charCodeAt(k);
       const text = font.toUnicode ? font.toUnicode.get(code) : String.fromCharCode(code);
       if (text === undefined) {
         throw new PdfTextError("Ett tecken i filen saknas i typsnittets teckentabell.");
@@ -543,7 +548,9 @@ export function extractPdfLines(bytes: Uint8Array): PdfLine[] {
     const one = ref(page.dict, "Contents");
     const many = /\/Contents\s*\[([^\]]*)\]/.exec(page.dict)?.[1];
     const ids =
-      one !== null ? [one] : [...(many ?? "").matchAll(/(\d+)\s+\d+\s+R/g)].map((x) => Number(x[1]));
+      one !== null
+        ? [one]
+        : [...(many ?? "").matchAll(/(\d+)\s+\d+\s+R/g)].map((x) => Number(x[1]));
     const content = ids.map((id) => streamText(objects.get(id))).join("\n");
     lines.push(...toLines(index + 1, pageGlyphs(content, fonts)));
   });

@@ -166,7 +166,13 @@ describe("kända avdrag (en engångsavgift i leverantörens rapport)", () => {
   it("med inställningen 0 % är bara kortavgiften en avvikelse, inte avdraget", () => {
     const p = only(
       run([
-        { reference: "N-11", period: "2026-11", amountOre: 13_331, feesOre: 369, deductionsOre: 1_000 },
+        {
+          reference: "N-11",
+          period: "2026-11",
+          amountOre: 13_331,
+          feesOre: 369,
+          deductionsOre: 1_000,
+        },
       ]),
     );
     expect(p.expected.payoutOre).toBe(13_700);

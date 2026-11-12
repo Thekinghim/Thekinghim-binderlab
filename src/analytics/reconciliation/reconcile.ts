@@ -1037,8 +1037,7 @@ function buildPayoutResult(
     payoutOre: p.raw.amountOre,
     feesOre: p.raw.feesOre,
     refundsOre: parts.actualRefunds,
-    salesOre:
-      p.raw.amountOre + p.raw.feesOre + parts.actualRefunds + (p.raw.deductionsOre ?? 0),
+    salesOre: p.raw.amountOre + p.raw.feesOre + parts.actualRefunds + (p.raw.deductionsOre ?? 0),
   };
   // Utbetalningens rad har ören: skillnaderna och avrundningen förklaras på öret.
   const head = `${p.reference} (${periodText(p.period)}): utbetalt ${krExact(
