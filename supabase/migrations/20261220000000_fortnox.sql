@@ -249,6 +249,17 @@ create policy fortnox_vouchers_select on public.fortnox_vouchers for select to a
   using (organization_id = any (array(select private.orgs_with_role('owner', 'admin')))
          and not (organization_id = any (array(select private.orgs_in_simple_view()))));
 
+-- Larmen om Fortnox (incident_key 'fortnox:…', skrivs av jobbet) syns bara för dem som får
+-- hantera Fortnox. Restriktiv policy: den läggs ovanpå de vanliga läsreglerna för alerts och
+-- ändrar ingenting för andra larm.
+create policy alerts_fortnox_restrict on public.alerts as restrictive for select to authenticated
+  using (
+    incident_key is null
+    or incident_key not like 'fortnox:%'
+    or (organization_id = any (array(select private.orgs_with_role('owner', 'admin')))
+        and not (organization_id = any (array(select private.orgs_in_simple_view()))))
+  );
+
 -- -----------------------------------------------------------------------------
 -- Token i Vault. Bara servern (systemrollen) når funktionerna.
 -- -----------------------------------------------------------------------------

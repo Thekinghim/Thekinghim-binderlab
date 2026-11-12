@@ -150,6 +150,12 @@ jobs:
       # Testerna kör larmjobbet (e2e/06-felovervakning) med samma hemlighet som servern.
       E2E_CRON_SECRET: ci-e2e-cron-secret-0123456789
       MAIL_PROVIDER: outbox
+      # Fortnox: en falsk Fortnox som e2e/27-fortnox startar på port 4610. Aldrig riktiga Fortnox.
+      FORTNOX_CLIENT_ID: fake-client-id
+      FORTNOX_CLIENT_SECRET: fake-client-secret
+      FORTNOX_API_BASE_URL: http://127.0.0.1:4610
+      FORTNOX_AUTH_BASE_URL: http://127.0.0.1:4610
+      FORTNOX_REDIRECT_URI: http://localhost:3210/datakallor/fortnox/klar
       PDF_RENDERER: local
       # Chromium för testerna och för serverns PDF (src/server/pdf/render.ts letar här).
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.pw-browsers

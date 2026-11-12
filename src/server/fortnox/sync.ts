@@ -590,7 +590,7 @@ async function syncAlerts(
               : `Fortnox: ${blocked.length} verifikat är stoppade`,
           detail: first.blockDetail ?? "Öppna Ekonomi → Bokföring för att se varför.",
           rule: "Ett verifikat kunde inte bokföras i Fortnox och kräver en åtgärd.",
-          link: "/ekonomi?vy=bokforing",
+          link: "/datakallor/fortnox",
           figures: [{ key: "blocked", label: "Stoppade verifikat", value: blocked.length }],
           now,
         }),

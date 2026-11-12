@@ -60,6 +60,15 @@ DATABASE_URL=$DB
 DEV_AUTH_SECRET=$SECRET
 CRON_SECRET=e2e-cron-secret-$SECRET
 MAIL_PROVIDER=outbox
+# Fortnox: en falsk Fortnox som e2e/27-fortnox startar på den här porten. Aldrig riktiga Fortnox.
+FORTNOX_CLIENT_ID=fake-client-id
+FORTNOX_CLIENT_SECRET=fake-client-secret
+FORTNOX_API_BASE_URL=http://127.0.0.1:4610
+FORTNOX_AUTH_BASE_URL=http://127.0.0.1:4610
+FORTNOX_REDIRECT_URI=http://localhost:$PORT/datakallor/fortnox/klar
+# Aldrig riktiga Awish från e2e-servern.
+AWISH_GRPC_ADDRESS=127.0.0.1:1
+AWISH_WEB_BASE_URL=http://127.0.0.1:1
 ENV
   echo "Skrev $DIR/.env.local (databas $DB)."
 fi

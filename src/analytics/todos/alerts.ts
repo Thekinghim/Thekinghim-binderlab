@@ -46,7 +46,9 @@ const KIND_RULE: Record<string, string> = {
 };
 
 /** Länk till underlaget: automatens tidslinje på Drift, Datakällor för importer. */
-export function alertLink(a: Pick<AlertRef, "kind" | "machineId">): string {
+export function alertLink(a: Pick<AlertRef, "kind" | "machineId"> & { key?: string }): string {
+  // Fortnox (src/server/fortnox/sync.ts): kopplingen eller ett stoppat verifikat.
+  if (a.key?.startsWith("fortnox:")) return "/datakallor/fortnox";
   if (a.kind === "import_failed") return "/datakallor";
   if (a.kind === "report_failed") return "/rapporter";
   if (a.kind === "self_check") return "/installningar/kontroll";
@@ -95,7 +97,11 @@ export function alertTodos(
       link: alertLink(a),
       action: {
         kind: "open-alert",
-        label: a.kind === "import_failed" ? "Visa importerna" : "Öppna automaten",
+        label: a.key.startsWith("fortnox:")
+          ? "Öppna Fortnox"
+          : a.kind === "import_failed"
+            ? "Visa importerna"
+            : "Öppna automaten",
         params: { alertId: a.id },
       },
     });

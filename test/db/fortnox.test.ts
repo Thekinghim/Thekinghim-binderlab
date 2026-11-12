@@ -825,6 +825,20 @@ describe("låst period och konto som saknas", () => {
       "Perioden är låst i Fortnox till och med 2026-11-08. Verifikatet är daterat 2026-11-05. Lås upp perioden i Fortnox, eller bokför det för hand.",
     );
     expect(await openAlerts()).toEqual(["fortnox:atgard"]);
+    // Larmet syns för ägare och admin, inte för läsare, påfyllare eller Enkel vy.
+    const sees = (v: Viewer) =>
+      asUser({ id: v.user.userId, email: v.user.email }, async (tx) =>
+        (
+          await rows<{ incident_key: string }>(
+            tx,
+            sql`select incident_key from public.alerts
+                where organization_id = ${orgId}::uuid and incident_key like 'fortnox:%'`,
+          )
+        ).map((r) => r.incident_key),
+      );
+    expect(await sees(owner)).toEqual(["fortnox:atgard"]);
+    expect(await sees(admin)).toEqual(["fortnox:atgard"]);
+    for (const v of [reader, refiller, simpleAdmin, outsider]) expect(await sees(v)).toEqual([]);
     const view = await loadFortnoxFor(owner, NOW);
     expect(view?.line.tone).toBe("warn");
     expect(view?.line.text).toMatch(/^Fortnox: 1 verifikat är stoppat\. Perioden är låst/);
