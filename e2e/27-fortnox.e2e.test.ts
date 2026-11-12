@@ -25,6 +25,7 @@ import {
   until,
   type Browser,
   type BrowserContext,
+  screenshot,
   type Page,
 } from "./support/browser";
 import { inspect } from "./support/layout";
@@ -51,6 +52,18 @@ async function layout(p: Page, where: string): Promise<void> {
   const problems = await p.evaluate(inspect);
   const report = problems.map((x) => `${where} · ${x.kind}: ${x.what}`);
   expect(report, `${DEVICE} ${where}:\n${report.join("\n")}`).toEqual([]);
+}
+
+/**
+ * Raden om Fortnox på Bokföring. Sektionen strömmas in (Suspense), så för ett ögonblick kan
+ * den finnas både i strömmens dolda behållare och på sin plats: vänta tills den finns en gång.
+ */
+async function fortnoxLine(p: Page): Promise<string> {
+  const line = p.locator("[data-fortnox-line]");
+  return until(
+    async () => ((await line.count()) === 1 && (await line.isVisible()) ? line.innerText() : false),
+    "raden om Fortnox visas en gång",
+  );
 }
 
 const heading = (p: Page) => p.getByRole("heading", { level: 1 });
@@ -107,8 +120,7 @@ describe("Fortnox på iPhone SE", () => {
     ({ page, context, errors } = await openPage(browser, e2e().baseUrl, { device: DEVICE }));
     await login(page, e2e().users.owner);
     await page.goto("/ekonomi?vy=bokforing");
-    await page.locator("[data-fortnox-line]").waitFor();
-    expect(await page.locator("[data-fortnox-line]").innerText()).toBe("Fortnox är inte kopplat.");
+    expect(await fortnoxLine(page)).toBe("Fortnox är inte kopplat.");
     await layout(page, "/ekonomi?vy=bokforing (inte kopplat)");
     await page.getByRole("link", { name: /Koppla Fortnox/ }).click();
     await page.waitForURL(/\/datakallor\/fortnox$/);
@@ -143,7 +155,7 @@ describe("Fortnox på iPhone SE", () => {
       "rubriken visar torrkörningen",
     );
     const list = page.getByRole("list", { name: "Verifikat som skickas härnäst" });
-    const sales = list.getByText("Försäljning automater oktober 2026");
+    const sales = list.getByText("Försäljning automater oktober 2026").first();
     await sales.waitFor();
     // Öppna verifikatet: raderna med konto, debet och kredit ryms på 375 px.
     await sales.click();
@@ -152,6 +164,7 @@ describe("Fortnox på iPhone SE", () => {
     expect(fake.vouchers).toEqual([]);
     expect(fake.requests.filter((r) => r.method === "POST")).toEqual([]);
     await layout(page, "/datakallor/fortnox (torrkörning)");
+    await screenshot(page, "27-fortnox-torrkorning");
     // Räkna om i torrkörning skickar inte heller något.
     await page.getByRole("button", { name: "Räkna om", exact: true }).click();
     await page.getByText(/Torrkörning: \d+ verifikat skulle skickas\. Inget skickades\./).waitFor();
@@ -225,18 +238,16 @@ describe("Fortnox på iPhone SE", () => {
 
   it("Ekonomi → Bokföring visar raden och Fortnox nummer", async () => {
     await page.goto("/ekonomi?vy=bokforing");
-    await page.locator("[data-fortnox-line]").waitFor();
-    expect(await page.locator("[data-fortnox-line]").innerText()).toBe(
-      "Fortnox: allt bokfört t.o.m. i går.",
-    );
+    expect(await fortnoxLine(page)).toBe("Fortnox: allt bokfört t.o.m. i går.");
     await page.getByText(/^Skickat till Fortnox \(\d+\)$/).click();
     const list = page.getByRole("list", { name: "Verifikat i Fortnox" });
-    await list.getByText("Försäljning automater oktober 2026").waitFor();
+    await list.getByText("Försäljning automater oktober 2026").first().waitFor();
     await list
       .getByText(/^A \d+$/)
       .first()
       .waitFor();
     await layout(page, "/ekonomi?vy=bokforing (Fortnox på)");
+    await screenshot(page, "27-fortnox-bokforing");
     expectNoPageErrors(errors);
   });
 });
