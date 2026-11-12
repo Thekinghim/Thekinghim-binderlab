@@ -469,6 +469,12 @@ Miljövariabler: docs/miljoer.md, avsnittet Fortnox.
 | "Fortnox: kopplingen gäller inte längre."            | Fortnox tog inte emot refresh-token (45 dagar utan körning, eller återkallad) | Koppla Fortnox igen. Det som väntade bokförs då, inget dubbelt                           |
 | "… har ändrats här efter att det bokfördes."         | Underlaget ändrades efter att verifikatet skickades                           | Välj Rätta: ett nytt verifikat vänder det gamla, och det nya bokförs natten efter        |
 
+Larmet "Fortnox har inte gått att nå flera gånger i rad" (`fortnox:fel`) kommer efter tre misslyckade körningar
+utan att något är stoppat eller kopplingen bruten; det stängs när en körning går igenom. Larmen om Fortnox skickas
+inte som mejl eller push: de står i Att göra och på Drift för ägare och admin.
+
+- **Brytpunkten.** Utbetalningar och betalningar till butiker som gäller en månad före startmånaden bokförs inte
+  av appen, även om pengarna kom efter starten. Bokför dem för hand, som månaden de hör till.
 - **Inget i Fortnox ändras eller tas bort av appen.** Tas ett verifikat bort för hand i Fortnox vet appen inte om
   det: utkorgen säger fortfarande "skickat" med numret.
 - **Byt aldrig bolag i Fortnox mot samma organisation.** Kopplingen nekar ett annat bolag när något har skickats.

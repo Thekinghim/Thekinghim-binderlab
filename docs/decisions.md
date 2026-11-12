@@ -532,7 +532,10 @@ API kan (developer.fortnox.se, läst 12 nov. 2026).
    (`pending → sending`). Ett fel från Fortnox (4xx) betyder att inget gjordes. Kommer inget svar (nätverk,
    tidsgräns, 5xx) är det ovisst: raden står kvar som `sending` och skickas aldrig igen förrän nästa körning har
    letat efter verifikatets märke (`[BL-…]` sist i verifikatets text) bland dagens verifikat i serien. Två körningar
-   samtidigt, en dubbel cron, ett tappat svar och ett tokenbyte mitt i ger alltså aldrig en dubblett.
+   samtidigt, en dubbel cron, ett tappat svar och ett tokenbyte mitt i ger alltså aldrig en dubblett. Dessutom:
+   en körning i taget per organisation (`fortnox_sync_state.lease_until`), bara den som tog en rad får ändra den
+   (anspråkets nummer följer med i varje UPDATE), och går numret inte att spara efter att Fortnox har bokfört
+   (databasen svarar inte) står raden kvar som `sending` och hittas igen på märket: den släpps aldrig.
 6. **Ett skickat verifikat ändras aldrig och raderas aldrig** (trigger i databasen, även för servern). Ändras
    underlaget efter att det bokförts visar sidan det, och ägaren väljer "Rätta": ett nytt verifikat vänder det gamla
    (`…:v1:rev`), och när vändningen är bokförd läggs en ny version upp (`…:v2`) om underlaget finns kvar. Rättelser
@@ -545,18 +548,35 @@ API kan (developer.fortnox.se, läst 12 nov. 2026).
 9. **Börjar säkert.** En ny koppling är alltid i torrkörning: sidan visar exakt vilka verifikat som skulle skickas,
    och inget skickas förrän ägaren slår på. Startmånaden väljs av ägaren (förslag: månaden efter den senast
    "skickade"), så att det som redan bokförts för hand inte bokförs igen. Den går inte att ändra när något skickats.
+   **Brytpunkten gäller månaden pengarna hör till, inte dagen de kom:** en utbetalning från Nayax eller en betalning
+   till en butik som gäller en månad före startmånaden bokförs inte härifrån, även om den betalas efter starten.
+   Den månaden är bokförd för hand (med uppskattad kortavgift och skuld till butiken), så ägaren bokför också
+   utbetalningen för hand. En månad räknas som avslutad först den 3:e i nästa månad, så att sena order hinner in.
 10. **Vem.** Bara ägare och admin som inte har Enkel vy, i tjänsten och i databasen (RLS). Läsare, påfyllare,
     butiksanvändare, andra organisationer och demoorganisationer ser och når ingenting, inte heller larmen om
     Fortnox (restriktiv policy på `alerts`).
-11. **Larm bara när en människa måste göra något**: kopplingen gäller inte längre (`fortnox:koppling`), eller ett
-    verifikat är stoppat (`fortnox:atgard`: låst period, konto eller serie saknas, licens saknas, nekat verifikat).
-    Ingen ny sorts punkt i Att göra: det är vanliga systemlarm som stängs när det löst sig.
+11. **Larm bara när en människa måste göra något**: kopplingen gäller inte längre (`fortnox:koppling`), ett
+    verifikat är stoppat (`fortnox:atgard`: låst period, konto eller serie saknas, licens saknas, nekat verifikat),
+    eller Fortnox har inte gått att nå tre körningar i rad eller godtar inte appens nycklar (`fortnox:fel`). Ingen ny
+    sorts punkt i Att göra: det är vanliga systemlarm som stängs när det löst sig. De skickas inte ut som mejl eller
+    push (utskicken för systemlarm går även till läsare); de syns i Att göra och på Drift för ägare och admin.
+12. **Inga hemligheter i fel.** Ett databasfel från drizzle bär frågans parametrar i sitt meddelande, och för
+    `private.fortnox_save_tokens` är parametrarna token. Sådana fel lämnar aldrig token-lagret
+    (`FortnoxTokenStoreError`) och loggas bara genom `safeErrorForLog`. Adressen efter kopplingen bär en felkod,
+    aldrig en text.
 
 **Konsekvenser.** En ny migrering, `20261220000000_fortnox.sql`, bara nya tabeller, funktioner och en restriktiv
 policy för larm med nyckeln `fortnox:…`: den kan köras medan den gamla koden är live. Jobbet körs av pg_cron 03:57
 UTC (`/api/cron/fortnox`). `ACCOUNTING_PROVIDER` och `BookkeepingAdapter` (leverans av en hel månad som SIE-fil)
 ligger kvar orörda; Fortnox går inte den vägen, eftersom en månad inte kan skickas "en gång" som en klump när
 verifikaten har olika dagar och olika källor.
+
+**Kända gränser.** En rättelse dateras som verifikatet den vänder; är den perioden låst i Fortnox stoppas
+rättelsen tills perioden låsts upp. Efter en rättelse bokförs underlaget igen som en ny version om det finns kvar:
+"det här har jag bokfört för hand" går inte att säga per verifikat, bara med startmånaden eller genom att stänga av
+sorten. Går databasen ner mellan Fortnox svar på ett tokenbyte och att den nya token sparas är kopplingen förlorad
+och ägaren får koppla igen (inget bokförs dubbelt). Tar någon bort ett verifikat för hand i Fortnox vet appen inte
+om det.
 
 **Det som bara är provat mot den falska Fortnox-servern** (`src/server/fortnox/testing/fake-fortnox.ts`) och ska
 kontrolleras mot riktiga Fortnox i torrkörning och med ett första verifikat: inloggningen och godkännandet som

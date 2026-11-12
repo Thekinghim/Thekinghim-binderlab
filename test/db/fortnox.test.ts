@@ -558,8 +558,24 @@ describe("skarpt läge: exempelmånaden bokförs exakt en gång", () => {
     await setFortnoxLiveFor(owner, true);
     const [a, b] = await Promise.all([run(), run()]);
     expect(a.sent + b.sent).toBe(2);
-    // En körning i taget per organisation: den som kom tvåa gjorde ingenting.
-    expect([a.status, b.status].sort()).toEqual(["busy", "ran"]);
+    // En körning i taget per organisation: den andra väntade ut den första (och hade då
+    // inget kvar att göra) eller avstod helt.
+    expect(["busy", "ran"]).toContain(a.status);
+    expect(["busy", "ran"]).toContain(b.status);
+    expect([a.status, b.status]).toContain("ran");
+    // Medan en körning håller organisationen gör en annan ingenting alls.
+    await asPostgres((tx) =>
+      tx.execute(sql`update public.fortnox_sync_state set lease_until = now() + interval '5 minutes'
+                     where organization_id = ${orgId}::uuid`),
+    );
+    const calls = fake.requests.length;
+    expect(await run()).toMatchObject({ status: "busy", sent: 0 });
+    expect(fake.requests.length).toBe(calls);
+    // En körning som dött utan att släppa: efter sex minuter tas den över.
+    await asPostgres((tx) =>
+      tx.execute(sql`update public.fortnox_sync_state set lease_until = now() - interval '1 second'
+                     where organization_id = ${orgId}::uuid`),
+    );
     const again = await run();
     expect(again).toMatchObject({ status: "ran", sent: 0, waiting: 0, blocked: 0, error: null });
     expect(fake.vouchers).toHaveLength(2);

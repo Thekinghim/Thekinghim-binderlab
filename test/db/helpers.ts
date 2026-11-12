@@ -1179,6 +1179,27 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
                   '[{"account":"1580","amountOre":100,"text":"a"},{"account":"3000","amountOre":-100,"text":"a"}]'::jsonb,
                   ${"f".repeat(64)})`,
     );
+    // Ett skickat verifikat och rättelsen som vänder det (reverses_id).
+    const sentVoucher = await one<{ id: string }>(
+      tx,
+      sql`insert into public.fortnox_vouchers
+            (organization_id, idem_key, kind, source_ref, voucher_date, description, rows, fingerprint,
+             state, sent_at, fortnox_series, fortnox_number, fortnox_year)
+          values (${orgId}, 'sales:2025-02:v1', 'sales', '2025-02', '2025-02-28',
+                  'Försäljning automater februari 2025',
+                  '[{"account":"1580","amountOre":200,"text":"a"},{"account":"3000","amountOre":-200,"text":"a"}]'::jsonb,
+                  ${"e".repeat(64)}, 'sent', now(), 'A', 1, 1)
+          returning id`,
+    );
+    await tx.execute(
+      sql`insert into public.fortnox_vouchers
+            (organization_id, idem_key, kind, source_ref, voucher_date, description, rows, fingerprint,
+             reverses_id)
+          values (${orgId}, 'sales:2025-02:v1:rev', 'sales', '2025-02', '2025-02-28',
+                  'Rättelse av A 1: Försäljning automater februari 2025',
+                  '[{"account":"1580","amountOre":-200,"text":"a"},{"account":"3000","amountOre":200,"text":"a"}]'::jsonb,
+                  ${"d".repeat(64)}, ${sentVoucher.id})`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {
