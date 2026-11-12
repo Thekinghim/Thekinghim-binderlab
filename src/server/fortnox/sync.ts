@@ -668,7 +668,8 @@ export async function runFortnoxFor(
     orgId,
     connection,
     client,
-    now.getTime(),
+    // Anspråkets ålder mäts mot den riktiga klockan (claimed_at sätts av databasen).
+    Date.now(),
     options.staleClaimMs ?? STALE_CLAIM_MS,
   );
   let error: string | null = null;

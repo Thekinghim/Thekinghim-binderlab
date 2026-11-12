@@ -282,6 +282,9 @@ export class FakeFortnox {
 
   private async api(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const path = url.pathname;
+    // Läs alltid hela frågan först: ett svar innan kroppen är läst lämnar anslutningen i ett
+    // läge där nästa anrop på samma anslutning hänger.
+    const raw = await this.body(req);
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     const grant = this.grants.find((g) => g.accessToken === token);
@@ -364,19 +367,15 @@ export class FakeFortnox {
       });
     }
     if (method === "POST" && path === "/3/vouchers") {
-      return this.createVoucher(req, res, yearParam);
+      return this.createVoucher(raw, res, yearParam);
     }
     this.send(res, 404, { message: "not found" });
   }
 
-  private async createVoucher(
-    req: IncomingMessage,
-    res: ServerResponse,
-    yearParam: number,
-  ): Promise<void> {
+  private async createVoucher(raw: string, res: ServerResponse, yearParam: number): Promise<void> {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(await this.body(req));
+      parsed = JSON.parse(raw);
     } catch {
       return this.error(res, 400, 2001392, "Tom eller felaktig data.");
     }

@@ -160,7 +160,7 @@ create trigger t20_stamp_insert before insert on public.fortnox_vouchers
 create trigger t20_stamp_update before update on public.fortnox_vouchers
   for each row execute function private.stamp_update();
 
--- En demoorganisation kopplas aldrig, och live kräver en fungerande koppling.
+-- En demoorganisation kopplas aldrig, och en ny koppling börjar i torrkörning.
 create function private.fortnox_connections_guard() returns trigger
 language plpgsql
 security definer
@@ -173,9 +173,6 @@ begin
       raise exception 'En demoorganisation kan inte kopplas till Fortnox.' using errcode = '42501';
     end if;
     -- En ny koppling börjar alltid i torrkörning.
-    new.live := false;
-  end if;
-  if new.live and new.status <> 'connected' then
     new.live := false;
   end if;
   return new;
