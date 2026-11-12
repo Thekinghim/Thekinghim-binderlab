@@ -113,6 +113,24 @@ export default async function DatakallorPage() {
         </p>
       </section>
 
+      {demo ? null : (
+        <section
+          aria-labelledby="fortnox"
+          className="rise flex flex-col gap-4"
+          style={{ "--i": 3 } as CSSProperties}
+        >
+          <SectionHeader id="fortnox" title="Fortnox." aside="Bokföringen skickas av sig själv." />
+          <p className="text-sm text-muted">
+            <a
+              href="/datakallor/fortnox"
+              className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg max-md:tap"
+            >
+              Koppla och ställ in Fortnox →
+            </a>
+          </p>
+        </section>
+      )}
+
       <OpenOnHash id="ladda-upp" />
       <details
         id="ladda-upp"

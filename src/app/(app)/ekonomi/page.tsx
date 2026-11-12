@@ -22,6 +22,7 @@ import { loadPeriod, requestStoreShareView, requireRoute } from "@/server/data/c
 
 import { EconomyKpis, type EconomyKpi } from "./_components/bits";
 import { BokforingSection } from "./_components/bokforing-section";
+import { FortnoxBlock } from "./_components/fortnox-block";
 import { FixedCosts, type FixedCostRow } from "./_components/fixed-costs";
 import { PayoutQuestion } from "./_components/payout-question";
 import { PayoutUpload } from "./_components/payout-upload";
@@ -391,9 +392,17 @@ export default async function EkonomiPage({
       ) : null}
 
       {view === "bokforing" ? (
-        <Suspense fallback={<BookkeepingSkeleton />}>
-          <BokforingSection viewer={viewer} today={ctx.today} canEdit={canEdit} asPage />
-        </Suspense>
+        <>
+          {/* Fortnox: raden och listan (bara ägare och admin; ritar inget för andra). */}
+          {canEdit ? (
+            <Suspense fallback={null}>
+              <FortnoxBlock viewer={viewer} />
+            </Suspense>
+          ) : null}
+          <Suspense fallback={<BookkeepingSkeleton />}>
+            <BokforingSection viewer={viewer} today={ctx.today} canEdit={canEdit} asPage />
+          </Suspense>
+        </>
       ) : null}
 
       {view === "kassaflode" ? (

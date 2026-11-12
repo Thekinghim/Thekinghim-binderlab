@@ -14,6 +14,7 @@ const SUBPAGES: ReadonlyArray<readonly [pattern: string, label: string]> = [
   ["/automater/*", "Automat"],
   ["/butiker/ny", "Ny butik"],
   ["/butiker/*", "Butik"],
+  ["/datakallor/fortnox", "Fortnox"],
   ["/datakallor/importer/*", "Import"],
   ["/drift/automat/*", "Automat"],
   ["/drift/besok", "Besök"],
