@@ -1344,3 +1344,20 @@ describe("sorter som stängs av, underlag som inte är klart och saknad rättigh
     expect((await connection())?.status).toBe("connected");
   });
 });
+
+describe("koden ligger ute innan migreringen har körts", () => {
+  it("saknas tabellerna visas ingenting om Fortnox, och sidan faller inte", async () => {
+    // Samma läge som minuterna mellan utläggningen och migreringen: tabellen finns inte.
+    await asPostgres((tx) =>
+      tx.execute(sql`alter table public.fortnox_connections rename to fortnox_connections_borta`),
+    );
+    try {
+      expect(await loadFortnoxFor(owner, NOW)).toBeNull();
+    } finally {
+      await asPostgres((tx) =>
+        tx.execute(sql`alter table public.fortnox_connections_borta rename to fortnox_connections`),
+      );
+    }
+    expect(await loadFortnoxFor(owner, NOW)).not.toBeNull();
+  });
+});

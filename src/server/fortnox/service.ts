@@ -20,7 +20,7 @@ import type { IsoDate } from "@/domain";
 import { AuthorizationError, requireTeamManagerFor, withUserDbFor } from "@/server/access";
 import { AccountingError } from "@/server/accounting/service";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
-import { safeErrorForLog } from "@/server/errors";
+import { pgErrorOf, safeErrorForLog } from "@/server/errors";
 import { safely } from "@/server/monitoring/failures";
 import { resolveSystemAlert } from "@/server/monitoring/system-alerts";
 
@@ -529,6 +529,17 @@ export async function loadFortnoxFor(
   now: Date = new Date(),
 ): Promise<FortnoxView | null> {
   if (!(await canManageFortnox(viewer))) return null;
+  try {
+    return await loadView(viewer, now);
+  } catch (error) {
+    // Koden kan ligga ute några minuter innan migreringen 20261220000000_fortnox.sql har
+    // körts. Då finns tabellerna inte än: visa ingenting i stället för att fälla sidan.
+    if (pgErrorOf(error)?.code === "42P01") return null;
+    throw error;
+  }
+}
+
+async function loadView(viewer: Viewer, now: Date): Promise<FortnoxView> {
   const org = viewer.organization;
   const today = businessToday(now, org.timezone);
   const configProblem = fortnoxConfigProblem();
