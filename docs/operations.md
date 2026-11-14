@@ -29,6 +29,13 @@ Inget behöver göras för hand. Det som körs av sig självt:
 `20261104130000_bokforing_paket.sql`). Paketet sparas i bucketen `bookkeeping`; ändras underlaget
 blir det en ny version. Preliminärt när en butik med vinstdelning har order utan inköpspris.
 
+**Butiksrapporten och "Visa detaljer i rapporten".** Utkasten som skapas den 1:a är korta (uträkningen och summor,
+en sida) om inte butiken har **Visa detaljer i rapporten** påslaget (Butiker → butiken → Kontakt och rapport). Valet
+läses när rapporten skapas och sparas i den: ändras det efteråt står godkända och skickade rapporter kvar som de
+är, och ett utkast visas som gammalt tills "Skapa ny version" har körts. Första gången efter driftsättningen av
+`20261215000000_rapport_detaljer.sql` gäller det alla utkast som redan låg och väntade: skapa ny version och
+godkänn den. Vill en butik ha underlaget per titel: slå på valet, skapa ny version och skicka den.
+
 Kontrollera en gång i veckan (fem minuter):
 
 1. **Drift → Maskinhälsa → Larm**: "Senaste körning" ska vara högst ett dygn gammal (larmjobbet

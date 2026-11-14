@@ -12,13 +12,13 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
 
 ## För vem
 
-| Vem                 | Använder                                                                                               |
-| ------------------- | ------------------------------------------------------------------------------------------------------ |
-| Ägaren (operatören) | Hela panelen: Hem, Att göra, Lönsamhet, Prognos & inköp, Rapporter, Ekonomi, Expansion, Assistenten    |
-| Delägare (läsare)   | Samma siffror utan att kunna ändra; delägarrapporten                                                   |
-| Påfyllaren          | Lager, Att göra (bara påfyllning), fältläget i mobilen med besöksplan och packlista; ser aldrig belopp |
-| Butiken             | Butiksportalen: egen försäljning, ersättningen steg för steg, godkända månadsrapporter, felanmälan     |
-| Bokhållaren         | Bokföringsunderlag med SIE 4 och Excel, utbetalningar avstämda mot försäljningen                       |
+| Vem                 | Använder                                                                                                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ägaren (operatören) | Hela panelen: Hem, Att göra, Lönsamhet, Prognos & inköp, Rapporter, Ekonomi, Expansion, Assistenten                                                                     |
+| Delägare (läsare)   | Samma siffror utan att kunna ändra; delägarrapporten                                                                                                                    |
+| Påfyllaren          | Lager, Att göra (bara påfyllning), fältläget i mobilen med besöksplan och packlista; ser aldrig belopp                                                                  |
+| Butiken             | Butiksportalen: egen försäljning, ersättningen steg för steg, godkända månadsrapporter, felanmälan. Mest sålda titlar och snittköp bara med "Visa detaljer i rapporten" |
+| Bokhållaren         | Bokföringsunderlag med SIE 4 och Excel, utbetalningar avstämda mot försäljningen                                                                                        |
 
 ## Vad panelen gör
 
@@ -33,6 +33,18 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
   utan nät.
 - **Rapporter:** butiksrapport, bokföringsunderlag och delägarrapport varje månad som utkast, godkännande och utskick,
   med PDF, Excel och SIE 4.
+  - **Butiksrapporten är kort som standard** (en A4-sida): rubriken med beloppet ("Er ersättning för oktober:
+    7 493 kr."), nyckeltalen Försäljning, Sålda pack och Er ersättning, uträkningen (samma tabell som förut, bara
+    summor), försäljning per vecka, butikens automater med dagar i butiken och raden "Underlag per titel finns på
+    begäran." Butiken ska kunna räkna efter sin andel, men får inte försäljningen per titel, snittköp eller våra
+    servicebesök utan att be om det. Rubriken säger inget utbetalningsdatum: rapportens underlag har inget.
+  - **Visa detaljer i rapporten** (Butiker → butiken → Kontakt och rapport; ägare och admin; standard av): på =
+    den butikens rapport visar också titlarna och service (påfyllningsbesök, flest köp, snittköp), som förut. Sidan,
+    PDF:en, mejlet, förhandsvisningen på Rapporter och butiksportalen följer samma val.
+  - **Valet sparas i rapporten när den skapas.** En godkänd eller skickad rapport ändras inte när valet ändras. Ett
+    utkast blir gammalt ("Rapporten har ändrats sedan utkastet skapades.") och godkänns som ny version. Rapporter
+    från före valet fanns: godkända och skickade visas som de skickades (med detaljer), utkast enligt den nya
+    standarden (skapa ny version för att godkänna).
 - **Ekonomi och avtal:** avstämning av leverantörens utbetalningar mot försäljningen, verifikationer, kassaflöde, fasta
   kostnader, avtal med påminnelse före sista uppsägningsdag.
 - **Enhetsekonomi och expansion:** vinst per automat och dag, återbetalningstid, och uppskattning för en ny plats från

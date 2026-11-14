@@ -139,3 +139,17 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
 - **Fyll på** (`/fyll-pa`): mobilsida vid automaten, nås via QR-kod per automat (utskrift för ägare och admin),
   fack för fack med Klar, fungerar utan nät med kö som skickas när nätet är tillbaka
   (`20261104201000_fyll_pa_awish_fack.sql`). Knapp i Drift och flytande knapp för påfyllare.
+
+## 14 nov. – butiksrapporten kort som standard
+
+- Butiksrapporten visar som standard bara det butiken behöver för att räkna efter sin andel: beloppet i rubriken,
+  uträkningen (summor), försäljning per vecka, automaterna och "Underlag per titel finns på begäran." Titlar,
+  snittköp och service (påfyllningsbesök, flest köp) visas bara med butikens val **Visa detaljer i rapporten**
+  (`stores.report_details`, `20261215000000_rapport_detaljer.sql`, ägare och admin, standard av).
+- Valet sparas i rapportens ögonblicksbild (`report.details`); utan det innehåller underlaget inga titlar alls. Sidan,
+  PDF:en, mejlet, förhandsvisningen, exempelsidan (`/rapport/exempel`, med detaljer på `?detaljer=1`) och portalen
+  följer samma regel (`storeReportView` i `src/reports/store-view.ts`).
+- Portalen: `portal_sales` lämnar inte ut titlar när valet är av, och översikten och rapportsidan visar då inte
+  "Mest sålda titlar" eller snittköp. Nytt: `portal_report_details`.
+- Redan godkända och skickade rapporter visas som de skickades. Utkast från före ändringen är gamla och godkänns som
+  ny version.
