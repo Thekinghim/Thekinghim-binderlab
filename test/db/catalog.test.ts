@@ -108,6 +108,8 @@ const RPCS = [
   "portal_faults",
   "portal_machines",
   "portal_report",
+  // Butiksrapporten: butikens val "Visa detaljer i rapporten" (20261215000000_rapport_detaljer.sql).
+  "portal_report_details",
   "portal_report_fault",
   "portal_reports",
   "portal_sales",
@@ -656,6 +658,7 @@ describe("anon", () => {
       portal_faults: sql`gen_random_uuid()`,
       portal_machines: sql`gen_random_uuid()`,
       portal_report: sql`gen_random_uuid(), gen_random_uuid()`,
+      portal_report_details: sql`gen_random_uuid()`,
       portal_report_fault: sql`gen_random_uuid(), gen_random_uuid(), 'store_other', 'x'`,
       portal_reports: sql`gen_random_uuid()`,
       portal_sales: sql`gen_random_uuid(), '2025-01-01'::date, '2025-01-31'::date`,

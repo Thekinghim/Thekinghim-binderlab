@@ -286,6 +286,11 @@ describe("SIE och mejl", () => {
   });
 
   it("butiksmejlet har kort ämne och inga rader utan underlag", async () => {
+    // Med "Visa detaljer i rapporten" har mejlet raden om påfyllningar; utan valet (standard)
+    // finns ingen service i mejlet (src/server/reports/email-cleanup.test.ts).
+    await asPostgres((tx) =>
+      tx.execute(sql`update public.stores set report_details = true where id = ${storeId}`),
+    );
     const id = await createReportFor(
       ownerViewer,
       { type: "butik", month: OCT, storeId },
