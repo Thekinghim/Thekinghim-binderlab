@@ -10,6 +10,8 @@ import {
   requestOf,
   sameReport,
   stockAtMonthEnd,
+  withStoreDetails,
+  type StoreSnapshot,
 } from "./snapshot";
 
 const ORG = { id: "org", name: "Binderlab AB", orgNumber: null, timeZone: "Europe/Stockholm" };
@@ -143,5 +145,85 @@ describe("sameReport (inaktuellt utkast)", () => {
     const b = make("2026-11-01T05:00:00.000Z", fewer);
     expect(sameReport(a, b)).toBe(false);
     expect(headlineOreOf(a)).not.toBe(headlineOreOf(b));
+  });
+});
+
+describe("Visa detaljer i rapporten: valet sparas i ögonblicksbilden", () => {
+  const make = (storeDetails: boolean | undefined, generatedAt = "2026-11-01T05:00:00.000Z") => {
+    const snap = buildSnapshot({
+      type: "butik",
+      month: "2026-10",
+      organization: ORG,
+      sources: octoberExample(),
+      generatedAt,
+      storeId: "s-1",
+      ...(storeDetails === undefined ? {} : { storeDetails }),
+    });
+    if (snap.type !== "butik") throw new Error("fel typ");
+    return snap;
+  };
+  /** En rapport från före valet fanns: titlarna finns i underlaget, valet är inte sparat. */
+  const legacy = (): StoreSnapshot => {
+    const full = make(true);
+    const { details: _details, ...report } = full.report;
+    void _details;
+    return { ...full, report };
+  };
+
+  it("standard är av: rapporten sparas utan titlar", () => {
+    const snap = make(undefined);
+    expect(snap.report.details).toBe(false);
+    expect(snap.report.topTitles).toEqual([]);
+    expect(make(false).report).toEqual(snap.report);
+  });
+
+  it("på: titlarna sparas", () => {
+    const snap = make(true);
+    expect(snap.report.details).toBe(true);
+    expect(snap.report.topTitles.length).toBeGreaterThan(0);
+  });
+
+  it("en sparad rapport ändras inte av regeln, vad butiken än har valt sedan dess", () => {
+    for (const snap of [make(true), make(false)]) {
+      expect(withStoreDetails(snap, true)).toBe(snap);
+      expect(withStoreDetails(snap, false)).toBe(snap);
+    }
+  });
+
+  it("äldre rapport: godkänd eller skickad visas med detaljer, utkast utan", () => {
+    const old = legacy();
+    expect(old.report.details).toBeUndefined();
+    expect(withStoreDetails(old, true).report.details).toBe(true);
+    expect(withStoreDetails(old, false).report.details).toBe(false);
+    // Underlaget rörs inte: bara valet läggs till.
+    expect(withStoreDetails(old, true).report.topTitles).toEqual(old.report.topTitles);
+    expect(old.report.details).toBeUndefined();
+  });
+
+  it("andra rapporttyper berörs inte", () => {
+    const partner = buildSnapshot({
+      type: "delagare",
+      month: "2026-10",
+      organization: ORG,
+      sources: octoberExample(),
+      generatedAt: "2026-11-01T05:00:00.000Z",
+    });
+    expect(withStoreDetails(partner, true)).toBe(partner);
+    expect(withStoreDetails(partner, false)).toBe(partner);
+  });
+
+  it("ett utkast blir inaktuellt när valet ändras (det som granskas är det som skickas)", () => {
+    expect(sameReport(make(false), make(false, "2026-11-04T09:00:00.000Z"))).toBe(true);
+    expect(sameReport(make(true), make(true, "2026-11-04T09:00:00.000Z"))).toBe(true);
+    expect(sameReport(make(false), make(true))).toBe(false);
+    expect(sameReport(make(true), make(false))).toBe(false);
+    // Samma belopp: det är innehållet som skiljer, inte siffrorna.
+    expect(headlineOreOf(make(false))).toBe(headlineOreOf(make(true)));
+  });
+
+  it("ett äldre utkast är inaktuellt mot en ny uträkning, av eller på", () => {
+    const draft = withStoreDetails(legacy(), false);
+    expect(sameReport(draft, make(false))).toBe(false);
+    expect(sameReport(draft, make(true))).toBe(false);
   });
 });

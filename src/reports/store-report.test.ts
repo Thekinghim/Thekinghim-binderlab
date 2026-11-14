@@ -301,7 +301,8 @@ describe("försäljning, veckor och titlar", () => {
         ord("2026-11-03", { titleId: "t-c", amountOre: 5000 }),
       ],
     });
-    const r = buildStoreReport(src, "s-1", "2026-11", { topTitles: 2 });
+    const r = buildStoreReport(src, "s-1", "2026-11", { topTitles: 2, details: true });
+    expect(r.details).toBe(true);
     expect(r.topTitles.map((t) => t.name)).toEqual(["Prismatic Evolutions", "30th Celebration"]);
     expect(r.topTitles[0]!.shareBp).toBe(3333);
     expect(r.topTitles[0]!.evidence.scope).toEqual({
@@ -309,6 +310,49 @@ describe("försäljning, veckor och titlar", () => {
       storeId: "s-1",
       titleId: "t-b",
     });
+  });
+
+  it("utan detaljer (standard): inga titlar i listan, slutsatsen eller underlagen", () => {
+    const src = sources({
+      orders: [
+        ord("2026-10-02", { titleId: "t-a", amountOre: 5000 }),
+        ord("2026-11-02", { titleId: "t-a", amountOre: 5000 }),
+        ord("2026-11-02", { titleId: "t-b", amountOre: 2500 }),
+        ord("2026-11-03", { titleId: "t-c", amountOre: 5000 }),
+      ],
+    });
+    const r = buildStoreReport(src, "s-1", "2026-11");
+    expect(r.details).toBe(false);
+    expect(r.topTitles).toEqual([]);
+    expect(plain(r.conclusion.text)).toBe(
+      "Försäljningen ökade 150 % till 125 kr jämfört med oktober.",
+    );
+    expect(r.conclusion.evidence.titleIds).toBeUndefined();
+    const json = JSON.stringify(r);
+    for (const name of ["30th Celebration", "Prismatic Evolutions", "t-a", "t-b", "t-c"])
+      expect(json, name).not.toContain(name);
+    // Summorna är desamma som med detaljer: bara titlarna skiljer.
+    const full = buildStoreReport(src, "s-1", "2026-11", { details: true });
+    expect(r.sales).toEqual(full.sales);
+    expect(r.compensation).toEqual(full.compensation);
+    expect(r.weeks).toEqual(full.weeks);
+    expect(r.machines).toEqual(full.machines);
+    expect(full.topTitles).toHaveLength(3);
+  });
+
+  it("utan detaljer gäller också eget datum", () => {
+    const src = sources({
+      orders: [
+        ord("2026-11-16", { titleId: "t-a", amountOre: 5000 }),
+        ord("2026-11-17", { titleId: "t-b", amountOre: 2500 }),
+      ],
+    });
+    const range = { start: "2026-11-15", end: "2026-11-30" } as const;
+    const r = buildStoreReport(src, "s-1", range);
+    expect(r.details).toBe(false);
+    expect(r.topTitles).toEqual([]);
+    expect(JSON.stringify(r)).not.toContain("30th Celebration");
+    expect(buildStoreReport(src, "s-1", range, { details: true }).topTitles).toHaveLength(2);
   });
 
   it("snittorder avrundas och saknas utan order", () => {
@@ -339,7 +383,9 @@ describe("jämförelse och slutsats", () => {
     });
 
   it("ökning: procent, nytt belopp och den mest sålda titelns andel", () => {
-    const r = buildStoreReport(withMonths([10_000], [9_000, 2_000]), "s-1", "2026-11");
+    const r = buildStoreReport(withMonths([10_000], [9_000, 2_000]), "s-1", "2026-11", {
+      details: true,
+    });
     expect(r.comparison.revenueChangeBp).toBe(1000);
     expect(r.comparison.ordersDiff).toBe(1);
     expect(r.conclusion.ruleId).toBe("store.up");
@@ -521,7 +567,7 @@ describe("sekretess: butiksrapporten innehåller aldrig inköp, marginal, vinst 
       ],
       machines: [{ id: "m-1", name: "Vinstautomaten", code: "BL-001" }],
     });
-    const r = buildStoreReport(named, "s-1", "2026-11");
+    const r = buildStoreReport(named, "s-1", "2026-11", { details: true });
     expect(r.topTitles.map((t) => t.name)).toContain("Vinstpaketet");
     // Namnen citeras i slutsatsen och underlagen utan att kontrollen slår till.
     expect(JSON.stringify(r)).toContain("Vinstautomaten");

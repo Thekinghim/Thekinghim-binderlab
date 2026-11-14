@@ -176,6 +176,21 @@ describe("buildPortalOverview", () => {
     );
   });
 
+  it("utan Visa detaljer (standard) finns inga titlar; med valet på finns de", () => {
+    const off = buildPortalOverview(sources, "s1", "2026-09", "2026-08", "2026-11-02");
+    expect(off.report.details).toBe(false);
+    expect(off.report.topTitles).toEqual([]);
+    const on = buildPortalOverview(sources, "s1", "2026-09", "2026-08", "2026-11-02", {
+      details: true,
+    });
+    expect(on.report.details).toBe(true);
+    expect(on.report.topTitles.length).toBeGreaterThan(0);
+    // Summorna och trenden är desamma: bara titlarna skiljer.
+    expect(off.report.sales).toEqual(on.report.sales);
+    expect(off.report.compensation.totalOre).toBe(on.report.compensation.totalOre);
+    expect(off.trend).toEqual(on.trend);
+  });
+
   it("innehåller aldrig inköp, marginal eller vinst", () => {
     const o = buildPortalOverview(sources, "s1", "2026-09", "2026-08", "2026-11-02");
     expect(JSON.stringify(o)).not.toMatch(/cost|margin|profit|purchase|inköp|vinst/i);

@@ -134,7 +134,11 @@ function storeSources(): ReportSources {
 }
 
 describe("Revision scenario 1: butiksrapport med provision, avtalsbyte, delmånadshyra och flytt", () => {
-  const r = buildStoreReport(storeSources(), "s-1", "2026-11", { greeting: "Tack!" });
+  // Med "Visa detaljer i rapporten": titlarna ingår (utan dem är summorna desamma).
+  const r = buildStoreReport(storeSources(), "s-1", "2026-11", {
+    greeting: "Tack!",
+    details: true,
+  });
 
   it("försäljning: 4 900 + 5 900 + 4 900 + 1 205 + 1 205 = 18 110 öre på 5 order", () => {
     expect(r.sales.revenueOre).toBe(18_110);

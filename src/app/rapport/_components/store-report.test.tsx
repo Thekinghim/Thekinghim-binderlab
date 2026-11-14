@@ -3,6 +3,10 @@
  * siffror. Testet bygger en ögonblicksbild där en annan butik och inköpspriser finns i
  * underlaget, renderar PDF-sidan (samma komponent som /rapport/[id] skriver ut) och
  * mejlet (mallen i src/emails) och söker efter sådana värden i HTML och text.
+ *
+ * Standard är den korta rapporten: uträkningen och summor, inga titlar, inget snittköp och
+ * ingen service. Med butikens val "Visa detaljer i rapporten" visas de som förut. Båda
+ * kontrolleras här, i PDF-sidan och i mejlet.
  */
 
 import { renderToStaticMarkup } from "react-dom/server";
@@ -11,13 +15,14 @@ import { describe, expect, it } from "vitest";
 import { renderReportEmail } from "@/emails/report-email";
 import { agreement, ord, placement, price, sources } from "@/reports/testing/fixtures";
 import { reportEmailProps } from "@/server/reports/email";
-import { buildSnapshot, type StoreSnapshot } from "@/server/reports/snapshot";
+import { cleanEmailHtml, cleanEmailText } from "@/server/reports/email-cleanup";
+import { buildSnapshot, withStoreDetails, type StoreSnapshot } from "@/server/reports/snapshot";
 
 import { StoreReportDocument } from "./store-report";
 
 const ORG = { id: "org", name: "Binderlab AB", orgNumber: null, timeZone: "Europe/Stockholm" };
 
-function snapshot(): StoreSnapshot {
+function snapshot(details = false): StoreSnapshot {
   const src = sources({
     placements: [
       placement("m-1", "s-1", "2025-01-01", null),
@@ -46,6 +51,12 @@ function snapshot(): StoreSnapshot {
     generatedAt: "2026-11-01T05:00:00.000Z",
     storeId: "s-1",
     greeting: "Tack för ett bra samarbete!",
+    storeDetails: details,
+    storeService: {
+      refills: { count: 3, last: "2026-10-27" },
+      busiest: "Lördagar 12–15",
+      busiestOrders: 25,
+    },
   });
   if (snap.type !== "butik") throw new Error("fel typ");
   return snap;
@@ -65,6 +76,9 @@ const FORBIDDEN = [
   /999/,
 ];
 
+/** Ark i den korta rapporten. */
+const PAGES_SHORT = 1;
+
 function visibleText(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/g, " ")
@@ -72,6 +86,148 @@ function visibleText(html: string): string {
     .replace(/&nbsp;|&#xA0;/g, " ")
     .replace(/\s+/g, " ");
 }
+
+/** Det som bara finns med "Visa detaljer i rapporten": titlar, snittköp och service. */
+const DETAILS_ONLY = [
+  /30th Celebration/,
+  /Prismatic Evolutions/,
+  /Titlar/,
+  /Övriga titlar/,
+  /Snittköp/,
+  /Flest köp/,
+  /Lördagar 12/,
+  /[Pp]åfyllning/,
+  /Service/,
+];
+
+function emailFor(snap: StoreSnapshot) {
+  const email = renderReportEmail(
+    reportEmailProps(snap, {
+      recipientName: "Maria",
+      reportUrl: "https://app.test/rapport/x",
+      followText: null,
+      reportId: "R-TEST01",
+      attachments: [{ name: "binderlab-butik-nordstan-2026-10.pdf", size: 120_000 }],
+      contact: { name: "Kim", phone: "070-000 00 00" },
+    }),
+  );
+  // Som mejlet skickas: rader utan underlag är borttagna (email-cleanup).
+  return {
+    ...email,
+    html: visibleText(cleanEmailHtml(email.html, "butik")),
+    text: cleanEmailText(email.text, "butik"),
+  };
+}
+
+describe("den korta rapporten (standard)", () => {
+  const snap = snapshot();
+  const text = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={snap} />));
+  const plain = text.replace(/\u00a0|\u202f/g, " ");
+
+  it("rubriken säger beloppet", () => {
+    expect(snap.report.details).toBe(false);
+    expect(plain).toContain("Er ersättning för oktober: 518,84 kr.");
+  });
+
+  it("visar summorna, uträkningen, veckorna, automaterna och raden om underlag", () => {
+    for (const word of [
+      "Försäljning",
+      "Sålda pack",
+      "Er ersättning",
+      "Så räknas ersättningen.",
+      "Provision",
+      "Hyra",
+      "Försäljning per vecka.",
+      "1 automat i butiken.",
+      "Dagar i butiken",
+      "31 av 31",
+      "Underlag per titel finns på begäran.",
+    ])
+      expect(plain, word).toContain(word);
+  });
+
+  it("visar inga titlar, inget snittköp och ingen service", () => {
+    for (const re of DETAILS_ONLY) expect(plain, String(re)).not.toMatch(re);
+  });
+
+  it("är ett ark (att den får plats på en A4 kontrolleras i webbläsaren, e2e 05)", () => {
+    const html = renderToStaticMarkup(<StoreReportDocument snapshot={snap} />);
+    expect(html.match(/data-page=/g)?.length ?? 0).toBe(PAGES_SHORT);
+  });
+
+  it("mejlet: beloppet i rubriken, summor per automat, ingen service och inga titlar", () => {
+    const email = emailFor(snap);
+    for (const body of [email.html, email.text]) {
+      const b = body.replace(/\u00a0|\u202f/g, " ");
+      expect(b).toContain("Er ersättning för oktober: 518,84 kr.");
+      expect(b).toContain("Kim");
+      for (const re of DETAILS_ONLY) expect(b, String(re)).not.toMatch(re);
+    }
+  });
+});
+
+describe("med Visa detaljer i rapporten", () => {
+  const snap = snapshot(true);
+  const html = renderToStaticMarkup(<StoreReportDocument snapshot={snap} />);
+  const plain = visibleText(html).replace(/\u00a0|\u202f/g, " ");
+
+  it("visar titlarna och service som förut, och ingen rad om underlag på begäran", () => {
+    expect(snap.report.details).toBe(true);
+    for (const word of [
+      "30th Celebration",
+      "Titlar",
+      "Snittköp",
+      "3 påfyllningsbesök.",
+      "Flest köp",
+      "Lördagar 12–15",
+      "Er ersättning för oktober: 518,84 kr.",
+    ])
+      expect(plain, word).toContain(word);
+    expect(plain).not.toContain("Underlag per titel finns på begäran.");
+    expect(html.match(/data-page=/g)?.length ?? 0).toBe(PAGES_SHORT + 1);
+  });
+
+  it("mejlet visar service", () => {
+    const email = emailFor(snap);
+    for (const body of [email.html, email.text]) {
+      expect(body).toContain("Flest köp");
+      expect(body).toContain("Påfyllningar");
+    }
+  });
+
+  it("läcker ändå inget förbjudet", () => {
+    for (const re of FORBIDDEN) expect(plain, String(re)).not.toMatch(re);
+  });
+});
+
+describe("rapporter från före valet fanns", () => {
+  /** En äldre ögonblicksbild: titlarna finns i underlaget men valet är inte sparat. */
+  function legacy(): StoreSnapshot {
+    const full = snapshot(true);
+    const { details: _details, ...report } = full.report;
+    void _details;
+    return { ...full, report };
+  }
+
+  it("en godkänd eller skickad rapport visas som den skickades, med detaljer", () => {
+    const snap = withStoreDetails(legacy(), true);
+    const plain = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={snap} />));
+    expect(plain).toContain("30th Celebration");
+    expect(plain).toContain("Flest köp");
+  });
+
+  it("ett utkast visas enligt den nya standarden, utan detaljer", () => {
+    const snap = withStoreDetails(legacy(), false);
+    const plain = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={snap} />));
+    for (const re of DETAILS_ONLY) expect(plain, String(re)).not.toMatch(re);
+    expect(plain).toContain("Underlag per titel finns på begäran.");
+  });
+
+  it("utan regeln (valet okänt) visas aldrig mer än den korta rapporten", () => {
+    const plain = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={legacy()} />));
+    for (const re of DETAILS_ONLY) expect(plain, String(re)).not.toMatch(re);
+  });
+});
 
 describe("butiksrapporten läcker inget", () => {
   const snap = snapshot();

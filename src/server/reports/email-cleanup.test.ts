@@ -16,7 +16,12 @@ import { buildSnapshot, type ReportSnapshot } from "./snapshot";
 const ORG = { id: "org", name: "Binderlab AB", orgNumber: null, timeZone: "Europe/Stockholm" };
 const SENDER = { name: "Binderlab AB", address: "–", email: "rapporter@binderlab.se" };
 
-function snap(type: "butik" | "bokforing" | "delagare", refills = 2): ReportSnapshot {
+function snap(
+  type: "butik" | "bokforing" | "delagare",
+  refills = 2,
+  /** Butikens val "Visa detaljer i rapporten" (service i mejlet). */
+  details = true,
+): ReportSnapshot {
   const src = sources({
     placements: [placement("m-1", "s-1", "2025-01-01", null)],
     orders: [ord("2026-10-03", { amountOre: 4900 }), ord("2026-10-05", { amountOre: 4900 })],
@@ -30,6 +35,7 @@ function snap(type: "butik" | "bokforing" | "delagare", refills = 2): ReportSnap
     sources: src,
     generatedAt: "2026-11-01T05:00:00.000Z",
     storeId: "s-1",
+    storeDetails: details,
     storeService: {
       refills: { count: refills, last: refills > 0 ? "2026-10-20" : null },
       busiest: null,
@@ -104,6 +110,19 @@ describe("butiksmejlet", () => {
     for (const body of [html, text]) {
       const nums = sectionNumbers(body);
       expect(nums).toEqual(nums.map((_, i) => String(i + 1).padStart(2, "0")));
+    }
+  });
+
+  it("utan Visa detaljer (standard): ingen service i mejlet, och beloppet står i rubriken", () => {
+    const short = render(snap("butik", 2, false));
+    const shortHtml = visible(cleanEmailHtml(short.html, "butik"));
+    const shortText = cleanEmailText(short.text, "butik");
+    for (const body of [shortHtml, shortText]) {
+      for (const word of ["Påfyllningar", "Flest köp", "Drift och service", "DRIFT OCH SERVICE"]) {
+        expect(body, word).not.toContain(word);
+      }
+      expect(body.replace(/\u00a0/g, " ")).toContain("Er ersättning för oktober: 11,76 kr.");
+      expect(body).not.toMatch(/(^|[\s,(])–(?=$|[\s,.)])/m);
     }
   });
 
