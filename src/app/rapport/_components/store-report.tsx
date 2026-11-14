@@ -222,9 +222,10 @@ const splitColumns: ReportColumn<SplitRow>[] = [
 
 /**
  * Veckodiagrammet i den korta rapporten: ritat för den vänstra spalten (6 av 11 delar av
- * arkets bredd minus mellanrummet), så att texten i diagrammet behåller sin storlek.
+ * arkets bredd minus mellanrummet), så att texten i diagrammet behåller sin storlek. Lågt,
+ * så att också den längsta uträkningen (vinstdelning med hyra) får plats på samma ark.
  */
-const SHORT_CHART = { width: Math.round((REPORT_CONTENT_WIDTH - 30) * (6 / 11)), height: 112 };
+const SHORT_CHART = { width: Math.round((REPORT_CONTENT_WIDTH - 30) * (6 / 11)), height: 88 };
 
 /** Med fler automater än så står de i en egen tabell under veckorna. */
 const SIDE_BY_SIDE_MACHINES = 3;
@@ -327,6 +328,8 @@ export function StoreReportDocument({
           : "Så räknas ersättningen."
       }
       aside={split ? `Avtal: ${r.compensation.modelText}` : r.compensation.modelText}
+      // Den korta rapporten: något tätare mellan rubrik, tabell och not (samma innehåll).
+      className={view.details ? undefined : "gap-[3mm]!"}
     >
       {split ? (
         <ReportTable
@@ -364,16 +367,21 @@ export function StoreReportDocument({
 
   // Den korta rapporten: veckorna och automaterna står bredvid varandra (en rad, så att
   // rapporten får plats på en sida), diagrammet ritas därför för den smalare spalten.
-  const weeks = (chart?: { width: number; height: number }) =>
+  // `column`: diagrammet står i spalten bredvid automaterna. Då skrivs inte "Mest i vecka …"
+  // ut (staplarna har sina belopp), så att rubriken ryms på en rad.
+  const weeks = (chart?: { width: number; height: number }, column = false) =>
     weekData.length > 0 ? (
       <ReportSection
         as={SECTION_TAG[level]}
         index={2}
         eyebrow="Försäljning per vecka"
         title="Försäljning per vecka."
+        className={column ? "gap-[3mm]!" : undefined}
         aside={
           bestWeek && bestWeek.revenueOre > 0
-            ? `Mest i vecka ${bestWeek.week}: ${sek(bestWeek.revenueOre)} på ${formatInt(bestWeek.orders)} köp.`
+            ? column
+              ? undefined
+              : `Mest i vecka ${bestWeek.week}: ${sek(bestWeek.revenueOre)} på ${formatInt(bestWeek.orders)} köp.`
             : "Ingen försäljning under månaden."
         }
       >
@@ -381,6 +389,8 @@ export function StoreReportDocument({
           data={weekData}
           width={chart?.width}
           height={chart?.height}
+          // Det låga diagrammet i spalten: få linjer, så att axelns tal inte går i varandra.
+          tickCount={column ? 2 : undefined}
           format={formatSek}
           formatAxis={formatSekAxis}
           summary={`Försäljning per vecka i ${month}: ${r.weeks
@@ -417,7 +427,9 @@ export function StoreReportDocument({
     </ReportSection>
   );
 
-  // Automaterna i den korta rapporten: namn och tre uppgifter per automat (smal spalt).
+  // Automaterna i den korta rapporten (smal spalt): namnet och en rad per automat. Text i
+  // stället för en tabell med rubriker, så att raden bryts i stället för att gå ut i
+  // marginalen, och tre automater inte blir högre än veckodiagrammet bredvid.
   const daysInPeriod = custom ? periodDays(snapshot.period) : r.compensation.daysInMonth;
   const machineFacts = (index: number) => (
     <ReportSection
@@ -425,24 +437,21 @@ export function StoreReportDocument({
       index={index}
       eyebrow="Automater"
       title={`${formatInt(r.machines.length)} ${r.machines.length === 1 ? "automat" : "automater"} i butiken.`}
+      className="gap-[3mm]!"
     >
       <ul className="flex flex-col border-t border-line">
         {r.machines.map((m) => (
-          <li key={m.machineId} className="flex flex-col gap-[2mm] border-b border-line py-[2.5mm]">
+          <li key={m.machineId} className="flex flex-col border-b border-line py-[0.8mm]">
             <p className="text-[12px] leading-[16px] text-fg">{m.name}</p>
-            <div className="grid grid-cols-[max-content_auto_auto] justify-between gap-[3mm]">
-              <ReportFact label="Dagar i butiken">
-                <span className="tnum">
-                  {formatInt(m.placedDays)} av {formatInt(daysInPeriod)}
-                </span>
-              </ReportFact>
-              <ReportFact label="Sålda pack">
-                <span className="tnum">{formatInt(m.orders)}</span>
-              </ReportFact>
-              <ReportFact label="Försäljning">
-                <span className="tnum">{sek(m.revenueOre)}</span>
-              </ReportFact>
-            </div>
+            <p className="tnum text-[11px] leading-[15px] text-muted">
+              <span className="whitespace-nowrap">
+                I butiken {formatInt(m.placedDays)} av {formatInt(daysInPeriod)} dagar
+              </span>
+              {" · "}
+              <span className="whitespace-nowrap">{formatInt(m.orders)} pack</span>
+              {" · "}
+              <span className="whitespace-nowrap">sålt för {sek(m.revenueOre)}</span>
+            </p>
           </li>
         ))}
       </ul>
@@ -490,7 +499,7 @@ export function StoreReportDocument({
   if (!view.details) {
     return (
       <ReportDocument {...doc}>
-        <ReportPage className="gap-[6mm]">
+        <ReportPage className="gap-[5mm]">
           {title}
           {kpiRow}
           {calculation}
@@ -498,7 +507,7 @@ export function StoreReportDocument({
               Med många automater står de i en tabell under (som kan delas mellan två ark). */}
           {weekData.length > 0 && r.machines.length <= SIDE_BY_SIDE_MACHINES ? (
             <div className="grid grid-cols-[6fr_5fr] items-start gap-[8mm]">
-              {weeks(SHORT_CHART)}
+              {weeks(SHORT_CHART, true)}
               {machineFacts(3)}
             </div>
           ) : (

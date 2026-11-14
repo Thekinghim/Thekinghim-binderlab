@@ -153,3 +153,8 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   "Mest sålda titlar" eller snittköp. Nytt: `portal_report_details`.
 - Redan godkända och skickade rapporter visas som de skickades. Utkast från före ändringen är gamla och godkänns som
   ny version.
+- Granskning: den korta rapporten blev två sidor så fort uträkningen var en vinstdelning med hyra, eller butiken
+  hade tre automater (blocket med veckor och automater flyttades då helt till sida två), och rubriken
+  "Försäljning" i automatspalten gick 6 px ut i marginalen. Blocket är nu lägre (en rad per automat, lägre
+  diagram, ingen "Mest i vecka …" i spalten) och `e2e/10-rapportsidor` kontrollerar ett ark för vinstdelning
+  med hyra och tre automater, och att ingen text går utanför brödytan i butiksrapporten.

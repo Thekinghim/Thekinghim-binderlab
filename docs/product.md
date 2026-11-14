@@ -38,6 +38,10 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
     summor), försäljning per vecka, butikens automater med dagar i butiken och raden "Underlag per titel finns på
     begäran." Butiken ska kunna räkna efter sin andel, men får inte försäljningen per titel, snittköp eller våra
     servicebesök utan att be om det. Rubriken säger inget utbetalningsdatum: rapportens underlag har inget.
+    Upp till tre automater står bredvid veckodiagrammet, en rad per automat ("I butiken 31 av 31 dagar · 63 pack ·
+    sålt för 4 047 kr"). Rapporten får plats på en sida också med den längsta uträkningen (vinstdelning med hyra
+    och VMB-moms) och tre automater; med fler automater, eller tre automater och en hälsning på flera rader, blir
+    den två sidor.
   - **Visa detaljer i rapporten** (Butiker → butiken → Kontakt och rapport; ägare och admin; standard av): på =
     den butikens rapport visar också titlarna och service (påfyllningsbesök, flest köp, snittköp), som förut. Sidan,
     PDF:en, mejlet, förhandsvisningen på Rapporter och butiksportalen följer samma val.

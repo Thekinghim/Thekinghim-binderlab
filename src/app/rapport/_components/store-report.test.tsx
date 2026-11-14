@@ -139,11 +139,13 @@ describe("den korta rapporten (standard)", () => {
       "Hyra",
       "Försäljning per vecka.",
       "1 automat i butiken.",
-      "Dagar i butiken",
-      "31 av 31",
+      // Automaten: dagar i butiken, pack och försäljning på en rad.
+      "I butiken 31 av 31 dagar · 3 pack · sålt för 157 kr",
       "Underlag per titel finns på begäran.",
     ])
       expect(plain, word).toContain(word);
+    // Bredvid automaterna står veckorna utan "Mest i vecka …" (staplarna har beloppen).
+    expect(plain).not.toContain("Mest i vecka");
   });
 
   it("visar inga titlar, inget snittköp och ingen service", () => {

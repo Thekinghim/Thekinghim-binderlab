@@ -360,6 +360,8 @@ type ReportBarChartProps = {
   showMean?: boolean;
   width?: number;
   height?: number;
+  /** Ungefärligt antal linjer på värdeaxeln (standard 4). Färre i ett lågt diagram. */
+  tickCount?: number;
   summary: string;
 };
 
@@ -372,6 +374,7 @@ export function ReportBarChart({
   showMean = false,
   width = REPORT_CONTENT_WIDTH,
   height = 180,
+  tickCount = 4,
   summary,
 }: ReportBarChartProps) {
   const M = { top: 18, right: 4, bottom: 22, left: 44 };
@@ -392,7 +395,7 @@ export function ReportBarChart({
   return (
     <Figure summary={summary} width={width} height={height}>
       <g transform={`translate(${M.left},${M.top})`}>
-        <ValueGrid ticks={y.ticks(4)} y={y} width={innerW} format={formatAxis} />
+        <ValueGrid ticks={y.ticks(tickCount)} y={y} width={innerW} format={formatAxis} />
         {data.map((d, i) => {
           const bx = x(i) ?? 0;
           const by = y(d.value);

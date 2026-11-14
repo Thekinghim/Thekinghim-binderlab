@@ -10,7 +10,8 @@ import { setStoreReportDetails } from "../actions";
 /**
  * "Visa detaljer i rapporten" för en butik (ägare och admin). Av (standard): butiken får
  * bara uträkningen. På: rapporten visar också titlar och service. Gäller rapporter som
- * skapas härefter; en godkänd eller skickad rapport ändras inte.
+ * skapas härefter; en godkänd eller skickad rapport ändras inte. Butiksportalens översikt
+ * (som räknas varje gång den öppnas) följer valet direkt.
  */
 export function ReportDetailsToggle({
   storeId,
@@ -40,7 +41,7 @@ export function ReportDetailsToggle({
         title: next
           ? "Klart! Rapporten visar detaljer."
           : "Klart! Rapporten visar bara uträkningen.",
-        description: "Gäller nästa rapport som skapas.",
+        description: "Gäller nästa rapport. Butiksportalen ändras direkt.",
         tone: "ok",
       });
     });

@@ -23,6 +23,7 @@ import {
   until,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
 } from "./support/browser";
 import { e2e, login } from "./support/session";
@@ -88,6 +89,27 @@ async function openStoreReportSettings(): Promise<void> {
   await page.goto(`${new URL(page.url()).pathname}?vy=kontakt`);
 }
 
+/**
+ * Väljer butiksrapporten för månaden i formuläret "Ny rapport". Efter klicket på Butik
+ * byts formuläret ut (nytt `key` i page.tsx) och under bytet kan det gamla och det nya
+ * finnas samtidigt en kort stund: vänta tills det bara finns ett fält Månad.
+ */
+async function chooseStoreReport(): Promise<Locator> {
+  const builder = page.locator('section[aria-labelledby="ny-rapport"]');
+  await builder.getByRole("radio", { name: "Butik" }).check();
+  await until(
+    async () => (await builder.getByLabel("Månad").count()) === 1,
+    "ett formulär för butiksrapporten",
+  );
+  await builder.getByLabel("Månad").selectOption({ label: MONTH });
+  await until(
+    async () => (await builder.getByLabel("Butik").count()) === 1,
+    "ett fält för butiken",
+  );
+  await builder.getByLabel("Butik").selectOption({ label: STORE });
+  return builder;
+}
+
 describe("rapportutskick", () => {
   it("lägger till butikens mottagare", async () => {
     await page.goto("/rapporter?vy=mottagare");
@@ -104,10 +126,7 @@ describe("rapportutskick", () => {
 
   it("skapar, godkänner och skickar butiksrapporten", async () => {
     await page.goto("/rapporter");
-    const builder = page.locator('section[aria-labelledby="ny-rapport"]');
-    await builder.getByRole("radio", { name: "Butik" }).check();
-    await builder.getByLabel("Månad").selectOption({ label: MONTH });
-    await builder.getByLabel("Butik").selectOption({ label: STORE });
+    const builder = await chooseStoreReport();
     await builder.getByLabel("Personlig hälsning").fill(greeting);
     // "Skapa ny version" när testet körts förut mot samma databas.
     await builder.getByRole("button", { name: /^Skapa (utkast|ny version)$/ }).click();
@@ -179,10 +198,7 @@ describe("rapportutskick", () => {
     await screenshot(page, "05-butik-visa-detaljer");
 
     await page.goto("/rapporter");
-    const builder = page.locator('section[aria-labelledby="ny-rapport"]');
-    await builder.getByRole("radio", { name: "Butik" }).check();
-    await builder.getByLabel("Månad").selectOption({ label: MONTH });
-    await builder.getByLabel("Butik").selectOption({ label: STORE });
+    await chooseStoreReport();
     const preview = page.locator('section[aria-labelledby="forhandsvisning"]');
     await preview.getByText("Påfyllningsbesök").first().waitFor();
     await preview.getByText("Snittköp").first().waitFor();

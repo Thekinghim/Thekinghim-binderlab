@@ -2,7 +2,8 @@
  * Rapportsidor: varje ark i varje rapport får plats på sitt A4-ark. Testet lägger in
  * rapporter med långa tabeller och listor (delägarrapport för en månad, en kort period, 366
  * dagar och med många ägare, automater och händelser; butiksrapporten med detaljer, den korta
- * (ett ark för en vanlig butik) och den korta med många automater; bokföringsunderlag för
+ * (ett ark för en vanlig butik, också med vinstdelning, hyra och tre automater) och den korta
+ * med många automater; bokföringsunderlag för
  * en månad och tio månader) direkt i databasen, öppnar utskriftssidan i utskriftsläge och
  * kontrollerar att inget element går utanför sitt ark eller nedanför arkets brödyta. Sedan
  * hämtas PDF:en (samma väg som knappen PDF) och antalet sidor jämförs med antalet ark.
@@ -37,6 +38,12 @@ const CASES: {
   minSheets: number;
   /** Högsta antal ark (den korta butiksrapporten ska få plats på ett). */
   maxSheets?: number;
+  /**
+   * Kontrollera också att ingen text går ut i sidmarginalen (den korta butiksrapporten, som
+   * har smala spalter). De andra rapporternas diagram har axeltexter som går någon pixel
+   * utanför brödytan; de ändras inte här.
+   */
+  textInside?: boolean;
 }[] = [
   {
     name: "delagare-manad",
@@ -95,12 +102,35 @@ const CASES: {
     snapshot: () => storeSnapshot("2026-10", 3),
     minSheets: 1,
     maxSheets: 1,
+    textInside: true,
+  },
+  // Den längsta uträkningen (vinstdelning med hyra och VMB-moms: åtta rader) ska också få
+  // plats på ett ark: med tre automater bredvid veckorna, och med en hälsning på tre rader.
+  {
+    name: "butik-kort-vinstdelning-tre-automater",
+    snapshot: () => storeSnapshot("2026-10", 9, false, { split: true }),
+    minSheets: 1,
+    maxSheets: 1,
+    textInside: true,
+  },
+  {
+    name: "butik-kort-vinstdelning-lang-halsning",
+    snapshot: () =>
+      storeSnapshot("2026-10", 3, false, {
+        split: true,
+        greeting:
+          "Tack för ett bra samarbete! Hör av er om ni vill flytta någon automat.\nVi fyller på inför höstlovet och ses i butiken vecka 44.\nHälsningar, Binderlab",
+      }),
+    minSheets: 1,
+    maxSheets: 1,
+    textInside: true,
   },
   // Den korta rapporten med tio automater: tabellen får delas, inget går utanför arket.
   {
     name: "butik-kort-manga-automater",
     snapshot: () => storeSnapshot("2026-10", 30),
     minSheets: 1,
+    textInside: true,
   },
   { name: "bokforing-manad", snapshot: () => accountantSnapshot("2026-10", null), minSheets: 3 },
   {
@@ -158,7 +188,7 @@ interface SheetCheck {
 }
 
 /** Körs i sidan: allt i varje ark ligger inom arket, och brödytans innehåll ovanför sidfoten. */
-function checkSheets(): SheetCheck {
+function checkSheets(textInside: boolean): SheetCheck {
   const problems: string[] = [];
   const sheets = Array.from(document.querySelectorAll<HTMLElement>(".bl-report .bl-sheet"));
   const describe = (el: Element) =>
@@ -174,7 +204,29 @@ function checkSheets(): SheetCheck {
       problems.push(`ark ${i + 1}: ${sheet.getAttribute("data-overflow")} px för högt`);
     }
     const b = body.getBoundingClientRect();
-    const bodyBottom = b.bottom - Number.parseFloat(getComputedStyle(body).paddingBottom) + 1;
+    const bodyStyle = getComputedStyle(body);
+    const bodyBottom = b.bottom - Number.parseFloat(bodyStyle.paddingBottom) + 1;
+    // Texten håller sig inom brödytans bredd (inte bara inom arket): en rad som är för lång
+    // för sin spalt sticker annars ut i marginalen utan att elementets ruta gör det.
+    const textLeft = b.left + Number.parseFloat(bodyStyle.paddingLeft) - 1;
+    const textRight = b.right - Number.parseFloat(bodyStyle.paddingRight) + 1;
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    for (let node = textInside ? walker.nextNode() : null; node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent || !node.textContent?.trim() || parent.closest(".sr-only, [data-print='hide']"))
+        continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of Array.from(range.getClientRects())) {
+        if (r.width === 0 || r.height === 0) continue;
+        if (r.left < textLeft || r.right > textRight) {
+          problems.push(
+            `ark ${i + 1}: texten "${node.textContent.trim().slice(0, 40)}" går utanför brödytan (${Math.round(Math.max(textLeft - r.left, r.right - textRight))} px i sidled)`,
+          );
+          break;
+        }
+      }
+    }
     sheet.querySelectorAll("*").forEach((el) => {
       if (el === body || el.closest(".sr-only, [data-print='hide']")) return;
       const r = el.getBoundingClientRect();
@@ -209,7 +261,7 @@ describe("rapportsidor", () => {
             r.hasAttribute("data-paginated"),
           ),
       );
-      const check = await page.evaluate(checkSheets);
+      const check = await page.evaluate(checkSheets, c.textInside === true);
       expect(check.problems).toEqual([]);
       expect(check.sheets).toBeGreaterThanOrEqual(c.minSheets);
       if (c.maxSheets !== undefined) expect(check.sheets).toBeLessThanOrEqual(c.maxSheets);

@@ -168,16 +168,46 @@ export function partnerSnapshot(c: PartnerCase): ReportSnapshot {
 
 /**
  * Butiksrapporten för butiken s-1, som har var tredje automat. `details` = butikens val
- * "Visa detaljer i rapporten" (standard av: den korta rapporten).
+ * "Visa detaljer i rapporten" (standard av: den korta rapporten). `split` = avtalet är en
+ * vinstdelning med hyra och VMB-moms före delning (den längsta uträkningen: åtta rader).
  */
-export function storeSnapshot(month: string, machines: number, details = false): ReportSnapshot {
+export function storeSnapshot(
+  month: string,
+  machines: number,
+  details = false,
+  options: { split?: boolean; greeting?: string } = {},
+): ReportSnapshot {
+  const base = bigSources(machines, 30);
+  const sources: ReportSources = options.split
+    ? {
+        ...base,
+        // Vinstdelning kräver inköpspris på varje såld titel (den sista saknar annars pris).
+        prices: base.titles.map((t, i) => ({
+          titleId: t.id,
+          unitCostOre: 2000 + (i % 7) * 350,
+          validFrom: "2025-01-01",
+        })),
+        agreements: base.agreements.map((a) =>
+          a.storeId === "s-1"
+            ? {
+                ...a,
+                commissionBp: 5000,
+                commissionBase: "profit_after_costs" as const,
+                vmbBeforeSplit: true,
+                monthlyRentOre: 150_000,
+              }
+            : a,
+        ),
+      }
+    : base;
   return build({
     type: "butik",
     month,
-    sources: bigSources(machines, 30),
+    sources,
     storeId: "s-1",
     storeDetails: details,
-    greeting: "Tack för ett bra samarbete! Hör av er om ni vill flytta någon automat.",
+    greeting:
+      options.greeting ?? "Tack för ett bra samarbete! Hör av er om ni vill flytta någon automat.",
     storeService: {
       refills: { count: 9, last: "2026-10-29" },
       busiest: "Lördag 13–15",
