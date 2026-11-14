@@ -185,16 +185,24 @@ function removeEmptySections(html: string): string {
   return cut(html, ranges);
 }
 
-/** Numrerar sektionsrubrikerna "01 / …" i ordning. */
-function renumberSections(html: string): string {
+/**
+ * Numrerar sektionsrubrikerna "01 / …" i ordning. Mallen skriver hårda mellanslag runt
+ * snedstrecket, därav `\s` (som också matchar U+00A0). Butiksmejlet utan "Visa detaljer"
+ * tappar hela sektionen Drift och service och fick annars "02" följt av "04".
+ *
+ * Delägarmejlet har samma lucka sedan tidigare (kassaflödet tas bort) men lämnas som det
+ * är här: den rapporten ändras inte i samma leverans.
+ */
+function renumberSections(html: string, kind: CleanupKind): string {
   let n = 0;
-  return html.replace(
-    /(<span[^>]*>)(\d{2})(<\/span><span[^>]*> \/ <\/span>)/g,
-    (_m, open: string, _num: string, rest: string) => {
-      n += 1;
-      return `${open}${String(n).padStart(2, "0")}${rest}`;
-    },
-  );
+  const label =
+    kind === "butik"
+      ? /(<span[^>]*>)(\d{2})(<\/span><span[^>]*>\s\/\s<\/span>)/g
+      : /(<span[^>]*>)(\d{2})(<\/span><span[^>]*> \/ <\/span>)/g;
+  return html.replace(label, (_m, open: string, _num: string, rest: string) => {
+    n += 1;
+    return `${open}${String(n).padStart(2, "0")}${rest}`;
+  });
 }
 
 /** Sidfotens "Namn · – · e-post" utan den saknade postadressen. */
@@ -210,7 +218,7 @@ export type CleanupKind = "butik" | "bokforing" | "delagare";
 export function cleanEmailHtml(html: string, kind: CleanupKind): string {
   const footer = cleanFooter(html);
   if (kind === "bokforing") return footer;
-  return renumberSections(removeEmptySections(removeMissingRowsAndColumns(footer)));
+  return renumberSections(removeEmptySections(removeMissingRowsAndColumns(footer)), kind);
 }
 
 // ---------------------------------------------------------------------------

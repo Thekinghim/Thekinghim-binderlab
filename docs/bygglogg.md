@@ -158,3 +158,7 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   "Försäljning" i automatspalten gick 6 px ut i marginalen. Blocket är nu lägre (en rad per automat, lägre
   diagram, ingen "Mest i vecka …" i spalten) och `e2e/10-rapportsidor` kontrollerar ett ark för vinstdelning
   med hyra och tre automater, och att ingen text går utanför brödytan i butiksrapporten.
+- Leveranskontroll: butiksmejlet utan detaljer hoppade från "02 / Per automat" till "04 / Bifogat", eftersom
+  sektionen Drift och service försvinner och omnumreringen i `email-cleanup.ts` aldrig träffade (mallen skriver
+  hårda mellanslag runt snedstrecket). Butiksmejlet numreras nu om; delägarmejlet har samma lucka sedan tidigare och
+  är lämnat orört.

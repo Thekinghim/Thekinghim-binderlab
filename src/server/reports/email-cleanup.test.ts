@@ -44,14 +44,14 @@ function snap(
   });
 }
 
-function render(s: ReportSnapshot) {
+function render(s: ReportSnapshot, attachments: { name: string; size: number }[] = []) {
   return renderReportEmail(
     reportEmailProps(s, {
       recipientName: "Maria",
       reportUrl: "https://app.test/rapport/x",
       followText: null,
       reportId: "R-1",
-      attachments: [],
+      attachments,
       sender: SENDER,
     }),
   );
@@ -123,6 +123,18 @@ describe("butiksmejlet", () => {
       }
       expect(body.replace(/\u00a0/g, " ")).toContain("Er ersättning för oktober: 11,76 kr.");
       expect(body).not.toMatch(/(^|[\s,(])–(?=$|[\s,.)])/m);
+    }
+  });
+
+  it("utan Visa detaljer och med PDF:en bifogad: sektionerna numreras 01, 02, 03 utan lucka", () => {
+    const short = render(snap("butik", 2, false), [{ name: "rapport.pdf", size: 220_000 }]);
+    const bodies = [
+      visible(cleanEmailHtml(short.html, "butik")),
+      cleanEmailText(short.text, "butik"),
+    ];
+    for (const body of bodies) {
+      expect(body).toMatch(/Bifogat/i);
+      expect(sectionNumbers(body)).toEqual(["01", "02", "03"]);
     }
   });
 
