@@ -270,6 +270,13 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // "Visa detaljer i rapporten" för en butik (bara ägare och admin).
+  {
+    module: "@/app/(app)/butiker/actions",
+    name: "setStoreReportDetails",
+    allowed: OP,
+    args: (c) => [sink(c, { details: true })],
+  },
   {
     module: "@/app/(app)/butiker/actions",
     name: "createAgreement",
