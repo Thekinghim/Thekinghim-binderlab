@@ -182,7 +182,7 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
       ) : (
         // Utan detaljer: bara veckorna (summor), inga titlar.
         <section
-          className="flex max-w-3xl min-w-0 flex-col gap-8 border-t border-line py-16"
+          className="flex min-w-0 flex-col gap-8 border-t border-line py-16 lg:pr-[33%]"
           aria-label="Försäljning per vecka"
         >
           <WeeksBlock report={report} today={partial ? overview.today : undefined} />

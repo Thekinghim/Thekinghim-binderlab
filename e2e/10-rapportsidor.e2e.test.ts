@@ -1,7 +1,8 @@
 /**
  * Rapportsidor: varje ark i varje rapport får plats på sitt A4-ark. Testet lägger in
  * rapporter med långa tabeller och listor (delägarrapport för en månad, en kort period, 366
- * dagar och med många ägare, automater och händelser; butiksrapport; bokföringsunderlag för
+ * dagar och med många ägare, automater och händelser; butiksrapporten med detaljer, den korta
+ * (ett ark för en vanlig butik) och den korta med många automater; bokföringsunderlag för
  * en månad och tio månader) direkt i databasen, öppnar utskriftssidan i utskriftsläge och
  * kontrollerar att inget element går utanför sitt ark eller nedanför arkets brödyta. Sedan
  * hämtas PDF:en (samma väg som knappen PDF) och antalet sidor jämförs med antalet ark.
@@ -30,7 +31,13 @@ import {
 import { accountantSnapshot, partnerSnapshot, storeSnapshot } from "./support/report-snapshots";
 import { e2e, login } from "./support/session";
 
-const CASES: { name: string; snapshot: () => ReportSnapshot; minSheets: number }[] = [
+const CASES: {
+  name: string;
+  snapshot: () => ReportSnapshot;
+  minSheets: number;
+  /** Högsta antal ark (den korta butiksrapporten ska få plats på ett). */
+  maxSheets?: number;
+}[] = [
   {
     name: "delagare-manad",
     snapshot: () =>
@@ -76,7 +83,25 @@ const CASES: { name: string; snapshot: () => ReportSnapshot; minSheets: number }
       }),
     minSheets: 5,
   },
-  { name: "butik-manad", snapshot: () => storeSnapshot("2026-10", 30), minSheets: 2 },
+  // Butiksrapporten med "Visa detaljer i rapporten": titlar och service, flera ark.
+  {
+    name: "butik-manad",
+    snapshot: () => storeSnapshot("2026-10", 30, true),
+    minSheets: 2,
+  },
+  // Den korta butiksrapporten (standard) för en vanlig butik: en automat, ett ark.
+  {
+    name: "butik-kort",
+    snapshot: () => storeSnapshot("2026-10", 3),
+    minSheets: 1,
+    maxSheets: 1,
+  },
+  // Den korta rapporten med tio automater: tabellen får delas, inget går utanför arket.
+  {
+    name: "butik-kort-manga-automater",
+    snapshot: () => storeSnapshot("2026-10", 30),
+    minSheets: 1,
+  },
   { name: "bokforing-manad", snapshot: () => accountantSnapshot("2026-10", null), minSheets: 3 },
   {
     name: "bokforing-tio-manader",
@@ -187,6 +212,7 @@ describe("rapportsidor", () => {
       const check = await page.evaluate(checkSheets);
       expect(check.problems).toEqual([]);
       expect(check.sheets).toBeGreaterThanOrEqual(c.minSheets);
+      if (c.maxSheets !== undefined) expect(check.sheets).toBeLessThanOrEqual(c.maxSheets);
       // En sektion som fortsätter på nästa ark upprepar bara "forts."-raden, inte rubriken.
       const headings = await page.locator(".bl-sheet h2").allInnerTexts();
       expect(headings.length).toBe(new Set(headings).size);

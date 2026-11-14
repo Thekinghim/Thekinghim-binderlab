@@ -22,7 +22,7 @@ import {
   type ReportColumn,
   type ReportKpi,
 } from "@/components/report/report-blocks";
-import { ReportBarChart } from "@/components/report/report-charts";
+import { REPORT_CONTENT_WIDTH, ReportBarChart } from "@/components/report/report-charts";
 import { ReportDocument, ReportPage, type ReportLayout } from "@/components/report/report-document";
 import { formatInt, formatSek, formatSekAxis } from "@/lib/format";
 import type {
@@ -220,6 +220,17 @@ const splitColumns: ReportColumn<SplitRow>[] = [
   },
 ];
 
+/**
+ * Veckodiagrammet i den korta rapporten: ritat för den vänstra spalten (6 av 11 delar av
+ * arkets bredd minus mellanrummet), så att texten i diagrammet behåller sin storlek.
+ */
+const SHORT_CHART = { width: Math.round((REPORT_CONTENT_WIDTH - 30) * (6 / 11)), height: 112 };
+
+/** Med fler automater än så står de i en egen tabell under veckorna. */
+const SIDE_BY_SIDE_MACHINES = 3;
+/** Veckodiagrammet i full bredd i den korta rapporten: lägre än i rapporten med detaljer. */
+const STACKED_CHART = { width: REPORT_CONTENT_WIDTH, height: 130 };
+
 export function StoreReportDocument({
   snapshot,
   layout = "stack",
@@ -250,6 +261,7 @@ export function StoreReportDocument({
   const noVmb = split && splitList.every((x) => x.vmbBeforeSplit === false);
   const bestWeek = [...r.weeks].sort((a, b) => b.revenueOre - a.revenueOre)[0];
   const weekData = r.weeks.map((w) => ({ label: `v. ${w.week}`, value: w.revenueOre / 100 }));
+  const partialWeeks = r.weeks.some((w) => w.partial);
 
   const kpis: Record<StoreKpi, ReportKpi> = {
     sales: {
@@ -350,7 +362,9 @@ export function StoreReportDocument({
     </ReportSection>
   );
 
-  const weeks =
+  // Den korta rapporten: veckorna och automaterna står bredvid varandra (en rad, så att
+  // rapporten får plats på en sida), diagrammet ritas därför för den smalare spalten.
+  const weeks = (chart?: { width: number; height: number }) =>
     weekData.length > 0 ? (
       <ReportSection
         as={SECTION_TAG[level]}
@@ -365,15 +379,16 @@ export function StoreReportDocument({
       >
         <ReportBarChart
           data={weekData}
-          // Den korta rapporten ska få plats på en sida: ett lägre diagram.
-          height={view.details ? undefined : 130}
+          width={chart?.width}
+          height={chart?.height}
           format={formatSek}
           formatAxis={formatSekAxis}
           summary={`Försäljning per vecka i ${month}: ${r.weeks
             .map((w) => `${w.label} ${sek(w.revenueOre)}`)
             .join(", ")}.`}
         />
-        {r.weeks.some((w) => w.partial) ? (
+        {/* Den korta rapporten har noten längst ned på sidan (sparar höjd i spalten). */}
+        {!chart && partialWeeks ? (
           <ReportNote>
             Veckor som bara delvis ligger i {name} räknas med de dagar som hör till{" "}
             {custom ? "perioden" : "månaden"}.
@@ -402,6 +417,38 @@ export function StoreReportDocument({
     </ReportSection>
   );
 
+  // Automaterna i den korta rapporten: namn och tre uppgifter per automat (smal spalt).
+  const daysInPeriod = custom ? periodDays(snapshot.period) : r.compensation.daysInMonth;
+  const machineFacts = (index: number) => (
+    <ReportSection
+      as={SECTION_TAG[level]}
+      index={index}
+      eyebrow="Automater"
+      title={`${formatInt(r.machines.length)} ${r.machines.length === 1 ? "automat" : "automater"} i butiken.`}
+    >
+      <ul className="flex flex-col border-t border-line">
+        {r.machines.map((m) => (
+          <li key={m.machineId} className="flex flex-col gap-[2mm] border-b border-line py-[2.5mm]">
+            <p className="text-[12px] leading-[16px] text-fg">{m.name}</p>
+            <div className="grid grid-cols-[max-content_auto_auto] justify-between gap-[3mm]">
+              <ReportFact label="Dagar i butiken">
+                <span className="tnum">
+                  {formatInt(m.placedDays)} av {formatInt(daysInPeriod)}
+                </span>
+              </ReportFact>
+              <ReportFact label="Sålda pack">
+                <span className="tnum">{formatInt(m.orders)}</span>
+              </ReportFact>
+              <ReportFact label="Försäljning">
+                <span className="tnum">{sek(m.revenueOre)}</span>
+              </ReportFact>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </ReportSection>
+  );
+
   const footnotes = (
     <div className="mt-auto flex flex-col gap-[1.5mm]">
       {view.closing ? (
@@ -416,8 +463,16 @@ export function StoreReportDocument({
           ? `Perioden före (${periodText(r.comparison.period)})`
           : "Förra månaden"}
         : {sek(r.comparison.revenueOre)} på {formatInt(r.comparison.orders)} köp.
+        {view.details ? null : (
+          <>
+            {partialWeeks
+              ? ` Veckor som bara delvis ligger i ${name} räknas med de dagar som hör till ${custom ? "perioden" : "månaden"}.`
+              : ""}{" "}
+            Beräkningsversion {snapshot.calcVersion}.
+          </>
+        )}
       </ReportNote>
-      <ReportNote>Beräkningsversion {snapshot.calcVersion}.</ReportNote>
+      {view.details ? <ReportNote>Beräkningsversion {snapshot.calcVersion}.</ReportNote> : null}
     </div>
   );
 
@@ -435,12 +490,23 @@ export function StoreReportDocument({
   if (!view.details) {
     return (
       <ReportDocument {...doc}>
-        <ReportPage className="gap-[7mm]">
+        <ReportPage className="gap-[6mm]">
           {title}
           {kpiRow}
           {calculation}
-          {weeks}
-          {machines(weeks ? 3 : 2)}
+          {/* En vanlig butik: veckorna och automaterna bredvid varandra, allt på en sida.
+              Med många automater står de i en tabell under (som kan delas mellan två ark). */}
+          {weekData.length > 0 && r.machines.length <= SIDE_BY_SIDE_MACHINES ? (
+            <div className="grid grid-cols-[6fr_5fr] items-start gap-[8mm]">
+              {weeks(SHORT_CHART)}
+              {machineFacts(3)}
+            </div>
+          ) : (
+            weeks(STACKED_CHART)
+          )}
+          {weekData.length > 0 && r.machines.length <= SIDE_BY_SIDE_MACHINES
+            ? null
+            : machines(weekData.length > 0 ? 3 : 2)}
           {footnotes}
         </ReportPage>
       </ReportDocument>
@@ -453,7 +519,7 @@ export function StoreReportDocument({
         {title}
         {kpiRow}
         {calculation}
-        {weeks}
+        {weeks()}
       </ReportPage>
 
       <ReportPage className="gap-[8mm]">

@@ -166,12 +166,17 @@ export function partnerSnapshot(c: PartnerCase): ReportSnapshot {
   } as ReportSnapshot;
 }
 
-export function storeSnapshot(month: string, machines: number): ReportSnapshot {
+/**
+ * Butiksrapporten för butiken s-1, som har var tredje automat. `details` = butikens val
+ * "Visa detaljer i rapporten" (standard av: den korta rapporten).
+ */
+export function storeSnapshot(month: string, machines: number, details = false): ReportSnapshot {
   return build({
     type: "butik",
     month,
     sources: bigSources(machines, 30),
     storeId: "s-1",
+    storeDetails: details,
     greeting: "Tack för ett bra samarbete! Hör av er om ni vill flytta någon automat.",
     storeService: {
       refills: { count: 9, last: "2026-10-29" },

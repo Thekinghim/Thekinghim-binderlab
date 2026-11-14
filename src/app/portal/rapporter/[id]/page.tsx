@@ -170,7 +170,7 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
             </section>
           ) : (
             <>
-              <section className="flex max-w-3xl min-w-0 flex-col gap-8 border-t border-line py-16">
+              <section className="flex min-w-0 flex-col gap-8 border-t border-line py-16 lg:pr-[33%]">
                 <WeeksBlock report={report} />
               </section>
               <p className="border-t border-line pt-6 text-base text-muted">{TITLES_ON_REQUEST}</p>
