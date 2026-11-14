@@ -232,6 +232,12 @@ export interface StoreReport {
   readonly topTitles: readonly StoreTopTitle[];
   readonly machines: readonly StoreMachine[];
   readonly compensation: StoreCompensationBreakdown;
+  /**
+   * "Visa detaljer i rapporten" (butikens val när rapporten räknades). Sant: rapporten
+   * visar också titlarna och service. Falskt: bara uträkningen, och `topTitles` är tom.
+   * Saknas i ögonblicksbilder från före valet fanns (se `storeDetailsOf`).
+   */
+  readonly details?: boolean;
 }
 
 /** Inställningar för butiksrapporten. */
@@ -240,6 +246,11 @@ export interface StoreReportOptions {
   readonly topTitles?: number;
   /** Hälsning till butiken. */
   readonly greeting?: string | null;
+  /**
+   * Butikens val "Visa detaljer i rapporten". Standard falskt: inga titlar i rapporten
+   * (varken i `topTitles` eller i slutsatsen).
+   */
+  readonly details?: boolean;
   /**
    * Saknade inköpspriser under vinstdelning: `false` (standard) stoppar rapporten med
    * `DomainError('missing_price')`; `true` visar andelen som ej räknad (portalen, som inte
@@ -371,7 +382,9 @@ export function buildStoreReport(
   };
 
   const weeks = buildWeeks(entries, period, storeId);
-  const allTitles = rankTitles(entries, revenueOre, period, storeId, catalog);
+  const details = options.details === true;
+  // Utan detaljer finns inga titlar i rapporten: varken listan eller slutsatsen nämner dem.
+  const allTitles = details ? rankTitles(entries, revenueOre, period, storeId, catalog) : [];
   const topTitles = allTitles.slice(0, topN);
   const machines = buildMachines(entries, period, storeId, ledger.context.placements, catalog);
   const splits = ledger.profitSplits.filter((x) => x.storeId === storeId && x.month === month);
@@ -418,6 +431,7 @@ export function buildStoreReport(
     topTitles,
     machines,
     compensation,
+    details,
   };
   assertStoreReportSafe(report);
   return report;
@@ -519,7 +533,8 @@ function buildRangeStoreReport(
   };
 
   const weeks = buildWeeks(entries, period, storeId);
-  const allTitles = rankTitles(entries, revenueOre, period, storeId, catalog);
+  const details = options.details === true;
+  const allTitles = details ? rankTitles(entries, revenueOre, period, storeId, catalog) : [];
   const machines = buildMachines(entries, period, storeId, ctx.placements, catalog);
   const splits = ledger.profitSplits.filter((x) => x.storeId === storeId);
   if (!options.pendingSplit) {
@@ -564,6 +579,7 @@ function buildRangeStoreReport(
     topTitles: allTitles.slice(0, topN),
     machines,
     compensation,
+    details,
   };
   assertStoreReportSafe(report);
   return report;

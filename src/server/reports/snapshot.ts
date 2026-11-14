@@ -26,6 +26,7 @@ import {
   buildStoreReport,
   isWholeMonth,
   sie4Verifications,
+  storeDetailsOf,
   type AccountantReport,
   type LedgerAccount,
   type PartnerOwner,
@@ -119,6 +120,11 @@ export interface SnapshotInput {
   readonly greeting?: string | null;
   /** Påfyllningar och mest besökt tid (butiksrapport). */
   readonly storeService?: StoreService;
+  /**
+   * Butikens val "Visa detaljer i rapporten" (stores.report_details) när rapporten räknas.
+   * Standard falskt: rapporten innehåller inga titlar.
+   */
+  readonly storeDetails?: boolean;
   /** Egen kommentar (delägarrapport). */
   readonly comment?: string | null;
   /** Ägarandelar som gällde periodens sista dag (delägarrapport). */
@@ -249,6 +255,7 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
       if (!input.storeId) throw new DomainError("invalid_input", "Välj en butik.");
       const report = buildStoreReport(input.sources, input.storeId, custom ? period : input.month, {
         greeting: cleanText(input.greeting, 1000),
+        details: input.storeDetails === true,
       });
       return {
         ...base,
@@ -325,6 +332,25 @@ export function asSnapshot(value: unknown): ReportSnapshot {
     throw new DomainError("invalid_input", "Rapportens underlag har ett okänt format.");
   }
   return v as ReportSnapshot;
+}
+
+/**
+ * Butiksrapportens val "Visa detaljer" för en SPARAD rapport, så att sidan, PDF:en och
+ * mejlet bara behöver läsa `report.details`.
+ *
+ * Regeln (se `storeDetailsOf`): valet som sparades när rapporten räknades gäller alltid,
+ * även om butikens inställning ändras senare. En äldre rapport utan sparat val visas som
+ * den skickades (med detaljer) om den är godkänd eller skickad (`locked`), annars enligt
+ * den nya standarden (utan). Ett äldre utkast blir därmed också inaktuellt mot en ny
+ * uträkning (`sameReport`) och godkänns först som ny version, så att det som granskas är
+ * det som skickas.
+ */
+export function withStoreDetails<T extends ReportSnapshot>(snapshot: T, locked: boolean): T {
+  if (snapshot.type !== "butik" || snapshot.report.details !== undefined) return snapshot;
+  return {
+    ...snapshot,
+    report: { ...snapshot.report, details: storeDetailsOf(snapshot.report, locked) },
+  };
 }
 
 /** Rapportens slutsats (en mening), samma som överst i PDF:en. */

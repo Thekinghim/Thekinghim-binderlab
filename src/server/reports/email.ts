@@ -21,7 +21,7 @@ import type {
   Sender,
 } from "@/emails/report-content";
 import { formatInt, formatKronor, formatMonth, MINUS } from "@/lib/format";
-import { isWholeMonth, periodText, sie4Verifications } from "@/reports";
+import { isWholeMonth, periodText, sie4Verifications, storeReportView } from "@/reports";
 import type { Period as DatePeriod } from "@/lib/period";
 
 import { TYPE_LABEL } from "./kinds";
@@ -121,6 +121,9 @@ export function portalUrlFor(reportUrl: string): string {
 
 function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
   const r = s.report;
+  // Samma val som PDF:en: utan "Visa detaljer" står beloppet i rubriken, och raderna om
+  // service (flest köp, påfyllningar) lämnas som saknade värden och tas bort ur mejlet.
+  const view = storeReportView(r);
   const kpis: EmailKpi[] = [
     {
       label: "Försäljning",
@@ -154,9 +157,11 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
     revenue: kr(m.revenueOre),
     packs: m.orders,
   }));
-  const refillsLast = s.service.refills.last ? localDate(s.service.refills.last) : MISSING_DATE;
+  const refillsLast =
+    view.details && s.service.refills.last ? localDate(s.service.refills.last) : MISSING_DATE;
   return {
     ...base(s, ctx),
+    summary: view.headline,
     reportUrl: portalUrlFor(ctx.reportUrl),
     recipientKind: "butik",
     intro:
@@ -169,8 +174,8 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
       siteName: s.store.name,
       availability: MISSING_NUMBER,
       incidents: [],
-      busiest: s.service.busiest ?? "–",
-      refills: { count: s.service.refills.count, last: refillsLast },
+      busiest: view.details ? (s.service.busiest ?? "–") : "–",
+      refills: { count: view.details ? s.service.refills.count : 0, last: refillsLast },
       nextVisit: MISSING_DATE,
       contact: {
         name: ctx.contact?.name ?? ctx.sender?.name ?? "Binderlab",

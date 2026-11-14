@@ -429,11 +429,17 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
         busiest: busy.text,
         busiestOrders: busy.orders,
       };
+      // Butikens val "Visa detaljer i rapporten", läst nu och sparat i ögonblicksbilden.
+      const [setting] = await tx
+        .select({ details: s.stores.reportDetails })
+        .from(s.stores)
+        .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, storeId)));
       return {
         ...input,
         storeId,
         greeting: args.greeting ?? null,
         storeService,
+        storeDetails: setting?.details === true,
       };
     }
     case "bokforing": {

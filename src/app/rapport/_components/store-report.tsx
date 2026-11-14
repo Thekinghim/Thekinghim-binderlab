@@ -1,9 +1,15 @@
 /**
  * Butiksrapporten som A4 (utskriftsläget i src/components/report). Bygger bara på
- * ögonblicksbilden (`StoreSnapshot`): försäljning, ersättning steg för steg, titlar,
- * automater och service. Innehåller ALDRIG inköp, marginal, vinst eller andra butikers
- * siffror, utom månadens summor i ersättningen när avtalet är en vinstdelning (då är de
- * underlaget för butikens andel); testet i store-report.test.tsx kontrollerar båda.
+ * ögonblicksbilden (`StoreSnapshot`).
+ *
+ * Standard är den korta rapporten på en sida: rubriken med beloppet, nyckeltalen,
+ * uträkningen, försäljning per vecka, automaterna och raden "Underlag per titel finns på
+ * begäran." Med butikens val "Visa detaljer i rapporten" (`report.details`) visas också
+ * titlarna och service, som förut. Vad som visas avgörs i `storeReportView` (@/reports).
+ *
+ * Innehåller ALDRIG inköp, marginal, vinst eller andra butikers siffror, utom månadens
+ * summor i ersättningen när avtalet är en vinstdelning (då är de underlaget för butikens
+ * andel); testet i store-report.test.tsx kontrollerar båda.
  */
 
 import {
@@ -14,6 +20,7 @@ import {
   ReportTable,
   ReportTitle,
   type ReportColumn,
+  type ReportKpi,
 } from "@/components/report/report-blocks";
 import { ReportBarChart } from "@/components/report/report-charts";
 import { ReportDocument, ReportPage, type ReportLayout } from "@/components/report/report-document";
@@ -21,12 +28,13 @@ import { formatInt, formatSek, formatSekAxis } from "@/lib/format";
 import type {
   CompensationStep,
   StoreCompensationBreakdown,
+  StoreKpi,
   StoreMachine,
   StoreTopTitle,
 } from "@/reports";
 import type { StoreSnapshot } from "@/server/reports/snapshot";
 
-import { isWholeMonth, periodText, pctText, splitsOf } from "@/reports";
+import { isWholeMonth, periodText, pctText, splitsOf, storeReportView } from "@/reports";
 import { periodDays } from "@/domain";
 
 import {
@@ -225,6 +233,7 @@ export function StoreReportDocument({
   recipient?: string;
 }) {
   const r = snapshot.report;
+  const view = storeReportView(r);
   const month = periodLabel(snapshot);
   const custom = !isWholeMonth(snapshot.period);
   const prevName = custom ? "perioden före" : monthName(r.comparison.month);
@@ -242,135 +251,209 @@ export function StoreReportDocument({
   const bestWeek = [...r.weeks].sort((a, b) => b.revenueOre - a.revenueOre)[0];
   const weekData = r.weeks.map((w) => ({ label: `v. ${w.week}`, value: w.revenueOre / 100 }));
 
-  return (
-    <ReportDocument
-      title={`Butiksrapport ${month}`}
-      recipient={recipient ?? snapshot.store.name}
-      sender={snapshot.organization.name}
-      period={datePeriod(snapshot.period)}
-      generatedAt={new Date(snapshot.generatedAt)}
-      timeZone={snapshot.organization.timeZone}
-      layout={layout}
+  const kpis: Record<StoreKpi, ReportKpi> = {
+    sales: {
+      label: "Försäljning",
+      value: sekValue(r.sales.revenueOre),
+      unit: "kr",
+      delta: delta(r.comparison.revenueChangeBp),
+      context: r.comparison.revenueChangeBp === null ? undefined : `mot ${prevName}`,
+    },
+    orders: {
+      label: "Sålda pack",
+      value: formatInt(r.sales.orders),
+      delta:
+        r.comparison.ordersDiff === 0
+          ? "±0"
+          : `${r.comparison.ordersDiff > 0 ? "+" : "−"}${formatInt(Math.abs(r.comparison.ordersDiff))}`,
+      context: `mot ${prevName}`,
+    },
+    average: {
+      label: "Snittköp",
+      value: r.sales.averageOrderOre === null ? "–" : sekValue(r.sales.averageOrderOre),
+      unit: r.sales.averageOrderOre === null ? undefined : "kr",
+    },
+    compensation: {
+      label: "Er ersättning",
+      value: sekValue(r.compensation.totalOre),
+      unit: "kr",
+      context: split
+        ? r.compensation.rentOre > 0
+          ? "andel + hyra"
+          : "andel av vinsten"
+        : r.compensation.model === "commission_and_rent"
+          ? "provision + hyra"
+          : r.compensation.model === "commission"
+            ? "provision"
+            : r.compensation.model === "rent"
+              ? "hyra"
+              : "inget avtal",
+    },
+  };
+
+  const title = (
+    <ReportTitle
+      as={TITLE_TAG[level]}
+      eyebrow={`Butiksrapport · ${snapshot.store.name}`}
+      title={view.headline}
     >
-      <ReportPage className="gap-[8mm]">
-        <ReportTitle
-          as={TITLE_TAG[level]}
-          eyebrow={`Butiksrapport · ${snapshot.store.name}`}
-          title={r.conclusion.text}
-        >
-          {r.greeting ? <p className="whitespace-pre-line">{r.greeting}</p> : null}
-        </ReportTitle>
+      {r.greeting ? <p className="whitespace-pre-line">{r.greeting}</p> : null}
+    </ReportTitle>
+  );
 
-        <ReportKpiRow
-          items={[
-            {
-              label: "Försäljning",
-              value: sekValue(r.sales.revenueOre),
-              unit: "kr",
-              delta: delta(r.comparison.revenueChangeBp),
-              context: r.comparison.revenueChangeBp === null ? undefined : `mot ${prevName}`,
-            },
-            {
-              label: "Sålda pack",
-              value: formatInt(r.sales.orders),
-              delta:
-                r.comparison.ordersDiff === 0
-                  ? "±0"
-                  : `${r.comparison.ordersDiff > 0 ? "+" : "−"}${formatInt(Math.abs(r.comparison.ordersDiff))}`,
-              context: `mot ${prevName}`,
-            },
-            {
-              label: "Snittköp",
-              value: r.sales.averageOrderOre === null ? "–" : sekValue(r.sales.averageOrderOre),
-              unit: r.sales.averageOrderOre === null ? undefined : "kr",
-            },
-            {
-              label: "Er ersättning",
-              value: sekValue(r.compensation.totalOre),
-              unit: "kr",
-              context: split
-                ? r.compensation.rentOre > 0
-                  ? "andel + hyra"
-                  : "andel av vinsten"
-                : r.compensation.model === "commission_and_rent"
-                  ? "provision + hyra"
-                  : r.compensation.model === "commission"
-                    ? "provision"
-                    : r.compensation.model === "rent"
-                      ? "hyra"
-                      : "inget avtal",
-            },
-          ]}
+  const kpiRow = <ReportKpiRow items={view.kpis.map((k) => kpis[k])} />;
+
+  // Uträkningen: samma tabell i båda rapporterna (det är så butiken räknar efter sin andel).
+  const calculation = (
+    <ReportSection
+      as={SECTION_TAG[level]}
+      index={1}
+      eyebrow="Ersättning"
+      title={
+        view.details
+          ? `Er ersättning för ${name}: ${kronor(r.compensation.totalOre)}.`
+          : "Så räknas ersättningen."
+      }
+      aside={split ? `Avtal: ${r.compensation.modelText}` : r.compensation.modelText}
+    >
+      {split ? (
+        <ReportTable
+          caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
+          columns={splitColumns}
+          rows={splitRows(r.compensation)}
+          rowKey={(x) => x.key}
         />
+      ) : (
+        <ReportTable
+          caption={`Ersättningen till ${snapshot.store.name} uträknad steg för steg.`}
+          columns={stepColumns}
+          rows={steps}
+          rowKey={(s, i) => `${s.kind}-${i}`}
+        />
+      )}
+      {total && showTotal ? (
+        <div className="flex items-baseline justify-between gap-[4mm] border-t border-line-strong pt-[2mm] text-[12px] leading-[16px]">
+          <span className="font-medium text-fg">{total.label}</span>
+          <span className="text-muted">{total.calculation}</span>
+          <span className="tnum font-mono font-medium text-fg">{kronor(total.amountOre)}</span>
+        </div>
+      ) : null}
+      <ReportNote>
+        {split
+          ? `${noVmb ? "Vinst = försäljning − inköp − kortavgifter." : "Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter."} ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}`
+          : `Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen.${
+              r.compensation.rentOre !== 0 || r.compensation.model.endsWith("rent")
+                ? " Hyran räknas per dag när avtalet gäller en del av månaden."
+                : ""
+            }`}
+      </ReportNote>
+    </ReportSection>
+  );
 
-        <ReportSection
-          as={SECTION_TAG[level]}
-          index={1}
-          eyebrow="Ersättning"
-          title={`Er ersättning för ${name}: ${kronor(r.compensation.totalOre)}.`}
-          aside={split ? `Avtal: ${r.compensation.modelText}` : r.compensation.modelText}
-        >
-          {split ? (
-            <ReportTable
-              caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
-              columns={splitColumns}
-              rows={splitRows(r.compensation)}
-              rowKey={(x) => x.key}
-            />
-          ) : (
-            <ReportTable
-              caption={`Ersättningen till ${snapshot.store.name} uträknad steg för steg.`}
-              columns={stepColumns}
-              rows={steps}
-              rowKey={(s, i) => `${s.kind}-${i}`}
-            />
-          )}
-          {total && showTotal ? (
-            <div className="flex items-baseline justify-between gap-[4mm] border-t border-line-strong pt-[2mm] text-[12px] leading-[16px]">
-              <span className="font-medium text-fg">{total.label}</span>
-              <span className="text-muted">{total.calculation}</span>
-              <span className="tnum font-mono font-medium text-fg">{kronor(total.amountOre)}</span>
-            </div>
-          ) : null}
+  const weeks =
+    weekData.length > 0 ? (
+      <ReportSection
+        as={SECTION_TAG[level]}
+        index={2}
+        eyebrow="Försäljning per vecka"
+        title="Försäljning per vecka."
+        aside={
+          bestWeek && bestWeek.revenueOre > 0
+            ? `Mest i vecka ${bestWeek.week}: ${sek(bestWeek.revenueOre)} på ${formatInt(bestWeek.orders)} köp.`
+            : "Ingen försäljning under månaden."
+        }
+      >
+        <ReportBarChart
+          data={weekData}
+          // Den korta rapporten ska få plats på en sida: ett lägre diagram.
+          height={view.details ? undefined : 130}
+          format={formatSek}
+          formatAxis={formatSekAxis}
+          summary={`Försäljning per vecka i ${month}: ${r.weeks
+            .map((w) => `${w.label} ${sek(w.revenueOre)}`)
+            .join(", ")}.`}
+        />
+        {r.weeks.some((w) => w.partial) ? (
           <ReportNote>
-            {split
-              ? `${noVmb ? "Vinst = försäljning − inköp − kortavgifter." : "Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter."} ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}`
-              : `Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen.${
-                  r.compensation.rentOre !== 0 || r.compensation.model.endsWith("rent")
-                    ? " Hyran räknas per dag när avtalet gäller en del av månaden."
-                    : ""
-                }`}
+            Veckor som bara delvis ligger i {name} räknas med de dagar som hör till{" "}
+            {custom ? "perioden" : "månaden"}.
           </ReportNote>
-        </ReportSection>
-
-        {weekData.length > 0 ? (
-          <ReportSection
-            as={SECTION_TAG[level]}
-            index={2}
-            eyebrow="Försäljning per vecka"
-            title="Försäljning per vecka."
-            aside={
-              bestWeek && bestWeek.revenueOre > 0
-                ? `Mest i vecka ${bestWeek.week}: ${sek(bestWeek.revenueOre)} på ${formatInt(bestWeek.orders)} köp.`
-                : "Ingen försäljning under månaden."
-            }
-          >
-            <ReportBarChart
-              data={weekData}
-              format={formatSek}
-              formatAxis={formatSekAxis}
-              summary={`Försäljning per vecka i ${month}: ${r.weeks
-                .map((w) => `${w.label} ${sek(w.revenueOre)}`)
-                .join(", ")}.`}
-            />
-            {r.weeks.some((w) => w.partial) ? (
-              <ReportNote>
-                Veckor som bara delvis ligger i {name} räknas med de dagar som hör till{" "}
-                {custom ? "perioden" : "månaden"}.
-              </ReportNote>
-            ) : null}
-          </ReportSection>
         ) : null}
+      </ReportSection>
+    ) : null;
+
+  const machines = (index: number) => (
+    <ReportSection
+      as={SECTION_TAG[level]}
+      index={index}
+      eyebrow="Automater"
+      title={`${formatInt(r.machines.length)} ${r.machines.length === 1 ? "automat" : "automater"} i butiken.`}
+      aside={`${formatInt(r.sales.orders)} sålda pack under ${name}.`}
+    >
+      <ReportTable
+        caption="Butikens automater under månaden."
+        columns={machineColumns(custom ? periodDays(snapshot.period) : r.compensation.daysInMonth, {
+          orders: r.sales.orders,
+          revenueOre: r.sales.revenueOre,
+        })}
+        rows={r.machines}
+        rowKey={(m) => m.machineId}
+      />
+    </ReportSection>
+  );
+
+  const footnotes = (
+    <div className="mt-auto flex flex-col gap-[1.5mm]">
+      {view.closing ? (
+        <p className="border-t border-line pt-[2.5mm] text-[12px] leading-[16px] text-fg">
+          {view.closing}
+        </p>
+      ) : null}
+      <ReportNote>
+        Försäljningen är köp i automater som stod i {snapshot.store.name} köpdagen, exklusive moms
+        {r.sales.vatOre === 0 ? " (ingen moms tas ut)" : ""}.{" "}
+        {custom && r.comparison.period
+          ? `Perioden före (${periodText(r.comparison.period)})`
+          : "Förra månaden"}
+        : {sek(r.comparison.revenueOre)} på {formatInt(r.comparison.orders)} köp.
+      </ReportNote>
+      <ReportNote>Beräkningsversion {snapshot.calcVersion}.</ReportNote>
+    </div>
+  );
+
+  const doc = {
+    title: `Butiksrapport ${month}`,
+    recipient: recipient ?? snapshot.store.name,
+    sender: snapshot.organization.name,
+    period: datePeriod(snapshot.period),
+    generatedAt: new Date(snapshot.generatedAt),
+    timeZone: snapshot.organization.timeZone,
+    layout,
+  };
+
+  // Den korta rapporten: en sida, bara uträkningen och summor.
+  if (!view.details) {
+    return (
+      <ReportDocument {...doc}>
+        <ReportPage className="gap-[7mm]">
+          {title}
+          {kpiRow}
+          {calculation}
+          {weeks}
+          {machines(weeks ? 3 : 2)}
+          {footnotes}
+        </ReportPage>
+      </ReportDocument>
+    );
+  }
+
+  return (
+    <ReportDocument {...doc}>
+      <ReportPage className="gap-[8mm]">
+        {title}
+        {kpiRow}
+        {calculation}
+        {weeks}
       </ReportPage>
 
       <ReportPage className="gap-[8mm]">
@@ -395,26 +478,7 @@ export function StoreReportDocument({
           ) : null}
         </ReportSection>
 
-        <ReportSection
-          as={SECTION_TAG[level]}
-          index={4}
-          eyebrow="Automater"
-          title={`${formatInt(r.machines.length)} ${r.machines.length === 1 ? "automat" : "automater"} i butiken.`}
-          aside={`${formatInt(r.sales.orders)} sålda pack under ${name}.`}
-        >
-          <ReportTable
-            caption="Butikens automater under månaden."
-            columns={machineColumns(
-              custom ? periodDays(snapshot.period) : r.compensation.daysInMonth,
-              {
-                orders: r.sales.orders,
-                revenueOre: r.sales.revenueOre,
-              },
-            )}
-            rows={r.machines}
-            rowKey={(m) => m.machineId}
-          />
-        </ReportSection>
+        {machines(4)}
 
         <ReportSection
           as={SECTION_TAG[level]}
@@ -444,18 +508,7 @@ export function StoreReportDocument({
           </div>
         </ReportSection>
 
-        <div className="mt-auto flex flex-col gap-[1.5mm]">
-          <ReportNote>
-            Försäljningen är köp i automater som stod i {snapshot.store.name} köpdagen, exklusive
-            moms
-            {r.sales.vatOre === 0 ? " (ingen moms tas ut)" : ""}.{" "}
-            {custom && r.comparison.period
-              ? `Perioden före (${periodText(r.comparison.period)})`
-              : "Förra månaden"}
-            : {sek(r.comparison.revenueOre)} på {formatInt(r.comparison.orders)} köp.
-          </ReportNote>
-          <ReportNote>Beräkningsversion {snapshot.calcVersion}.</ReportNote>
-        </div>
+        {footnotes}
       </ReportPage>
     </ReportDocument>
   );

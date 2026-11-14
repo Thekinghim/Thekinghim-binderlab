@@ -203,9 +203,9 @@ export function ReviewPanel({
               compact
               kind="error"
               message={
-                stale.draftOre !== null && stale.nowOre !== null
+                stale.draftOre !== null && stale.nowOre !== null && stale.draftOre !== stale.nowOre
                   ? `Siffrorna har ändrats: ${formatSek(stale.draftOre / 100)} i utkastet, ${formatSek(stale.nowOre / 100)} nu.`
-                  : "Siffrorna har ändrats sedan utkastet skapades."
+                  : "Rapporten har ändrats sedan utkastet skapades."
               }
               detail={canEdit ? "Skapa ny version ovan och godkänn den." : undefined}
             />

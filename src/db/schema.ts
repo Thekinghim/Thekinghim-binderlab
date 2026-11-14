@@ -230,6 +230,11 @@ export const stores = pgTable("stores", {
   /** Plats för ruttordningen (20261104170000_managerpaket_ansvar.sql). Båda eller ingen. */
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
+  /**
+   * "Visa detaljer i rapporten" (20261215000000_rapport_detaljer.sql): butiksrapporten
+   * visar också titlar och service. false = butiken får bara uträkningen.
+   */
+  reportDetails: boolean("report_details").notNull().default(false),
   ...stamps(),
 });
 

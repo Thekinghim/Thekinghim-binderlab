@@ -67,6 +67,7 @@ import {
   headlineOreOf,
   requestOf,
   sameReport,
+  withStoreDetails,
   storeIdOf,
   type ReportSnapshot,
 } from "./snapshot";
@@ -381,7 +382,12 @@ async function getReportTx(tx: Tx, orgId: string, id: string): Promise<ReportDet
   const rows = toArchive(data, false).filter((r) => r.storeId === h.storeId);
   const row = rows.find((r) => r.id === id);
   if (!row) throw new ReportError("Rapporten finns inte.");
-  return { ...row, snapshot: asSnapshot(row.snapshot) };
+  // Butiksrapporten: en godkänd rapport från före valet "Visa detaljer" visas som den
+  // skickades, ett äldre utkast enligt den nya standarden (withStoreDetails).
+  return {
+    ...row,
+    snapshot: withStoreDetails(asSnapshot(row.snapshot), row.approvedAt !== null),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -543,7 +549,10 @@ export async function insertReportTx(
 // Godkännande
 // ---------------------------------------------------------------------------
 
-/** Ett utkast vars siffror inte längre stämmer med en ny uträkning. */
+/**
+ * Ett utkast som inte längre stämmer med en ny uträkning: siffrorna, eller vad rapporten
+ * visar (butikens val "Visa detaljer i rapporten" har ändrats sedan utkastet skapades).
+ */
 export interface StaleDraft {
   /** Butiksrapporten: ersättningen i utkastet och nu (öre); annars null. */
   readonly draftOre: number | null;
@@ -619,7 +628,7 @@ export async function approveReportFor(
     if (report.approvedAt) return;
     if (await staleDraftTx(tx, viewer, report, now)) {
       throw new ReportError(
-        "Siffrorna har ändrats sedan utkastet skapades. Skapa en ny version och godkänn den.",
+        "Rapporten har ändrats sedan utkastet skapades. Skapa en ny version och godkänn den.",
       );
     }
     await tx.insert(s.reportApprovals).values({

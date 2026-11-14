@@ -36,6 +36,16 @@ export {
 } from "./store-report";
 
 export {
+  TITLES_ON_REQUEST,
+  storeDetailsOf,
+  storeHeadline,
+  storeReportView,
+  type StoreKpi,
+  type StoreReportView,
+  type StoreSection,
+} from "./store-view";
+
+export {
   buildAccountantReport,
   findOrderNumberGaps,
   gapsText,
