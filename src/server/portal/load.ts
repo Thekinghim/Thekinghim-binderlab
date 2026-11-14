@@ -27,6 +27,7 @@ import {
   queryPortalFirstSale,
   queryPortalMachines,
   queryPortalReport,
+  queryPortalReportDetails,
   queryPortalReports,
   queryPortalSales,
   type PortalFault,
@@ -41,6 +42,8 @@ export interface PortalOverviewData {
   months: IsoMonth[];
   machinesToday: { machineId: string; code: string; name: string }[];
   hasAgreement: boolean;
+  /** Butikens val "Visa detaljer i rapporten": falskt = inga titlar och inget snittköp. */
+  details: boolean;
 }
 
 export async function loadPortalOverview(
@@ -57,10 +60,12 @@ export async function loadPortalOverview(
     const first = firstPortalMonth(machines, firstSale, today);
     const current = monthOf(today);
     const month = resolvePortalMonth(requestedMonth, first, current);
+    const details = await queryPortalReportDetails(tx, store.storeId);
     const sales = await queryPortalSales(tx, store.storeId, salesWindow(month, first));
     const sources = portalSources(store, sales, agreements, machines);
     return {
-      overview: buildPortalOverview(sources, store.storeId, month, first, today),
+      details,
+      overview: buildPortalOverview(sources, store.storeId, month, first, today, { details }),
       months: monthsBetween(first, current),
       machinesToday: machinesInStoreToday(machines, today),
       hasAgreement: agreements.length > 0,

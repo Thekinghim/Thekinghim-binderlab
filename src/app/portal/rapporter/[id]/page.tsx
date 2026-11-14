@@ -6,7 +6,12 @@ import { PrintButton } from "@/components/report/print-button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt } from "@/lib/format";
-import { assertStoreReportSafe, type StoreReport } from "@/reports";
+import {
+  assertStoreReportSafe,
+  storeDetailsOf,
+  TITLES_ON_REQUEST,
+  type StoreReport,
+} from "@/reports";
 import { isWholeMonth, periodText } from "@/reports/text";
 import { loadPortalReport } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
@@ -29,6 +34,9 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
   if (!detail) notFound();
 
   const report = asStoreReport(detail.report, ctx.store.storeId);
+  // Valet som sparades när rapporten skapades. Portalen visar bara godkända rapporter, så
+  // en äldre rapport utan sparat val visas som den skickades (med titlar).
+  const details = report ? storeDetailsOf(report, true) : false;
   const month = detail.periodStart.slice(0, 7);
 
   return (
@@ -92,11 +100,17 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
               size="xl"
               meta={[
                 { label: "Sålda pack", value: formatInt(report.sales.orders) },
-                {
-                  label: "Snittköp",
-                  value:
-                    report.sales.averageOrderOre === null ? "–" : kr(report.sales.averageOrderOre),
-                },
+                ...(details
+                  ? [
+                      {
+                        label: "Snittköp",
+                        value:
+                          report.sales.averageOrderOre === null
+                            ? "–"
+                            : kr(report.sales.averageOrderOre),
+                      },
+                    ]
+                  : []),
                 { label: "Ersättning", value: kr(report.compensation.totalOre) },
                 { label: "Skapad", value: dateTimeText(detail.generatedAt, ctx.store.timezone) },
               ]}
@@ -114,45 +128,54 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
             hasAgreement={report.compensation.model !== "none"}
           />
 
-          <section className="grid gap-x-8 gap-y-12 border-t border-line py-16 lg:grid-cols-12">
-            <div className="flex min-w-0 flex-col gap-8 lg:col-span-7">
-              <TitlesHeader report={report} />
-              <table className="w-full text-base">
-                <caption className="sr-only">Mest sålda titlar</caption>
-                <thead>
-                  <tr className="border-b border-line-strong">
-                    <th scope="col" className="label h-9 text-left font-normal text-subtle">
-                      Titel
-                    </th>
-                    <th scope="col" className="label h-9 text-right font-normal text-subtle">
-                      Pack
-                    </th>
-                    <th scope="col" className="label h-9 text-right font-normal text-subtle">
-                      Andel
-                    </th>
-                    <th scope="col" className="label h-9 text-right font-normal text-subtle">
-                      Försäljning
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.topTitles.map((t) => (
-                    <tr key={t.titleId} className="h-11 border-b border-line">
-                      <th scope="row" className="pr-4 text-left font-normal text-fg">
-                        {t.name}
+          {details ? (
+            <section className="grid gap-x-8 gap-y-12 border-t border-line py-16 lg:grid-cols-12">
+              <div className="flex min-w-0 flex-col gap-8 lg:col-span-7">
+                <TitlesHeader report={report} />
+                <table className="w-full text-base">
+                  <caption className="sr-only">Mest sålda titlar</caption>
+                  <thead>
+                    <tr className="border-b border-line-strong">
+                      <th scope="col" className="label h-9 text-left font-normal text-subtle">
+                        Titel
                       </th>
-                      <td className="tnum text-right text-muted">{formatInt(t.orders)}</td>
-                      <td className="tnum text-right text-muted">{pct(t.shareBp)}</td>
-                      <td className="tnum text-right text-fg">{kr(t.revenueOre)}</td>
+                      <th scope="col" className="label h-9 text-right font-normal text-subtle">
+                        Pack
+                      </th>
+                      <th scope="col" className="label h-9 text-right font-normal text-subtle">
+                        Andel
+                      </th>
+                      <th scope="col" className="label h-9 text-right font-normal text-subtle">
+                        Försäljning
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex min-w-0 flex-col gap-8 lg:col-span-5">
-              <WeeksBlock report={report} />
-            </div>
-          </section>
+                  </thead>
+                  <tbody>
+                    {report.topTitles.map((t) => (
+                      <tr key={t.titleId} className="h-11 border-b border-line">
+                        <th scope="row" className="pr-4 text-left font-normal text-fg">
+                          {t.name}
+                        </th>
+                        <td className="tnum text-right text-muted">{formatInt(t.orders)}</td>
+                        <td className="tnum text-right text-muted">{pct(t.shareBp)}</td>
+                        <td className="tnum text-right text-fg">{kr(t.revenueOre)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex min-w-0 flex-col gap-8 lg:col-span-5">
+                <WeeksBlock report={report} />
+              </div>
+            </section>
+          ) : (
+            <>
+              <section className="flex max-w-3xl min-w-0 flex-col gap-8 border-t border-line py-16">
+                <WeeksBlock report={report} />
+              </section>
+              <p className="border-t border-line pt-6 text-base text-muted">{TITLES_ON_REQUEST}</p>
+            </>
+          )}
         </article>
       )}
     </div>

@@ -255,9 +255,17 @@ export function buildPortalOverview(
   month: IsoMonth,
   first: IsoMonth,
   today: IsoDate,
+  options: {
+    /** Butikens val "Visa detaljer i rapporten". Standard falskt: inga titlar. */
+    readonly details?: boolean;
+  } = {},
 ): PortalOverview {
   // Portalen ser inga inköpspriser: en vinstandel visas som "i månadsrapporten".
-  const report = buildStoreReport(sources, storeId, month, { topTitles: 8, pendingSplit: true });
+  const report = buildStoreReport(sources, storeId, month, {
+    topTitles: 8,
+    pendingSplit: true,
+    details: options.details === true,
+  });
   assertStoreReportSafe(report);
   const current = monthOf(today);
   const trendStart = maxMonth(first, addMonths(month, -11));

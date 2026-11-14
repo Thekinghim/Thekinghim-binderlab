@@ -41,6 +41,7 @@ import {
   planNewAgreement,
   recipientIdSchema,
   recipientSchema,
+  reportDetailsSchema,
   storeSchema,
   updateAgreementSchema,
   updateRecipientSchema,
@@ -90,6 +91,7 @@ export async function loadStoresFor(viewer: Viewer): Promise<StoreDetail[]> {
         archivedAt: s.stores.archivedAt,
         lat: s.stores.latitude,
         lng: s.stores.longitude,
+        reportDetails: s.stores.reportDetails,
       })
       .from(s.stores)
       .where(eq(s.stores.organizationId, orgId))
@@ -398,6 +400,37 @@ export async function setStoreArchivedFor(viewer: Viewer, raw: unknown): Promise
     });
   } catch (error) {
     return fail(error, "setStoreArchived");
+  }
+}
+
+/**
+ * "Visa detaljer i rapporten" för en butik. Av (standard): butiksrapporten visar bara
+ * uträkningen. På: också titlar och service. Valet gäller rapporter som skapas härefter;
+ * en godkänd eller skickad rapport ändras inte (valet sparas i rapporten när den räknas),
+ * och ett utkast blir inaktuellt och godkänns som ny version. Bara ägare och admin.
+ */
+export async function setStoreReportDetailsFor(
+  viewer: Viewer,
+  raw: unknown,
+): Promise<ActionResult> {
+  const denied = await guard(viewer);
+  if (denied) return denied;
+  const parsed = reportDetailsSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const { storeId, details } = parsed.data;
+  const orgId = viewer.organization.id;
+  try {
+    return await withUserDbFor(viewer.user, async (tx): Promise<ActionResult> => {
+      const rows = await tx
+        .update(s.stores)
+        .set({ reportDetails: details })
+        .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, storeId)))
+        .returning({ id: s.stores.id });
+      if (rows.length === 0) return { ok: false, error: "Butiken finns inte." };
+      return { ok: true, data: undefined };
+    });
+  } catch (error) {
+    return fail(error, "setStoreReportDetails");
   }
 }
 

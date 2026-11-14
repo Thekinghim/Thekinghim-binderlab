@@ -2,14 +2,23 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PrintButton } from "@/components/report/print-button";
 import { reportMeta } from "./data";
-import { EXAMPLE_PAGE_COUNT, ExampleReport } from "./example-report";
+import { EXAMPLE_DETAIL_PAGE_COUNT, EXAMPLE_PAGE_COUNT, ExampleReport } from "./example-report";
 
 export const metadata: Metadata = {
   title: reportMeta.title,
-  description: `Exempelrapport till ${reportMeta.recipient}. ${EXAMPLE_PAGE_COUNT} sidor A4.`,
+  description: `Exempelrapport till ${reportMeta.recipient}. ${EXAMPLE_PAGE_COUNT} sida A4.`,
 };
 
-export default function ExampleReportPage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+/**
+ * Exempelrapporten. Standard är den korta rapporten som butiken får (en sida). Med
+ * ?detaljer=1 visas rapporten med "Visa detaljer i rapporten" påslaget (tre sidor).
+ */
+export default async function ExampleReportPage({ searchParams }: { searchParams: SearchParams }) {
+  const sp = await searchParams;
+  const details = (Array.isArray(sp.detaljer) ? sp.detaljer[0] : sp.detaljer) === "1";
+  const pages = details ? EXAMPLE_DETAIL_PAGE_COUNT : EXAMPLE_PAGE_COUNT;
   return (
     <div className="bl-desk min-h-dvh">
       <div data-print="hide" className="sticky top-0 z-10 border-b border-line bg-bg">
@@ -28,15 +37,23 @@ export default function ExampleReportPage() {
               Exempelrapport
               <span className="hidden sm:inline">
                 {" "}
-                · {EXAMPLE_PAGE_COUNT} sidor · A4 · svartvit
+                · {pages} {pages === 1 ? "sida" : "sidor"} · A4 · svartvit
               </span>
             </span>
           </nav>
-          <PrintButton />
+          <div className="flex items-center gap-3">
+            <Link
+              href={details ? "/rapport/exempel" : "/rapport/exempel?detaljer=1"}
+              className="rounded-xs text-sm text-muted underline-offset-4 transition-colors duration-fast ease-instrument hover:text-fg hover:underline"
+            >
+              {details ? "Utan detaljer" : "Med detaljer"}
+            </Link>
+            <PrintButton />
+          </div>
         </div>
       </div>
       <main className="px-4 py-6 md:px-8 md:py-12 print:p-0">
-        <ExampleReport />
+        <ExampleReport details={details} />
       </main>
     </div>
   );

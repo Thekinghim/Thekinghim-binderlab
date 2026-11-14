@@ -24,15 +24,16 @@ function first(v: string | string[] | undefined): string | undefined {
 }
 
 /**
- * Butikens översikt för en månad: försäljning, utveckling, mest sålda titlar,
- * ersättning steg för steg och automaterna. Alla siffror kommer från
+ * Butikens översikt för en månad: försäljning, utveckling, ersättning steg för steg och
+ * automaterna. Mest sålda titlar och snittköp visas bara när operatören har slagit på
+ * "Visa detaljer i rapporten" för butiken (samma val som månadsrapporten följer). Alla siffror kommer från
  * buildStoreReport (@/reports), samma beräkning som månadsrapporten, och varje
  * siffra har sitt underlag ("Så räknas det").
  */
 export default async function PortalOverviewPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await requirePortalContext();
   const sp = await searchParams;
-  const { overview, months, machinesToday, hasAgreement } = await loadPortalOverview(
+  const { overview, months, machinesToday, hasAgreement, details } = await loadPortalOverview(
     ctx,
     first(sp.manad),
   );
@@ -72,13 +73,17 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
       delta: partial || comparison.orders === 0 ? null : comparison.ordersDiff,
       trend: trend.map((t) => t.orders),
     },
-    {
-      id: "average",
-      label: "Snittköp",
-      value: sales.averageOrderOre,
-      delta: null,
-      trend: [],
-    },
+    ...(details
+      ? [
+          {
+            id: "average" as const,
+            label: "Snittköp",
+            value: sales.averageOrderOre,
+            delta: null,
+            trend: [],
+          },
+        ]
+      : []),
     ...(compensation.pending
       ? []
       : [
@@ -136,43 +141,53 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
 
       <TrendSection trend={trend} month={month} />
 
-      <section
-        className="grid gap-x-8 gap-y-12 border-t border-line py-16 lg:grid-cols-12"
-        aria-label="Mest sålda och veckor"
-      >
-        <div className="flex min-w-0 flex-col gap-8 lg:col-span-7">
-          <TitlesHeader report={report} />
-          {report.topTitles.length === 0 ? (
-            <StateMessage kind="empty" message={`Inga sålda pack i ${monthName} ännu.`} />
-          ) : (
-            <>
-              <RankChart
-                data={report.topTitles.map((t) => ({
-                  label: t.name,
-                  name: t.name,
-                  value: t.revenueOre / 100,
-                  note: `${formatInt(t.orders)} st · ${pct(t.shareBp)}`,
-                }))}
-                labelHeading="Titel"
-                valueHeading="Försäljning"
-                summary={`Mest sålda titlar i ${monthName}: ${report.topTitles
-                  .slice(0, 3)
-                  .map((t) => `${t.name} ${kr(t.revenueOre)}`)
-                  .join(", ")}.`}
-              />
-              {report.topTitles[0] ? (
-                <EvidenceDetails
-                  evidence={report.topTitles[0].evidence}
-                  summary={`Så räknas andelen för ${report.topTitles[0].name}`}
+      {details ? (
+        <section
+          className="grid gap-x-8 gap-y-12 border-t border-line py-16 lg:grid-cols-12"
+          aria-label="Mest sålda och veckor"
+        >
+          <div className="flex min-w-0 flex-col gap-8 lg:col-span-7">
+            <TitlesHeader report={report} />
+            {report.topTitles.length === 0 ? (
+              <StateMessage kind="empty" message={`Inga sålda pack i ${monthName} ännu.`} />
+            ) : (
+              <>
+                <RankChart
+                  data={report.topTitles.map((t) => ({
+                    label: t.name,
+                    name: t.name,
+                    value: t.revenueOre / 100,
+                    note: `${formatInt(t.orders)} st · ${pct(t.shareBp)}`,
+                  }))}
+                  labelHeading="Titel"
+                  valueHeading="Försäljning"
+                  summary={`Mest sålda titlar i ${monthName}: ${report.topTitles
+                    .slice(0, 3)
+                    .map((t) => `${t.name} ${kr(t.revenueOre)}`)
+                    .join(", ")}.`}
                 />
-              ) : null}
-            </>
-          )}
-        </div>
-        <div className="flex min-w-0 flex-col gap-8 lg:col-span-5">
+                {report.topTitles[0] ? (
+                  <EvidenceDetails
+                    evidence={report.topTitles[0].evidence}
+                    summary={`Så räknas andelen för ${report.topTitles[0].name}`}
+                  />
+                ) : null}
+              </>
+            )}
+          </div>
+          <div className="flex min-w-0 flex-col gap-8 lg:col-span-5">
+            <WeeksBlock report={report} today={partial ? overview.today : undefined} />
+          </div>
+        </section>
+      ) : (
+        // Utan detaljer: bara veckorna (summor), inga titlar.
+        <section
+          className="flex max-w-3xl min-w-0 flex-col gap-8 border-t border-line py-16"
+          aria-label="Försäljning per vecka"
+        >
           <WeeksBlock report={report} today={partial ? overview.today : undefined} />
-        </div>
-      </section>
+        </section>
+      )}
 
       <CompensationSection report={report} hasAgreement={hasAgreement} />
 

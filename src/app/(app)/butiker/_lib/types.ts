@@ -25,6 +25,11 @@ export interface StoreDetail {
   readonly archived: boolean;
   /** Plats för ruttordningen på besöksplanen, eller null (20261104170000_managerpaket_ansvar). */
   readonly location?: { readonly lat: number; readonly lng: number } | null;
+  /**
+   * "Visa detaljer i rapporten" (20261215000000_rapport_detaljer): butiksrapporten visar
+   * också titlar och service. Saknas eller falskt = butiken får bara uträkningen.
+   */
+  readonly reportDetails?: boolean;
 }
 
 /** Ett avtal (store_agreements) med färdiga texter. */

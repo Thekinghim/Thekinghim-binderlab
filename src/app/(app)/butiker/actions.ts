@@ -24,6 +24,7 @@ import {
   createStoreRecipientFor,
   deleteStoreRecipientFor,
   setStoreArchivedFor,
+  setStoreReportDetailsFor,
   updateAgreementFor,
   updateStoreFor,
   updateStoreRecipientFor,
@@ -86,6 +87,17 @@ export async function setStoreArchived(input: {
   archived: boolean;
 }): Promise<ActionResult> {
   return run((v) => setStoreArchivedFor(v, input));
+}
+
+/**
+ * "Visa detaljer i rapporten" för butiken: på = rapporten visar också titlar och service,
+ * av = butiken får bara uträkningen.
+ */
+export async function setStoreReportDetails(input: {
+  storeId: string;
+  details: boolean;
+}): Promise<ActionResult> {
+  return run((v) => setStoreReportDetailsFor(v, input));
 }
 
 /**

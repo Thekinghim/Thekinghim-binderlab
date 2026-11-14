@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
-  EXAMPLE_PAGE_COUNT,
+  EXAMPLE_DETAIL_PAGE_COUNT,
   ExampleReport,
   RevenueChart,
 } from "@/app/rapport/exempel/example-report";
@@ -197,10 +197,11 @@ export function PrintSection({ index }: { index: number }) {
       index={index}
       eyebrow="Utskrift"
       title={`Månadsrapport till ${machine.placement.split(", ").pop() ?? ""}: ${formatSek(reportTotals.revenue)} i oktober.`}
-      aside={`Sida 1 och 2 av ${EXAMPLE_PAGE_COUNT}. Varje markering bärs av form och klarar svartvit laser.`}
+      aside={`Sida 1 och 2 av ${EXAMPLE_DETAIL_PAGE_COUNT}. Varje markering bärs av form och klarar svartvit laser.`}
     >
       <figure className="bl-desk m-0 rounded-md p-3 sm:p-5 md:p-6 lg:col-span-9">
-        <ExampleReport headingLevel={3} layout="spread" visiblePages={[1, 2]} />
+        {/* Med detaljer: arkets alla byggblock. Butiken får som standard den korta rapporten. */}
+        <ExampleReport headingLevel={3} layout="spread" visiblePages={[1, 2]} details />
         <figcaption className="mt-3 hidden gap-4 sm:grid sm:grid-cols-2 md:gap-6">
           {/* text-muted: text-subtle når bara 4,3:1 mot skrivbordet i ljust läge. */}
           <span className="label text-muted">

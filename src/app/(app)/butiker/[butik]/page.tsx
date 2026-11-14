@@ -15,6 +15,7 @@ import { StorePortalAccess } from "@/app/portal/_components/store-portal-access"
 
 import { AddAgreementButton } from "../_components/agreement-dialogs";
 import { AddRecipientButton } from "../_components/recipient-dialogs";
+import { ReportDetailsToggle } from "../_components/report-details-toggle";
 import { StoreRevenueChart } from "../_components/charts";
 import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/detail-tables";
 import { StoreKpis } from "../_components/kpis";
@@ -563,6 +564,13 @@ function ContactSection({ data }: { data: StoreDetailData }) {
                 />
               </div>
             ) : null}
+            {/* Läsaren ser valet men kan inte ändra det (bara ägare och admin). */}
+            <ReportDetailsToggle
+              storeId={store.id}
+              storeName={store.name}
+              initial={store.reportDetails === true}
+              canEdit={ctx.canEdit && !store.archived}
+            />
           </div>
         </Sub>
       </div>

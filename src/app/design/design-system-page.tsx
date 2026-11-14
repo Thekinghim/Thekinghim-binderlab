@@ -6,7 +6,7 @@ import { SYMBOL_PARTS } from "@/components/brand/wordmark";
 import { AppShell } from "@/components/shell/app-shell";
 import { parsePeriod, parseScope } from "@/components/shell/period-state";
 import { RECIPIENT_KINDS } from "@/emails/report-content";
-import { EXAMPLE_PAGE_COUNT } from "@/app/rapport/exempel/example-report";
+import { EXAMPLE_DETAIL_PAGE_COUNT } from "@/app/rapport/exempel/example-report";
 import { NBSP, formatDate, formatInt } from "@/lib/format";
 import { buildModel } from "./model";
 import {
@@ -95,7 +95,7 @@ function Specimen({ tokens, counts }: { tokens: ThemeTokens; counts: Counts }) {
     {
       id: "utskrift",
       name: "Utskrift",
-      count: `${EXAMPLE_PAGE_COUNT} sidor A4`,
+      count: `${EXAMPLE_DETAIL_PAGE_COUNT} sidor A4`,
       render: (i) => <PrintSection index={i} />,
     },
     {

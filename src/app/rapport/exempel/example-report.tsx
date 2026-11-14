@@ -34,12 +34,15 @@ import {
   formatTime,
   formatWeekdayDay,
 } from "@/lib/format";
+import { weekOf, type IsoDate } from "@/domain";
+import { TITLES_ON_REQUEST } from "@/reports";
 import {
   MONTHLY_RENT,
   OPEN_HOURS,
   RENT_SHARE,
   availability,
   bestDay,
+  commission,
   commissionBase,
   days,
   incidents,
@@ -364,6 +367,164 @@ function SummaryPage({ level }: { level: HeadingLevel }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Den korta rapporten (standard): det butiken får utan "Visa detaljer i rapporten"
+// ---------------------------------------------------------------------------
+
+/** Försäljning per ISO-vecka (de dagar av veckan som ligger i oktober). */
+const weekly = (() => {
+  const out: { week: number; value: number }[] = [];
+  days.forEach((d, i) => {
+    const iso =
+      `${d.date.getFullYear()}-${String(d.date.getMonth() + 1).padStart(2, "0")}-${String(d.date.getDate()).padStart(2, "0")}` as IsoDate;
+    const week = weekOf(iso).week;
+    const last = out[out.length - 1];
+    if (last && last.week === week) last.value += revenueByDay[i] ?? 0;
+    else out.push({ week, value: revenueByDay[i] ?? 0 });
+  });
+  return out;
+})();
+const bestWeek = weekly.reduce((b, w) => (w.value > b.value ? w : b), weekly[0]!);
+
+type CalcRow = { label: string; calc: string; amount: number };
+const calcRows: CalcRow[] = [
+  {
+    label: `Provision ${formatPercent(RENT_SHARE, 0)}`,
+    calc: `${formatPercent(RENT_SHARE, 0)} av ${formatSek(commissionBase)}`,
+    amount: commission,
+  },
+  { label: "Hyra", calc: "per månad", amount: MONTHLY_RENT },
+];
+const calcColumns: ReportColumn<CalcRow>[] = [
+  { key: "label", header: "Post", width: "30%", render: (r) => r.label, total: "Totalt" },
+  {
+    key: "calc",
+    header: "Uträkning",
+    render: (r) => <span className="text-muted">{r.calc}</span>,
+  },
+  {
+    key: "amount",
+    header: "Belopp",
+    numeric: true,
+    width: "20%",
+    render: (r) => formatSek(r.amount),
+    total: formatSek(rent),
+  },
+];
+
+type MachineRow = { id: string; name: string; days: string; units: number; revenue: number };
+const machineColumns: ReportColumn<MachineRow>[] = [
+  { key: "name", header: "Automat", width: "40%", render: (m) => m.name },
+  { key: "days", header: "Dagar i butiken", numeric: true, render: (m) => m.days },
+  { key: "units", header: "Sålda pack", numeric: true, render: (m) => formatInt(m.units) },
+  { key: "revenue", header: "Försäljning", numeric: true, render: (m) => formatSek(m.revenue) },
+];
+
+/**
+ * Standardrapporten till butiken, en sida: beloppet i rubriken, uträkningen (summor),
+ * försäljning per vecka och automaten. Inga titlar, inget snittköp och ingen service.
+ */
+function ShortPage({ level }: { level: HeadingLevel }) {
+  return (
+    <ReportPage className="gap-[7mm]">
+      <ReportTitle
+        as={TITLE_TAG[level]}
+        eyebrow={`${machine.id} · ${machine.placement}`}
+        title={`Er ersättning för oktober: ${formatSek(rent)}.`}
+      />
+
+      <ReportKpiRow
+        items={[
+          {
+            label: "Försäljning",
+            value: formatInt(totals.revenue),
+            unit: "kr",
+            delta: formatDelta(totals.revenue / totals.revenuePrev - 1),
+            context: "mot sep.",
+          },
+          {
+            label: "Sålda pack",
+            value: formatInt(totals.units),
+            delta: formatDelta(totals.units / totals.unitsPrev - 1),
+            context: "mot sep.",
+          },
+          {
+            label: "Er ersättning",
+            value: formatInt(rent),
+            unit: "kr",
+            context: "provision + hyra",
+          },
+        ]}
+      />
+
+      <ReportSection
+        as={SECTION_TAG[level]}
+        index={1}
+        eyebrow="Ersättning"
+        title="Så räknas ersättningen."
+        aside={`Provision ${formatPercent(RENT_SHARE, 0)} och hyra ${formatSek(MONTHLY_RENT)} per månad.`}
+      >
+        <ReportTable
+          caption="Ersättningen för oktober 2026 uträknad steg för steg"
+          columns={calcColumns}
+          rows={calcRows}
+          rowKey={(r) => r.label}
+        />
+      </ReportSection>
+
+      <ReportSection
+        as={SECTION_TAG[level]}
+        index={2}
+        eyebrow="Försäljning per vecka"
+        title="Försäljning per vecka."
+        aside={`Mest i vecka ${bestWeek.week}: ${formatSek(bestWeek.value)}.`}
+      >
+        <ReportBarChart
+          data={weekly.map((w) => ({ label: `v. ${w.week}`, value: w.value }))}
+          height={130}
+          format={formatSek}
+          formatAxis={formatSekAxis}
+          summary={`Försäljning per vecka i oktober 2026: ${weekly
+            .map((w) => `vecka ${w.week} ${formatSek(w.value)}`)
+            .join(", ")}.`}
+        />
+      </ReportSection>
+
+      <ReportSection
+        as={SECTION_TAG[level]}
+        index={3}
+        eyebrow="Automater"
+        title="1 automat i butiken."
+        aside={`${formatInt(totals.units)} sålda pack under oktober.`}
+      >
+        <ReportTable
+          caption="Butikens automater under oktober 2026"
+          columns={machineColumns}
+          rows={[
+            {
+              id: machine.id,
+              name: `${machine.id} ${machine.placement.split(", ")[0] ?? ""}`,
+              days: `${days.length} av ${days.length}`,
+              units: totals.units,
+              revenue: totals.revenue,
+            },
+          ]}
+          rowKey={(m) => m.id}
+        />
+      </ReportSection>
+
+      <div className="mt-auto flex flex-col gap-[1.5mm]">
+        <p className="border-t border-line pt-[2.5mm] text-[12px] leading-[16px] text-fg">
+          {TITLES_ON_REQUEST}
+        </p>
+        <ReportNote>
+          Källa: Awish-ordrar för {machine.id}. Moms och kortavgift är 0 enligt inställningarna.
+        </ReportNote>
+      </div>
+    </ReportPage>
+  );
+}
+
 function AssortmentPage({ level }: { level: HeadingLevel }) {
   const sorted = [...products].sort((a, b) => b.revenue - a.revenue);
   return (
@@ -522,16 +683,38 @@ type ExampleReportProps = {
   tone?: ReportTone;
   visiblePages?: ReadonlyArray<number>;
   className?: string;
+  /**
+   * "Visa detaljer i rapporten": tre sidor med sortiment och drift, som designsystemets
+   * referens för arkets byggblock. Standard falskt: den korta rapporten på en sida.
+   */
+  details?: boolean;
 };
 
-/** "Månadsrapport oktober 2026" till Nordstan (BL-001). Tre A4-sidor. */
+/**
+ * "Månadsrapport oktober 2026" till Nordstan (BL-001). Standard är den korta rapporten
+ * (en A4-sida, det butiken får); med `details` tre sidor.
+ */
 export function ExampleReport({
   headingLevel = 1,
   layout,
   tone,
   visiblePages,
   className,
+  details = false,
 }: ExampleReportProps) {
+  if (!details) {
+    return (
+      <ReportDocument
+        {...reportMeta}
+        layout={layout}
+        tone={tone}
+        visiblePages={visiblePages}
+        className={className}
+      >
+        <ShortPage level={headingLevel} />
+      </ReportDocument>
+    );
+  }
   return (
     <ReportDocument
       {...reportMeta}
@@ -547,4 +730,6 @@ export function ExampleReport({
   );
 }
 
-export const EXAMPLE_PAGE_COUNT = 3;
+/** Sidor i den korta rapporten (standard) och med detaljer. */
+export const EXAMPLE_PAGE_COUNT = 1;
+export const EXAMPLE_DETAIL_PAGE_COUNT = 3;

@@ -44,6 +44,18 @@ export async function queryPortalStores(tx: Tx): Promise<PortalStore[]> {
   }));
 }
 
+/**
+ * Butikens val "Visa detaljer i rapporten" (portal_report_details): falskt = portalen visar
+ * inga titlar, och portal_sales lämnar då inte heller ut dem.
+ */
+export async function queryPortalReportDetails(tx: Tx, storeId: string): Promise<boolean> {
+  const result = await rows(
+    tx,
+    sql`select public.portal_report_details(${storeId}::uuid) as details`,
+  );
+  return result[0]?.details === true;
+}
+
 /** Butikens försäljning i perioden. */
 export async function queryPortalSales(
   tx: Tx,

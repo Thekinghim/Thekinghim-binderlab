@@ -119,6 +119,9 @@ export type UpdateStoreInput = z.infer<typeof updateStoreSchema>;
 
 export const archiveStoreSchema = z.object({ storeId: uuid, archived: z.boolean() });
 
+/** "Visa detaljer i rapporten" på eller av för en butik. */
+export const reportDetailsSchema = z.object({ storeId: uuid, details: z.boolean() });
+
 // ---------------------------------------------------------------------------
 // Ersättning: provision i procent och hyra i kronor, som fälten visar dem
 // ---------------------------------------------------------------------------
