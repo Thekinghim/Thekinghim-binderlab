@@ -36,6 +36,17 @@ läses när rapporten skapas och sparas i den: ändras det efteråt står godkä
 `20261215000000_rapport_detaljer.sql` gäller det alla utkast som redan låg och väntade: skapa ny version och
 godkänn den. Vill en butik ha underlaget per titel: slå på valet, skapa ny version och skicka den.
 
+**Rapporter från före den korta rapporten** (skapade före `20261215000000_rapport_detaljer.sql`, utan sparat val i
+`data_snapshot.report.details`). De visas korta, också godkända, och deras sparade PDF (gamla mallen) används inte:
+`/rapport/[id]/fil/pdf` skapar en ny PDF vid varje hämtning (headless Chromium, samma väg som första hämtningen av
+en ny rapport, 60 s tidsgräns) och sparar den inte. Filen i bucketen `reports` och raden i `report_files` ligger
+kvar orörda; de kan inte bytas ut (lagringen saknar regel för uppdatering, `report_files` är skriv-en-gång och
+`reports.storage_path` är låst). Rapporter visar "Rapporten har den gamla mallen." för en sådan rapport: tryck
+**Dela** (dela-läget) eller **Skapa ny version** och godkänn. Den nya versionen har valet sparat och får sin egen
+korta PDF vid godkännandet. Ingen migrering och ingen ändring av data behövs. Kan PDF:en inte skapas (Chromium
+startar inte) visas utskriftssidan, som också är kort. Bara en äldre rapport med ett utskick i `report_deliveries`
+visas med detaljer och sin sparade PDF.
+
 Kontrollera en gång i veckan (fem minuter):
 
 1. **Drift → Maskinhälsa → Larm**: "Senaste körning" ska vara högst ett dygn gammal (larmjobbet

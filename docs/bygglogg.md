@@ -162,3 +162,23 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   sektionen Drift och service försvinner och omnumreringen i `email-cleanup.ts` aldrig träffade (mallen skriver
   hårda mellanslag runt snedstrecket). Butiksmejlet numreras nu om; delägarmejlet har samma lucka sedan tidigare och
   är lämnat orört.
+
+## 15 nov. – äldre butiksrapporter: aldrig den gamla mallen utan butikens val
+
+- Felet: en butiksrapport från före den korta rapporten (inget sparat val) visades med detaljer så fort den var
+  godkänd, och dess sparade PDF (gamla mallen, två sidor eller fler) lämnades ut av PDF-knappen, av Dela på
+  Rapporter (som hämtar `/rapport/[id]/fil/pdf`) och av portalens "Ladda ned PDF". Förhandsvisningen på Rapporter
+  var kort, så sidan sa en sak och filen en annan.
+- Ny regel (`storeDetailsOf`, `isLegacyUnsent` i `src/reports/store-view.ts`): en rapport utan sparat val visas kort
+  överallt. Bara en som faktiskt har skickats (ett genomfört utskick i `report_deliveries`, också "Ja, skickad")
+  står kvar som den skickades. En rapport med sparat val följer det, som förut. Inget skrivs i `data_snapshot`.
+- Den sparade PDF:en används inte för en äldre rapport som inte är skickad (`ensurePdfFor`): en ny skapas vid varje
+  hämtning och sparas inte, eftersom en sparad fil inte kan bytas ut. Läsaren får den också.
+- En äldre rapport kan inte godkännas, skickas eller markeras som skickad (annars skulle den byta utseende när den
+  blev skickad). Rapporter visar "Rapporten har den gamla mallen."; Dela och "Skapa ny version" gör en ny kort
+  rapport, vars PDF sparas vid godkännandet.
+- Portalen: äldre rapporter visas korta, "Ladda ned PDF" visas inte för dem och `/portal/rapporter/[id]/pdf` skickar
+  butiken till rapportens sida i stället för den gamla filen. Portalen vet inte om en rapport har skickats
+  (`portal_report` lämnar inte ut utskicken), så där visas också en äldre skickad rapport kort.
+- Ingen migrering. Tester: `store-view.test.ts`, `snapshot.test.ts`, `model.test.ts`, portalens `pdf/route.test.ts`,
+  `test/db/rapport-detaljer.test.ts` och `e2e/05-rapportutskick` (äldre godkänd rapport med sparad gammal PDF).

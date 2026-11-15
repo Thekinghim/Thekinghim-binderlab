@@ -46,9 +46,14 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
     den butikens rapport visar också titlarna och service (påfyllningsbesök, flest köp, snittköp), som förut. Sidan,
     PDF:en, mejlet, förhandsvisningen på Rapporter och butiksportalen följer samma val.
   - **Valet sparas i rapporten när den skapas.** En godkänd eller skickad rapport ändras inte när valet ändras. Ett
-    utkast blir gammalt ("Rapporten har ändrats sedan utkastet skapades.") och godkänns som ny version. Rapporter
-    från före valet fanns: godkända och skickade visas som de skickades (med detaljer), utkast enligt den nya
-    standarden (skapa ny version för att godkänna).
+    utkast blir gammalt ("Rapporten har ändrats sedan utkastet skapades.") och godkänns som ny version.
+  - **Rapporter från före den korta rapporten** (inget sparat val) visas korta överallt: på skärmen, i PDF:en, i
+    mejlet och i portalen, också när de är godkända. Den sparade PDF:en från förr (gamla mallen, med titlar och
+    service) lämnas inte ut: PDF-knappen ger en ny kort PDF varje gång, och portalen visar rapportens sida i
+    stället för filen. En sådan rapport kan inte godkännas eller skickas ("Rapporten har den gamla mallen."):
+    **Skapa ny version**, eller **Dela** i dela-läget, gör en ny kort rapport som godkänns och skickas. Bara en
+    äldre rapport som faktiskt har skickats (ett utskick eller "Ja, skickad") står kvar som den skickades, med
+    detaljer och sin sparade PDF, på Rapporter. Portalen visar den också kort.
 - **Ekonomi och avtal:** avstämning av leverantörens utbetalningar mot försäljningen, verifikationer, kassaflöde, fasta
   kostnader, avtal med påminnelse före sista uppsägningsdag.
 - **Enhetsekonomi och expansion:** vinst per automat och dag, återbetalningstid, och uppskattning för en ny plats från
