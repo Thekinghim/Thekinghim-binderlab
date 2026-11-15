@@ -351,3 +351,16 @@ export function machinesInStoreToday(
   }
   return [...out.values()].sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
 }
+
+/**
+ * Butiksrapport utan sparat val "Visa detaljer" (ögonblicksbild från före valet fanns).
+ * Portalen visar den kort och lämnar inte ut dess sparade PDF, som har den gamla mallen.
+ */
+export function isLegacyPortalReport(report: unknown): boolean {
+  return (
+    typeof report === "object" &&
+    report !== null &&
+    (report as { kind?: unknown }).kind === "store" &&
+    (report as { details?: unknown }).details === undefined
+  );
+}

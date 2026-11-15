@@ -5,6 +5,7 @@ import { buildStoreReport } from "@/reports";
 
 import { FAULT_KINDS, faultStatus, isFaultKind } from "./faults";
 import {
+  isLegacyPortalReport,
   buildPortalOverview,
   firstPortalMonth,
   machinesInStoreToday,
@@ -225,5 +226,22 @@ describe("rollen store i skalet", () => {
     expect(shellRoutes.some((r) => r.roles.includes("store"))).toBe(false);
     expect(homeHref("store")).toBe("/portal");
     expect(roleLabel.store).toBe("Butik");
+  });
+});
+
+describe("isLegacyPortalReport: rapporter från före den korta rapporten", () => {
+  it("en butiksrapport utan sparat val är äldre", () => {
+    expect(isLegacyPortalReport({ kind: "store", sales: {} })).toBe(true);
+  });
+
+  it("en rapport med sparat val är det inte, av eller på", () => {
+    expect(isLegacyPortalReport({ kind: "store", details: false })).toBe(false);
+    expect(isLegacyPortalReport({ kind: "store", details: true })).toBe(false);
+  });
+
+  it("annat innehåll räknas inte som en äldre butiksrapport", () => {
+    for (const value of [null, undefined, "x", 1, {}, { kind: "partner" }]) {
+      expect(isLegacyPortalReport(value)).toBe(false);
+    }
   });
 });

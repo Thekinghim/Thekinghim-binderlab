@@ -83,9 +83,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
   // Ett gammalt utkast går inte att godkänna, och en äldre rapport (gamla mallen) skickas
   // inte: Dela skapar en ny version i stället.
   const shareable =
-    data.current &&
-    !data.current.legacy &&
-    !(data.current.status === "draft" && data.currentStale)
+    data.current && !data.current.legacy && !(data.current.status === "draft" && data.currentStale)
       ? data.current
       : null;
 
@@ -276,12 +274,12 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
                     : data.current.legacy
                       ? "Rapporten har den gamla mallen."
                       : data.current.status === "approved"
-                      ? shareMode
-                        ? "Godkänd, redo att dela."
-                        : "Godkänd, redo att skicka."
-                      : data.currentStale
-                        ? "Utkastet är gammalt."
-                        : "Utkastet väntar på granskning."
+                        ? shareMode
+                          ? "Godkänd, redo att dela."
+                          : "Godkänd, redo att skicka."
+                        : data.currentStale
+                          ? "Utkastet är gammalt."
+                          : "Utkastet väntar på granskning."
                 }
                 aside={shareMode ? undefined : `${formatInt(data.eligible.length)} mottagare.`}
               />

@@ -1,4 +1,5 @@
 import { loadPortalReport } from "@/server/portal/load";
+import { isLegacyPortalReport } from "@/server/portal/model";
 import { getPortalContext } from "@/server/portal/session";
 import { reportStorageStatus, userReportStore } from "@/server/reports/storage";
 
@@ -50,14 +51,4 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       "x-content-type-options": "nosniff",
     },
   });
-}
-
-/** Butiksrapport utan sparat val "Visa detaljer" (ögonblicksbild från före valet fanns). */
-function isLegacyPortalReport(report: unknown): boolean {
-  return (
-    typeof report === "object" &&
-    report !== null &&
-    (report as { kind?: unknown }).kind === "store" &&
-    (report as { details?: unknown }).details === undefined
-  );
 }

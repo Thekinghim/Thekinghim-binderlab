@@ -9,19 +9,28 @@
  * 2. Valet läses när rapporten räknas och sparas i ögonblicksbilden.
  * 3. Regeln för sparade rapporter: en godkänd eller skickad rapport ändras inte när valet
  *    ändras; ett utkast blir inaktuellt och godkänns som ny version. Rapporter från före
- *    valet fanns: godkända visas som de skickades, utkast enligt den nya standarden.
+ *    valet fanns (inget sparat val) visas korta, också godkända; deras sparade PDF (gamla
+ *    mallen) lämnas inte ut, och de skickas först som ny version. Bara en äldre rapport som
+ *    faktiskt har skickats står kvar som den skickades, med sin sparade PDF.
  * 4. Butiksportalen: portal_report_details och portal_sales lämnar inte ut titlar när valet
  *    är av, och bara för den egna butiken.
  */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { LocalFileStore } from "@/import/file-store";
+import { OutboxMailer } from "@/server/mail/report-mailer";
 import { setStoreReportDetailsFor } from "@/app/(app)/butiker/_lib/service";
-import { storeReportView } from "@/reports";
+import { storeDetailsOf, storeReportView, type StoreReport } from "@/reports";
 import { listOrganizationsFor, type SessionUser } from "@/server/access";
 import type { Viewer } from "@/server/data/core/loaders";
 import { loadPortalOverview } from "@/server/portal/load";
+import { isLegacyPortalReport } from "@/server/portal/model";
 import {
   queryPortalReport,
   queryPortalReportDetails,
@@ -31,12 +40,18 @@ import {
 import { loadReportsPage } from "@/server/reports/page-data";
 import {
   approveReportFor,
+  createRecipientFor,
   createReportFor,
+  ensurePdfFor,
   getReportFor,
+  LEGACY_REPORT_MESSAGE,
+  listArchiveFor,
   markReportSharedFor,
   previewReportFor,
   ReportError,
+  sendReportFor,
   staleDraftFor,
+  type SendDeps,
 } from "@/server/reports/service";
 import type { StoreSnapshot } from "@/server/reports/snapshot";
 
@@ -78,7 +93,11 @@ const create = (storeId: string) =>
   createReportFor(owner, { type: "butik", month: MONTH, storeId });
 
 /** En rapport från före valet fanns: samma underlag med titlar, men utan sparat val. */
-async function insertLegacy(fromReportId: string, approved: boolean): Promise<string> {
+async function insertLegacy(
+  fromReportId: string,
+  approved: boolean,
+  aheadSeconds = 1,
+): Promise<string> {
   return asPostgres(async (tx) => {
     const row = await one<{ id: string }>(
       tx,
@@ -86,7 +105,8 @@ async function insertLegacy(fromReportId: string, approved: boolean): Promise<st
                                       storage_path, data_snapshot, calc_version, generated_at)
           select organization_id, kind, period_start, period_end, store_id,
                  organization_id::text || '/reports/aldre-' || gen_random_uuid()::text || '.pdf',
-                 data_snapshot #- '{report,details}', calc_version, now() + interval '1 second'
+                 data_snapshot #- '{report,details}', calc_version,
+                 now() + make_interval(secs => ${aheadSeconds})
           from public.reports where id = ${fromReportId}
           returning id`,
     );
@@ -305,44 +325,259 @@ describe("rapporter från före valet fanns (inget sparat val)", () => {
     await setStoreReportDetailsFor(owner, { storeId: f.a2.storeId, details: false });
   });
 
-  it("en godkänd rapport visas som den skickades, med titlar och service", async () => {
-    const id = await insertLegacy(source, true);
-    const raw = await asPostgres((tx) =>
+  const OLD_PDF = new TextEncoder().encode("%PDF gamla mallen: titlar och service");
+  const NEW_PDF = new TextEncoder().encode("%PDF kort rapport");
+  let store: LocalFileStore;
+  let renders: string[];
+  const render = (id: string) => {
+    renders.push(id);
+    return Promise.resolve(NEW_PDF);
+  };
+
+  /** Den sparade PDF:en från förr: filen i lagringen och raden i report_files. */
+  async function storeOldPdf(reportId: string): Promise<string> {
+    const row = await asPostgres(async (tx) => {
+      const r = await one<{ storage_path: string }>(
+        tx,
+        sql`select storage_path from public.reports where id = ${reportId}`,
+      );
+      await tx.execute(
+        sql`insert into public.report_files (organization_id, report_id, kind, storage_path, byte_size)
+            select organization_id, id, 'pdf', storage_path, ${OLD_PDF.byteLength}
+            from public.reports where id = ${reportId}`,
+      );
+      return r;
+    });
+    await store.put(row.storage_path, OLD_PDF);
+    return row.storage_path;
+  }
+
+  const hasSavedChoice = (id: string) =>
+    asPostgres((tx) =>
       one<{ has: boolean }>(
         tx,
         sql`select data_snapshot -> 'report' ? 'details' as has from public.reports where id = ${id}`,
       ),
+    ).then((r) => r.has);
+
+  const deliveries = (id: string) =>
+    asPostgres((tx) =>
+      one<{ n: number }>(
+        tx,
+        sql`select count(*)::int as n from public.report_deliveries where report_id = ${id}`,
+      ),
+    ).then((r) => r.n);
+
+  let legacyApproved: string;
+  let oldPath: string;
+
+  it("en godkänd rapport som inte är skickad visas kort, utan titlar och service", async () => {
+    store = new LocalFileStore(mkdtempSync(path.join(tmpdir(), "rapport-aldre-")));
+    renders = [];
+    legacyApproved = await insertLegacy(source, true);
+    oldPath = await storeOldPdf(legacyApproved);
+    expect(await hasSavedChoice(legacyApproved)).toBe(false);
+    const report = await getReportFor(owner, legacyApproved);
+    expect(report.status).toBe("approved");
+    expect(report.legacy).toBe(true);
+    const snap = report.snapshot as StoreSnapshot;
+    expect(snap.report.details).toBe(false);
+    const view = storeReportView(snap.report);
+    expect(view.sections).toEqual(["calculation", "weeks", "machines"]);
+    expect(view.kpis).not.toContain("average");
+    expect(view.closing).toBe("Underlag per titel finns på begäran.");
+    // Arkivet säger samma sak.
+    const row = (await listArchiveFor(owner)).find((r) => r.id === legacyApproved);
+    expect(row?.legacy).toBe(true);
+    // Ingenting skrivs tillbaka: ögonblicksbilden i databasen är orörd.
+    expect(await hasSavedChoice(legacyApproved)).toBe(false);
+  });
+
+  it("den sparade PDF:en (gamla mallen) lämnas inte ut: en ny skapas varje gång, och sparas inte", async () => {
+    const first = await ensurePdfFor(owner, legacyApproved, { store, render });
+    expect(first.bytes).toEqual(NEW_PDF);
+    const second = await ensurePdfFor(owner, legacyApproved, { store, render });
+    expect(second.bytes).toEqual(NEW_PDF);
+    expect(renders).toEqual([legacyApproved, legacyApproved]);
+    // Den gamla filen ligger orörd kvar i lagringen, och ingen ny rad har skrivits.
+    expect(await store.get(oldPath)).toEqual(OLD_PDF);
+    const files = await asPostgres((tx) =>
+      one<{ n: number }>(
+        tx,
+        sql`select count(*)::int as n from public.report_files where report_id = ${legacyApproved}`,
+      ),
     );
-    expect(raw.has).toBe(false);
-    const snap = await storeSnapshot(owner, id);
+    expect(files.n).toBe(1);
+    // Läsaren får samma nya PDF (inget sparas, så det behövs ingen skrivrätt).
+    const viewer: Viewer = {
+      user: { userId: f.viewerA.id, email: f.viewerA.email },
+      organization: owner.organization,
+    };
+    expect((await ensurePdfFor(viewer, legacyApproved, { store, render })).bytes).toEqual(NEW_PDF);
+  });
+
+  it("den kan inte skickas eller markeras som skickad: en ny version skapas först", async () => {
+    const shared = await markReportSharedFor(owner, legacyApproved).catch((e: unknown) => e);
+    expect(shared).toBeInstanceOf(ReportError);
+    expect((shared as Error).message).toBe(LEGACY_REPORT_MESSAGE);
+    const recipientId = await createRecipientFor(owner, {
+      name: "Butik Två",
+      email: "butik-tva@example.se",
+      kind: "store",
+      storeId: f.a2.storeId,
+    });
+    const deps: SendDeps = {
+      mailer: new OutboxMailer(mkdtempSync(path.join(tmpdir(), "rapport-aldre-ut-"))),
+      store,
+      render,
+      renderEmails: (_id, ids) =>
+        Promise.resolve(Object.fromEntries(ids.map((id) => [id, { html: "<p>mejl</p>" }]))),
+      reportUrl: (id) => `http://localhost/rapport/${id}`,
+    };
+    const sent = await sendReportFor(
+      owner,
+      { reportId: legacyApproved, recipientIds: [recipientId] },
+      deps,
+    ).catch((e: unknown) => e);
+    expect(sent).toBeInstanceOf(ReportError);
+    expect((sent as Error).message).toBe(LEGACY_REPORT_MESSAGE);
+    expect(await deliveries(legacyApproved)).toBe(0);
+    await asPostgres((tx) =>
+      tx.execute(sql`update public.report_recipients set active = false where id = ${recipientId}`),
+    );
+  });
+
+  it("Rapporter visar den som äldre; den nya versionen är kort, får sin PDF sparad och kan skickas", async () => {
+    const page = await loadReportsPage(owner, {
+      typ: "butik",
+      manad: MONTH,
+      butiken: f.a2.storeId,
+    });
+    expect(page.current?.id).toBe(legacyApproved);
+    expect(page.current?.legacy).toBe(true);
+    expect(page.preview?.type === "butik" && page.preview.report.details).toBe(false);
+    // "Skapa ny version" (eller Dela, som gör samma sak): daterad efter den äldre raden.
+    const later = new Date(Date.now() + 10_000);
+    const next = await createReportFor(
+      owner,
+      { type: "butik", month: MONTH, storeId: f.a2.storeId },
+      later,
+    );
+    expect(await hasSavedChoice(next)).toBe(true);
+    const fresh = await getReportFor(owner, next);
+    expect(fresh.legacy).toBe(false);
+    expect((fresh.snapshot as StoreSnapshot).report.details).toBe(false);
+    expect((fresh.snapshot as StoreSnapshot).report.topTitles).toEqual([]);
+    // Godkännandet (server action) skapar och sparar PDF:en först: den korta.
+    renders = [];
+    await ensurePdfFor(owner, next, { store, render });
+    await approveReportFor(owner, next, null, later);
+    expect(renders).toEqual([next]);
+    const stored = await ensurePdfFor(owner, next, { store, render });
+    expect(stored.bytes).toEqual(NEW_PDF);
+    expect(renders).toEqual([next]);
+    expect((await listArchiveFor(owner)).find((r) => r.id === next)?.hasPdf).toBe(true);
+    expect(await markReportSharedFor(owner, next)).toBe(1);
+    expect((await getReportFor(owner, next)).status).toBe("sent");
+    // Den äldre är ersatt, fortfarande kort och fortfarande utan utskick.
+    const old = await getReportFor(owner, legacyApproved);
+    expect(old.status).toBe("superseded");
+    expect((old.snapshot as StoreSnapshot).report.details).toBe(false);
+    expect(await deliveries(legacyApproved)).toBe(0);
+    // Butiken ser den nya, korta, i portalen.
+    const portal = await asUser(f.storeA2, (tx) => queryPortalReport(tx, f.a2.storeId, next));
+    expect((portal.report as { details?: boolean }).details).toBe(false);
+  });
+
+  it("en äldre rapport som faktiskt skickades står kvar som den skickades, med sin sparade PDF", async () => {
+    // Skickad före den korta rapporten: utskicket finns redan i databasen.
+    const id = await asPostgres(async (tx) => {
+      const row = await one<{ id: string }>(
+        tx,
+        sql`insert into public.reports (organization_id, kind, period_start, period_end, store_id,
+                                        storage_path, data_snapshot, calc_version, generated_at)
+            select organization_id, kind, '2025-02-01', '2025-02-28', store_id,
+                   organization_id::text || '/reports/skickad-' || gen_random_uuid()::text || '.pdf',
+                   data_snapshot #- '{report,details}', calc_version, generated_at
+            from public.reports where id = ${source}
+            returning id`,
+      );
+      await tx.execute(
+        sql`insert into public.report_approvals (organization_id, report_id)
+            select organization_id, id from public.reports where id = ${row.id}`,
+      );
+      await tx.execute(
+        sql`insert into public.report_deliveries (organization_id, report_id, status, channel, sent_at)
+            select organization_id, id, 'delivered', 'manual', now()
+            from public.reports where id = ${row.id}`,
+      );
+      return row.id;
+    });
+    const sentPath = await storeOldPdf(id);
+    const report = await getReportFor(owner, id);
+    expect(report.status).toBe("sent");
+    expect(report.legacy).toBe(false);
+    const snap = report.snapshot as StoreSnapshot;
     expect(snap.report.details).toBe(true);
     expect(snap.report.topTitles.length).toBeGreaterThan(0);
     expect(storeReportView(snap.report).sections).toContain("titles");
-    // Ingenting skrivs tillbaka: ögonblicksbilden i databasen är orörd.
-    const after = await asPostgres((tx) =>
-      one<{ has: boolean }>(
+    expect(storeReportView(snap.report).sections).toContain("service");
+    // PDF:en är den som skickades: den sparade filen, ingen ny.
+    renders = [];
+    const pdf = await ensurePdfFor(owner, id, { store, render });
+    expect(pdf.bytes).toEqual(OLD_PDF);
+    expect(renders).toEqual([]);
+    expect(await store.get(sentPath)).toEqual(OLD_PDF);
+    expect(await hasSavedChoice(id)).toBe(false);
+  });
+
+  it("portalen: en äldre godkänd rapport lämnas ut utan sparat val och visas kort", async () => {
+    // En egen period, så att den är den senaste godkända versionen av sin rapport.
+    const id = await asPostgres(async (tx) => {
+      const row = await one<{ id: string }>(
         tx,
-        sql`select data_snapshot -> 'report' ? 'details' as has from public.reports where id = ${id}`,
-      ),
-    );
-    expect(after.has).toBe(false);
+        sql`insert into public.reports (organization_id, kind, period_start, period_end, store_id,
+                                        storage_path, data_snapshot, calc_version, generated_at)
+            select organization_id, kind, '2025-01-01', '2025-01-31', store_id,
+                   organization_id::text || '/reports/portal-' || gen_random_uuid()::text || '.pdf',
+                   data_snapshot #- '{report,details}', calc_version, generated_at
+            from public.reports where id = ${source}
+            returning id`,
+      );
+      await tx.execute(
+        sql`insert into public.report_approvals (organization_id, report_id)
+            select organization_id, id from public.reports where id = ${row.id}`,
+      );
+      return row.id;
+    });
+    const portal = await asUser(f.storeA2, (tx) => queryPortalReport(tx, f.a2.storeId, id));
+    const report = portal.report as StoreReport;
+    expect(report.details).toBeUndefined();
+    expect(isLegacyPortalReport(portal.report)).toBe(true);
+    expect(storeDetailsOf(report, false)).toBe(false);
+    expect(storeReportView(report).sections).not.toContain("titles");
   });
 
   it("ett utkast visas kort, är inaktuellt och godkänns först som ny version", async () => {
-    const id = await insertLegacy(source, false);
+    // Efter den nya versionen i testet ovan, annars vore utkastet redan ersatt.
+    const id = await insertLegacy(source, false, 60);
     const snap = await storeSnapshot(owner, id);
     expect(snap.report.details).toBe(false);
     expect(storeReportView(snap.report).sections).not.toContain("titles");
+    expect((await getReportFor(owner, id)).legacy).toBe(true);
     expect(await staleDraftFor(owner, id)).not.toBeNull();
     const err = await approveReportFor(owner, id, null).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ReportError);
+    // Den sparade PDF:en från förr används inte för utkastet heller.
+    await storeOldPdf(id);
+    expect((await ensurePdfFor(owner, id, { store, render })).bytes).toEqual(NEW_PDF);
     // Slås valet på för butiken är det äldre utkastet ändå inaktuellt (valet sparas i
     // den nya versionen, så att det som granskas är det som skickas).
     await setStoreReportDetailsFor(owner, { storeId: f.a2.storeId, details: true });
     expect(await staleDraftFor(owner, id)).not.toBeNull();
     await setStoreReportDetailsFor(owner, { storeId: f.a2.storeId, details: false });
-    // Den äldre raden är daterad en sekund framåt (insertLegacy): den nya versionen senare.
-    const later = new Date(Date.now() + 10_000);
+    // Den äldre raden är daterad en minut framåt (insertLegacy): den nya versionen senare.
+    const later = new Date(Date.now() + 120_000);
     const next = await createReportFor(
       owner,
       { type: "butik", month: MONTH, storeId: f.a2.storeId },
