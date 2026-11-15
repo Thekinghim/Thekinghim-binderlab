@@ -545,13 +545,34 @@ export async function correctPurchasePriceFor(
       const doubt = await doubtFor(tx, input, priceBefore(own, input.today));
       if (doubt) return doubt;
 
-      // Anteckningen och ett angivet pris mot kund hamnar på perioden som gäller i dag (den
-      // senaste som rättas). Äldre perioder behåller sitt pris mot kund.
+      // Anteckningen hamnar på den senaste perioden som rättas. Ett angivet pris mot kund
+      // hamnar på perioden som gäller i dag, också när den redan har rätt inköpspris och
+      // inte rättas. En ny period ärver priset mot kund som gällde den dagen, och äldre
+      // perioder behåller sitt.
       const last = plan.steps.at(-1)!;
+      const moved = new Map(
+        plan.steps.flatMap((s) =>
+          s.kind === "update" && s.newValidFrom ? [[s.validFrom, s.newValidFrom] as const] : [],
+        ),
+      );
+      const todayFrom = [
+        ...own.map((p) => moved.get(p.validFrom) ?? p.validFrom),
+        ...plan.steps.flatMap((s) => (s.kind === "insert" ? [s.validFrom] : [])),
+      ]
+        .filter((from) => from <= input.today)
+        .sort()
+        .at(-1);
+      let customerPlaced = input.customerPriceOre === undefined;
       for (const step of plan.steps) {
         const note = step === last ? input.note : undefined;
-        const customer = step === last ? input.customerPriceOre : undefined;
+        const from =
+          step.kind === "insert" ? step.validFrom : (step.newValidFrom ?? step.validFrom);
+        const isToday = from === todayFrom && input.customerPriceOre !== undefined;
+        if (isToday) customerPlaced = true;
         if (step.kind === "insert") {
+          const customer = isToday
+            ? input.customerPriceOre
+            : periodOn(own, step.validFrom)?.customerPriceOre;
           await tx.execute(
             sql`insert into public.purchase_prices
                   (organization_id, title_id, unit_cost_ore, customer_price_ore, valid_from, note)
@@ -561,13 +582,27 @@ export async function correctPurchasePriceFor(
           continue;
         }
         const row = own.find((p) => p.validFrom === step.validFrom)!;
+        const customer = isToday ? (input.customerPriceOre ?? null) : row.customerPriceOre;
         await tx.execute(
           sql`update public.purchase_prices
               set unit_cost_ore = ${input.unitCostOre},
-                  valid_from = ${step.newValidFrom ?? step.validFrom}::date,
+                  valid_from = ${from}::date,
                   note = ${note ?? row.note},
-                  customer_price_ore = ${customer === undefined ? row.customerPriceOre : customer}
+                  customer_price_ore = ${customer}
               where organization_id = ${org}::uuid and id = ${row.id}::uuid`,
+        );
+      }
+      // Dagens period hade redan rätt inköpspris: bara priset mot kund sätts på den.
+      const todayRow = own.find((p) => p.validFrom === todayFrom);
+      if (
+        !customerPlaced &&
+        todayRow &&
+        todayRow.customerPriceOre !== (input.customerPriceOre ?? null)
+      ) {
+        await tx.execute(
+          sql`update public.purchase_prices
+              set customer_price_ore = ${input.customerPriceOre ?? null}
+              where organization_id = ${org}::uuid and id = ${todayRow.id}::uuid`,
         );
       }
       return {

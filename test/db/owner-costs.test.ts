@@ -156,6 +156,38 @@ describe("importOwnerCosts", () => {
     expect(await auditCount(org.orgId)).toBe(audits);
   });
 
+  it("pris mot kund följer med till den nya perioden och töms inte av importen", async () => {
+    const fresh = await seedOrg();
+    await db().execute(
+      sql`update public.purchase_prices set customer_price_ore = 14500
+          where organization_id = ${fresh.orgId}::uuid
+            and title_id = ${fresh.ids["30th Celebration"]!}::uuid and valid_from = '2026-10-13'`,
+    );
+    const result = await importOwnerCosts(db(), file, {
+      organizationId: fresh.orgId,
+      apply: true,
+      confirmFlagged: false,
+    });
+    expect(result.applied).toBe(true);
+    const prices = await rows<{ title: string; valid_from: string; customer: number | null }>(
+      db(),
+      sql`select t.name as title, pp.valid_from::text as valid_from,
+                 pp.customer_price_ore::int as customer
+          from public.purchase_prices pp join public.titles t on t.id = pp.title_id
+          where pp.organization_id = ${fresh.orgId}::uuid
+          order by t.name, pp.valid_from`,
+    );
+    expect(prices.filter((p) => p.title === "30th Celebration")).toEqual([
+      { title: "30th Celebration", valid_from: "2026-10-13", customer: 14_500 },
+      { title: "30th Celebration", valid_from: "2026-10-15", customer: 14_500 },
+      { title: "30th Celebration", valid_from: "2026-10-27", customer: null },
+    ]);
+    // Titlar utan tidigare pris får inget pris mot kund.
+    expect(prices.filter((p) => p.title !== "30th Celebration").map((p) => p.customer)).toEqual(
+      prices.filter((p) => p.title !== "30th Celebration").map(() => null),
+    );
+  });
+
   it("flaggade rader skrivs bara med --confirm-flagged", async () => {
     const result = await importOwnerCosts(db(), file, {
       organizationId: org.orgId,

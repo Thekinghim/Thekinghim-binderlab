@@ -335,6 +335,84 @@ describe("historik över prisperioder", () => {
   });
 });
 
+describe("Rätta priset och perioden som gäller i dag", () => {
+  let own: PriceFixture;
+  let ownOwner: SessionUser;
+
+  beforeAll(async () => {
+    own = await seedPriceFixture();
+    ownOwner = su(own.owner);
+  });
+
+  it("dagens period har redan rätt inköpspris: pris mot kund hamnar ändå på den, inte på en äldre", async () => {
+    const base = { organizationId: own.orgId, titleId: own.titleId };
+    // 1 jan. 45 kr (pris mot kund 140 kr) och 1 mars 50 kr (gäller i dag).
+    expect(
+      (await setCustomerPriceFor(ownOwner, { ...base, customerPriceOre: 14_000, today: TODAY })).ok,
+    ).toBe(true);
+    expect(
+      (
+        await addPurchasePriceFor(ownOwner, {
+          ...base,
+          unitCostOre: 5_000,
+          customerPriceOre: 14_200,
+          validFrom: "2025-03-01",
+        })
+      ).ok,
+    ).toBe(true);
+    // Rättar till 50 kr: bara den äldre perioden får nytt inköpspris.
+    const r = await correctPurchasePriceFor(ownOwner, {
+      ...base,
+      unitCostOre: 5_000,
+      customerPriceOre: 14_500,
+      today: TODAY,
+    });
+    expect(r.ok).toBe(true);
+    expect(await periods(own.titleId, own.orgId)).toEqual([
+      { valid_from: "2025-01-01", cost: 5000, customer: 14_000 },
+      { valid_from: "2025-03-01", cost: 5000, customer: 14_500 },
+    ]);
+  });
+
+  it("en ny period efter en stängd månad ärver pris mot kund när inget anges (t.ex. Mystery packs)", async () => {
+    const base = { organizationId: own.orgId, titleId: own.closedTitleId };
+    // Enda priset (1 nov. 2024, 60 kr) ligger i den stängda december: pris mot kund får sättas.
+    expect(
+      (await setCustomerPriceFor(ownOwner, { ...base, customerPriceOre: 9_900, today: TODAY })).ok,
+    ).toBe(true);
+    const r = await correctPurchasePriceFor(ownOwner, {
+      ...base,
+      unitCostOre: 6_500,
+      today: TODAY,
+    });
+    expect(r.ok).toBe(true);
+    expect(await periods(own.closedTitleId, own.orgId)).toEqual([
+      { valid_from: "2024-11-01", cost: 6000, customer: 9_900 },
+      { valid_from: "2025-01-01", cost: 6500, customer: 9_900 },
+    ]);
+  });
+
+  it("en ny period efter en stängd månad får det angivna priset mot kund; den stängda behåller sitt", async () => {
+    const next = await seedPriceFixture();
+    const nextOwner = su(next.owner);
+    const base = { organizationId: next.orgId, titleId: next.closedTitleId };
+    expect(
+      (await setCustomerPriceFor(nextOwner, { ...base, customerPriceOre: 9_900, today: TODAY })).ok,
+    ).toBe(true);
+    const r = await correctPurchasePriceFor(nextOwner, {
+      ...base,
+      unitCostOre: 6_600,
+      customerPriceOre: null,
+      today: TODAY,
+    });
+    expect(r.ok).toBe(true);
+    expect(await periods(next.closedTitleId, next.orgId)).toEqual([
+      { valid_from: "2024-11-01", cost: 6000, customer: 9_900 },
+      { valid_from: "2025-01-01", cost: 6600, customer: null },
+    ]);
+  });
+});
+
 describe("RLS och rättigheter", () => {
   it("ägare, admin och läsare läser priset; påfyllaren ser inga prisrader alls", async () => {
     const read = (u: TestUser) =>
