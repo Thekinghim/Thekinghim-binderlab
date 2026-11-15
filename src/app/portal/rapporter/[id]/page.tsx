@@ -10,6 +10,7 @@ import {
   assertStoreReportSafe,
   isLegacyUnsent,
   storeDetailsOf,
+  storeSummary,
   TITLES_ON_REQUEST,
   type StoreReport,
 } from "@/reports";
@@ -98,7 +99,7 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
                   : `Rapport · ${periodText(report.period)}`
               }
               title={`${kr(report.sales.revenueOre)} i försäljning.`}
-              aside={report.conclusion.text}
+              aside={storeSummary(report, details)}
               size="xl"
               meta={[
                 { label: "Sålda pack", value: formatInt(report.sales.orders) },

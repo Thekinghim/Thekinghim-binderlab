@@ -55,6 +55,19 @@ export function storeHeadline(
   return `Er ersättning för ${periodNameOf(report)}: ${krText(report.compensation.totalOre)}.`;
 }
 
+/**
+ * Meningen under rubriken i butiksportalen. Rapportens slutsats, utom för en äldre rapport
+ * (inget sparat val) som visas kort: dess slutsats skrevs med den gamla mallen och nämner
+ * den mest sålda titeln. Då visas raden om ersättningen i stället, som i den korta rapporten.
+ */
+export function storeSummary(
+  report: Pick<StoreReport, "details" | "month" | "period" | "compensation" | "conclusion">,
+  details: boolean,
+): string {
+  if (details || report.details !== undefined) return report.conclusion.text;
+  return storeHeadline(report);
+}
+
 export type StoreKpi = "sales" | "orders" | "average" | "compensation";
 export type StoreSection = "calculation" | "weeks" | "titles" | "machines" | "service";
 

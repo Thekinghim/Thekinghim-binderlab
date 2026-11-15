@@ -182,3 +182,6 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   (`portal_report` lämnar inte ut utskicken), så där visas också en äldre skickad rapport kort.
 - Ingen migrering. Tester: `store-view.test.ts`, `snapshot.test.ts`, `model.test.ts`, portalens `pdf/route.test.ts`,
   `test/db/rapport-detaljer.test.ts` och `e2e/05-rapportutskick` (äldre godkänd rapport med sparad gammal PDF).
+- Granskningen hittade en lucka: portalens rapportsida visade den äldre rapportens slutsats under rubriken, och den
+  nämner mest sålda titel ("… och X stod för 30 % av intäkten"). En äldre rapport som visas kort får nu raden om
+  ersättningen i stället (`storeSummary` i `src/reports/store-view.ts`, test i `store-view.test.ts`).

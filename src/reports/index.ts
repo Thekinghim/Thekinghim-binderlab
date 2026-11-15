@@ -40,6 +40,7 @@ export {
   isLegacyUnsent,
   storeDetailsOf,
   storeHeadline,
+  storeSummary,
   storeReportView,
   type StoreKpi,
   type StoreReportView,

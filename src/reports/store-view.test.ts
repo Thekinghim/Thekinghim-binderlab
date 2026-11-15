@@ -14,6 +14,7 @@ import {
   storeDetailsOf,
   storeHeadline,
   storeReportView,
+  storeSummary,
 } from "./store-view";
 import { agreement, ord, sources } from "./testing/fixtures";
 
@@ -130,5 +131,30 @@ describe("isLegacyUnsent: äldre rapport som inte har skickats", () => {
     for (const sent of [true, false]) {
       expect(isLegacyUnsent({}, sent) && storeDetailsOf({}, sent)).toBe(false);
     }
+  });
+});
+
+describe("storeSummary: meningen under rubriken i portalen", () => {
+  const detailed = buildStoreReport(src, "s-1", "2026-11", { details: true });
+  // Som den sparades förut: slutsatsen nämner mest sålda titel, inget sparat val.
+  const { details: _d, ...legacy } = detailed;
+  void _d;
+
+  it("äldre rapport som visas kort: raden om ersättningen, aldrig titeln", () => {
+    expect(legacy.conclusion.text).toContain(legacy.topTitles[0]!.name);
+    const text = storeSummary(legacy, false);
+    expect(text).toBe(storeHeadline(legacy));
+    for (const t of legacy.topTitles) expect(text).not.toContain(t.name);
+  });
+
+  it("äldre rapport som har skickats: slutsatsen som den skickades", () => {
+    expect(storeSummary(legacy, true)).toBe(legacy.conclusion.text);
+  });
+
+  it("rapport med sparat val: sin egen slutsats", () => {
+    expect(storeSummary(detailed, true)).toBe(detailed.conclusion.text);
+    const short = buildStoreReport(src, "s-1", "2026-11");
+    expect(storeSummary(short, false)).toBe(short.conclusion.text);
+    expect(short.conclusion.text).not.toContain(detailed.topTitles[0]!.name);
   });
 });
