@@ -4,8 +4,9 @@
  * Vinsten på Hem och Lönsamhet ändras inte av pris mot kund (den räknas på vårt pris).
  *
  * Titeln är Surging Sparks (seedens inköpspris 72 kr från 1 okt. 2026, ingen annan fil
- * ändrar den). Hem och Lönsamhet läses för seedens fasta period (13 okt.–1 nov. 2026), så
- * att testet inte beror på dagens datum. Beloppen slumpas, så testet kan köras om.
+ * ändrar den). Inköpspriser öppnas med standardperioden (slutar i dag), så att tabellen
+ * visar priset som gäller i dag. Hem och Lönsamhet läses för seedens fasta period
+ * (13 okt.–1 nov. 2026). Beloppen slumpas, så testet kan köras om.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -67,7 +68,8 @@ function random(fromOre: number, spanOre: number, salt = 0): number {
 
 /** Sidan med titeln vald, och titelns formulär. */
 async function openTitle(p: Page = page): Promise<Locator> {
-  await p.goto(`/inkopspriser?${SEED_PERIOD}`);
+  // Standardperioden (slutar i dag): tabellen visar då priset som gäller i dag.
+  await p.goto("/inkopspriser");
   await p.getByRole("link", { name: TITLE, exact: true }).first().click();
   const form = p.getByRole("form", { name: `Nytt inköpspris för ${TITLE}` });
   await form.waitFor();
@@ -130,9 +132,8 @@ describe("pris mot kund", () => {
 
     await expect.poll(() => row.innerText(), { timeout: 15_000 }).toContain(text(customer));
     const head = await prices().innerText();
-    expect(head).toContain("Vårt pris");
-    expect(head).toContain("Pris mot kund");
-    expect(head).toContain("Skillnad");
+    // Etiketterna visas i versaler (CSS): jämför utan hänsyn till det.
+    expect(head).toMatch(/Vårt pris[\s\S]*Pris mot kund[\s\S]*Skillnad/i);
     expect(head).toContain(text(customer));
     // Ändringsloggen har en egen rad för pris mot kund.
     await page
@@ -201,7 +202,7 @@ describe("pris mot kund", () => {
     const reader = await openPage(browser, e2e().baseUrl, { theme: "light" });
     try {
       await login(reader.page, e2e().users.partner);
-      await reader.page.goto(`/inkopspriser?${SEED_PERIOD}`);
+      await reader.page.goto("/inkopspriser");
       await reader.page.getByRole("link", { name: TITLE, exact: true }).first().click();
       const head = reader.page.locator(`dl[aria-label="Priser för ${TITLE}"]`);
       await head.waitFor();
@@ -220,7 +221,7 @@ describe("pris mot kund", () => {
     const mobile = await openPage(browser, e2e().baseUrl, { theme: "light", viewport: "mobile" });
     try {
       await login(mobile.page, e2e().users.owner);
-      await mobile.page.goto(`/inkopspriser?${SEED_PERIOD}`);
+      await mobile.page.goto("/inkopspriser");
       await mobile.page.getByRole("link", { name: TITLE, exact: true }).first().click();
       const head = mobile.page.locator(`dl[aria-label="Priser för ${TITLE}"]`);
       await head.waitFor();

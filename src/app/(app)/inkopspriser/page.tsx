@@ -166,6 +166,9 @@ export default async function PurchasePricesPage({
   const titlePrices = selectedTitle
     ? data.prices.filter((p) => p.titleId === selectedTitle.id)
     : [];
+  // Priset som gäller i dag: det formuläret ändrar, och det titelns huvud visar (tabellen
+  // visar priset vid periodens slut, som är samma sak i en period som slutar i dag).
+  const todayPrice = titlePrices.filter((p) => p.validFrom <= today).at(-1) ?? null;
   const domainPrices: PurchasePrice[] = titlePrices.map((p) => ({
     titleId: p.titleId,
     unitCostOre: p.unitCostOre,
@@ -356,7 +359,7 @@ export default async function PurchasePricesPage({
             aside={titleAside}
           />
 
-          {/* Vårt pris och pris mot kund för titeln, också på mobil (där tabellen döljer dem). */}
+          {/* Vårt pris och pris mot kund i dag, också på mobil (där tabellen döljer dem). */}
           <div className="flex flex-col gap-2">
             <dl
               aria-label={`Priser för ${selectedTitle.name}`}
@@ -365,16 +368,16 @@ export default async function PurchasePricesPage({
               {[
                 {
                   label: own ? "Vår kostnad" : CUSTOMER_PRICE_TEXT.ours,
-                  value: money(selectedRow?.currentCostOre),
+                  value: money(todayPrice?.unitCostOre),
                 },
                 {
                   label: CUSTOMER_PRICE_TEXT.customer,
-                  value: money(selectedRow?.customerPriceOre),
+                  value: money(todayPrice?.customerPriceOre),
                 },
                 {
                   label: CUSTOMER_PRICE_TEXT.gap,
                   value: priceGapText(
-                    priceGap(selectedRow?.currentCostOre, selectedRow?.customerPriceOre),
+                    priceGap(todayPrice?.unitCostOre, todayPrice?.customerPriceOre),
                   ),
                 },
               ].map((x) => (
@@ -427,12 +430,8 @@ export default async function PurchasePricesPage({
                   closedMonths={data.closedMonths}
                   today={today}
                   label={costLabel(own)}
-                  currentCostOre={
-                    titlePrices.filter((p) => p.validFrom <= today).at(-1)?.unitCostOre ?? null
-                  }
-                  customerPriceOre={
-                    titlePrices.filter((p) => p.validFrom <= today).at(-1)?.customerPriceOre ?? null
-                  }
+                  currentCostOre={todayPrice?.unitCostOre ?? null}
+                  customerPriceOre={todayPrice?.customerPriceOre ?? null}
                   current={
                     selectedRow
                       ? {

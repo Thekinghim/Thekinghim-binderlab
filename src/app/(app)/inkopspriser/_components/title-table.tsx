@@ -210,13 +210,15 @@ export function TitleTable({
             <span className="flex flex-col items-end">
               <span>{money(r.currentCostOre)}</span>
               {r.currentFrom ? (
-                <span className="meta text-subtle">
+                <span className="meta whitespace-nowrap text-subtle">
                   från {formatDayShort(r.currentFrom, today)}
                 </span>
               ) : null}
               {/* Snittet i perioden bara när priset har ändrats under den (annars samma tal). */}
               {r.averageCostOre !== null && r.averageCostOre !== r.currentCostOre ? (
-                <span className="meta text-subtle">snitt {money(r.averageCostOre)}</span>
+                <span className="meta whitespace-nowrap text-subtle">
+                  snitt {money(r.averageCostOre)}
+                </span>
               ) : null}
             </span>
           ),
