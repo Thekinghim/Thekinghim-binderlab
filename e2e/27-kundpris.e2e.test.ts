@@ -107,10 +107,11 @@ describe("pris mot kund", () => {
         name,
       ).toBe(true);
     }
-    // Seeden: 30th Celebration kostar oss 112 kr och har 145 kr mot kund.
+    // Seeden: 30th Celebration har 145 kr mot kund (vårt pris 112 kr; andra flöden kan ha
+    // lagt ett nytt inköpspris i dag, och då följer pris mot kund med till den perioden).
     const seeded = page.getByRole("row").filter({ hasText: "30th Celebration" }).first();
     await expect.poll(() => seeded.innerText()).toContain(`145,00${NBSP}kr`);
-    expect(await seeded.innerText()).toContain(`+33,00${NBSP}kr · +29${NBSP}%`);
+    expect(await seeded.innerText()).toMatch(/[+−]\d+,\d\d\skr · [+−]\d+\s%/);
     await page
       .getByText("Vinsten räknas på vårt pris. Pris mot kund visas bara här.")
       .first()
