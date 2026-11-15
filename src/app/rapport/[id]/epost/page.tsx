@@ -72,7 +72,8 @@ export default async function EmailPage({
   const followText = one(sp.text).slice(0, 1000).trim() || null;
 
   let pdfBytes: Uint8Array = new Uint8Array();
-  if (report.storagePath) {
+  // En äldre butiksrapport får en ny PDF vid varje hämtning: den sparade filen gäller inte.
+  if (report.storagePath && !report.legacy) {
     try {
       pdfBytes = await (await userReportStore()).get(report.storagePath);
     } catch {

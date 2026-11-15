@@ -11,6 +11,10 @@
  * godkännande. PDF:en skapas före godkännandet (server action) eller vid första
  * nedladdningen och sparas i lagringen på reports.storage_path; report_files visar att
  * filen faktiskt finns.
+ *
+ * Äldre butiksrapporter (från före den korta rapporten, utan sparat val, `legacy`) som inte
+ * har skickats visas korta, deras sparade PDF används inte (den är gjord med den gamla
+ * mallen) och de skickas först som ny version.
  */
 
 import "server-only";
@@ -65,6 +69,7 @@ import {
   asSnapshot,
   buildSnapshot,
   headlineOreOf,
+  legacyUnsent,
   requestOf,
   sameReport,
   withStoreDetails,
@@ -89,6 +94,10 @@ export class ReportError extends Error {
     this.name = "ReportError";
   }
 }
+
+/** En äldre butiksrapport (`ArchiveRow.legacy`) skickas inte: en ny version skapas först. */
+export const LEGACY_REPORT_MESSAGE =
+  "Rapporten har den gamla mallen. Skapa en ny version och skicka den.";
 
 async function as<T>(
   viewer: Viewer,
@@ -144,6 +153,12 @@ export interface ArchiveRow {
   readonly approvedBy: string | null;
   readonly deliveries: readonly DeliveryRow[];
   readonly conclusion: string;
+  /**
+   * Äldre butiksrapport: skapad före den korta rapporten (inget sparat val) och inte
+   * skickad. Den visas kort, PDF:en skapas ny varje gång (den sparade har den gamla
+   * mallen) och den kan inte godkännas eller skickas: en ny version skapas först.
+   */
+  readonly legacy: boolean;
 }
 
 export interface ReportDetail extends ArchiveRow {
@@ -262,6 +277,11 @@ async function archiveTx(tx: Tx, orgId: string, limit: number, ids?: string[]) {
   return { reports, approvals, deliveries, stores, names, files };
 }
 
+/** Har rapporten gått iväg? Minst ett genomfört utskick (också "Ja, skickad"). */
+function wasSent(deliveries: readonly Pick<DeliveryRow, "status">[]): boolean {
+  return deliveries.some((d) => DONE_DELIVERY.has(d.status));
+}
+
 function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
   const approval = new Map(data.approvals.map((a) => [a.reportId, a]));
   const deliveriesBy = new Map<string, DeliveryRow[]>();
@@ -299,9 +319,13 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
   void all;
   return valid.map((r) => {
     const a = approval.get(r.id);
+    const deliveries = deliveriesBy.get(r.id) ?? [];
     let conclusion = "";
+    let legacy = false;
     try {
-      conclusion = asSnapshot(r.snapshot).report.conclusion.text;
+      const snapshot = asSnapshot(r.snapshot);
+      conclusion = snapshot.report.conclusion.text;
+      legacy = legacyUnsent(snapshot, wasSent(deliveries));
     } catch {
       conclusion = "";
     }
@@ -321,8 +345,9 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
       status: statuses.get(r.id) ?? "draft",
       approvedAt: a ? a.approvedAt.toISOString() : null,
       approvedBy: a?.approvedBy ? (data.names.get(a.approvedBy) ?? null) : null,
-      deliveries: deliveriesBy.get(r.id) ?? [],
+      deliveries,
       conclusion,
+      legacy,
       storagePath: r.storagePath,
       snapshot: r.snapshot,
     };
@@ -382,11 +407,11 @@ async function getReportTx(tx: Tx, orgId: string, id: string): Promise<ReportDet
   const rows = toArchive(data, false).filter((r) => r.storeId === h.storeId);
   const row = rows.find((r) => r.id === id);
   if (!row) throw new ReportError("Rapporten finns inte.");
-  // Butiksrapporten: en godkänd rapport från före valet "Visa detaljer" visas som den
-  // skickades, ett äldre utkast enligt den nya standarden (withStoreDetails).
+  // Butiksrapporten: en rapport från före valet "Visa detaljer" visas kort, om den inte
+  // redan har skickats till butiken; då står den kvar som den skickades (withStoreDetails).
   return {
     ...row,
-    snapshot: withStoreDetails(asSnapshot(row.snapshot), row.approvedAt !== null),
+    snapshot: withStoreDetails(asSnapshot(row.snapshot), wasSent(row.deliveries)),
   };
 }
 
@@ -562,6 +587,8 @@ export interface StaleDraft {
 /**
  * Jämför ett utkast med samma rapport räknad nu. null = samma (eller inte ett utkast, eller
  * kan inte räknas nu). Ett godkänt eller skickat utkast jämförs aldrig: det är låst.
+ * Ett äldre utkast (`legacy`, från före den korta rapporten) är alltid inaktuellt: det
+ * godkänns som ny version, med butikens val sparat.
  */
 async function staleDraftTx(
   tx: Tx,
@@ -580,10 +607,10 @@ async function staleDraftTx(
       now,
     );
   } catch (error) {
-    if (error instanceof ReportError) return null;
-    throw error;
+    if (!(error instanceof ReportError)) throw error;
+    return report.legacy ? { draftOre: headlineOreOf(report.snapshot), nowOre: null } : null;
   }
-  return sameReport(report.snapshot, fresh)
+  return !report.legacy && sameReport(report.snapshot, fresh)
     ? null
     : { draftOre: headlineOreOf(report.snapshot), nowOre: headlineOreOf(fresh) };
 }
@@ -648,6 +675,10 @@ export async function approveReportFor(
  * PDF:en för rapporten: hämtas ur lagringen om den finns, annars skapas den med
  * `render` (headless Chromium mot /rapport/[id]) och sparas. Bara ägare och admin får
  * spara en ny PDF; läsaren får hämta en befintlig.
+ *
+ * En äldre butiksrapport (`legacy`) får alltid en ny PDF, som inte sparas: den sparade
+ * filen är gjord med den gamla mallen (med titlar och service), och en sparad fil kan inte
+ * bytas ut (lagringen och report_files är skriv-en-gång). Läsaren får den också.
  */
 export async function ensurePdfFor(
   viewer: Viewer,
@@ -659,6 +690,9 @@ export async function ensurePdfFor(
   const fileName = reportFileName(report.snapshot, "pdf");
   const role = await requireRoleFor(viewer.user, orgId, READ_ROLES);
   const canEdit = EDIT_ROLES.includes(role);
+  if (report.legacy) {
+    return { bytes: await deps.render(id), fileName, snapshot: report.snapshot };
+  }
   if (report.storagePath && isValidStoragePath(report.storagePath)) {
     let bytes: Uint8Array | null = null;
     try {
@@ -785,6 +819,7 @@ export async function sendReportFor(
   if (!report.approvedAt) {
     throw new ReportError("Rapporten måste godkännas innan den skickas.");
   }
+  if (report.legacy) throw new ReportError(LEGACY_REPORT_MESSAGE);
   if (req.recipientIds.length === 0) throw new ReportError("Välj minst en mottagare.");
   const allowed = new Map(eligibleRecipients(report.snapshot, recipients).map((r) => [r.id, r]));
   const chosen = req.recipientIds.map((id) => {
@@ -1007,6 +1042,7 @@ export async function setRecipientActiveFor(
 
 /**
  * "Skickade du den?": sparar att en godkänd rapport delats för hand. Ägare och admin.
+ * En äldre butiksrapport (`legacy`) kan inte markeras: en ny version skapas först.
  * En rad per aktiv mottagare som kan få rapporten och inte redan fått den (så att punkten
  * i Att göra försvinner), annars en rad utan mottagare. Status 'delivered', channel
  * 'manual'. Att markera igen ändrar ingenting. Returnerar antalet nya rader.
@@ -1023,6 +1059,9 @@ export async function markReportSharedFor(viewer: Viewer, reportId: string): Pro
     if (!report.approvedAt) {
       throw new ReportError("Rapporten måste godkännas innan den markeras som skickad.");
     }
+    // En äldre rapport visas kort tills den är skickad, och med detaljer efteråt: den får
+    // inte bli "skickad" nu, då skulle den byta utseende. En ny version skickas i stället.
+    if (report.legacy) throw new ReportError(LEGACY_REPORT_MESSAGE);
     const done = report.deliveries.filter((d) => DONE_DELIVERY.has(d.status));
     const got = new Set(done.map((d) => d.recipientId).filter((id): id is string => id !== null));
     const targets = eligibleRecipients(report.snapshot, await listRecipientsTx(tx, orgId)).filter(

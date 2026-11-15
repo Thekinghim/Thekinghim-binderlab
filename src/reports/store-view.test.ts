@@ -8,7 +8,13 @@ import { describe, expect, it } from "vitest";
 import { NBSP } from "@/lib/format";
 
 import { buildStoreReport } from "./store-report";
-import { TITLES_ON_REQUEST, storeDetailsOf, storeHeadline, storeReportView } from "./store-view";
+import {
+  TITLES_ON_REQUEST,
+  isLegacyUnsent,
+  storeDetailsOf,
+  storeHeadline,
+  storeReportView,
+} from "./store-view";
 import { agreement, ord, sources } from "./testing/fixtures";
 
 const plain = (text: string) => text.split(NBSP).join(" ");
@@ -93,15 +99,36 @@ describe("storeHeadline", () => {
 });
 
 describe("storeDetailsOf: rapporter från före valet fanns", () => {
-  it("sparat val gäller alltid, låst eller inte", () => {
+  it("sparat val gäller alltid, skickad eller inte", () => {
     expect(storeDetailsOf({ details: true }, false)).toBe(true);
     expect(storeDetailsOf({ details: true }, true)).toBe(true);
     expect(storeDetailsOf({ details: false }, false)).toBe(false);
     expect(storeDetailsOf({ details: false }, true)).toBe(false);
   });
 
-  it("utan sparat val: godkänd eller skickad visas med detaljer, utkast utan", () => {
-    expect(storeDetailsOf({}, true)).toBe(true);
+  it("utan sparat val: kort, också när den är godkänd; bara en skickad står kvar med detaljer", () => {
     expect(storeDetailsOf({}, false)).toBe(false);
+    expect(storeDetailsOf({}, true)).toBe(true);
+  });
+});
+
+describe("isLegacyUnsent: äldre rapport som inte har skickats", () => {
+  it("bara rapporter utan sparat val som inte har gått iväg", () => {
+    expect(isLegacyUnsent({}, false)).toBe(true);
+    expect(isLegacyUnsent({}, true)).toBe(false);
+  });
+
+  it("en rapport med sparat val är aldrig äldre", () => {
+    for (const details of [true, false]) {
+      expect(isLegacyUnsent({ details }, false)).toBe(false);
+      expect(isLegacyUnsent({ details }, true)).toBe(false);
+    }
+  });
+
+  it("en äldre rapport som inte är skickad visas alltid kort", () => {
+    // De två hör ihop: det som inte kan skickas längre visas aldrig med detaljer.
+    for (const sent of [true, false]) {
+      expect(isLegacyUnsent({}, sent) && storeDetailsOf({}, sent)).toBe(false);
+    }
   });
 });

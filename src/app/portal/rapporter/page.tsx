@@ -90,7 +90,6 @@ export default async function PortalReportsPage() {
                   <a
                     href={`/portal/rapporter/${r.reportId}/pdf`}
                     className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline"
-                    download
                   >
                     Ladda ned PDF
                   </a>

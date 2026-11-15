@@ -8,6 +8,7 @@ import {
   fiscalYearOf,
   headlineOreOf,
   requestOf,
+  legacyUnsent,
   sameReport,
   stockAtMonthEnd,
   withStoreDetails,
@@ -190,11 +191,16 @@ describe("Visa detaljer i rapporten: valet sparas i ögonblicksbilden", () => {
     }
   });
 
-  it("äldre rapport: godkänd eller skickad visas med detaljer, utkast utan", () => {
+  it("äldre rapport: kort, och bara en som har skickats står kvar med detaljer", () => {
     const old = legacy();
     expect(old.report.details).toBeUndefined();
-    expect(withStoreDetails(old, true).report.details).toBe(true);
     expect(withStoreDetails(old, false).report.details).toBe(false);
+    expect(withStoreDetails(old, true).report.details).toBe(true);
+    expect(legacyUnsent(old, false)).toBe(true);
+    expect(legacyUnsent(old, true)).toBe(false);
+    // En rapport med sparat val är aldrig äldre, och inte heller andra rapporttyper.
+    expect(legacyUnsent(make(true), false)).toBe(false);
+    expect(legacyUnsent(make(false), false)).toBe(false);
     // Underlaget rörs inte: bara valet läggs till.
     expect(withStoreDetails(old, true).report.topTitles).toEqual(old.report.topTitles);
     expect(old.report.details).toBeUndefined();
@@ -210,6 +216,7 @@ describe("Visa detaljer i rapporten: valet sparas i ögonblicksbilden", () => {
     });
     expect(withStoreDetails(partner, true)).toBe(partner);
     expect(withStoreDetails(partner, false)).toBe(partner);
+    expect(legacyUnsent(partner, false)).toBe(false);
   });
 
   it("ett utkast blir inaktuellt när valet ändras (det som granskas är det som skickas)", () => {

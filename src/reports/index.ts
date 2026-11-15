@@ -37,6 +37,7 @@ export {
 
 export {
   TITLES_ON_REQUEST,
+  isLegacyUnsent,
   storeDetailsOf,
   storeHeadline,
   storeReportView,

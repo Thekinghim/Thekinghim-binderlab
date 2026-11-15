@@ -9,8 +9,8 @@
  *
  * Valet sparas i rapporten när den räknas (`StoreReport.details`), så en rapport visar
  * alltid det den visade när den skapades. Rapporter från före valet fanns saknar fältet:
- * `storeDetailsOf` avgör dem. Ren modul: samma regler för sidan, PDF:en, mejlet och
- * butiksportalen.
+ * `storeDetailsOf` avgör dem (korta, om de inte redan har skickats). Ren modul: samma
+ * regler för sidan, PDF:en, mejlet och butiksportalen.
  */
 
 import type { StoreReport } from "./store-report";
@@ -23,12 +23,24 @@ export const TITLES_ON_REQUEST = "Underlag per titel finns på begäran.";
  * Visar rapporten detaljer (titlar och service)?
  *
  * - Rapporten har valet sparat: det gäller, oavsett vad butiken har valt sedan dess.
- * - Äldre rapport utan sparat val: en rapport som är godkänd eller skickad (`locked`)
- *   visas som den skickades, med detaljer. Ett utkast följer den nya standarden, utan
- *   detaljer.
+ * - Äldre rapport utan sparat val: kort, som alla nya rapporter, också när den är
+ *   godkänd. Bara en rapport som faktiskt har skickats till butiken (`sent`: ett utskick
+ *   eller "Ja, skickad") står kvar som den skickades, med detaljer.
+ *
+ * En äldre rapport kan inte skickas längre (`isLegacyUnsent`): den skickas som ny version,
+ * med valet sparat. Därför har varje äldre rapport som är skickad gått iväg med detaljer.
  */
-export function storeDetailsOf(report: Pick<StoreReport, "details">, locked: boolean): boolean {
-  return report.details ?? locked;
+export function storeDetailsOf(report: Pick<StoreReport, "details">, sent: boolean): boolean {
+  return report.details ?? sent;
+}
+
+/**
+ * Äldre butiksrapport (inget sparat val) som inte har skickats. Den visas kort överallt,
+ * dess sparade PDF (gjord med den gamla mallen) används inte, och den kan inte skickas
+ * eller markeras som skickad: en ny version skapas först.
+ */
+export function isLegacyUnsent(report: Pick<StoreReport, "details">, sent: boolean): boolean {
+  return report.details === undefined && !sent;
 }
 
 /** "oktober", eller för eget datum "15–31 okt. 2026". */

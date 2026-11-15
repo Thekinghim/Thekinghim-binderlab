@@ -24,6 +24,7 @@ import {
   buildAccountantReport,
   buildPartnerReport,
   buildStoreReport,
+  isLegacyUnsent,
   isWholeMonth,
   sie4Verifications,
   storeDetailsOf,
@@ -339,18 +340,21 @@ export function asSnapshot(value: unknown): ReportSnapshot {
  * mejlet bara behöver läsa `report.details`.
  *
  * Regeln (se `storeDetailsOf`): valet som sparades när rapporten räknades gäller alltid,
- * även om butikens inställning ändras senare. En äldre rapport utan sparat val visas som
- * den skickades (med detaljer) om den är godkänd eller skickad (`locked`), annars enligt
- * den nya standarden (utan). Ett äldre utkast blir därmed också inaktuellt mot en ny
- * uträkning (`sameReport`) och godkänns först som ny version, så att det som granskas är
- * det som skickas.
+ * även om butikens inställning ändras senare. En äldre rapport utan sparat val visas kort,
+ * som alla nya, också när den är godkänd. Bara om den faktiskt har skickats till butiken
+ * (`sent`) visas den som den skickades, med detaljer.
  */
-export function withStoreDetails<T extends ReportSnapshot>(snapshot: T, locked: boolean): T {
+export function withStoreDetails<T extends ReportSnapshot>(snapshot: T, sent: boolean): T {
   if (snapshot.type !== "butik" || snapshot.report.details !== undefined) return snapshot;
   return {
     ...snapshot,
-    report: { ...snapshot.report, details: storeDetailsOf(snapshot.report, locked) },
+    report: { ...snapshot.report, details: storeDetailsOf(snapshot.report, sent) },
   };
+}
+
+/** Äldre butiksrapport utan sparat val som inte har skickats (se `isLegacyUnsent`). */
+export function legacyUnsent(snapshot: ReportSnapshot, sent: boolean): boolean {
+  return snapshot.type === "butik" && isLegacyUnsent(snapshot.report, sent);
 }
 
 /** Rapportens slutsats (en mening), samma som överst i PDF:en. */

@@ -53,7 +53,8 @@ function Fact({
 /**
  * Granskning och utskick av den senaste versionen för valet: status, filer, godkännande
  * och mottagare. Inget kan skickas förrän rapporten är godkänd (kontrolleras också på
- * servern). Utskicken loggas och syns i ändringsloggen.
+ * servern). Utskicken loggas och syns i ändringsloggen. En äldre butiksrapport (gamla
+ * mallen, `report.legacy`) kan inte godkännas eller skickas: en ny version skapas först.
  */
 export function ReviewPanel({
   report,
@@ -90,6 +91,8 @@ export function ReviewPanel({
   const [followText, setFollowText] = useState("");
 
   const approved = report.status === "approved" || report.status === "sent";
+  // Äldre rapport (gamla mallen): visas kort, men skickas först som ny version.
+  const legacy = report.legacy;
 
   function approve() {
     setError(null);
@@ -197,7 +200,22 @@ export function ReviewPanel({
       </dl>
 
       <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">
-        {report.status === "draft" && stale ? (
+        {legacy ? (
+          <div className="border-t border-line pt-4">
+            <StateMessage
+              compact
+              kind="error"
+              message="Rapporten är gjord med den gamla mallen."
+              detail={
+                !canEdit
+                  ? undefined
+                  : shareMode
+                    ? "Tryck Dela överst. Då skapas en ny, kort rapport."
+                    : "Skapa ny version ovan. Den blir kort."
+              }
+            />
+          </div>
+        ) : report.status === "draft" && stale ? (
           <div className="border-t border-line pt-4">
             <StateMessage
               compact
@@ -231,7 +249,7 @@ export function ReviewPanel({
           )
         ) : null}
 
-        {approved && !report.hasPdf ? (
+        {approved && !legacy && !report.hasPdf ? (
           <StateMessage
             kind="error"
             compact
@@ -244,7 +262,7 @@ export function ReviewPanel({
           />
         ) : null}
 
-        {approved && canEdit && !shareMode ? (
+        {approved && !legacy && canEdit && !shareMode ? (
           recipients.length === 0 ? (
             <StateMessage
               kind="empty"

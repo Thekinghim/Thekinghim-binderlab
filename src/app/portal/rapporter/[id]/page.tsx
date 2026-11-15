@@ -8,6 +8,7 @@ import { StateMessage } from "@/components/ui/state-message";
 import { formatInt } from "@/lib/format";
 import {
   assertStoreReportSafe,
+  isLegacyUnsent,
   storeDetailsOf,
   TITLES_ON_REQUEST,
   type StoreReport,
@@ -34,9 +35,11 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
   if (!detail) notFound();
 
   const report = asStoreReport(detail.report, ctx.store.storeId);
-  // Valet som sparades när rapporten skapades. Portalen visar bara godkända rapporter, så
-  // en äldre rapport utan sparat val visas som den skickades (med titlar).
-  const details = report ? storeDetailsOf(report, true) : false;
+  // Valet som sparades när rapporten skapades. En äldre rapport utan sparat val visas kort,
+  // som alla nya (portalen vet inte om den har skickats). Dess sparade PDF är gjord med den
+  // gamla mallen och lämnas inte ut: rapporten skrivs ut härifrån i stället.
+  const details = report ? storeDetailsOf(report, false) : false;
+  const legacy = report ? isLegacyUnsent(report, false) : false;
   const month = detail.periodStart.slice(0, 7);
 
   return (
@@ -56,10 +59,9 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
           <span>{monthText(month)}</span>
         </span>
         <span className="flex items-center gap-2">
-          {detail.storagePath ? (
+          {detail.storagePath && !legacy ? (
             <a
               href={`/portal/rapporter/${detail.reportId}/pdf`}
-              download
               className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg normal-case transition-colors duration-fast ease-instrument hover:bg-hover"
             >
               Ladda ned PDF

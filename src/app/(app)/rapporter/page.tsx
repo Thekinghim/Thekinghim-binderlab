@@ -80,9 +80,14 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
     data.type === "butik" ? (data.stores.find((x) => x.id === data.storeId)?.name ?? null) : null;
   const shared = data.current?.status === "sent";
   const lastDone = data.current?.deliveries.filter((d) => DONE_DELIVERY.has(d.status)).at(-1);
-  // Ett gammalt utkast går inte att godkänna: Dela skapar en ny version i stället.
+  // Ett gammalt utkast går inte att godkänna, och en äldre rapport (gamla mallen) skickas
+  // inte: Dela skapar en ny version i stället.
   const shareable =
-    data.current && !(data.current.status === "draft" && data.currentStale) ? data.current : null;
+    data.current &&
+    !data.current.legacy &&
+    !(data.current.status === "draft" && data.currentStale)
+      ? data.current
+      : null;
 
   const mailTitle =
     data.expected.length === 0
@@ -268,7 +273,9 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
                 title={
                   data.current.status === "sent"
                     ? "Rapporten är skickad."
-                    : data.current.status === "approved"
+                    : data.current.legacy
+                      ? "Rapporten har den gamla mallen."
+                      : data.current.status === "approved"
                       ? shareMode
                         ? "Godkänd, redo att dela."
                         : "Godkänd, redo att skicka."
