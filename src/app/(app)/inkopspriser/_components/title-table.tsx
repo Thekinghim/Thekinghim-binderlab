@@ -194,7 +194,13 @@ export function TitleTable({
         hideOnMobile: true,
         sortValue: (r) => STATUS_RANK[r.status],
         csv: (r) => statusLabel(r),
-        render: (r) => <StatusTag status={statusOf(r)}>{statusLabel(r)}</StatusTag>,
+        // Får radbrytas: en lång status ("Ingen försäljning", "Förlust efter butikens andel")
+        // ska inte trycka ut sista kolumnen ur ramen på en liten datorskärm.
+        render: (r) => (
+          <StatusTag status={statusOf(r)} wrap>
+            {statusLabel(r)}
+          </StatusTag>
+        ),
       },
       {
         key: "cost",
@@ -240,8 +246,9 @@ export function TitleTable({
           ) : (
             <span className="flex flex-col items-end">
               <span>{money(r.customerPriceOre)}</span>
+              {/* Får brytas vid punkten (kronor på en rad, procent på nästa) när det är trångt. */}
               {gap ? (
-                <span className="meta whitespace-nowrap text-subtle">{priceGapText(gap)}</span>
+                <span className="meta text-right text-subtle">{priceGapText(gap)}</span>
               ) : null}
             </span>
           );

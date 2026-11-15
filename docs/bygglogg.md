@@ -221,7 +221,13 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   Tester: `test/db/kundpris.test.ts` och `test/db/owner-costs.test.ts`.
 - Sammanslagningen: med **Pris mot kund** blev titeltabellen 1 064 px i en ram på 968 px (1 280 px skärm). **Kvar
   av pris** är därför dold från start och finns i kolumnvalet (7 av 10 kolumner visas). Kolumnvalet sparas inte, så
-  ingen har ett gammalt val som kan ge en trasig tabell. Med "Visa butikernas andel" rullar tabellen i sidled på
-  1 280 och 1 440 px, som den gjorde före pris mot kund (1 186 px mot 1 169 px). Underraden i knappen "Nytt
-  inköpspris från i dag" gick 11 px utanför knappen på 1 280 px: radbrytningen sitter nu på knappens text
-  (`Choice` i `price-form.tsx`), eftersom `cn()` inte låter en klass utifrån vinna över knappens egen.
+  ingen har ett gammalt val som kan ge en trasig tabell.
+- Det räckte inte med riktiga data: en titel med statusen "Ingen försäljning" och en lång skillnad ("+100,18 kr ·
+  +224 %") gav 1 000 px, och kolumnen Order hamnade utanför ramen. Statusen och skillnaden under pris mot kund får
+  nu radbrytas när det är trångt (`StatusTag wrap`, ingen `whitespace-nowrap` på skillnaden): minsta bredd 932 px.
+  På 1 440 px bryts inget.
+- Med "Visa butikernas andel" rullar tabellen i sidled på 1 280 och 1 440 px (1 184 px), som den gjorde före pris
+  mot kund (1 169 px). Inte ändrat.
+- Underraden i knappen "Nytt inköpspris från i dag" gick 11 px utanför knappen på 1 280 px: radbrytningen sitter nu
+  på knappens text (`Choice` i `price-form.tsx`), eftersom `cn()` inte låter en klass utifrån vinna över knappens
+  egen.
