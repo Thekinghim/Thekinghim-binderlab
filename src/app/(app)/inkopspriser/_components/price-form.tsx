@@ -12,17 +12,27 @@ import { isIsoDate } from "@/domain";
 import { formatInt, formatKronor, formatPeriodShort, formatSignedKronor } from "@/lib/format";
 import { useHydrated } from "@/lib/use-hydrated";
 
-import { addPurchasePrice, correctPurchasePrice, previewPriceSplit } from "../actions";
 import {
+  addPurchasePrice,
+  correctPurchasePrice,
+  previewPriceSplit,
+  setCustomerPrice,
+} from "../actions";
+import {
+  CUSTOMER_PRICE_TEXT,
   PRICE_MESSAGES,
   correctionText,
   correctionToast,
   dayDate,
   formatDayShort,
   kr,
+  parseCustomerPriceInput,
   parsePriceInput,
   planCorrection,
   previewPrice,
+  priceGap,
+  priceGapText,
+  priceInputText,
   sentence,
   splitPreviewText,
   type PricePreview,
@@ -39,6 +49,10 @@ export interface PriceFormProps {
   today: string;
   /** Fältets etikett (egen produkt: "Kostnad per pack (innehåll)"). */
   label?: string;
+  /** Vårt pris som gäller i dag (öre), null = titeln saknar pris i dag. */
+  currentCostOre?: number | null;
+  /** Pris mot kund på perioden som gäller i dag (öre), null = inte angivet. */
+  customerPriceOre?: number | null;
   /** Titelns kvar per order i tabellen (före andel, andel, vår del), null = ingen försäljning. */
   current?: SplitNumbers | null;
   /** Sidans searchParams (period och filter), för förhandsvisningen av kvar per order. */
@@ -74,12 +88,15 @@ function Choice({ title, sub }: { title: string; sub: string }) {
 
 const CHOICE_CLS = "h-auto min-h-14 justify-start whitespace-normal px-4 py-2.5";
 
-type Busy = "correct" | "today" | "dated";
+type Busy = "correct" | "today" | "dated" | "customer";
 
 /**
  * Nytt inköpspris för en titel med två tydliga val: "Rätta priset" (gäller all försäljning
  * hittills, med förhandsvisning av vad vinsten ändras med) eller "Nytt inköpspris från
  * idag" (äldre försäljning behåller sitt pris). Ett eget datum finns under "Annat datum…".
+ *
+ * Pris mot kund (valfritt) sparas ihop med vårt pris, eller för sig med "Spara pris mot
+ * kund" (då på perioden som gäller i dag). Det visas bara; vinsten räknas på vårt pris.
  */
 export function PriceForm({
   titleId,
@@ -88,7 +105,9 @@ export function PriceForm({
   orderDays,
   closedMonths,
   today,
-  label = "Inköpspris per pack",
+  label = "Vårt pris per pack",
+  currentCostOre = null,
+  customerPriceOre = null,
   current = null,
   query = "",
   showShare = null,
@@ -99,6 +118,10 @@ export function PriceForm({
   const [validFrom, setValidFrom] = useState(today);
   const [note, setNote] = useState("");
   const [amountError, setAmountError] = useState<string>();
+  const [customer, setCustomer] = useState(() => priceInputText(customerPriceOre));
+  const [customerError, setCustomerError] = useState<string>();
+  /** Det sparade priset mot kund (följer det som sparas här, tills sidan lästs om). */
+  const [savedCustomerOre, setSavedCustomerOre] = useState<number | null>(customerPriceOre);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<Busy | null>(null);
@@ -111,13 +134,29 @@ export function PriceForm({
   // Ett pris som skrevs innan skripten laddats finns bara i fältet, inte i state: det tas
   // med när formuläret hydrerats (annars sa knapparna "Ange inköpspriset" fast det stod där).
   const amountRef = useRef<HTMLInputElement>(null);
+  const customerRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const typed = amountRef.current?.value ?? "";
     if (typed !== "") setAmount((current) => (current === "" ? typed : current));
+    const start = priceInputText(customerPriceOre);
+    const typedCustomer = customerRef.current?.value;
+    if (typedCustomer !== undefined && typedCustomer !== start) {
+      setCustomer((current) => (current === start ? typedCustomer : current));
+    }
+    // Bara vid hydreringen: fälten läses en gång.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const parsed = amount.trim() === "" ? null : parsePriceInput(amount);
   const ore = parsed && parsed.ok ? parsed.ore : null;
+
+  // Pris mot kund: tomt fält = inget pris. Skillnaden räknas mot det skrivna priset, annars
+  // mot vårt pris i dag.
+  const customerParsed = parseCustomerPriceInput(customer);
+  const customerOre = customerParsed.ok ? customerParsed.ore : null;
+  const gap = priceGap(ore ?? currentCostOre, customerOre);
+  const hasCurrentPrice = currentCostOre !== null;
+  const customerChanged = customerParsed.ok && customerParsed.ore !== savedCustomerOre;
 
   const correction = useMemo(
     () =>
@@ -173,6 +212,17 @@ export function PriceForm({
     return p.ore;
   };
 
+  /** Läser pris mot kund; visar felet vid fältet och returnerar undefined om det inte går. */
+  const readCustomer = (): number | null | undefined => {
+    const p = parseCustomerPriceInput(customer);
+    if (!p.ok) {
+      setCustomerError(p.message);
+      return undefined;
+    }
+    setCustomerError(undefined);
+    return p.ore;
+  };
+
   const done = () => {
     setAmount("");
     setNote("");
@@ -205,11 +255,14 @@ export function PriceForm({
 
   const correct = (confirmed = false) => {
     const unitCostOre = readAmount();
-    if (unitCostOre === null || !correction || correction.start === null) return;
+    const customerPrice = readCustomer();
+    if (unitCostOre === null || customerPrice === undefined) return;
+    if (!correction || correction.start === null) return;
     run("correct", async () => {
       const result = await correctPurchasePrice({
         titleId,
         unitCostOre,
+        customerPriceOre: customerPrice,
         note: note.trim() || undefined,
         confirmed,
       });
@@ -226,18 +279,21 @@ export function PriceForm({
         description: sentence(`${titleName}: ${formatKronor(kr(unitCostOre))} per pack`),
         tone: "ok",
       });
+      setSavedCustomerOre(customerPrice);
       done();
     });
   };
 
   const saveFrom = (from: string, kind: "today" | "dated", confirmed = false) => {
     const unitCostOre = readAmount();
-    if (unitCostOre === null || !isIsoDate(from)) return;
+    const customerPrice = readCustomer();
+    if (unitCostOre === null || customerPrice === undefined || !isIsoDate(from)) return;
     if (kind === "dated" && datedClosed) return;
     run(kind, async () => {
       const result = await addPurchasePrice({
         titleId,
         unitCostOre,
+        customerPriceOre: customerPrice,
         validFrom: from,
         note: note.trim() || undefined,
         confirmed,
@@ -257,7 +313,32 @@ export function PriceForm({
         ),
         tone: "ok",
       });
+      // Ett pris från ett senare datum gäller inte i dag: då är dagens pris mot kund orört.
+      if (from <= today) setSavedCustomerOre(customerPrice);
       done();
+    });
+  };
+
+  /** Bara pris mot kund, på perioden som gäller i dag. Vårt pris rörs inte. */
+  const saveCustomer = () => {
+    const customerPrice = readCustomer();
+    if (customerPrice === undefined) return;
+    run("customer", async () => {
+      const result = await setCustomerPrice({ titleId, customerPriceOre: customerPrice });
+      if (!result.ok) {
+        setCustomerError(result.error);
+        return;
+      }
+      setSavedCustomerOre(customerPrice);
+      toast({
+        title: customerPrice === null ? CUSTOMER_PRICE_TEXT.removed : CUSTOMER_PRICE_TEXT.saved,
+        description:
+          customerPrice === null
+            ? sentence(titleName)
+            : sentence(`${titleName}: ${formatKronor(kr(customerPrice))} per pack`),
+        tone: "ok",
+      });
+      router.refresh();
     });
   };
 
@@ -305,6 +386,51 @@ export function PriceForm({
         error={amountError}
         required
       />
+
+      <div className="flex flex-col gap-3">
+        <Input
+          ref={customerRef}
+          label={CUSTOMER_PRICE_TEXT.field}
+          name="customerPrice"
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="0,00"
+          suffix="kr"
+          className="tnum text-right"
+          value={customer}
+          onChange={(e) => {
+            setCustomer(e.target.value);
+            setCustomerError(undefined);
+            setError(undefined);
+          }}
+          onBlur={() => {
+            const p = parseCustomerPriceInput(customer);
+            setCustomerError(p.ok ? undefined : p.message);
+          }}
+          error={customerError}
+          hint={CUSTOMER_PRICE_TEXT.hint}
+        />
+        {gap ? (
+          <p aria-live="polite" className="tnum text-sm text-fg">
+            {CUSTOMER_PRICE_TEXT.gap} mot vårt pris: {priceGapText(gap)}
+          </p>
+        ) : null}
+        {/* Bara pris mot kund: knappen finns när titeln har ett pris att lägga det på. */}
+        {hasCurrentPrice ? (
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              className="max-md:min-h-11"
+              loading={pending && busy === "customer"}
+              disabled={!ready || !customerChanged || otherBusy("customer")}
+              onClick={saveCustomer}
+            >
+              {CUSTOMER_PRICE_TEXT.save}
+            </Button>
+          </div>
+        ) : null}
+      </div>
 
       <div aria-live="polite" className="flex flex-col gap-1 text-sm text-fg empty:hidden">
         {lines.map((line) => (

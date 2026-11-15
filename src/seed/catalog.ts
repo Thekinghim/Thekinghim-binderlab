@@ -78,7 +78,13 @@ export interface SeedTitle {
   name: string;
   prices: readonly PriceStep[];
   /** Inköpspris per order (öre) med giltig från-datum. Tom = saknar pris. */
-  purchasePrices: readonly { validFrom: IsoDate; unitCostOre: number; note: string }[];
+  purchasePrices: readonly {
+    validFrom: IsoDate;
+    unitCostOre: number;
+    note: string;
+    /** Pris mot kund (öre) ur leverantörens prislista. Bara för visning, inget räknas på det. */
+    customerPriceOre?: number;
+  }[];
   /** Pack som ligger kvar i centrallagret i slutet (utöver det som fyllts på). */
   warehouseReserve: number;
 }
@@ -98,8 +104,14 @@ export const SEED_TITLES: readonly SeedTitle[] = [
       { ore: 17_000, count: 85 },
     ],
     purchasePrices: [
-      initialPrice(10_500),
-      { validFrom: "2026-10-27", unitCostOre: 11_200, note: "Ny leverans 27 okt, dyrare inköp" },
+      // Pris mot kund 145 kr (visas på Inköpspriser bredvid vårt pris; vinsten räknas på vårt).
+      { ...initialPrice(10_500), customerPriceOre: 14_500 },
+      {
+        validFrom: "2026-10-27",
+        unitCostOre: 11_200,
+        note: "Ny leverans 27 okt, dyrare inköp",
+        customerPriceOre: 14_500,
+      },
     ],
     warehouseReserve: 24,
   },

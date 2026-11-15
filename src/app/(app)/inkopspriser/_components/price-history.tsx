@@ -9,7 +9,15 @@ import {
   SPACED_RANGE_DASH,
 } from "@/lib/format";
 
-import { formatDayShort, kr, timelineShares, type TimelineEntry } from "../_lib/model";
+import {
+  CUSTOMER_PRICE_TEXT,
+  formatDayShort,
+  kr,
+  priceGap,
+  priceGapText,
+  timelineShares,
+  type TimelineEntry,
+} from "../_lib/model";
 
 function range(e: TimelineEntry, today: string): string {
   const from = formatDayShort(e.validFrom, today);
@@ -20,7 +28,8 @@ function range(e: TimelineEntry, today: string): string {
 
 /**
  * Prishistoriken för en titel: en tidslinje (äldst till vänster, bredd efter antal dagar)
- * och listan över priser, senaste först, med förändring och antal order per pris.
+ * och listan över priser, senaste först, med förändring och antal order per pris. Beloppet
+ * är vårt pris; pris mot kund står under perioden när det är angivet.
  */
 export function PriceHistory({
   entries,
@@ -71,6 +80,14 @@ export function PriceHistory({
                 {e.current ? <span className="label ml-2 text-fg">Gäller nu</span> : null}
                 {e.future ? <span className="label ml-2 text-subtle">Kommande</span> : null}
               </span>
+              {e.customerPriceOre !== null && e.customerPriceOre !== undefined ? (
+                <span className="tnum text-sm text-subtle">
+                  {CUSTOMER_PRICE_TEXT.customer} {formatKronor(kr(e.customerPriceOre))}
+                  {" · "}
+                  {CUSTOMER_PRICE_TEXT.gap.toLowerCase()}{" "}
+                  {priceGapText(priceGap(e.unitCostOre, e.customerPriceOre))}
+                </span>
+              ) : null}
               {e.note ? <span className="text-sm text-subtle">{e.note}</span> : null}
             </span>
             <span className="tnum text-right text-base text-fg">

@@ -185,6 +185,7 @@ export const tables: Table[] = [
       id,
       { n: "title_id", t: "uuid", k: "fk", ref: "titles" },
       { n: "unit_cost_ore", t: "bigint" },
+      { n: "customer_price_ore", t: "bigint" },
       { n: "valid_from", t: "date" },
     ],
   },

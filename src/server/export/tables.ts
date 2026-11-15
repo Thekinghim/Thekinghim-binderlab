@@ -65,7 +65,8 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   {
     file: "inkopspriser.csv",
     table: "purchase_prices",
-    description: "Inköpspris per titel (öre per pack) från ett datum.",
+    description:
+      "Inköpspris per titel (öre per pack) från ett datum, och pris mot kund om det är angivet.",
   },
   {
     file: "datakallor.csv",

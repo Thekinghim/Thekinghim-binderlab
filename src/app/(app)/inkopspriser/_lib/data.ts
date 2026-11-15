@@ -8,6 +8,9 @@
  * period_closes är dessutom stängda för rollen i RLS. Databasen har sista ordet om stängda
  * månader (BL004, purchase_prices_period_guard) och varje ändring loggas i audit_log av
  * triggern private.audit().
+ *
+ * Pris mot kund (customer_price_ore) läses och skrivs bara här. Det är bara för visning:
+ * ingen beräkning läser det (se customer-price-isolation.test.ts).
  */
 
 import "server-only";
@@ -72,10 +75,16 @@ function isoDay(value: unknown): IsoDate {
   return String(value).slice(0, 10);
 }
 
+function oreOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 async function queryPriceRecords(tx: Tx, orgId: string): Promise<PriceRecord[]> {
   const result = await tx.execute(
-    sql`select pp.id, pp.title_id, pp.unit_cost_ore, pp.valid_from::text as valid_from, pp.note,
-               pp.created_at, pp.created_by
+    sql`select pp.id, pp.title_id, pp.unit_cost_ore, pp.customer_price_ore,
+               pp.valid_from::text as valid_from, pp.note, pp.created_at, pp.created_by
         from public.purchase_prices pp
         where pp.organization_id = ${orgId}::uuid
         order by pp.title_id, pp.valid_from`,
@@ -84,6 +93,7 @@ async function queryPriceRecords(tx: Tx, orgId: string): Promise<PriceRecord[]> 
     id: String(r.id),
     titleId: String(r.title_id),
     unitCostOre: Number(r.unit_cost_ore),
+    customerPriceOre: oreOrNull(r.customer_price_ore),
     validFrom: isoDay(r.valid_from),
     note: typeof r.note === "string" && r.note.trim() !== "" ? r.note : null,
     createdAt: iso(r.created_at),
@@ -135,6 +145,17 @@ function priceBefore(
   const sorted = own.slice().sort((x, y) => x.validFrom.localeCompare(y.validFrom));
   const before = sorted.filter((p) => p.validFrom <= day).at(-1);
   return (before ?? sorted[0])?.unitCostOre ?? null;
+}
+
+/** Prisperioden som gäller `day` (den senaste på eller före dagen), annars ingen. */
+function periodOn<T extends Pick<PriceRecord, "validFrom">>(
+  own: readonly T[],
+  day: string,
+): T | undefined {
+  return own
+    .filter((p) => p.validFrom <= day)
+    .sort((x, y) => x.validFrom.localeCompare(y.validFrom))
+    .at(-1);
 }
 
 /**
@@ -229,6 +250,7 @@ function priceState(value: unknown): PriceAuditEvent["before"] {
   if (!Number.isFinite(cost) || !from) return null;
   return {
     unitCostOre: cost,
+    customerPriceOre: oreOrNull(o.customer_price_ore),
     validFrom: from,
     note: typeof o.note === "string" && o.note.trim() !== "" ? o.note : null,
   };
@@ -284,6 +306,11 @@ const addInput = z.object({
   organizationId: z.uuid(),
   titleId: z.uuid(),
   unitCostOre: z.number().int().min(0).max(MAX_UNIT_COST_ORE),
+  /**
+   * Pris mot kund (öre). null = inget pris mot kund. Utelämnat = rör det inte: ett nytt
+   * pris tar över periodens pris mot kund, ett befintligt behåller sitt.
+   */
+  customerPriceOre: z.number().int().min(0).max(MAX_UNIT_COST_ORE).nullable().optional(),
   validFrom: z.string().refine(isIsoDate),
   note: z
     .string()
@@ -373,12 +400,23 @@ export async function addPurchasePriceFor(
       // En ren ändring av anteckningen påverkar inga siffror och släpps igenom (som i
       // databasvakten, som bara bevakar belopp och datum).
       const noteOnly = existing !== undefined && existing.unitCostOre === input.unitCostOre;
+      // Pris mot kund: det angivna, annars det som redan gäller dagen (följer med till en ny
+      // prisperiod, så att t.ex. en leverans med nytt inköpspris inte tömmer det).
+      const customerPriceOre =
+        input.customerPriceOre !== undefined
+          ? input.customerPriceOre
+          : ((existing ?? periodOn(own, input.validFrom))?.customerPriceOre ?? null);
       const hit = noteOnly ? [] : closedMonthsHit(own, input.validFrom, closed);
       if (hit.length > 0) {
         return { ok: false, error: PRICE_MESSAGES.closedMonth(hit) };
       }
 
-      if (existing && existing.unitCostOre === input.unitCostOre && existing.note === input.note) {
+      if (
+        existing &&
+        existing.unitCostOre === input.unitCostOre &&
+        existing.note === input.note &&
+        existing.customerPriceOre === customerPriceOre
+      ) {
         return { ok: false, error: PRICE_MESSAGES.unchanged };
       }
       if (!noteOnly) {
@@ -389,7 +427,8 @@ export async function addPurchasePriceFor(
       if (existing) {
         await tx.execute(
           sql`update public.purchase_prices
-              set unit_cost_ore = ${input.unitCostOre}, note = ${input.note}
+              set unit_cost_ore = ${input.unitCostOre}, note = ${input.note},
+                  customer_price_ore = ${customerPriceOre}
               where organization_id = ${input.organizationId}::uuid and id = ${existing.id}::uuid`,
         );
         return { ok: true, data: { mode: "replaced", priceId: existing.id } };
@@ -397,9 +436,10 @@ export async function addPurchasePriceFor(
       const inserted = Array.from(
         await tx.execute(
           sql`insert into public.purchase_prices
-                (organization_id, title_id, unit_cost_ore, valid_from, note)
+                (organization_id, title_id, unit_cost_ore, customer_price_ore, valid_from, note)
               values (${input.organizationId}::uuid, ${input.titleId}::uuid,
-                      ${input.unitCostOre}, ${input.validFrom}::date, ${input.note})
+                      ${input.unitCostOre}, ${customerPriceOre}, ${input.validFrom}::date,
+                      ${input.note})
               returning id`,
         ),
       )[0] as { id: string };
@@ -505,26 +545,64 @@ export async function correctPurchasePriceFor(
       const doubt = await doubtFor(tx, input, priceBefore(own, input.today));
       if (doubt) return doubt;
 
-      // Anteckningen hamnar på perioden som gäller i dag (den senaste som rättas).
+      // Anteckningen hamnar på den senaste perioden som rättas. Ett angivet pris mot kund
+      // hamnar på perioden som gäller i dag, också när den redan har rätt inköpspris och
+      // inte rättas. En ny period ärver priset mot kund som gällde den dagen, och äldre
+      // perioder behåller sitt.
       const last = plan.steps.at(-1)!;
+      const moved = new Map(
+        plan.steps.flatMap((s) =>
+          s.kind === "update" && s.newValidFrom ? [[s.validFrom, s.newValidFrom] as const] : [],
+        ),
+      );
+      const todayFrom = [
+        ...own.map((p) => moved.get(p.validFrom) ?? p.validFrom),
+        ...plan.steps.flatMap((s) => (s.kind === "insert" ? [s.validFrom] : [])),
+      ]
+        .filter((from) => from <= input.today)
+        .sort()
+        .at(-1);
+      let customerPlaced = input.customerPriceOre === undefined;
       for (const step of plan.steps) {
         const note = step === last ? input.note : undefined;
+        const from =
+          step.kind === "insert" ? step.validFrom : (step.newValidFrom ?? step.validFrom);
+        const isToday = from === todayFrom && input.customerPriceOre !== undefined;
+        if (isToday) customerPlaced = true;
         if (step.kind === "insert") {
+          const customer = isToday
+            ? input.customerPriceOre
+            : periodOn(own, step.validFrom)?.customerPriceOre;
           await tx.execute(
             sql`insert into public.purchase_prices
-                  (organization_id, title_id, unit_cost_ore, valid_from, note)
+                  (organization_id, title_id, unit_cost_ore, customer_price_ore, valid_from, note)
                 values (${org}::uuid, ${input.titleId}::uuid, ${input.unitCostOre},
-                        ${step.validFrom}::date, ${note ?? null})`,
+                        ${customer ?? null}, ${step.validFrom}::date, ${note ?? null})`,
           );
           continue;
         }
         const row = own.find((p) => p.validFrom === step.validFrom)!;
+        const customer = isToday ? (input.customerPriceOre ?? null) : row.customerPriceOre;
         await tx.execute(
           sql`update public.purchase_prices
               set unit_cost_ore = ${input.unitCostOre},
-                  valid_from = ${step.newValidFrom ?? step.validFrom}::date,
-                  note = ${note ?? row.note}
+                  valid_from = ${from}::date,
+                  note = ${note ?? row.note},
+                  customer_price_ore = ${customer}
               where organization_id = ${org}::uuid and id = ${row.id}::uuid`,
+        );
+      }
+      // Dagens period hade redan rätt inköpspris: bara priset mot kund sätts på den.
+      const todayRow = own.find((p) => p.validFrom === todayFrom);
+      if (
+        !customerPlaced &&
+        todayRow &&
+        todayRow.customerPriceOre !== (input.customerPriceOre ?? null)
+      ) {
+        await tx.execute(
+          sql`update public.purchase_prices
+              set customer_price_ore = ${input.customerPriceOre ?? null}
+              where organization_id = ${org}::uuid and id = ${todayRow.id}::uuid`,
         );
       }
       return {
@@ -536,6 +614,58 @@ export async function correctPurchasePriceFor(
           profitDeltaOre: plan.profitDeltaOre,
         },
       };
+    });
+  } catch (error) {
+    return writeError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pris mot kund (bara för visning)
+// ---------------------------------------------------------------------------
+
+const customerPriceInput = z.object({
+  organizationId: z.uuid(),
+  titleId: z.uuid(),
+  /** Pris mot kund (öre), eller null = ta bort det. */
+  customerPriceOre: z.number().int().min(0).max(MAX_UNIT_COST_ORE).nullable(),
+  today: z.string().refine(isIsoDate),
+});
+
+export type CustomerPriceInput = z.input<typeof customerPriceInput>;
+
+/**
+ * Sätter (eller tar bort) pris mot kund på prisperioden som gäller i dag, utan att röra
+ * inköpspriset. Påverkar ingen beräkning och får därför ändras också i en stängd månad
+ * (databasvakten bevakar bara belopp och datum). Loggas av triggern. Bara ägare och admin.
+ */
+export async function setCustomerPriceFor(
+  user: SessionUser | null,
+  raw: CustomerPriceInput,
+): Promise<ActionResult<{ customerPriceOre: number | null }>> {
+  const parsed = customerPriceInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: PRICE_MESSAGES.customerInvalid };
+  const input = parsed.data;
+  const denied = await authorizeWrite(user, input.organizationId);
+  if (denied) return denied;
+  try {
+    return await withUserDbFor(user as SessionUser, async (tx) => {
+      const titleError = await loadWritableTitle(tx, input.organizationId, input.titleId);
+      if (titleError) return { ok: false, error: titleError };
+      const own = (await queryPriceRecords(tx, input.organizationId)).filter(
+        (p) => p.titleId === input.titleId,
+      );
+      const current = periodOn(own, input.today);
+      if (!current) return { ok: false, error: PRICE_MESSAGES.customerNeedsCost };
+      if (current.customerPriceOre === input.customerPriceOre) {
+        return { ok: false, error: PRICE_MESSAGES.customerUnchanged };
+      }
+      await tx.execute(
+        sql`update public.purchase_prices
+            set customer_price_ore = ${input.customerPriceOre}
+            where organization_id = ${input.organizationId}::uuid and id = ${current.id}::uuid`,
+      );
+      return { ok: true, data: { customerPriceOre: input.customerPriceOre } };
     });
   } catch (error) {
     return writeError(error);

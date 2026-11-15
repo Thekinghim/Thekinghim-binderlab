@@ -354,6 +354,8 @@ export const purchasePrices = pgTable("purchase_prices", {
   organizationId: orgId(),
   titleId: uuid("title_id").notNull(),
   unitCostOre: ore("unit_cost_ore").notNull(),
+  /** Pris mot kund per pack (öre). Bara för visning: vinsten räknas på unitCostOre. */
+  customerPriceOre: ore("customer_price_ore"),
   validFrom: day("valid_from").notNull(),
   note: text("note"),
   ...stamps(),

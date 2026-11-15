@@ -104,10 +104,18 @@ export async function importOwnerCosts(
     for (const row of plan.rows) {
       if (row.kind !== "insert") continue;
       await tx.execute(
+        // Pris mot kund (bara för visning) följer med från perioden som gällde dagen, så
+        // att en import av nya kostnader inte tömmer det.
         sql`insert into public.purchase_prices
-              (organization_id, title_id, unit_cost_ore, valid_from, note)
+              (organization_id, title_id, unit_cost_ore, customer_price_ore, valid_from, note)
             values (${options.organizationId}::uuid, ${row.titleId}::uuid,
-                    ${row.unitCostOre}, ${file.validFrom}::date, ${row.note})`,
+                    ${row.unitCostOre},
+                    (select pp.customer_price_ore from public.purchase_prices pp
+                     where pp.organization_id = ${options.organizationId}::uuid
+                       and pp.title_id = ${row.titleId}::uuid
+                       and pp.valid_from <= ${file.validFrom}::date
+                     order by pp.valid_from desc limit 1),
+                    ${file.validFrom}::date, ${row.note})`,
       );
       written++;
     }

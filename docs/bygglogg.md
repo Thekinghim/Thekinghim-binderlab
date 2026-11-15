@@ -185,3 +185,31 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
 - Granskningen hittade en lucka: portalens rapportsida visade den äldre rapportens slutsats under rubriken, och den
   nämner mest sålda titel ("… och X stod för 30 % av intäkten"). En äldre rapport som visas kort får nu raden om
   ersättningen i stället (`storeSummary` i `src/reports/store-view.ts`, test i `store-view.test.ts`).
+## 15 nov. – pris mot kund på Inköpspriser
+
+- Ägarens önskemål: se både vårt inköpspris och priset mot kund (exemplet: 30th Celebration kostar oss 110 kr, mot
+  kund 145 kr). Leverantörens prislista har två spalter; `unit_cost_ore` är vår kostnad ("Real Cost").
+- **Beslut: visa båda, räkna som i dag.** Ägaren har inte sagt vad priset mot kund ska användas till i
+  beräkningarna, så inget räknas på det. Ny kolumn `purchase_prices.customer_price_ore`
+  (`20261216000000_kundpris.sql`): valfri, `>= 0`, på samma rad som inköpspriset så att den följer prisperioderna.
+  Tillägget är säkert medan den gamla koden kör.
+- Inköpspriser: kolumnerna **Vårt pris** och **Pris mot kund** (med skillnaden under, och **Skillnad** som egen
+  kolumn i kolumnvalet), titelns huvud med de tre talen och raden "Vinsten räknas på vårt pris. Pris mot kund visas
+  bara här.", prishistoriken och ändringsloggen. Formuläret har fältet **Pris mot kund per pack**; fältet för
+  inköpspriset heter nu **Vårt pris per pack**. Tomt pris mot kund är ett streck, aldrig 0 kr.
+- Sparas ihop med Rätta priset, Nytt inköpspris från i dag och Annat datum, eller för sig med **Spara pris mot kund**
+  (ny server action `setCustomerPrice`, ägare och admin). Ett nytt inköpspris utan uppgift (leverans i Vårt lager,
+  mystery-kalkylen, Enkel vy) tar över periodens pris mot kund, så att det inte försvinner.
+- Fältet lades inte till i: Ny produkt i Awish (formuläret har redan "Försäljningspris: det kunden betalar i
+  automaten", två kundpriser bredvid varandra förvirrar), leverans med pris i Vårt lager och Enkel vy (där anges
+  vad packet kostade), mystery-kalkylen (kostnaden räknas ut), snabbinköp och onboarding (inget pris skrivs där),
+  Enkel vy:s prislista (översatt till flera språk, visar bara vårt pris) och importskriptet för ägarens kostnader.
+- Inget annat läser kolumnen. `customer-price-isolation.test.ts` listar filerna som får nämna den (ingen i
+  `src/domain`, `src/analytics`, `src/reports` eller `src/server`, ingen SQL utom migreringen) och
+  `test/db/kundpris-orord.test.ts` läser beräkningsindata, lönsamheten per titel, automat och butik, Hem, Lönsamhet,
+  Automater, Butiker, Prognos med lagervärdet, Bokföring och ögonblicksbilderna för butiks-, delägar- och
+  bokföringsrapporten utan pris mot kund, med pris mot kund på varje rad och efter en ändring på sidan: identiska
+  svar. Som kontroll ändras ett inköpspris, och då ändras svaren.
+- Stängda månader: vakten bevakar bara inköpspriset och datumet. Pris mot kund får ändras också där.
+- Butiksportalen och demon: ingen ny yta. Påfyllare och butiksanvändare ser inga prisrader (RLS oförändrad), ingen
+  `portal_*`-funktion läser tabellen, och demons seed har inget pris mot kund.

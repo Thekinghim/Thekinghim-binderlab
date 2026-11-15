@@ -10,11 +10,14 @@ import { cn } from "@/lib/cn";
 import { MISSING, formatInt, formatKronor } from "@/lib/format";
 
 import {
+  CUSTOMER_PRICE_TEXT,
   PRICE_EDITOR_ID,
   STATUS_RANK,
   formatDayShort,
   kr,
   marginText,
+  priceGap,
+  priceGapText,
   sentence,
   statusLabel,
   type TitleRow,
@@ -50,7 +53,8 @@ export interface StoreShareColumns {
 }
 
 /**
- * Tabellen över alla titlar: inköpspris, snittpris, vad som blir kvar och status.
+ * Tabellen över alla titlar: vårt pris (inköpspriset), pris mot kund, snittpris, vad som
+ * blir kvar och status. Pris mot kund visas bara: allt annat räknas på vårt pris.
  *
  * "Kvar per order" och "Kvar av pris" är hela beloppet, före butikens andel (ägarens regel:
  * hela beloppet som standard; ingen hyra dras heller). Med `share` (vald butik eller "Visa
@@ -194,7 +198,7 @@ export function TitleTable({
       },
       {
         key: "cost",
-        header: "Inköpspris",
+        header: CUSTOMER_PRICE_TEXT.ours,
         numeric: true,
         hideOnMobile: true,
         sortValue: (r) => r.currentCostOre ?? Number.NaN,
@@ -206,16 +210,59 @@ export function TitleTable({
             <span className="flex flex-col items-end">
               <span>{money(r.currentCostOre)}</span>
               {r.currentFrom ? (
-                <span className="meta text-subtle">
+                <span className="meta whitespace-nowrap text-subtle">
                   från {formatDayShort(r.currentFrom, today)}
                 </span>
               ) : null}
               {/* Snittet i perioden bara när priset har ändrats under den (annars samma tal). */}
               {r.averageCostOre !== null && r.averageCostOre !== r.currentCostOre ? (
-                <span className="meta text-subtle">snitt {money(r.averageCostOre)}</span>
+                <span className="meta whitespace-nowrap text-subtle">
+                  snitt {money(r.averageCostOre)}
+                </span>
               ) : null}
             </span>
           ),
+      },
+      {
+        key: "customer",
+        header: CUSTOMER_PRICE_TEXT.customer,
+        numeric: true,
+        hideOnMobile: true,
+        sortValue: (r) => r.customerPriceOre ?? Number.NaN,
+        csv: (r) =>
+          r.customerPriceOre === null || r.customerPriceOre === undefined
+            ? ""
+            : kr(r.customerPriceOre),
+        render: (r) => {
+          const gap = priceGap(r.currentCostOre, r.customerPriceOre);
+          return r.customerPriceOre === null || r.customerPriceOre === undefined ? (
+            MISSING
+          ) : (
+            <span className="flex flex-col items-end">
+              <span>{money(r.customerPriceOre)}</span>
+              {gap ? (
+                <span className="meta whitespace-nowrap text-subtle">{priceGapText(gap)}</span>
+              ) : null}
+            </span>
+          );
+        },
+      },
+      {
+        key: "gap",
+        header: CUSTOMER_PRICE_TEXT.gap,
+        numeric: true,
+        hideOnMobile: true,
+        // Står redan under pris mot kund; kolumnen finns i kolumnvalet (sortering, export).
+        defaultHidden: true,
+        sortValue: (r) => priceGap(r.currentCostOre, r.customerPriceOre)?.ore ?? Number.NaN,
+        csv: (r) => {
+          const gap = priceGap(r.currentCostOre, r.customerPriceOre);
+          return gap ? kr(gap.ore) : "";
+        },
+        render: (r) => {
+          const gap = priceGap(r.currentCostOre, r.customerPriceOre);
+          return gap ? money(gap.ore) : MISSING;
+        },
       },
       {
         key: "price",
@@ -251,6 +298,8 @@ export function TitleTable({
         header: "Kvar av pris",
         numeric: true,
         hideOnMobile: true,
+        // Dold från start: annars får tabellen inte plats på en liten datorskärm.
+        defaultHidden: true,
         sortValue: (r) => r.marginBeforeBp ?? Number.NaN,
         csv: (r) => (r.marginBeforeBp === null ? "" : r.marginBeforeBp / 10_000),
         render: (r) => marginText(r),
@@ -284,7 +333,7 @@ export function TitleTable({
       rows={rows}
       rowKey={(r) => r.id}
       caption={[
-        sentence(`Inköpspris och kvar per order per titel, ${periodLabel}`),
+        sentence(`Vårt pris, pris mot kund och kvar per order per titel, ${periodLabel}`),
         share
           ? `Kvar per order är före andelen. ${share.header} och vår del: ${share.scope}.`
           : note,

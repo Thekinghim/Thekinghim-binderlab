@@ -525,7 +525,7 @@ describe("previewPrice", () => {
 describe("egna produkter och Att göra", () => {
   it("titleRows bär flaggan; etiketten säger kostnad för innehållet", () => {
     expect(costLabel(true)).toBe("Kostnad per pack (innehåll)");
-    expect(costLabel(false)).toBe("Inköpspris per pack");
+    expect(costLabel(false)).toBe("Vårt pris per pack");
   });
 
   it("utan pris först (flest order), sedan förlust; arkiverade utan order hoppas över", () => {

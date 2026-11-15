@@ -7,8 +7,18 @@ function money(ore: number | null): string {
   return ore === null ? "Saknade pris" : formatKronor(kr(ore));
 }
 
+/** Pris mot kund: inget pris är ett streck (det är valfritt, inget som saknas). */
+function customerMoney(ore: number | null): string {
+  return ore === null ? MISSING : formatKronor(kr(ore));
+}
+
 function beforeText(e: PriceLogEntry): string {
+  if (e.kind === "Pris mot kund") return customerMoney(e.beforeOre);
   return e.beforeOre === null && e.kind !== "Nytt pris" ? MISSING : money(e.beforeOre);
+}
+
+function afterText(e: PriceLogEntry): string {
+  return e.kind === "Pris mot kund" ? customerMoney(e.afterOre) : money(e.afterOre);
 }
 
 /** Ändringsloggen för en titels inköpspriser: vem, när, före och efter. */
@@ -83,15 +93,23 @@ export function PriceLog({
                     →{" "}
                   </span>
                   <span className="sr-only">, efter </span>
-                  <span className="text-fg">{money(e.afterOre)}</span>
+                  <span className="text-fg">{afterText(e)}</span>
                 </span>
+                {e.customer && e.kind !== "Pris mot kund" ? (
+                  <span className="tnum block text-sm text-subtle">
+                    Pris mot kund {customerMoney(e.customer.beforeOre)}
+                    <span aria-hidden> → </span>
+                    <span className="sr-only"> till </span>
+                    {customerMoney(e.customer.afterOre)}
+                  </span>
+                ) : null}
                 {e.note ? <span className="block text-sm text-subtle">{e.note}</span> : null}
               </td>
               <td className="tnum hidden px-3 py-2.5 text-right whitespace-nowrap text-muted sm:table-cell">
                 {beforeText(e)}
               </td>
               <td className="tnum hidden py-2.5 pr-0 pl-3 text-right whitespace-nowrap text-fg sm:table-cell">
-                {money(e.afterOre)}
+                {afterText(e)}
               </td>
             </tr>
           ))}

@@ -24,6 +24,16 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
 
 - **Hem och Lönsamhet:** intäkt, vinst och marginal efter inköp och butiksersättning för valfri period, per titel,
   automat, butik, dag, vecka och månad. Order utan inköpspris räknas inte in i vinsten och pekas ut.
+- **Inköpspriser:** två priser per titel: **Vårt pris** (det vi betalar, leverantörens "Real Cost") och **Pris mot
+  kund** (det högre priset i leverantörens prislista, valfritt), med skillnaden i kronor och procent, t.ex.
+  30th Celebration 110 kr hos oss och 145 kr mot kund: +35,00 kr · +32 %. Procenten är skillnaden som andel av vårt
+  pris. Utan pris mot kund står ett streck, aldrig 0 kr. **Vinsten räknas på vårt pris.** Pris mot kund visas bara på
+  Inköpspriser (tabellen, titelns huvud, prishistoriken, ändringsloggen och CSV-exporten) och ingår inte i någon
+  beräkning: vinst, marginal, rapporter, butikernas andel, bokföring och lagervärde är desamma med och utan.
+  Ägare och admin ändrar det i samma formulär som inköpspriset: ihop med ett nytt eller rättat pris, eller för sig
+  med **Spara pris mot kund** (då på priset som gäller i dag). Ett nytt inköpspris från en leverans eller
+  mystery-kalkylen tar över periodens pris mot kund. Läsare ser båda priserna, påfyllare och butikernas portal ser
+  inget av dem.
 - **Att göra:** en lista som räknas om vid varje sidvisning: vilka titlar som tar slut inom 2,5 dagar, automater som
   inte sålt på 48 timmar, rapporter att godkänna och skicka, avtal att säga upp, titlar utan inköpspris. Varje punkt
   har sitt underlag och kronor i risk.

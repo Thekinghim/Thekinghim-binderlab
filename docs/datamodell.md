@@ -93,6 +93,7 @@ Behörigheten kontrolleras **både** i serverkoden (`requireRole()` i varje serv
 - **titles**: kanoniskt namn, serie, `merged_into_id` (null), `archived_at`
 - **title_aliases**: `title_id`, `alias` (originalstavningen), `alias_normalized`; unik (org, alias_normalized)
 - **purchase_prices**: `title_id`, `unit_cost_ore` (inköp per order), `valid_from`; unik (org, title, valid_from). Det pris som gäller är det senaste med `valid_from <= order.business_date`.
+  - `customer_price_ore` _(ny, `20261216000000_kundpris.sql`)_: pris mot kund per pack ur leverantörens prislista. Valfritt (null = inte angivet), `>= 0`. Ligger på samma rad som inköpspriset och följer därför prisperioderna. **Bara för visning på Inköpspriser: ingen beräkning, funktion, vy eller rapport läser kolumnen**, och vyn `purchase_price_periods` har den inte. Samma RLS som resten av raden (ägare, admin och läsare läser; ägare och admin skriver; påfyllare och butiksanvändare ser inga prisrader). Uppdatering är tillåtlistad per kolumn (`unit_cost_ore`, `valid_from`, `note`, `customer_price_ore`). `purchase_prices_period_guard` bevakar bara titel, datum och `unit_cost_ore`: pris mot kund får ändras också i en stängd månad, eftersom inga siffror påverkas. Ändringen loggas i `audit_log`. Att inget läser kolumnen hålls på plats av `src/app/(app)/inkopspriser/_lib/customer-price-isolation.test.ts` (koden och migreringarna) och `test/db/kundpris-orord.test.ts` (laddarna, rapporterna, bokföringen och lagervärdet ger identiska svar med och utan).
 
 **Sammanslagning av titlar:**
 

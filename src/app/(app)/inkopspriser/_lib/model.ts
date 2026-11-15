@@ -21,6 +21,7 @@ import {
 import { parseAmountOre } from "@/import/amount";
 import {
   formatDate,
+  formatDelta,
   formatInt,
   formatKronor,
   formatMonth,
@@ -43,6 +44,8 @@ export interface PriceRecord {
   readonly id: string;
   readonly titleId: string;
   readonly unitCostOre: number;
+  /** Pris mot kund per pack (öre), null = inte angivet. Bara för visning. */
+  readonly customerPriceOre: number | null;
   readonly validFrom: IsoDate;
   readonly note: string | null;
   readonly createdAt: string;
@@ -52,6 +55,8 @@ export interface PriceRecord {
 /** Pris före eller efter i en logghändelse. */
 export interface PriceState {
   readonly unitCostOre: number;
+  /** Pris mot kund (öre). Utelämnat i äldre loggrader = inget. */
+  readonly customerPriceOre?: number | null;
   readonly validFrom: IsoDate;
   readonly note: string | null;
 }
@@ -77,6 +82,11 @@ export interface TitleRow {
   readonly archived: boolean;
   readonly currentCostOre: number | null;
   readonly currentFrom: IsoDate | null;
+  /**
+   * Pris mot kund per pack på prisperioden som gäller (leverantörens prislista), null =
+   * inte angivet. Bara för visning: inget på raden räknas på det.
+   */
+  readonly customerPriceOre?: number | null;
   readonly averagePriceOre: number | null;
   readonly averageCostOre: number | null;
   /**
@@ -126,9 +136,67 @@ export interface TitleInfo {
   readonly ownProduct?: boolean;
 }
 
-/** Etiketten för priset: inköpspris, eller kostnaden för innehållet för en egen produkt. */
+/** Etiketten för priset: vårt pris, eller kostnaden för innehållet för en egen produkt. */
 export function costLabel(own: boolean): string {
-  return own ? "Kostnad per pack (innehåll)" : "Inköpspris per pack";
+  return own ? "Kostnad per pack (innehåll)" : "Vårt pris per pack";
+}
+
+// ---------------------------------------------------------------------------
+// Vårt pris och pris mot kund
+// ---------------------------------------------------------------------------
+
+/** Texterna för de två priserna (samma ord överallt på sidan). */
+export const CUSTOMER_PRICE_TEXT = {
+  ours: "Vårt pris",
+  customer: "Pris mot kund",
+  gap: "Skillnad",
+  field: "Pris mot kund per pack",
+  hint: "Valfritt. Vinsten räknas på vårt pris.",
+  helper: "Vinsten räknas på vårt pris. Pris mot kund visas bara här.",
+  save: "Spara pris mot kund",
+  saved: "Pris mot kund sparat",
+  removed: "Pris mot kund borttaget",
+} as const;
+
+/** Skillnaden mellan pris mot kund och vårt pris: kronor och andel av vårt pris. */
+export interface PriceGap {
+  readonly ore: number;
+  /** Skillnaden som andel av vårt pris, null när vårt pris är 0. */
+  readonly share: number | null;
+}
+
+/** null när något av priserna saknas (visas som streck, aldrig som 0 kr). */
+export function priceGap(
+  costOre: number | null | undefined,
+  customerOre: number | null | undefined,
+): PriceGap | null {
+  if (costOre === null || costOre === undefined) return null;
+  if (customerOre === null || customerOre === undefined) return null;
+  const ore = customerOre - costOre;
+  return { ore, share: costOre > 0 ? ore / costOre : null };
+}
+
+/** "+35,00 kr · +32 %", eller strecket när något pris saknas. */
+export function priceGapText(gap: PriceGap | null): string {
+  if (!gap) return MISSING;
+  const kronor = formatSignedKronor(kr(gap.ore));
+  return gap.share === null ? kronor : `${kronor} · ${formatDelta(gap.share)}`;
+}
+
+/**
+ * Lägger pris mot kund på raderna: priset på samma prisperiod som radens inköpspris
+ * (titel och giltig från). Rör inga andra fält.
+ */
+export function withCustomerPrices(
+  rows: readonly TitleRow[],
+  prices: ReadonlyArray<Pick<PriceRecord, "titleId" | "validFrom" | "customerPriceOre">>,
+): TitleRow[] {
+  const byPeriod = new Map(prices.map((p) => [`${p.titleId}|${p.validFrom}`, p.customerPriceOre]));
+  return rows.map((r) => ({
+    ...r,
+    customerPriceOre:
+      r.currentFrom === null ? null : (byPeriod.get(`${r.id}|${r.currentFrom}`) ?? null),
+  }));
 }
 
 /**
@@ -181,6 +249,9 @@ export const PRICE_MESSAGES = {
   titleMissing: "Titeln finns inte längre. Ladda om sidan.",
   titleMerged: "Titeln är sammanslagen med en annan. Lägg priset på den titeln i stället.",
   unchanged: "Priset är redan inlagt med samma belopp och datum.",
+  customerInvalid: "Skriv pris mot kund i kronor, t.ex. 145.",
+  customerNeedsCost: "Ange vårt pris först. Pris mot kund sparas ihop med det.",
+  customerUnchanged: "Pris mot kund är redan det beloppet.",
   correctionUnchanged: "All försäljning har redan det priset.",
   correctionClosed:
     "Månaden är stängd. Välj Nytt inköpspris i stället, eller be en ägare öppna månaden.",
@@ -223,6 +294,27 @@ export function kr(ore: number): number {
 // ---------------------------------------------------------------------------
 
 export type ParsedPrice = { ok: true; ore: number } | { ok: false; message: string };
+
+/** Pris mot kund ur fältet: tomt = inget pris (null), annars som parsePriceInput. */
+export type ParsedCustomerPrice = { ok: true; ore: number | null } | { ok: false; message: string };
+
+export function parseCustomerPriceInput(input: string): ParsedCustomerPrice {
+  if (input.trim() === "") return { ok: true, ore: null };
+  const p = parsePriceInput(input);
+  if (p.ok) return p;
+  return {
+    ok: false,
+    message: p.message.startsWith("Högst") ? p.message : PRICE_MESSAGES.customerInvalid,
+  };
+}
+
+/** Öre → fältets text: "145" eller "112,50" (tomt utan pris). */
+export function priceInputText(ore: number | null | undefined): string {
+  if (ore === null || ore === undefined) return "";
+  const whole = Math.trunc(ore / 100);
+  const rest = ore % 100;
+  return rest === 0 ? String(whole) : `${whole},${String(rest).padStart(2, "0")}`;
+}
 
 /** "112,50" / "112" / "1 120 kr" → öre. Negativa belopp och fler än två decimaler nekas. */
 export function parsePriceInput(input: string): ParsedPrice {
@@ -531,6 +623,8 @@ export interface TimelineEntry {
   /** Priset börjar gälla senare. */
   readonly future: boolean;
   readonly note: string | null;
+  /** Pris mot kund i perioden (öre), null = inte angivet. */
+  readonly customerPriceOre?: number | null;
 }
 
 /**
@@ -542,6 +636,7 @@ export function priceTimeline(
   orderDays: ReadonlyArray<{ date: IsoDate; orders: number }>,
   today: IsoDate,
   notes: ReadonlyMap<IsoDate, string | null> = new Map(),
+  customerPrices: ReadonlyMap<IsoDate, number | null> = new Map(),
 ): TimelineEntry[] {
   return history.map((h, i) => {
     const older = history[i + 1];
@@ -560,6 +655,7 @@ export function priceTimeline(
       current: h.validFrom <= today && (h.validTo === null || h.validTo >= today),
       future: h.validFrom > today,
       note: notes.get(h.validFrom) ?? null,
+      customerPriceOre: customerPrices.get(h.validFrom) ?? null,
     };
   });
 }
@@ -590,7 +686,7 @@ export interface PriceLogEntry {
   readonly id: string;
   readonly occurredAt: string;
   readonly actor: string;
-  readonly kind: "Nytt pris" | "Ändrat pris" | "Borttaget pris";
+  readonly kind: "Nytt pris" | "Ändrat pris" | "Borttaget pris" | "Pris mot kund";
   /** Datumet ändringen gäller från. */
   readonly validFrom: IsoDate;
   /** Priset som gällde från `validFrom` före ändringen (null = saknade pris). */
@@ -600,6 +696,11 @@ export interface PriceLogEntry {
   /** Giltig från före, om det flyttades. */
   readonly movedFrom: IsoDate | null;
   readonly note: string | null;
+  /**
+   * Pris mot kund före och efter, när ändringen rörde det. För "Pris mot kund" (bara det
+   * ändrades) är beforeOre/afterOre samma belopp som här.
+   */
+  readonly customer?: { readonly beforeOre: number | null; readonly afterOre: number | null };
 }
 
 export function actorName(actorId: string | null, names: Readonly<Record<string, string>>): string {
@@ -656,22 +757,39 @@ export function priceLog(
         afterOre: e.after.unitCostOre,
         movedFrom: null,
         note: e.after.note,
+        ...((e.after.customerPriceOre ?? null) !== null
+          ? { customer: { beforeOre: null, afterOre: e.after.customerPriceOre ?? null } }
+          : {}),
       });
     } else if (e.action === "update" && e.after) {
       const prior = state.get(e.rowId) ?? e.before;
       const before = e.before ?? prior;
       state.set(e.rowId, e.after);
       const moved = before && before.validFrom !== e.after.validFrom ? before.validFrom : null;
+      const customerBefore = before?.customerPriceOre ?? null;
+      const customerAfter = e.after.customerPriceOre ?? null;
+      const customer =
+        customerBefore !== customerAfter
+          ? { customer: { beforeOre: customerBefore, afterOre: customerAfter } }
+          : {};
+      // Bara pris mot kund ändrades (inköpspriset och datumet är desamma): egen radtyp.
+      const customerOnly =
+        customerBefore !== customerAfter &&
+        before !== null &&
+        before !== undefined &&
+        before.unitCostOre === e.after.unitCostOre &&
+        moved === null;
       out.push({
         id: e.id,
         occurredAt: e.occurredAt,
         actor,
-        kind: "Ändrat pris",
+        kind: customerOnly ? "Pris mot kund" : "Ändrat pris",
         validFrom: e.after.validFrom,
-        beforeOre: before ? before.unitCostOre : null,
-        afterOre: e.after.unitCostOre,
+        beforeOre: customerOnly ? customerBefore : before ? before.unitCostOre : null,
+        afterOre: customerOnly ? customerAfter : e.after.unitCostOre,
         movedFrom: moved,
         note: e.after.note,
+        ...customer,
       });
     } else if (e.action === "delete" && e.before) {
       state.delete(e.rowId);

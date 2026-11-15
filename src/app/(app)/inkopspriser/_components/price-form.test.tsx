@@ -16,6 +16,7 @@ vi.mock("../actions", () => ({
   addPurchasePrice: vi.fn(),
   correctPurchasePrice: vi.fn(),
   previewPriceSplit: vi.fn(),
+  setCustomerPrice: vi.fn(),
 }));
 
 const { PriceForm } = await import("./price-form");

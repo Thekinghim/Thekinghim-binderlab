@@ -101,7 +101,7 @@ describe("prisändring", () => {
     const rowBefore = await titleRow.innerText();
 
     const price = newPrice();
-    await form.getByLabel("Inköpspris per pack").fill(price);
+    await form.getByLabel("Vårt pris per pack").fill(price);
     // Förhandsvisningen säger vad rättelsen gör innan något sparas.
     // (Första körningen saknar titeln pris: då får dess order inköpspris.)
     await form.getByText(/order får (nytt inköp, vinsten ändras med|inköpspris)/).waitFor();
@@ -156,7 +156,7 @@ describe("prisändring", () => {
     const url = page.url();
     await page.goto(url, { waitUntil: "commit" });
     const price = newPrice();
-    await form.getByLabel("Inköpspris per pack").fill(price);
+    await form.getByLabel("Vårt pris per pack").fill(price);
     // Ett eget datum ligger under "Annat datum…". Körs testet igen ersätts samma dags pris.
     await form.getByRole("button", { name: "Annat datum…" }).click();
     await form.getByLabel("Giltig från").fill(PRICE_VALID_FROM);
