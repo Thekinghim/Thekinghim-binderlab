@@ -185,6 +185,7 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
 - Granskningen hittade en lucka: portalens rapportsida visade den äldre rapportens slutsats under rubriken, och den
   nämner mest sålda titel ("… och X stod för 30 % av intäkten"). En äldre rapport som visas kort får nu raden om
   ersättningen i stället (`storeSummary` i `src/reports/store-view.ts`, test i `store-view.test.ts`).
+
 ## 15 nov. – pris mot kund på Inköpspriser
 
 - Ägarens önskemål: se både vårt inköpspris och priset mot kund (exemplet: 30th Celebration kostar oss 110 kr, mot
@@ -213,3 +214,14 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
 - Stängda månader: vakten bevakar bara inköpspriset och datumet. Pris mot kund får ändras också där.
 - Butiksportalen och demon: ingen ny yta. Påfyllare och butiksanvändare ser inga prisrader (RLS oförändrad), ingen
   `portal_*`-funktion läser tabellen, och demons seed har inget pris mot kund.
+- Granskningen (`980a0ab`) rättade tre saker: Rätta priset lägger nu alltid pris mot kund på perioden som gäller i
+  dag (förut hamnade det på en äldre period när dagens period redan hade rätt inköpspris); en ny period efter en
+  stängd månad ärver priset mot kund som gällde den dagen i stället för att bli tom; och `import-owner-costs` tar
+  med periodens pris mot kund när nya kostnader läses in (skriptet har fortfarande inget eget fält för det).
+  Tester: `test/db/kundpris.test.ts` och `test/db/owner-costs.test.ts`.
+- Sammanslagningen: med **Pris mot kund** blev titeltabellen 1 064 px i en ram på 968 px (1 280 px skärm). **Kvar
+  av pris** är därför dold från start och finns i kolumnvalet (7 av 10 kolumner visas). Kolumnvalet sparas inte, så
+  ingen har ett gammalt val som kan ge en trasig tabell. Med "Visa butikernas andel" rullar tabellen i sidled på
+  1 280 och 1 440 px, som den gjorde före pris mot kund (1 186 px mot 1 169 px). Underraden i knappen "Nytt
+  inköpspris från i dag" gick 11 px utanför knappen på 1 280 px: radbrytningen sitter nu på knappens text
+  (`Choice` i `price-form.tsx`), eftersom `cn()` inte låter en klass utifrån vinna över knappens egen.

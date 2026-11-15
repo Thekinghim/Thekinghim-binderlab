@@ -79,14 +79,17 @@ function datedText(p: PricePreview, today: string): string {
 
 function Choice({ title, sub }: { title: string; sub: string }) {
   return (
-    <span className="flex flex-col items-start gap-0.5 text-left">
+    // Radbrytningen sätts här: cn() slår bara ihop klassnamn, så en "whitespace-normal" på
+    // knappen vinner inte över knappens egen "whitespace-nowrap" (texten gick då utanför
+    // knappen i en smal spalt).
+    <span className="flex flex-col items-start gap-0.5 text-left whitespace-normal">
       <span>{title}</span>
       <span className="text-xs font-normal opacity-75">{sub}</span>
     </span>
   );
 }
 
-const CHOICE_CLS = "h-auto min-h-14 justify-start whitespace-normal px-4 py-2.5";
+const CHOICE_CLS = "h-auto min-h-14 justify-start px-4 py-2.5";
 
 type Busy = "correct" | "today" | "dated" | "customer";
 

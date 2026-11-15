@@ -76,3 +76,17 @@ describe("TitleTable: hyran hör till butikernas andel", () => {
     expect(out).not.toContain("Kvar efter hyra");
   });
 });
+
+describe("TitleTable: kolumnerna från start", () => {
+  it("båda priserna visas; Kvar av pris ligger i kolumnvalet så att tabellen får plats", () => {
+    const out = html(null);
+    expect(out).toContain("Vårt pris");
+    expect(out).toContain("Pris mot kund");
+    expect(out).toContain("Kvar per order");
+    // Med Pris mot kund blev tabellen 1 064 px i en ram på 968 px (1 280 px skärm).
+    expect(out).not.toContain("Kvar av pris");
+    expect(out).not.toContain("33,3");
+    // 7 av 10: Skillnad, Snitt inköp och Kvar av pris är dolda från start.
+    expect(out.match(/<th[\s>]/g)).toHaveLength(7);
+  });
+});
