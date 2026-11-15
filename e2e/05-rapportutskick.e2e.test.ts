@@ -8,11 +8,17 @@
  * snittköp och service, i förhandsvisningen, PDF:en och mejlet. Med butikens val "Visa
  * detaljer i rapporten" visar förhandsvisningen titlarna och service igen, medan den
  * redan skickade rapporten står kvar som den skickades.
+ *
+ * Äldre rapport (från före den korta rapporten, utan sparat val, förberedd i databasen med
+ * E2E_DATABASE_URL): en godkänd rapport med en sparad PDF i den gamla mallen visas kort på
+ * skärmen, PDF-knappen ger en ny kort PDF i stället för den sparade, den kan inte skickas,
+ * och "Skapa ny version" ger en kort rapport som godkänns och får sin egen korta PDF.
  */
 
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
+import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -32,11 +38,14 @@ const STORE = "Gallerian Väst (exempel)";
 /** Det som bara visas med "Visa detaljer i rapporten". */
 const DETAILS_ONLY = ["Snittköp", "Flest köp", "Titlar", "Service", "Påfyllningsbesök"];
 const MONTH = "oktober 2026";
+/** Butiken med den äldre rapporten (en annan än den som får utskicket). */
+const OLD_STORE = "Spelbutiken Centrum (exempel)";
 
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
 let errors: Error[];
+let sql: ReturnType<typeof postgres>;
 const run = Date.now().toString(36);
 const recipient = { name: `Butikschef ${run}`, email: `butik-${run}@example.se` };
 const greeting = `Tack för oktober! (${run})`;
@@ -69,6 +78,7 @@ async function findMail(to: string): Promise<{ dir: string; meta: OutboxMeta } |
 }
 
 beforeAll(async () => {
+  sql = postgres(process.env.E2E_DATABASE_URL!, { max: 1, onnotice: () => {} });
   browser = await launchBrowser();
   ({ page, context, errors } = await openPage(browser, e2e().baseUrl));
   await login(page, e2e().users.owner);
@@ -79,7 +89,22 @@ afterEach(() => expectNoPageErrors(errors));
 afterAll(async () => {
   await context?.close();
   await browser?.close();
+  await sql?.end();
 });
+
+/** Antal sidor i en PDF från Chromium (sidobjekten). */
+function pdfPages(bytes: Buffer): number {
+  return bytes.toString("latin1").match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length ?? 0;
+}
+
+/** Hämtar rapportens PDF med den inloggades session. */
+async function downloadPdf(reportId: string): Promise<Buffer> {
+  const res = await context.request.get(`/rapport/${reportId}/fil/pdf`, { maxRedirects: 0 });
+  expect(res.status()).toBe(200);
+  const bytes = Buffer.from(await res.body());
+  expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
+  return bytes;
+}
 
 /** Butikens sida, fliken Kontakt och rapport (där brytaren står). */
 async function openStoreReportSettings(): Promise<void> {
@@ -94,7 +119,7 @@ async function openStoreReportSettings(): Promise<void> {
  * byts formuläret ut (nytt `key` i page.tsx) och under bytet kan det gamla och det nya
  * finnas samtidigt en kort stund: vänta tills det bara finns ett fält Månad.
  */
-async function chooseStoreReport(): Promise<Locator> {
+async function chooseStoreReport(store = STORE): Promise<Locator> {
   const builder = page.locator('section[aria-labelledby="ny-rapport"]');
   await builder.getByRole("radio", { name: "Butik" }).check();
   await until(
@@ -106,7 +131,9 @@ async function chooseStoreReport(): Promise<Locator> {
     async () => (await builder.getByLabel("Butik").count()) === 1,
     "ett fält för butiken",
   );
-  await builder.getByLabel("Butik").selectOption({ label: STORE });
+  await builder.getByLabel("Butik").selectOption({ label: store });
+  // Sidan har räknat om för butiken (rubriken över formuläret).
+  await page.getByText(`Butiksrapport, ${store}.`).first().waitFor();
   return builder;
 }
 
@@ -220,5 +247,105 @@ describe("rapportutskick", () => {
     const row = page.getByRole("listitem").filter({ hasText: recipient.email });
     await row.getByRole("button", { name: "Pausa", exact: true }).click();
     await row.getByText("Pausad", { exact: true }).waitFor();
+  });
+});
+
+describe("äldre butiksrapport (gamla mallen)", () => {
+  let storeId: string;
+  let oldId: string;
+
+  const latestReport = async (): Promise<{ id: string; details: boolean | null } | undefined> => {
+    const [row] = await sql<{ id: string; details: boolean | null }[]>`
+      select id, (data_snapshot -> 'report' ->> 'details')::boolean as details
+      from public.reports
+      where store_id = ${storeId} and period_start = '2026-10-01' and period_end = '2026-10-31'
+      order by generated_at desc, id desc limit 1`;
+    return row;
+  };
+
+  it("förbereder en godkänd rapport från förr, med en sparad PDF i den gamla mallen", async () => {
+    const [store] = await sql<{ id: string }[]>`
+      select id from public.stores
+      where organization_id = ${e2e().organizationId} and name = ${OLD_STORE}`;
+    storeId = store!.id;
+    // Rapporten som den såg ut förut: med titlar och service.
+    await sql`update public.stores set report_details = true where id = ${storeId}`;
+    const before = (await latestReport())?.id;
+    await page.goto("/rapporter");
+    const builder = await chooseStoreReport(OLD_STORE);
+    await builder.getByRole("button", { name: /^Skapa (utkast|ny version)$/ }).click();
+    const created = await until(async () => {
+      const row = await latestReport();
+      return row && row.id !== before ? row : undefined;
+    }, "den nya rapporten i databasen");
+    expect(created.details).toBe(true);
+    oldId = created.id;
+    // PDF:en sparas vid första hämtningen: gamla mallen, mer än en sida.
+    const oldPdf = await downloadPdf(oldId);
+    expect(pdfPages(oldPdf)).toBeGreaterThan(1);
+    // Från före valet fanns: inget sparat val, godkänd, inte skickad. Brytaren av (standard).
+    await sql.begin(async (tx) => {
+      await tx`set local session_replication_role = replica`;
+      await tx`update public.reports set data_snapshot = data_snapshot #- '{report,details}'
+               where id = ${oldId}`;
+    });
+    await sql`insert into public.report_approvals (organization_id, report_id)
+              values (${e2e().organizationId}, ${oldId})`;
+    await sql`update public.stores set report_details = false where id = ${storeId}`;
+    const [files] = await sql<{ n: number }[]>`
+      select count(*)::int as n from public.report_files where report_id = ${oldId}`;
+    expect(files!.n).toBe(1);
+    expect((await latestReport())?.details).toBeNull();
+  });
+
+  it("visas kort på skärmen, och PDF-knappen ger en ny kort PDF, inte den sparade", async () => {
+    await page.goto(`/rapport/${oldId}`);
+    const report = page.locator("main");
+    await report.getByText("Underlag per titel finns på begäran.").waitFor();
+    await report
+      .getByText(/^Er ersättning för oktober: /)
+      .first()
+      .waitFor();
+    for (const word of DETAILS_ONLY) expect(await report.getByText(word).count(), word).toBe(0);
+    await page.getByText("Godkänd", { exact: true }).first().waitFor();
+    await screenshot(page, "05-aldre-rapport-kort");
+    expect(pdfPages(await downloadPdf(oldId))).toBe(1);
+    // Ingenting har skrivits över: en hämtning till ger samma korta rapport.
+    expect(pdfPages(await downloadPdf(oldId))).toBe(1);
+  });
+
+  it("kan inte skickas: Rapporter ber om en ny version, som blir kort", async () => {
+    await page.goto("/rapporter");
+    const builder = await chooseStoreReport(OLD_STORE);
+    await page.getByText("Rapporten har den gamla mallen.").first().waitFor();
+    await page.getByText("Skapa ny version ovan. Den blir kort.").first().waitFor();
+    expect(await page.getByRole("group", { name: "Skicka till" }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: "Godkänn för utskick" }).count()).toBe(0);
+    await screenshot(page, "05-aldre-rapport-ny-version");
+
+    await builder.getByRole("button", { name: "Skapa ny version", exact: true }).click();
+    const approve = page.getByRole("button", { name: "Godkänn för utskick" });
+    await approve.waitFor();
+    const next = await until(async () => {
+      const row = await latestReport();
+      return row && row.id !== oldId ? row : undefined;
+    }, "den nya versionen i databasen");
+    expect(next.details).toBe(false);
+    await approve.click();
+    await page.getByText("Rapporten är godkänd").first().waitFor({ timeout: 120_000 });
+    await page.getByText("Godkänd, redo att skicka.").first().waitFor();
+    // Godkännandet sparade den nya rapportens PDF: en sida, och den äldre är orörd.
+    const [files] = await sql<{ n: number }[]>`
+      select count(*)::int as n from public.report_files where report_id = ${next.id}`;
+    expect(files!.n).toBe(1);
+    expect(pdfPages(await downloadPdf(next.id))).toBe(1);
+    await page.goto(`/rapport/${next.id}`);
+    await page.locator("main").getByText("Underlag per titel finns på begäran.").waitFor();
+    for (const word of DETAILS_ONLY) {
+      expect(await page.locator("main").getByText(word).count(), word).toBe(0);
+    }
+    const [sent] = await sql<{ n: number }[]>`
+      select count(*)::int as n from public.report_deliveries where report_id = ${oldId}`;
+    expect(sent!.n).toBe(0);
   });
 });
