@@ -7,6 +7,8 @@
  * och slår igenom direkt på Hem, Att göra, Lönsamhet och här (revalidateAppData).
  */
 
+import { revalidatePath } from "next/cache";
+
 import type { ActionResult } from "@/server/auth/flows";
 import {
   loadDomainInput,
@@ -19,6 +21,7 @@ import { getActiveOrganization, getSessionUser } from "@/server/session";
 import {
   addPurchasePriceFor,
   correctPurchasePriceFor,
+  setCustomerPriceFor,
   setOwnProductFor,
   type AddPriceOutcome,
   type CorrectPriceOutcome,
@@ -31,6 +34,8 @@ import { splitWithPrice, type PerOrderSplit } from "./_lib/price-economics";
 export async function addPurchasePrice(input: {
   titleId: string;
   unitCostOre: number;
+  /** Pris mot kund (öre), null = inget. Utelämnat = rör det inte. */
+  customerPriceOre?: number | null;
   validFrom: string;
   note?: string;
   /** true = användaren har sett varningen om ett konstigt pris och sparar ändå. */
@@ -42,6 +47,7 @@ export async function addPurchasePrice(input: {
     organizationId: organization.id,
     titleId: String(input?.titleId ?? ""),
     unitCostOre: Number(input?.unitCostOre),
+    customerPriceOre: customerPriceOf(input?.customerPriceOre),
     validFrom: String(input?.validFrom ?? ""),
     note: typeof input?.note === "string" ? input.note : undefined,
     // Formulären går alltid genom rimlighetskollen (price-check.ts).
@@ -58,6 +64,8 @@ export async function addPurchasePrice(input: {
 export async function correctPurchasePrice(input: {
   titleId: string;
   unitCostOre: number;
+  /** Pris mot kund (öre) på perioden som gäller i dag, null = inget. Utelämnat = rör det inte. */
+  customerPriceOre?: number | null;
   note?: string;
   /** true = användaren har sett varningen om ett konstigt pris och sparar ändå. */
   confirmed?: boolean;
@@ -68,11 +76,41 @@ export async function correctPurchasePrice(input: {
     organizationId: ctx.organization.id,
     titleId: String(input?.titleId ?? ""),
     unitCostOre: Number(input?.unitCostOre),
+    customerPriceOre: customerPriceOf(input?.customerPriceOre),
     note: typeof input?.note === "string" ? input.note : undefined,
     today: ctx.today,
     confirmed: input?.confirmed === true,
   });
   if (result.ok) await revalidateSettlementData();
+  return result;
+}
+
+/** Klientens pris mot kund: ett tal, null (ta bort) eller utelämnat (rör inte). */
+function customerPriceOf(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  return value === null ? null : Number(value);
+}
+
+/**
+ * Pris mot kund för titeln, på prisperioden som gäller i dag (null = ta bort). Rör inte
+ * inköpspriset och ingen beräkning: bara sidan Inköpspriser läses om. Ägare och admin.
+ */
+export async function setCustomerPrice(input: {
+  titleId: string;
+  customerPriceOre: number | null;
+}): Promise<ActionResult<{ customerPriceOre: number | null }>> {
+  const ctx = await loadOptionalContext();
+  if (!ctx) return { ok: false, error: PRICE_MESSAGES.forbidden };
+  const result = await setCustomerPriceFor(await getSessionUser(), {
+    organizationId: ctx.organization.id,
+    titleId: String(input?.titleId ?? ""),
+    customerPriceOre:
+      input?.customerPriceOre === null || input?.customerPriceOre === undefined
+        ? null
+        : Number(input.customerPriceOre),
+    today: ctx.today,
+  });
+  if (result.ok) revalidatePath("/inkopspriser");
   return result;
 }
 

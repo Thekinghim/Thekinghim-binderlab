@@ -721,6 +721,13 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [{ titleId: c.A.titleId, ownProduct: true }],
   },
+  // Pris mot kund (bara visning, 20261216000000_kundpris.sql)
+  {
+    module: "@/app/(app)/inkopspriser/actions",
+    name: "setCustomerPrice",
+    allowed: OP,
+    args: (c) => [{ titleId: c.A.titleId, customerPriceOre: 14500 }],
+  },
   // Inkorg
   {
     module: "@/app/(app)/inkorg/actions",

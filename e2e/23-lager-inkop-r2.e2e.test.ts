@@ -556,7 +556,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     const form = page.getByRole("form", { name: `Nytt inköpspris för ${title}` });
     await form.waitFor();
     const before = await prices();
-    await form.getByLabel("Inköpspris per pack").fill("1220");
+    await form.getByLabel("Vårt pris per pack").fill("1220");
     await form.getByRole("button", { name: /^Nytt inköpspris från i dag/ }).click();
     const ask = form.getByRole("alert").filter({ hasText: "Stämmer det?" });
     await ask

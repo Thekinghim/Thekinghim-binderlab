@@ -9,7 +9,7 @@ import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { priceHistory, profitability, storeShareDeducted, type PurchasePrice } from "@/domain";
-import { formatDate, formatInt } from "@/lib/format";
+import { MISSING, formatDate, formatInt, formatKronor } from "@/lib/format";
 import { ALL_COST_LINES } from "@/lib/cost-lines";
 import { messages } from "@/i18n";
 import {
@@ -37,14 +37,19 @@ import { loadPricePageFor, loadTitleDetailFor } from "./_lib/data";
 import { currentPriceEconomics } from "./_lib/price-economics";
 import {
   costLabel,
+  CUSTOMER_PRICE_TEXT,
+  kr,
   PRICE_EDITOR_ID,
   pageHeadline,
   priceTodos,
   priceLog,
   priceTimeline,
   signalTitleIds,
+  priceGap,
+  priceGapText,
   titleHeadline,
   titleRows,
+  withCustomerPrices,
 } from "./_lib/model";
 
 /** Inköpspriser; i Enkel vy på personens språk. */
@@ -73,6 +78,11 @@ function shareScope(
 }
 
 type SearchParams = Record<string, string | string[] | undefined>;
+
+/** Ett pris i kronor, eller strecket när det saknas (aldrig 0 kr). */
+function money(ore: number | null | undefined): string {
+  return ore === null || ore === undefined ? MISSING : formatKronor(kr(ore));
+}
 
 function one(v: string | string[] | undefined): string | null {
   return typeof v === "string" ? v : Array.isArray(v) ? (v[0] ?? null) : null;
@@ -108,7 +118,11 @@ export default async function PurchasePricesPage({
   const activeTitleIds = input.titles.filter((t) => !t.archived).map((t) => t.id);
   const economics = currentPriceEconomics({ ...input.current, titleIds: activeTitleIds });
   const unpriced = profitability(input.current, "title").unpriced;
-  const allRows = titleRows(economics, input.titles, unpriced.byTitle);
+  // Pris mot kund läggs på raderna efter beräkningen: det visas bara, inget räknas på det.
+  const allRows = withCustomerPrices(
+    titleRows(economics, input.titles, unpriced.byTitle),
+    data.prices,
+  );
   const onlyMissing = one(sp.saknar) === "pris";
   const rows = onlyMissing
     ? allRows.filter((r) => r.status === "missing" || r.unpricedOrders > 0)
@@ -164,6 +178,7 @@ export default async function PurchasePricesPage({
           detail.orderDays,
           today,
           new Map(titlePrices.map((p) => [p.validFrom, p.note])),
+          new Map(titlePrices.map((p) => [p.validFrom, p.customerPriceOre])),
         )
       : [];
   const log = detail ? priceLog(detail.events, data.actorNames) : [];
@@ -341,6 +356,37 @@ export default async function PurchasePricesPage({
             aside={titleAside}
           />
 
+          {/* Vårt pris och pris mot kund för titeln, också på mobil (där tabellen döljer dem). */}
+          <div className="flex flex-col gap-2">
+            <dl
+              aria-label={`Priser för ${selectedTitle.name}`}
+              className="flex flex-wrap gap-x-8 gap-y-2"
+            >
+              {[
+                {
+                  label: own ? "Vår kostnad" : CUSTOMER_PRICE_TEXT.ours,
+                  value: money(selectedRow?.currentCostOre),
+                },
+                {
+                  label: CUSTOMER_PRICE_TEXT.customer,
+                  value: money(selectedRow?.customerPriceOre),
+                },
+                {
+                  label: CUSTOMER_PRICE_TEXT.gap,
+                  value: priceGapText(
+                    priceGap(selectedRow?.currentCostOre, selectedRow?.customerPriceOre),
+                  ),
+                },
+              ].map((x) => (
+                <div key={x.label} className="flex flex-col">
+                  <dt className="label text-subtle">{x.label}</dt>
+                  <dd className="tnum text-base text-fg">{x.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="meta text-subtle">{CUSTOMER_PRICE_TEXT.helper}</p>
+          </div>
+
           <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
             {/* Redigeraren först: ett klick på en titel rullar hit och sätter markören i priset. */}
             <div className="flex min-w-0 flex-col gap-6 lg:col-span-5">
@@ -381,6 +427,12 @@ export default async function PurchasePricesPage({
                   closedMonths={data.closedMonths}
                   today={today}
                   label={costLabel(own)}
+                  currentCostOre={
+                    titlePrices.filter((p) => p.validFrom <= today).at(-1)?.unitCostOre ?? null
+                  }
+                  customerPriceOre={
+                    titlePrices.filter((p) => p.validFrom <= today).at(-1)?.customerPriceOre ?? null
+                  }
                   current={
                     selectedRow
                       ? {

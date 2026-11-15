@@ -388,8 +388,10 @@ async function ensureMasterData(tx: Tx, orgId: string, sections: Sections): Prom
     for (const price of title.purchasePrices) {
       const inserted = await rows(
         tx,
-        sql`insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from, note)
-            values (${org}, ${titleId}::uuid, ${price.unitCostOre}::bigint, ${price.validFrom}::date, ${price.note})
+        sql`insert into public.purchase_prices
+              (organization_id, title_id, unit_cost_ore, customer_price_ore, valid_from, note)
+            values (${org}, ${titleId}::uuid, ${price.unitCostOre}::bigint,
+                    ${price.customerPriceOre ?? null}::bigint, ${price.validFrom}::date, ${price.note})
             on conflict (organization_id, title_id, valid_from) do nothing
             returning id`,
       );
