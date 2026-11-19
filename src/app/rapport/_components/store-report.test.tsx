@@ -251,8 +251,6 @@ describe("underlag för butikens bokföring", () => {
   const snap = snapshot(false, BASIS);
   const html = renderToStaticMarkup(<StoreReportDocument snapshot={snap} />);
   const plain = visibleText(html).replace(/\u00a0|\u202f/g, " ");
-  // Rapportens enda ord med "vinst" och "marginal": skattereglernas namn, inget belopp.
-  const TAX_TERM = /vinstmarginalbeskattning/g;
 
   it("visar vilket bolag som betalar, mottagaren och avtalet", () => {
     expect(snap.report.basis).toEqual(BASIS);
@@ -280,15 +278,14 @@ describe("underlag för butikens bokföring", () => {
       "129,71 kr",
       "648,55 kr",
       "Ersättningen är exklusive moms. Ni fakturerar Binderlab Sverige AB och lägger på svensk moms, 25 %.",
-      "Binderlab Sverige AB är säljare av varorna i automaten och redovisar momsen på den försäljningen (vinstmarginalbeskattning).",
+      "Binderlab Sverige AB är säljare av varorna i automaten.",
     ])
       expect(plain, text).toContain(text);
   });
 
   it("är fortfarande ett ark och läcker inget", () => {
     expect(html.match(/data-page=/g)?.length ?? 0).toBe(PAGES_SHORT);
-    const rest = plain.replace(TAX_TERM, "");
-    for (const re of FORBIDDEN) expect(rest, String(re)).not.toMatch(re);
+    for (const re of FORBIDDEN) expect(plain, String(re)).not.toMatch(re);
   });
 
   it("samma block i rapporten med detaljer", () => {
@@ -355,11 +352,10 @@ describe("underlag för butikens bokföring", () => {
         "648,55 kr",
         "Enligt Placeringsavtal från 3 november 2026, undertecknat 9 november 2026.",
         "Ersättningen är exklusive moms. Ni fakturerar Binderlab Sverige AB och lägger på svensk moms, 25 %.",
-        "redovisar momsen på den försäljningen (vinstmarginalbeskattning).",
+        "Binderlab Sverige AB är säljare av varorna i automaten.",
       ])
         expect(b, text).toContain(text);
-      const rest = b.replace(TAX_TERM, "");
-      for (const re of FORBIDDEN) expect(rest, String(re)).not.toMatch(re);
+      for (const re of FORBIDDEN) expect(b, String(re)).not.toMatch(re);
     }
   });
 });

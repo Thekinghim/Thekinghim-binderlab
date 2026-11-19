@@ -162,20 +162,19 @@ export function vatRows(basis: StoreBasis, compensationOre: number): BasisVatRow
 
 /**
  * Meningarna om momsen. Med momsrad: beloppet är exklusive moms och butiken fakturerar oss
- * med svensk moms; vi säljer varorna och redovisar momsen på den försäljningen. Utan
- * momsrad sägs bara vem som säljer varorna (inget påstående om moms).
+ * med svensk moms. Alltid: vi är säljare av varorna (försäljningen i automaten är alltså
+ * inte butikens). Hur vi själva redovisar momsen på försäljningen sägs inte: appen vet inte
+ * det (momssatsen i Inställningar kan vara 0 %), och rapporten ska inte påstå något om skatt
+ * som ingen har valt. Utan momsrad sägs bara vem som säljer varorna.
  */
 export function vatSentences(basis: StoreBasis, compensationOre: number): string[] {
   const who = basis.payer.name;
-  if (basis.vatMode !== "added") return [`${who} är säljare av varorna i automaten.`];
+  const seller = `${who} är säljare av varorna i automaten.`;
+  if (basis.vatMode !== "added" || compensationOre <= 0) return [seller];
   const pct = ratePct(basis.vatRateBp);
   return [
-    ...(compensationOre > 0
-      ? [
-          `Ersättningen är exklusive moms. Ni fakturerar ${who} och lägger på svensk moms, ${pct} %.`,
-        ]
-      : []),
-    `${who} är säljare av varorna i automaten och redovisar momsen på den försäljningen (vinstmarginalbeskattning).`,
+    `Ersättningen är exklusive moms. Ni fakturerar ${who} och lägger på svensk moms, ${pct} %.`,
+    seller,
   ];
 }
 

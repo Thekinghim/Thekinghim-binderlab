@@ -279,7 +279,7 @@ describe("rapportutskick", () => {
         "Ersättning exkl. moms",
         "Moms 25 %",
         "Att fakturera",
-        "(vinstmarginalbeskattning)",
+        "är säljare av varorna i automaten.",
       ])
         expect(b, word).toContain(word);
     }

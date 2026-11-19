@@ -66,8 +66,8 @@ export async function updateCompanyDetails(input: {
   contactName: string;
   contactEmail: string;
   contactPhone: string;
-  vatNumber: string;
-  reportVatMode: string;
+  vatNumber?: string;
+  reportVatMode?: string;
 }): Promise<ActionResult<{ changed: boolean }>> {
   const organization = await getActiveOrganization();
   if (!organization) return { ok: false, error: SETTINGS_MESSAGES.forbidden };
@@ -80,8 +80,12 @@ export async function updateCompanyDetails(input: {
     contactName: str(input?.contactName),
     contactEmail: str(input?.contactEmail),
     contactPhone: str(input?.contactPhone),
-    vatNumber: str(input?.vatNumber),
-    reportVatMode: input?.reportVatMode === "none" ? "none" : "added",
+    // Saknas fälten (en flik som laddades före uppdateringen) ändras de inte.
+    vatNumber: typeof input?.vatNumber === "string" ? input.vatNumber : undefined,
+    reportVatMode:
+      input?.reportVatMode === "none" || input?.reportVatMode === "added"
+        ? input.reportVatMode
+        : undefined,
   });
   if (result.ok && result.data?.changed) revalidateAppData();
   return result;

@@ -168,16 +168,20 @@ describe("texterna i rapporten", () => {
     ]);
     expect(vatSentences(BASIS, 749_300)).toEqual([
       "Ersättningen är exklusive moms. Ni fakturerar Binderlab AB och lägger på svensk moms, 25 %.",
-      "Binderlab AB är säljare av varorna i automaten och redovisar momsen på den försäljningen (vinstmarginalbeskattning).",
+      "Binderlab AB är säljare av varorna i automaten.",
     ]);
   });
 
   it("ingen ersättning: inget att fakturera", () => {
     expect(vatRows(BASIS, 0)).toEqual([]);
     expect(vatRows(BASIS, -5_000)).toEqual([]);
-    expect(vatSentences(BASIS, 0)).toEqual([
-      "Binderlab AB är säljare av varorna i automaten och redovisar momsen på den försäljningen (vinstmarginalbeskattning).",
-    ]);
+    // Inget påstående om hur vi själva redovisar momsen, och inga ord som stoppas i butiksmejlet.
+    for (const ore of [749_300, 0, -5_000])
+      for (const mode of ["added", "none"] as const)
+        expect(vatSentences({ ...BASIS, vatMode: mode }, ore).join(" ")).not.toMatch(
+          /redovisar|vinst|marginal/i,
+        );
+    expect(vatSentences(BASIS, 0)).toEqual(["Binderlab AB är säljare av varorna i automaten."]);
   });
 
   it("Visa ingen momsrad: inga momsbelopp och inget påstående om moms", () => {
@@ -198,7 +202,7 @@ describe("texterna i rapporten", () => {
       `Moms 25 %: 1${NBSP}873,25${NBSP}kr`,
       `Att fakturera: 9${NBSP}366,25${NBSP}kr`,
       "Ersättningen är exklusive moms. Ni fakturerar Binderlab AB och lägger på svensk moms, 25 %.",
-      "Binderlab AB är säljare av varorna i automaten och redovisar momsen på den försäljningen (vinstmarginalbeskattning).",
+      "Binderlab AB är säljare av varorna i automaten.",
     ]);
   });
 });

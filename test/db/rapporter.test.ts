@@ -340,11 +340,7 @@ describe("flödet: utkast, godkännande, utskick", () => {
     // Underlaget för butikens bokföring står i mejlet: vårt bolag och momsen.
     expect(text).toContain("Ersättningen betalas av:");
     for (const body of [text, html]) {
-      // Skattereglernas namn ("vinstmarginalbeskattning", meningen om momsen) är inget belopp
-      // och ingen uppgift om oss: bara det ordet undantas.
-      expect(body.replace(/vinstmarginalbeskattning/g, "")).not.toMatch(
-        /inköp|marginal|vinst|Mobilia/i,
-      );
+      expect(body).not.toMatch(/inköp|marginal|vinst|Mobilia/i);
     }
     const files = await readdir(path.join(outbox, folder!));
     expect(files).toContain("binderlab-butik-nordstan-2025-10.pdf");

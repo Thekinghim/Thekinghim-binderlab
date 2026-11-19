@@ -248,8 +248,11 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   när företagsuppgifterna, avtalet eller momsvalet ändras. Nycklarna innehåller inget av det portalens SQL-kontroll
   stoppar (`private.portal_snapshot_safe`), så ingen portalfunktion behövde ändras.
 - `assertStoreReportSafe` undantar `basis` från ordkontrollen: företagsnamn, adress och avtalets namn skrivs av
-  människor ("Vinstdelningsavtal" ska inte stoppa rapporten). Ordet "vinstmarginalbeskattning" står bara i
-  renderingen, inte i den sparade rapporten.
+  människor ("Vinstdelningsavtal" ska inte stoppa rapporten).
+- Grinden tog bort påståendet "och redovisar momsen på den försäljningen (vinstmarginalbeskattning)". Appen vet
+  inte hur vi redovisar momsen (VMB är en vyknapp, momssatsen kan vara 0 %), sidfoten kan säga "ingen moms tas ut"
+  på samma ark, och ordet krävde ett undantag i kontrollen att butiksmejlet aldrig innehåller "vinst" eller
+  "marginal". Kvar: "[Bolaget] är säljare av varorna i automaten." Kontrollen är hel igen.
 - Migrering `20261217000000_rapport_underlag.sql`: `organization_settings.vat_number` (valfri, `SE` + tio siffror +
   `01`) och `report_vat_mode` (`added` standard, `none`), med kolumnvis `grant update`. Bara tillägg, säker medan
   den gamla koden kör. Momsregistreringsnumret föreslås från organisationsnumret i formuläret men sparas aldrig
@@ -265,8 +268,8 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   kolumner, tabellens rader är något tätare och avstånden mellan avsnitten 3,5 mm i stället för 5. Mätt i
   webbläsaren (e2e 10, arkets brödyta 853 px): tre automater 23 px lediga, en hälsning på tre rader 16 px lediga,
   båda ett ark. Rapporter utan blocket ritas exakt som förut (eget fall i e2e 10).
-- Inte bekräftat av ägaren: att butiken ska fakturera med 25 % moms (därav valet "Visa ingen momsrad"), och att
-  meningen om vinstmarginalbeskattning stämmer för oss. Butikens eget juridiska namn och organisationsnummer finns
+- Inte bekräftat av ägaren: att butiken ska fakturera med 25 % moms (därav valet "Visa ingen momsrad").
+  Butikens eget juridiska namn och organisationsnummer finns
   inte i appen: mottagaren är butikens namn.
 - Tester: `src/reports/store-basis.test.ts`, `store-report.test.tsx`, `snapshot.test.ts`,
   `test/db/rapport-underlag.test.ts`, e2e 05 (varningen, Inställningar, förhandsvisningen, mejlet) och e2e 10.

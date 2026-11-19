@@ -57,8 +57,8 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
     org.nr, momsreg.nr och adress), **Mottagare** (butiken), **Er faktura** (ersättning exkl. moms, moms 25 %
     och beloppet att fakturera) och en rad om avtalet ("Enligt Placeringsavtal från 3 november 2026, undertecknat 9 november
     2026."). Texten om momsen: "Ersättningen är exklusive moms. Ni fakturerar [bolaget] och lägger på svensk moms,
-    25 %. [Bolaget] är säljare av varorna i automaten och redovisar momsen på den försäljningen
-    (vinstmarginalbeskattning)." Samma uppgifter står på sidan, i PDF:en, i mejlet och i butiksportalen.
+    25 %. [Bolaget] är säljare av varorna i automaten." Rapporten säger inget om hur vi själva redovisar momsen
+    på försäljningen. Samma uppgifter står på sidan, i PDF:en, i mejlet och i butiksportalen.
     - Uppgifterna kommer från **Inställningar → Företaget** (ägare och admin). Där finns också
       **Momsregistreringsnummer** (valfritt; knappen "Använd SE…" föreslår numret från organisationsnumret, men
       inget sparas förrän man har tryckt och sparat) och **Moms i butiksrapporten**: "Moms tillkommer (25 %)"
