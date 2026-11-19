@@ -271,6 +271,55 @@ describe("kampanjer", () => {
     expect(await retryCampaignFor(v, r.campaignId, deps())).toEqual({ shown: 1, failed: 0 });
   });
 
+  it("en schemalagd kampanj som inte startar larmar (job:kampanjer); Försök igen stänger larmet", async () => {
+    const v = await viewerFor(owner, orgId);
+    const open = () =>
+      rows<{ severity: string; title: string; message: string; link: string }>(
+        db(),
+        sql`select severity::text, title, message, link from public.alerts
+            where organization_id = ${orgId}::uuid and incident_key = 'job:kampanjer'
+              and status = 'open'`,
+      );
+    const r = await createCampaignFor(
+      v,
+      campaignInput({
+        title: "Julkampanj",
+        machineIds: [m1],
+        startsOn: "2026-11-20",
+        endsOn: "2026-11-25",
+        reuseImageFrom: liveId,
+      }),
+      null,
+      deps(),
+    );
+    expect(r.scheduled).toBe(true);
+    expect(await open()).toEqual([]);
+
+    // Starten har passerat, men Awish säger nej: förr stod det bara i serverloggen.
+    fake.state.writeCode = 500;
+    const start = new Date("2026-11-20T06:00:00Z");
+    const due = await publishAllDueCampaigns({ db: db(), connect, now: start });
+    expect(due.failed).toBe(1);
+    const alerts = await open();
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({
+      severity: "warning",
+      title: "Jobbet som startar kampanjer misslyckades",
+      link: "/kampanjer",
+    });
+    expect(alerts[0]!.message).toContain("Kampanjen startade inte i 1 automat.");
+    expect(alerts[0]!.message).toContain("Öppna Kampanjer och starta den där.");
+    // Nästa körning: samma larm står kvar (automaten är misslyckad, inget nytt försök).
+    await publishAllDueCampaigns({ db: db(), connect, now: new Date("2026-11-20T06:05:00Z") });
+    expect(await open()).toHaveLength(1);
+
+    // Ägaren trycker Försök igen under Kampanjer: nästa körning stänger larmet.
+    now = start;
+    expect(await retryCampaignFor(v, r.campaignId, deps())).toEqual({ shown: 1, failed: 0 });
+    await publishAllDueCampaigns({ db: db(), connect, now: new Date("2026-11-20T06:10:00Z") });
+    expect(await open()).toEqual([]);
+  });
+
   it("Stäng av: utgångstiden blir nu i Awish och kampanjen är avstängd", async () => {
     now = new Date("2026-11-04T08:00:00Z");
     const r = await stopCampaignFor(await viewerFor(owner, orgId), liveId, deps());

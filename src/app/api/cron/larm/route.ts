@@ -15,6 +15,7 @@ import { getServerEnv } from "@/lib/env";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runAlertJob } from "@/server/alerts/job";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
+import { recordSettlementRuns } from "@/server/monitoring/failures";
 import { syncWatchAlertsForAll } from "@/server/monitoring/watch";
 import { resolveAppBaseUrl } from "@/server/request-info";
 import { runScheduledSelfChecks } from "@/server/self-check/job";
@@ -68,6 +69,8 @@ export async function GET(request: Request): Promise<Response> {
       refreshed: runs.reduce((n, r) => n + r.refreshed, 0),
       errors: runs.reduce((n, r) => n + r.errors.length, 0),
     };
+    // En butik som inte gick att räkna ska höras (larmet job:avrakningar), inte bara loggas.
+    await recordSettlementRuns({ db }, runs);
   } catch (error) {
     console.error("[cron/larm] avräkningar", error instanceof Error ? error.message : error);
   }

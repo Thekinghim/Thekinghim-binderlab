@@ -10,6 +10,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import { freshServiceDb, getServiceDb } from "@/db/client";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
+import { recordSettlementRuns } from "@/server/monitoring/failures";
 import { createMonthlyDrafts } from "@/server/reports/drafts";
 import { createMonthlySettlements } from "@/server/settlements/service";
 
@@ -52,6 +53,8 @@ export async function GET(request: Request): Promise<Response> {
       created: runs.reduce((n, r) => n + r.created, 0),
       errors: runs.reduce((n, r) => n + r.errors.length, 0),
     };
+    // En butik som inte gick att räkna ska höras (larmet job:avrakningar), inte bara loggas.
+    await recordSettlementRuns({ db: getServiceDb() }, runs);
     if (settlements.errors > 0) {
       console.error(
         "[cron/rapporter] avräkningar",

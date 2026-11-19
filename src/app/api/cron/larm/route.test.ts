@@ -14,10 +14,17 @@ const alerts = vi.fn(async () => ({
   deliveries: { processed: 0, sent: 0, failed: 0, skipped: 0 },
 }));
 vi.mock("@/server/alerts/job", () => ({ runAlertJob: alerts }));
-const settlements = vi.fn(async () => [{ created: 0, refreshed: 1, errors: [] }]);
+const settlements = vi.fn(async () => [
+  {
+    organizationId: "org-1",
+    created: 0,
+    refreshed: 1,
+    errors: [{ storeId: "s1", message: "Sega gubben: order utan inköpspris." }],
+  },
+]);
 vi.mock("@/server/settlements/service", () => ({ createMonthlySettlements: settlements }));
-const outcome = vi.fn(async () => ({ alertId: null, sentryId: null, resolved: 0 }));
-vi.mock("@/server/monitoring/failures", () => ({ recordJobOutcome: outcome }));
+const settlementAlerts = vi.fn(async (_deps: unknown, _runs: unknown) => ({ failed: 1 }));
+vi.mock("@/server/monitoring/failures", () => ({ recordSettlementRuns: settlementAlerts }));
 const checks = vi.fn(async () => ({
   ranAt: "2026-11-19T05:07:00.000Z",
   organizations: [
@@ -49,6 +56,12 @@ describe("/api/cron/larm", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.selfChecks).toEqual({ ran: 1, errors: 0 });
+    // En butik som inte gick att räkna går vidare till larmen, inte bara till loggen.
+    expect(body.settlements).toEqual({ created: 0, refreshed: 1, errors: 1 });
+    expect(settlementAlerts).toHaveBeenCalledTimes(1);
+    expect(settlementAlerts.mock.calls[0]?.[1]).toMatchObject([
+      { organizationId: "org-1", errors: [{ storeId: "s1" }] },
+    ]);
     expect(body.watch).toEqual({ raised: 1, resolved: 0 });
     expect(alerts.mock.invocationCallOrder[0]!).toBeLessThan(checks.mock.invocationCallOrder[0]!);
     expect(checks.mock.invocationCallOrder[0]!).toBeLessThan(watch.mock.invocationCallOrder[0]!);
