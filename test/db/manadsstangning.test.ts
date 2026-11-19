@@ -317,9 +317,9 @@ describe("Öppna månaden igen", () => {
     expect(price.ok).toBe(true);
     await closeMonthFor(f.admin, "2026-10", NOW);
     expect(await closedMonths()).toEqual(["2026-10"]);
-    expect(
-      (await loadPeriodOverviewFor(f.owner)).reopened.some((r) => r.month === "2026-10"),
-    ).toBe(false);
+    expect((await loadPeriodOverviewFor(f.owner)).reopened.some((r) => r.month === "2026-10")).toBe(
+      false,
+    );
     await expect(reopenMonthFor(f.owner, "2026-08", "Test")).rejects.toThrow(PeriodError);
   });
 
