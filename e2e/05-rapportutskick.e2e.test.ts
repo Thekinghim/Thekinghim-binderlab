@@ -176,7 +176,8 @@ describe("rapportutskick", () => {
     const org = e2e().organizationId;
     await sql`update public.organization_settings
               set company_name = null, org_number = null, company_address = null,
-                  vat_number = null, report_vat_mode = 'added', report_vmb = false
+                  vat_number = null, report_vat_mode = 'added', report_vmb = false,
+                  report_owns_machines = false
               where organization_id = ${org}`;
     // Butikerna börjar utan vald avtalsform och med den korta rapporten (också efter en
     // körning som avbröts mitt i).
@@ -261,6 +262,14 @@ describe("rapportutskick", () => {
       .waitFor();
     await vmb.click();
     expect(await vmb.getAttribute("aria-checked")).toBe("true");
+    // Vem som äger automaten: appen vet det inte, så ägaren säger det.
+    const owns = company.getByRole("switch", {
+      name: "Vi äger och driver automaterna i butikerna",
+    });
+    expect(await owns.getAttribute("aria-checked")).toBe("false");
+    await company.getByText("Av: butiksrapporten säger inget om vem som äger automaten.").waitFor();
+    await owns.click();
+    expect(await owns.getAttribute("aria-checked")).toBe("true");
     await screenshot(page, "05-installningar-vmb");
     await company.getByRole("button", { name: "Spara" }).click();
     await page.getByText("Företagsuppgifterna sparade").first().waitFor();
@@ -366,7 +375,9 @@ describe("rapportutskick", () => {
         "Moms 25 %",
         "Att fakturera",
         "Binderlab E2E AB (verksamheten kallas Binderlab)",
-        "Äger och driver automate",
+        "ger och driver automate",
+        "inte uthyrning av lokal.",
+        "Er ersättning totalt, exklusive moms",
         "Muntligt avtal mellan Binderlab E2E AB och Gallerian Väst (exempel): hyra 1 500 kr per månad.",
         vmbStatement(COMPANY.name),
       ])

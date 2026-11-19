@@ -12,14 +12,14 @@ type Choice = AgreementForm | "";
 
 const HINT: Record<Choice, string> = {
   "": "Rapporten säger inte vilket avtal som gäller. Välj ett.",
-  written: "Rapporten visar det undertecknade kontraktet.",
+  written: "Rapporten säger att avtalet är skriftligt, med kontraktet och villkoren.",
   oral: "Rapporten säger att avtalet är muntligt och skriver villkoren.",
 };
 
 /**
  * Avtalets form i butiksrapporten (ägare och admin): "Skriftligt avtal" eller "Muntligt
  * avtal". Inget valt: finns ett undertecknat kontrakt visas det (som Skriftligt avtal),
- * annars står inget avtal i rapporten och granskningen varnar. Muntligt går före ett kontrakt
+ * annars står "Avtal saknas i underlaget." i rapporten och granskningen varnar. Muntligt går före ett kontrakt
  * som står som undertecknat. Gäller rapporter som skapas härefter.
  */
 export function AgreementFormSelect({
@@ -75,7 +75,7 @@ export function AgreementFormSelect({
         ]}
         hint={
           value === "written" && !signedContract
-            ? "Inget undertecknat kontrakt finns: rapporten säger inte vilket avtal som gäller."
+            ? "Inget kontrakt i appen: rapporten säger att avtalet är skriftligt, med villkoren men utan kontraktets namn och datum."
             : value === "written" && initial === null
               ? "Från det undertecknade kontraktet. Rapporten visar det."
               : HINT[value]

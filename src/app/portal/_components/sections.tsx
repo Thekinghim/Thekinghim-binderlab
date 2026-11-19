@@ -3,16 +3,17 @@ import { StateMessage } from "@/components/ui/state-message";
 import { splitRows } from "@/app/rapport/_components/store-report";
 import { formatInt } from "@/lib/format";
 import {
-  agreementLine,
   asStoreBasis,
+  basisNotes,
+  invoiceEmptyText,
   invoiceRows,
   invoiceTitle,
   isRev2,
   payerLines,
+  recipientLines,
   salesNote,
   splitsOf,
   totalLabel,
-  vatSentences,
   type CompensationStep,
   type StoreReport,
   type StoreWeek,
@@ -229,7 +230,7 @@ export function CompensationSection({
  */
 function SplitSection({ report }: { report: StoreReport }) {
   const c = report.compensation;
-  const rows = splitRows(c);
+  const rows = splitRows(c, isRev2(asStoreBasis(report.basis)));
   return (
     <section
       className="flex flex-col gap-10 border-t border-line py-16"
@@ -310,9 +311,8 @@ function withPeriod(text: string): string {
 export function BasisSection({ report }: { report: StoreReport }) {
   const basis = asStoreBasis(report.basis);
   if (!basis) return null;
-  const total = report.compensation.totalOre;
-  const rows = invoiceRows(basis, total);
-  const agreement = agreementLine(basis, report.store.name, report.compensation);
+  const rows = invoiceRows(basis, report);
+  const empty = rows.length === 0 ? invoiceEmptyText(basis, report) : null;
   return (
     <section className="flex flex-col gap-8 border-t border-line py-16" aria-labelledby="underlag">
       <h2 id="underlag" className="label text-subtle">
@@ -331,9 +331,20 @@ export function BasisSection({ report }: { report: StoreReport }) {
         </div>
         <div className="flex min-w-0 flex-col gap-2">
           <dt className="label text-subtle">Mottagare</dt>
-          <dd className="text-fg">{report.store.name}</dd>
+          <dd className="flex flex-col gap-1">
+            {recipientLines(basis, report.store.name).map((line, i) => (
+              <span key={line} className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}>
+                {line}
+              </span>
+            ))}
+          </dd>
         </div>
-        {rows.length > 0 ? (
+        {empty ? (
+          <div className="flex min-w-0 flex-col gap-2">
+            <dt className="label text-subtle">{invoiceTitle(basis)}</dt>
+            <dd className="text-sm text-muted">{empty}</dd>
+          </div>
+        ) : rows.length > 0 ? (
           <div className="flex min-w-0 flex-col gap-2">
             <dt className="label text-subtle">{invoiceTitle(basis)}</dt>
             <dd className="flex flex-col">
@@ -355,7 +366,7 @@ export function BasisSection({ report }: { report: StoreReport }) {
         ) : null}
       </dl>
       <p className="max-w-2xl text-sm text-muted">
-        {[agreement, ...vatSentences(basis, total)].filter(Boolean).join(" ")}
+        {basisNotes(basis, report, report.store.name).join(" ")}
       </p>
       {isRev2(basis) ? (
         <p className="max-w-2xl text-sm text-muted">{salesNote(report, report.store.name)}</p>

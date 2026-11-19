@@ -13,6 +13,7 @@
  * regler för sidan, PDF:en, mejlet och butiksportalen.
  */
 
+import { asStoreBasis, isRev2 } from "./store-basis";
 import type { StoreReport } from "./store-report";
 import { isWholeMonth, krText, monthNameText, periodText } from "./text";
 
@@ -48,11 +49,17 @@ function periodNameOf(report: Pick<StoreReport, "month" | "period">): string {
   return isWholeMonth(report.period) ? monthNameText(report.month) : periodText(report.period);
 }
 
-/** Rubriken i den korta rapporten: "Er ersättning för oktober: 7 493 kr." */
+/**
+ * Rubriken i den korta rapporten: "Er ersättning för oktober: 7 493 kr." En rapport med
+ * underlagets utgåva 2 och momsrad säger att beloppet är exklusive moms.
+ */
 export function storeHeadline(
-  report: Pick<StoreReport, "month" | "period" | "compensation">,
+  report: Pick<StoreReport, "month" | "period" | "compensation"> &
+    Pick<Partial<StoreReport>, "basis">,
 ): string {
-  return `Er ersättning för ${periodNameOf(report)}: ${krText(report.compensation.totalOre)}.`;
+  const basis = asStoreBasis(report.basis);
+  const exVat = isRev2(basis) && basis.vatMode === "added" ? " exkl. moms" : "";
+  return `Er ersättning för ${periodNameOf(report)}: ${krText(report.compensation.totalOre)}${exVat}.`;
 }
 
 /**
@@ -61,7 +68,8 @@ export function storeHeadline(
  * den mest sålda titeln. Då visas raden om ersättningen i stället, som i den korta rapporten.
  */
 export function storeSummary(
-  report: Pick<StoreReport, "details" | "month" | "period" | "compensation" | "conclusion">,
+  report: Pick<StoreReport, "details" | "month" | "period" | "compensation" | "conclusion"> &
+    Pick<Partial<StoreReport>, "basis">,
   details: boolean,
 ): string {
   if (details || report.details !== undefined) return report.conclusion.text;

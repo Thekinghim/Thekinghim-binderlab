@@ -842,6 +842,16 @@ function buildCompensation(
     if (!seg.dates.includes(date)) seg.dates.push(date);
   }
   for (const seg of [...segments.values(), ...gaps]) seg.dates.sort();
+  // Momssats 0 % (t.ex. med VMB): beloppet "exkl. moms" är det kunderna betalade, och
+  // rapporten kallar det så i stället för att påstå att momsen är borta.
+  const vatFree = entries.length > 0 && entries.every((e) => e.grossOre === e.netRevenueOre);
+  const baseName = (ore: number, orders: number): string =>
+    vatFree
+      ? `${krText(ore, "always")} (kundernas betalning, ${ordersText(orders)})`
+      : `${krText(ore, "always")} exkl. moms (${ordersText(orders)})`;
+  // Har inget avtal i perioden provision eller vinstdelning (bara hyra) nämns inte försäljningen
+  // som "avtal utan provision": avtalet har ingen provision att tala om.
+  const anyCommission = inMonth.some((a) => isProfitSplit(a) || (a.commissionBp ?? 0) > 0);
 
   const steps: CompensationStep[] = [];
   const byStart = (x: CommissionSegment, y: CommissionSegment): number =>
@@ -867,11 +877,11 @@ function buildCompensation(
     if (isProfitSplit(seg.agreement)) continue;
     const bp = seg.agreement!.commissionBp ?? 0;
     if (bp === 0) {
-      if (seg.orders === 0) continue;
+      if (seg.orders === 0 || !anyCommission) continue;
       steps.push({
         kind: "no_commission",
         label: `Avtal utan provision (${periodText(seg.range)})`,
-        calculation: `${ordersText(seg.orders)} (${krText(seg.base, "always")} exkl. moms) såldes när avtalet bara hade hyra och ger ingen provision`,
+        calculation: `${ordersText(seg.orders)} (${krText(seg.base, "always")}${vatFree ? "" : " exkl. moms"}) såldes när avtalet bara hade hyra och ger ingen provision`,
         amountOre: 0,
         evidence: evidence({
           rule: "Avtalet som gällde orderns dag har ingen provisionssats; ersättningen är bara hyra.",
@@ -891,7 +901,7 @@ function buildCompensation(
     steps.push({
       kind: "commission",
       label: `Provision ${pctText(bp, bp % 100 === 0 ? 0 : 1)} (${periodText(seg.range)})`,
-      calculation: `${pctText(bp, bp % 100 === 0 ? 0 : 1)} av ${krText(seg.base, "always")} exkl. moms (${ordersText(seg.orders)}) = ${krText(seg.commission, "always")}${roundingNote}`,
+      calculation: `${pctText(bp, bp % 100 === 0 ? 0 : 1)} av ${baseName(seg.base, seg.orders)} = ${krText(seg.commission, "always")}${roundingNote}`,
       amountOre: seg.commission,
       evidence: evidence({
         rule: "Provision = Σ per order round(belopp exkl. moms × provisionssats / 10 000), enligt avtalet som gällde orderns dag.",
@@ -1040,8 +1050,8 @@ function buildCompensation(
           : "none";
   return {
     model,
-    modelText: modelText(inMonth, period),
-    ...(inMonth.length > 0 ? { termsText: termsText(inMonth, period) } : {}),
+    modelText: modelText(inMonth, period, vatFree),
+    ...(inMonth.length > 0 ? { termsText: termsText(inMonth, period, vatFree) } : {}),
     steps,
     rentParts,
     daysInMonth: dim,
@@ -1284,7 +1294,7 @@ function agreementOn(agreements: readonly StoreAgreement[], date: IsoDate): Stor
 }
 
 /** Ett avtals villkor i klartext: "50 % av vinsten efter kostnader och hyra 500 kr per månad". */
-function agreementTerms(a: StoreAgreement): string {
+function agreementTerms(a: StoreAgreement, vatFree = false): string {
   const parts: string[] = [];
   if (isProfitSplit(a)) {
     const bp = a.commissionBp ?? 0;
@@ -1293,7 +1303,9 @@ function agreementTerms(a: StoreAgreement): string {
     );
   } else if ((a.commissionBp ?? 0) > 0) {
     const bp = a.commissionBp!;
-    parts.push(`provision ${pctText(bp, bp % 100 === 0 ? 0 : 1)} på försäljningen exkl. moms`);
+    parts.push(
+      `provision ${pctText(bp, bp % 100 === 0 ? 0 : 1)} på ${vatFree ? "kundernas betalning" : "försäljningen exkl. moms"}`,
+    );
   }
   if ((a.monthlyRentOre ?? 0) > 0) parts.push(`hyra ${krText(a.monthlyRentOre!)} per månad`);
   if (parts.length === 0) parts.push("ingen ersättning");
@@ -1330,7 +1342,7 @@ function groupRange(g: AgreementGroup, period: Period): Period {
 }
 
 /** Avtalens villkor i klartext; flera avtal under månaden räknas upp med sina datum. */
-function modelText(agreements: readonly StoreAgreement[], period: Period): string {
+function modelText(agreements: readonly StoreAgreement[], period: Period, vatFree = false): string {
   if (agreements.length === 0) return "Inget avtal gällde under månaden.";
   const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
   const groups = agreementGroups(agreements);
@@ -1339,23 +1351,23 @@ function modelText(agreements: readonly StoreAgreement[], period: Period): strin
     const range = groupRange(g, period);
     const whole = range.start === period.start && range.end === period.end;
     if (isProfitSplit(g.first))
-      return `${capital(agreementTerms(g.first))}, giltigt från ${dateText(g.first.validFrom)}.`;
-    return `${capital(agreementTerms(g.first))}${whole ? "" : ` (${periodText(range)})`}.`;
+      return `${capital(agreementTerms(g.first, vatFree))}, giltigt från ${dateText(g.first.validFrom)}.`;
+    return `${capital(agreementTerms(g.first, vatFree))}${whole ? "" : ` (${periodText(range)})`}.`;
   }
   return (
     groups
-      .map((g) => `${periodText(groupRange(g, period))}: ${agreementTerms(g.first)}`)
+      .map((g) => `${periodText(groupRange(g, period))}: ${agreementTerms(g.first, vatFree)}`)
       .map(capital)
       .join(". ") + "."
   );
 }
 
 /** Bara villkoren (se `StoreCompensationBreakdown.termsText`); olika villkor med sina datum. */
-function termsText(agreements: readonly StoreAgreement[], period: Period): string {
+function termsText(agreements: readonly StoreAgreement[], period: Period, vatFree = false): string {
   const groups = agreementGroups(agreements);
-  if (groups.length === 1) return agreementTerms(groups[0]!.first);
+  if (groups.length === 1) return agreementTerms(groups[0]!.first, vatFree);
   return groups
-    .map((g) => `${periodText(groupRange(g, period))}: ${agreementTerms(g.first)}`)
+    .map((g) => `${periodText(groupRange(g, period))}: ${agreementTerms(g.first, vatFree)}`)
     .join("; ");
 }
 

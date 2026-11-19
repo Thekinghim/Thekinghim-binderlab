@@ -21,6 +21,7 @@ import { setStoreAgreementFormFor } from "@/app/(app)/butiker/_lib/service";
 import { updateCompanyDetailsFor } from "@/app/(app)/installningar/_lib/data";
 import {
   agreementLine,
+  agreementText,
   basisText,
   invoiceRows,
   vmbStatement,
@@ -159,6 +160,7 @@ describe("Vi säljer med vinstmarginalbeskattning (VMB)", () => {
       vatNumber: "SE559000123401",
       reportVatMode: "added",
       reportVmb: true,
+      reportOwnsMachines: false,
     });
     expect(await staleDraftFor(owner, draft)).not.toBeNull();
     // Utkastet självt står som det sparades.
@@ -168,7 +170,7 @@ describe("Vi säljer med vinstmarginalbeskattning (VMB)", () => {
     const snap = await snapshotOf(owner, next);
     const basis = snap.report.basis!;
     expect(basis.vmb).toBe(true);
-    const text = basisText(basis, snap.store.name, snap.report.compensation.totalOre).join(" ");
+    const text = basisText(basis, snap.report, snap.store.name).join(" ");
     expect(text).toContain(vmbStatement("Kortautomater i Norden AB"));
     // Skatteregelns namn står bara i den fasta texten.
     expect(withoutVmbStatement(text, basis)).not.toMatch(/vinst|marginal/i);
@@ -218,11 +220,14 @@ describe("avtalets form per butik", () => {
     expect(await formOf(f.b.storeId)).toBeNull();
   });
 
-  it("inte valt och inget undertecknat kontrakt: ingen rad, och granskningen varnar", async () => {
+  it("inte valt och inget undertecknat kontrakt: rapporten säger Avtal saknas, och granskningen varnar", async () => {
     const id = await create(f.a.storeId);
     const snap = await snapshotOf(owner, id);
     expect(snap.report.basis).toMatchObject({ agreementForm: null, contract: null });
     expect(agreementLine(snap.report.basis!, snap.store.name, snap.report.compensation)).toBeNull();
+    expect(agreementText(snap.report.basis!, snap.store.name, snap.report.compensation)).toBe(
+      "Avtal saknas i underlaget.",
+    );
     expect((await archiveRow(id)).agreementMissing).toBe(true);
     // Godkännandet låses inte av det.
     expect(await staleDraftFor(owner, id)).toBeNull();
@@ -275,7 +280,7 @@ describe("avtalets form per butik", () => {
     expect(preview.type === "butik" && preview.report.basis).toEqual(snap.report.basis);
   });
 
-  it("skriftligt avtal valt: kontraktets rad; utan kontrakt varnar granskningen", async () => {
+  it("skriftligt avtal valt: skriftligt, kontraktet, parterna och villkoren", async () => {
     await setStoreAgreementFormFor(owner, { storeId: f.a.storeId, form: "written" });
     const withContract = await snapshotOf(owner, await create(f.a.storeId));
     expect(
@@ -283,13 +288,18 @@ describe("avtalets form per butik", () => {
         withContract.report.basis!,
         withContract.store.name,
         withContract.report.compensation,
-      ),
-    ).toBe("Enligt Placeringsavtal från 1 januari 2025.");
-    // Den andra butiken har inget kontrakt.
+      )?.replace(/ /g, " "),
+    ).toBe(
+      `Skriftligt avtal (Placeringsavtal) mellan Kortautomater i Norden AB och ICA Testbutik från 1 januari 2025: ${withContract.report.compensation.termsText?.replace(/ /g, " ")}.`,
+    );
+    // Den andra butiken har inget kontrakt i appen: ägarens val gäller, utan namn och datum.
     await setStoreAgreementFormFor(owner, { storeId: f.a2.storeId, form: "written" });
     const id = await create(f.a2.storeId);
-    expect((await basisOf(owner, id))?.contract).toBeNull();
-    expect((await archiveRow(id)).agreementMissing).toBe(true);
+    const snap = await snapshotOf(owner, id);
+    expect(snap.report.basis?.contract).toBeNull();
+    expect(agreementLine(snap.report.basis!, snap.store.name, snap.report.compensation)).toMatch(
+      /^Skriftligt avtal mellan Kortautomater i Norden AB och /,
+    );
     await setStoreAgreementFormFor(owner, { storeId: f.a2.storeId, form: null });
     await setStoreAgreementFormFor(owner, { storeId: f.a.storeId, form: "oral" });
   });
@@ -317,7 +327,7 @@ describe("redan betalt", () => {
     expect(snap.report.basis?.payments).toEqual([]);
     // 79 kr + 89 kr, provision 20 % = 33,60 kr, moms 8,40 kr.
     expect(snap.report.compensation.totalOre).toBe(3_360);
-    expect(invoiceRows(snap.report.basis!, 3_360).map((r) => [r.key, r.amountOre])).toEqual([
+    expect(invoiceRows(snap.report.basis!, snap.report).map((r) => [r.key, r.amountOre])).toEqual([
       ["amount", 3_360],
       ["vat", 840],
       ["total", 4_200],
@@ -334,19 +344,18 @@ describe("redan betalt", () => {
 
     const id = await create(f.a.storeId);
     const snap = await snapshotOf(owner, id);
-    expect(snap.report.basis?.payments).toEqual([{ paidOn: "2025-04-05", amountOre: 3_360 }]);
-    expect(
-      invoiceRows(snap.report.basis!, snap.report.compensation.totalOre).map((r) => [
-        r.label,
-        r.amountOre,
-      ]),
-    ).toEqual([
-      ["Ersättning exkl. moms", 3_360],
-      ["Moms 25 %", 840],
-      ["Att fakturera", 4_200],
-      ["Redan betalt 5 apr. 2025", 3_360],
-      ["Kvar att betala", 840],
+    expect(snap.report.basis?.payments).toEqual([
+      { paidOn: "2025-04-05", amountOre: 3_360, month: "2025-03" },
     ]);
+    expect(invoiceRows(snap.report.basis!, snap.report).map((r) => [r.label, r.amountOre])).toEqual(
+      [
+        ["Ersättning exkl. moms", 3_360],
+        ["Moms 25 %", 840],
+        ["Att fakturera", 4_200],
+        ["Redan betalt 5 apr. 2025 (avräkning mars 2025)", 3_360],
+        ["Kvar att betala", 840],
+      ],
+    );
     const row = await asPostgres((tx) =>
       one<{ amount: string; paid: string }>(
         tx,
@@ -381,7 +390,7 @@ describe("redan betalt", () => {
       storeId: f.a.storeId,
     });
     expect(mine.type === "butik" && mine.report.basis?.payments).toEqual([
-      { paidOn: "2025-04-05", amountOre: 3_360 },
+      { paidOn: "2025-04-05", amountOre: 3_360, month: "2025-03" },
     ]);
     const other = await previewReportFor(owner, {
       type: "butik",
@@ -389,7 +398,7 @@ describe("redan betalt", () => {
       storeId: f.a2.storeId,
     });
     expect(other.type === "butik" && other.report.basis?.payments).toEqual([
-      { paidOn: "2025-04-06", amountOre: 222 },
+      { paidOn: "2025-04-06", amountOre: 222, month: "2025-03" },
     ]);
   });
 });
@@ -409,13 +418,15 @@ describe("hela rapporten och butiksportalen", () => {
         vatNumber: "SE559000123401",
         // Organisationen heter något annat i appen.
         brand: owner.organization.name,
+        ownsMachines: false,
       },
+      recipientAddress: snap.report.basis?.recipientAddress ?? null,
       agreementForm: "oral",
       contract: null,
       vatMode: "added",
       vatRateBp: 2500,
       vmb: true,
-      payments: [{ paidOn: "2025-04-05", amountOre: 3_360 }],
+      payments: [{ paidOn: "2025-04-05", amountOre: 3_360, month: "2025-03" }],
     } satisfies StoreBasis);
     const portal = await asUser(f.storeA1, (tx) => queryPortalReport(tx, f.a.storeId, id));
     expect((portal.report as { basis?: StoreBasis }).basis).toEqual(snap.report.basis);
@@ -437,5 +448,50 @@ describe("hela rapporten och butiksportalen", () => {
     });
     await setStoreAgreementFormFor(owner, { storeId: f.a.storeId, form: null });
     expect(await basisOf(owner, id)).toEqual(snap.report.basis);
+  });
+});
+
+describe("Vi äger och driver automaterna i butikerna", () => {
+  it("standard av; ägaren slår på och nästa rapport säger det, en godkänd rapport ändras inte", async () => {
+    expect((await stored(f.a.orgId)).reportOwnsMachines).toBe(false);
+    const before = await create(f.a.storeId);
+    await approveReportFor(owner, before, null);
+    expect((await basisOf(owner, before))?.payer.ownsMachines).toBe(false);
+    const saved = await updateCompanyDetailsFor(owner.user, {
+      organizationId: f.a.orgId,
+      ...COMPANY,
+      reportOwnsMachines: true,
+    });
+    expect(saved).toEqual({ ok: true, data: { changed: true } });
+    expect((await stored(f.a.orgId)).reportOwnsMachines).toBe(true);
+    const next = await create(f.a.storeId);
+    expect((await basisOf(owner, next))?.payer.ownsMachines).toBe(true);
+    expect((await basisOf(owner, before))?.payer.ownsMachines).toBe(false);
+  });
+
+  it("läsare och butiksanvändare får inte ändra (RLS)", async () => {
+    for (const u of [f.viewerA, f.storeA1, f.b.owner]) {
+      const outcome = await settle(
+        asUser(u, (tx) =>
+          affected(
+            tx,
+            sql`update public.organization_settings set report_owns_machines = false
+                where organization_id = ${f.a.orgId}::uuid`,
+          ),
+        ),
+      );
+      if (outcome.ok) expect(outcome.value).toBe(0);
+      else expect(outcome.code).toBe("42501");
+    }
+    expect((await stored(f.a.orgId)).reportOwnsMachines).toBe(true);
+  });
+
+  it("butikens adress står under Mottagare (sparad i rapporten)", async () => {
+    await asPostgres((tx) =>
+      tx.execute(sql`update public.stores set address = 'Torget 2, 411 01 Göteborg'
+                     where id = ${f.a.storeId}`),
+    );
+    const id = await create(f.a.storeId);
+    expect((await basisOf(owner, id))?.recipientAddress).toBe("Torget 2, 411 01 Göteborg");
   });
 });

@@ -201,10 +201,10 @@ describe("Revision scenario 1: butiksrapport med provision, avtalsbyte, delmåna
     ]);
     expect(c.steps[0]!.label).toBe(`Provision 10${N}% (1–9 nov. 2026)`);
     expect(c.steps[0]!.calculation).toBe(
-      `10${N}% av 108,00${N}kr exkl. moms (2${N}order) = 10,80${N}kr`,
+      `10${N}% av 108,00${N}kr (kundernas betalning, 2${N}order) = 10,80${N}kr`,
     );
     expect(c.steps[1]!.calculation).toBe(
-      `12${N}% av 73,10${N}kr exkl. moms (3${N}order) = 8,78${N}kr (avrundat per order; 12,0${N}% av summan vore 8,77${N}kr)`,
+      `12${N}% av 73,10${N}kr (kundernas betalning, 3${N}order) = 8,78${N}kr (avrundat per order; 12,0${N}% av summan vore 8,77${N}kr)`,
     );
     expect(c.steps[2]!.label).toBe("Hyra (delmånad)");
     expect(c.steps[2]!.calculation).toBe(

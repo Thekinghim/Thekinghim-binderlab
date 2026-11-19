@@ -273,7 +273,7 @@ describe("provision och hyra ändras inte", () => {
     const c = buildStoreReport(src, "s-1", PERIOD).compensation;
     expect(c.steps.filter((s) => s.kind === "commission")).toHaveLength(2);
     // Villkoren står ändå en gång.
-    expect(plain(c.modelText)).toBe("Provision 10 % på försäljningen exkl. moms.");
-    expect(plain(c.termsText ?? "")).toBe("provision 10 % på försäljningen exkl. moms");
+    expect(plain(c.modelText)).toBe("Provision 10 % på kundernas betalning.");
+    expect(plain(c.termsText ?? "")).toBe("provision 10 % på kundernas betalning");
   });
 });

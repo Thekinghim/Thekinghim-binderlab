@@ -32,6 +32,7 @@ const BASIS: StoreBasis = {
     orgNumber: "559000-1234",
     address: "Storgatan 1, 111 22 Stockholm",
     vatNumber: "SE559000123401",
+    ownsMachines: true,
   },
   contract: { title: "Placeringsavtal", validFrom: "2026-11-03", signedOn: "2026-11-09" },
   vatMode: "added",
@@ -419,10 +420,10 @@ describe("juridiskt namn och namnet verksamheten kallas", () => {
 
   it("mejlet har samma rader", () => {
     const email = emailFor(snap);
-    for (const body of [email.html, email.text]) {
+    for (const body of [email.html, email.text])
       expect(body).toContain("Kortautomater i Norden AB (verksamheten kallas Binderlab)");
-      expect(body).toContain("Äger och driver automaten.");
-    }
+    expect(email.html).toContain("Äger och driver automaten.");
+    expect(email.text).toContain("som äger och driver automaten.");
   });
 
   it("samma namn: ingen parentes; en rapport från före ändringen: ingen rad om automaten", () => {
@@ -437,6 +438,31 @@ describe("juridiskt namn och namnet verksamheten kallas", () => {
       renderToStaticMarkup(<StoreReportDocument snapshot={snapshot(false, old)} />),
     );
     expect(before).not.toContain("Äger och driver");
+    // Valet av i Inställningar: ingen rad om vem som äger automaten.
+    const off = visibleText(
+      renderToStaticMarkup(
+        <StoreReportDocument
+          snapshot={snapshot(false, { ...BASIS, payer: { ...BASIS.payer, ownsMachines: false } })}
+        />,
+      ),
+    );
+    expect(off).not.toContain("Äger och driver");
+  });
+
+  it("mejlet: sidhuvud, sidfot och raden om varför mejlet kommer säger det juridiska namnet", () => {
+    const email = emailFor(snap);
+    const text = email.text.replace(/\u00a0|\u202f/g, " ");
+    expect(text).toContain(
+      "i avtalet om automatplats med Kortautomater i Norden AB (verksamheten kallas Binderlab).",
+    );
+    expect(text).toContain("som ni får av Kortautomater i Norden AB.");
+    expect(text).toContain("Kortautomater i Norden AB · Storgatan 1, 111 22 Stockholm ·");
+    expect(text).not.toMatch(/^Binderlab ·/m);
+    // Bolaget i löptext: inga trasiga skiljetecken.
+    expect(text).toContain(
+      "Ersättningen betalas av: Kortautomater i Norden AB (verksamheten kallas Binderlab), som äger och driver automaten. Org.nr 559000-1234",
+    );
+    expect(text).not.toContain("automaten.,");
   });
 });
 
@@ -479,7 +505,7 @@ describe("redan betalt", () => {
 
 describe("avtalets form", () => {
   const ORAL =
-    "Muntligt avtal mellan Binderlab Sverige AB och Nordstan: provision 12 % på försäljningen exkl. moms och hyra 500 kr per månad.";
+    "Muntligt avtal mellan Binderlab Sverige AB och Nordstan: provision 12 % på kundernas betalning och hyra 500 kr per månad.";
   const render = (basis: StoreBasis) => {
     const snap = snapshot(false, basis);
     const email = emailFor(snap);
@@ -498,17 +524,18 @@ describe("avtalets form", () => {
     }
   });
 
-  it("skriftligt avtal: kontraktets rad som förut", () => {
+  it("skriftligt avtal: skriftligt, kontraktet, parterna och villkoren", () => {
     for (const body of render({ ...BASIS, agreementForm: "written" }))
       expect(body).toContain(
-        "Enligt Placeringsavtal från 3 november 2026, undertecknat 9 november 2026.",
+        "Skriftligt avtal (Placeringsavtal) mellan Binderlab Sverige AB och Nordstan från 3 november 2026, undertecknat 9 november 2026: provision 12 % på kundernas betalning och hyra 500 kr per månad.",
       );
   });
 
-  it("inte valt och inget undertecknat kontrakt: ingen rad om avtalet", () => {
+  it("inte valt och inget undertecknat kontrakt: rapporten säger att avtalet saknas", () => {
     for (const body of render({ ...BASIS, agreementForm: null, contract: null })) {
       expect(body).not.toContain("Muntligt avtal");
       expect(body).not.toContain("Enligt ");
+      expect(body).toContain("Avtal saknas i underlaget.");
     }
   });
 });
@@ -741,7 +768,7 @@ describe("eget datum över två månader med vinstdelning (ägarens fall)", () =
   it("hela rapporten: betalaren, det muntliga avtalet, VMB, totalraden och det som är betalt", () => {
     const text = page(build(OWNER));
     for (const part of [
-      "Er ersättning för 14 okt.–14 nov. 2026: 128,50 kr.",
+      "Er ersättning för 14 okt.–14 nov. 2026: 128,50 kr exkl. moms.",
       "Post 14–31 okt. 1–14 nov.",
       "Er andel 50 % 34,50 kr 94,00 kr",
       "Er ersättning totalt, exklusive moms 128,50 kr",
@@ -757,6 +784,57 @@ describe("eget datum över två månader med vinstdelning (ägarens fall)", () =
       expect(text, part).toContain(part);
     for (const gone of ["1–2 nov.", "3–14 nov.", "ingen moms tas ut", "Enligt ", "undertecknat"])
       expect(text, gone).not.toContain(gone);
+  });
+
+  it("mejlet: butiksrapport med perioden, uträkningen, totalraden och samma klocka som PDF:en", () => {
+    const snap = build(OWNER);
+    const email = emailFor(snap);
+    for (const body of [email.html, email.text].map((b) => b.replace(/\u00a0|\u202f/g, " "))) {
+      expect(body).toContain("Butiksrapport");
+      expect(body).not.toContain("Månadsrapport");
+      expect(body).not.toContain("månadens");
+      expect(body).toContain("Här är försäljningen 14 okt.–14 nov. 2026 i Nordstan");
+      expect(body).toContain("Er ersättning totalt, exklusive moms");
+      expect(body).toContain("Er ersättning exkl. moms");
+      expect(body).toContain("Vinst");
+      // 17 nov. 08:00 UTC är 09:00 i Stockholm.
+      expect(body).toContain("Skapad 17 nov. 2026 09:00");
+    }
+    // Organisationens tidszon gäller, inte serverns.
+    const shanghai = emailFor({
+      ...snap,
+      organization: { ...snap.organization, timeZone: "Asia/Shanghai" },
+    });
+    expect(shanghai.text.replace(/\u00a0|\u202f/g, " ")).toContain("Skapad 17 nov. 2026 16:00");
+  });
+
+  it("förlust: inget att fakturera, och raden säger varför", () => {
+    const loss = buildSnapshot({
+      type: "butik",
+      month: "2026-11",
+      period: { start: "2026-11-01", end: "2026-11-18" },
+      organization: ORG,
+      sources: sources({
+        orders: [ord("2026-11-10", { amountOre: 9_900 })],
+        prices: [price("t-a", 13_000, "2026-01-01")],
+        agreements: [split("2026-10-14", null)],
+      }),
+      generatedAt: "2026-11-19T08:00:00.000Z",
+      storeId: "s-1",
+      storeBasis: OWNER,
+    });
+    if (loss.type !== "butik") throw new Error("fel typ");
+    expect(loss.report.compensation.totalOre).toBe(0);
+    const text = page(loss);
+    expect(text).toContain(
+      "Inget att fakturera för 1–18 nov. 2026 (ingen vinst, andelen blir 0 kr).",
+    );
+    expect(text).toContain("Er andel 50 % (ingen vinst, 0 kr)");
+    const email = emailFor(loss);
+    for (const body of [email.html, email.text])
+      expect(body.replace(/\u00a0|\u202f/g, " ")).toContain(
+        "Inget att fakturera för 1–18 nov. 2026 (ingen vinst, andelen blir 0 kr).",
+      );
   });
 
   it("med hyra: hyran står under tabellen, före totalraden", () => {

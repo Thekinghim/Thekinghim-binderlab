@@ -67,6 +67,12 @@ async function basisOf(viewer: Viewer, id: string): Promise<StoreBasis | undefin
   return snap.report.basis;
 }
 
+async function reportOf(id: string) {
+  const snap = (await getReportFor(owner, id)).snapshot;
+  if (snap.type !== "butik") throw new Error("fel typ");
+  return snap.report;
+}
+
 const create = (storeId: string) =>
   createReportFor(owner, { type: "butik", month: MONTH, storeId });
 
@@ -88,6 +94,7 @@ describe("inställningarna", () => {
       vatNumber: null,
       reportVatMode: "added",
       reportVmb: false,
+      reportOwnsMachines: false,
     });
   });
 
@@ -107,6 +114,7 @@ describe("inställningarna", () => {
       vatNumber: "SE111111111101",
       reportVatMode: "none",
       reportVmb: false,
+      reportOwnsMachines: false,
     });
   });
 
@@ -138,6 +146,7 @@ describe("inställningarna", () => {
       vatNumber: null,
       reportVatMode: "added",
       reportVmb: false,
+      reportOwnsMachines: false,
     });
   });
 
@@ -167,6 +176,7 @@ describe("inställningarna", () => {
       vatNumber: null,
       reportVatMode: "added",
       reportVmb: false,
+      reportOwnsMachines: false,
     });
   });
 });
@@ -186,7 +196,9 @@ describe("rapporten utan företagsuppgifter", () => {
         address: null,
         vatNumber: null,
         brand: null,
+        ownsMachines: false,
       },
+      recipientAddress: null,
       agreementForm: null,
       contract: null,
       vatMode: "added",
@@ -235,6 +247,7 @@ describe("rapporten utan företagsuppgifter", () => {
       vatNumber: "SE559000123401",
       reportVatMode: "added",
       reportVmb: false,
+      reportOwnsMachines: false,
     });
 
     const stale = await staleDraftFor(owner, draft);
@@ -271,7 +284,8 @@ describe("rapporten med företagsuppgifter", () => {
     expect(basis).toEqual({
       rev: 2,
       // Organisationen heter något annat än bolaget: namnet står bredvid det juridiska.
-      payer: { ...PAYER, brand: owner.organization.name },
+      payer: { ...PAYER, brand: owner.organization.name, ownsMachines: false },
+      recipientAddress: null,
       agreementForm: null,
       contract: null,
       vatMode: "added",
@@ -280,7 +294,10 @@ describe("rapporten med företagsuppgifter", () => {
       payments: [],
     });
     expect((await archiveRow(id)).basisGaps).toEqual([]);
-    expect(basisText(basis!, "ICA Testbutik", 3_360).join("\n")).not.toMatch(/Enligt|avtal/i);
+    // Inget val och inget kontrakt: rapporten säger att avtalet saknas, påstår inget annat.
+    const text = basisText(basis!, await reportOf(id), "ICA Testbutik").join("\n");
+    expect(text).not.toMatch(/Enligt|Muntligt|Skriftligt/);
+    expect(text).toContain("Avtal saknas i underlaget.");
   });
 
   it("det undertecknade avtalet för perioden står med namn och datum", async () => {
@@ -305,7 +322,7 @@ describe("rapporten med företagsuppgifter", () => {
       validFrom: "2025-01-03",
       signedOn: "2025-01-09",
     });
-    expect(basisText(basis!, "ICA Testbutik", 3_360)).toContain(
+    expect(basisText(basis!, await reportOf(approved), "ICA Testbutik")).toContain(
       "Enligt Vinstdelningsavtal från 3 januari 2025, undertecknat 9 januari 2025.",
     );
     // Den andra butiken: ett avtal registrerat för hand, utan dag för undertecknandet.

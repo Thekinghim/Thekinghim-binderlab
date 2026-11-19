@@ -33,6 +33,7 @@ import type {
   StoreCompensationBreakdown,
   StoreKpi,
   StoreMachine,
+  StoreReport,
   StoreTopTitle,
 } from "@/reports";
 import type { StoreSnapshot } from "@/server/reports/snapshot";
@@ -40,18 +41,20 @@ import type { StoreSnapshot } from "@/server/reports/snapshot";
 import {
   agreementLine,
   asStoreBasis,
+  basisNotes,
+  invoiceEmptyText,
   invoiceRows,
   invoiceTitle,
   isRev2,
   isWholeMonth,
   ownerLine,
+  recipientLines,
   periodText,
   pctText,
   salesNote,
   splitsOf,
   storeReportView,
   totalLabel,
-  vatSentences,
 } from "@/reports";
 import { periodDays } from "@/domain";
 
@@ -158,7 +161,8 @@ function machineColumns(daysInMonth: number, totals: { orders: number; revenueOr
 }
 
 const stepColumns: ReportColumn<CompensationStep>[] = [
-  { key: "label", header: "Post", width: "30%", render: (s) => s.label },
+  // Uträkningen får det mesta av bredden: "10 % av 4 047,00 kr (kundernas betalning, 63 order)".
+  { key: "label", header: "Post", width: "26%", render: (s) => s.label },
   {
     key: "calc",
     header: "Uträkning",
@@ -184,7 +188,7 @@ interface SplitRow {
  * Vinstdelningen som en kort tabell: Försäljning, (Återbetalningar), VMB-moms, Inköp,
  * Kortavgifter, Vinst, Er andel och (Hyra). Kostnaderna visas med minustecken.
  */
-export function splitRows(c: StoreCompensationBreakdown): SplitRow[] {
+export function splitRows(c: StoreCompensationBreakdown, explainLoss = false): SplitRow[] {
   const splits = splitsOf(c);
   const many = splits.length > 1;
   const rows: SplitRow[] = [];
@@ -207,7 +211,12 @@ export function splitRows(c: StoreCompensationBreakdown): SplitRow[] {
       { key: `${id}-buy`, label: `${pre}Inköp`, amountOre: -x.purchasesOre },
       { key: `${id}-fee`, label: `${pre}Kortavgifter`, amountOre: -x.cardFeesOre },
       { key: `${id}-res`, label: `${pre}Vinst`, amountOre: x.profitOre, strong: true },
-      { key: `${id}-share`, label: `${pre}Er andel ${pct}`, amountOre: x.storeShareOre },
+      {
+        key: `${id}-share`,
+        // Utgåva 2: förlusten förklaras på raden, inte bara i fotnoten.
+        label: `${pre}Er andel ${pct}${explainLoss && x.profitOre < 0 && x.storeShareOre === 0 ? " (ingen vinst, 0 kr)" : ""}`,
+        amountOre: x.storeShareOre,
+      },
     );
   }
   if (c.commissionOre !== 0)
@@ -269,7 +278,11 @@ export function splitPeriodTable(c: StoreCompensationBreakdown): {
     row("buy", "Inköp", (x) => -x.purchasesOre),
     row("fee", "Kortavgifter", (x) => -x.cardFeesOre),
     row("res", "Vinst", (x) => x.profitOre, true),
-    row("share", `Er andel ${pct}`, (x) => x.storeShareOre),
+    row(
+      "share",
+      `Er andel ${pct}${splits.some((x) => x.profitOre < 0 && x.storeShareOre === 0) ? " (ingen vinst ger 0 kr)" : ""}`,
+      (x) => x.storeShareOre,
+    ),
   );
   const extras: SplitRow[] = [];
   if (c.commissionOre !== 0)
@@ -334,11 +347,32 @@ const splitColumns: ReportColumn<SplitRow>[] = [
  * så att också den längsta uträkningen (vinstdelning med hyra) får plats på samma ark.
  */
 const SHORT_CHART = { width: Math.round((REPORT_CONTENT_WIDTH - 30) * (6 / 11)), height: 88 };
+/** Utgåva 2 av underlaget är högre: diagrammet är lägre, så att rapporten får plats på ett ark. */
+const SHORT_CHART_REV2 = { ...SHORT_CHART, height: 72 };
 
 /** Med fler automater än så står de i en egen tabell under veckorna. */
 const SIDE_BY_SIDE_MACHINES = 3;
 /** Veckodiagrammet i full bredd i den korta rapporten: lägre än i rapporten med detaljer. */
 const STACKED_CHART = { width: REPORT_CONTENT_WIDTH, height: 130 };
+
+/**
+ * Fotnoten under uträkningen utan vinstdelning (utgåva 2): provisionen bara när ett avtal
+ * har provision, på det kunderna betalade när momssatsen är 0 %, och hyran per dag.
+ */
+export function calculationNote(r: StoreReport): string {
+  const commission = r.compensation.steps.some((s) => s.kind === "commission");
+  const rent = r.compensation.rentOre !== 0 || r.compensation.model.endsWith("rent");
+  return [
+    commission
+      ? r.sales.vatOre === 0
+        ? "Provisionen räknas per köp på det kunderna betalade, med det avtal som gällde den dagen."
+        : "Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen."
+      : "",
+    rent ? "Hyran räknas per dag när avtalet gäller en del av månaden." : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 export function StoreReportDocument({
   snapshot,
@@ -371,6 +405,10 @@ export function StoreReportDocument({
   const bestWeek = [...r.weeks].sort((a, b) => b.revenueOre - a.revenueOre)[0];
   const weekData = r.weeks.map((w) => ({ label: `v. ${w.week}`, value: w.revenueOre / 100 }));
   const partialWeeks = r.weeks.some((w) => w.partial);
+  // Underlaget för bokföringen (saknas i äldre rapporter), se nedan.
+  const basisData = asStoreBasis(r.basis);
+  // Utgåva 2 med momsrad: ersättningen sägs vara exklusive moms där den står.
+  const exVat = isRev2(basisData) && basisData.vatMode === "added";
 
   const kpis: Record<StoreKpi, ReportKpi> = {
     sales: {
@@ -395,7 +433,7 @@ export function StoreReportDocument({
       unit: r.sales.averageOrderOre === null ? undefined : "kr",
     },
     compensation: {
-      label: "Er ersättning",
+      label: exVat ? "Er ersättning exkl. moms" : "Er ersättning",
       value: sekValue(r.compensation.totalOre),
       unit: "kr",
       context: split
@@ -427,8 +465,10 @@ export function StoreReportDocument({
   // Underlaget för butikens bokföring: vem som betalar, vem som får ersättningen, avtalet
   // och momsen. Sparat i rapporten när den räknades; en äldre rapport utan uppgifterna
   // visas som förut, utan blocket.
-  const basisData = asStoreBasis(r.basis);
-  const vat = basisData ? invoiceRows(basisData, r.compensation.totalOre) : [];
+  const vat = basisData ? invoiceRows(basisData, r) : [];
+  // Ingen ersättning: blocket säger att inget ska faktureras (utgåva 2), i stället för att saknas.
+  const nothingToInvoice = basisData && vat.length === 0 ? invoiceEmptyText(basisData, r) : null;
+  const recipientRows = basisData ? recipientLines(basisData, snapshot.store.name) : [];
   const basisFacts = basisData ? (
     <>
       <ReportFact label="Ersättningen betalas av">
@@ -460,9 +500,17 @@ export function StoreReportDocument({
         ) : null}
       </ReportFact>
       <ReportFact label="Mottagare">
-        <p className="font-medium">{snapshot.store.name}</p>
+        {recipientRows.map((line, i) => (
+          <p key={line} className={i === 0 ? "font-medium" : "tnum text-muted"}>
+            {line}
+          </p>
+        ))}
       </ReportFact>
-      {vat.length > 0 ? (
+      {nothingToInvoice ? (
+        <ReportFact label={invoiceTitle(basisData)}>
+          <p className="text-muted">{nothingToInvoice}</p>
+        </ReportFact>
+      ) : vat.length > 0 ? (
         <ReportFact label={invoiceTitle(basisData)}>
           <dl className="flex flex-col">
             {vat.map((row) => (
@@ -485,15 +533,18 @@ export function StoreReportDocument({
       ) : null}
     </>
   ) : null;
-  // Avtalet och momsen i en eller två meningar.
+  // Avtalet, betalningarna och momsen i några meningar.
   const basisNote = basisData ? (
-    <p className="text-[11px] leading-[15px] text-muted">
-      {[
-        agreementLine(basisData, snapshot.store.name, r.compensation),
-        ...vatSentences(basisData, r.compensation.totalOre),
-      ]
-        .filter(Boolean)
-        .join(" ")}
+    <p
+      className={
+        // Utgåva 2 har fler meningar (betalningen, platsen, VMB): något mindre, så att den
+        // korta rapporten får plats på ett ark.
+        isRev2(basisData)
+          ? "text-[10px] leading-[13.5px] text-muted"
+          : "text-[11px] leading-[15px] text-muted"
+      }
+    >
+      {basisNotes(basisData, r, snapshot.store.name).join(" ")}
     </p>
   ) : null;
   // Den korta rapporten med vinstdelning (den längsta uträkningen): underlaget står bredvid
@@ -512,7 +563,7 @@ export function StoreReportDocument({
             vat.length > 3
               ? // Med "Redan betalt" och "Kvar att betala": bredare spalt för beloppen.
                 "grid grid-cols-[4fr_3fr_5fr] items-start gap-[6mm]"
-              : vat.length > 0
+              : vat.length > 0 || nothingToInvoice
                 ? "grid grid-cols-[5fr_3fr_4fr] items-start gap-[6mm]"
                 : "grid grid-cols-[5fr_7fr] items-start gap-[6mm]"
           }
@@ -547,6 +598,10 @@ export function StoreReportDocument({
   // Vinstdelningens tabell: två perioder med samma villkor står bredvid varandra (utgåva 2),
   // annars under varandra som förut.
   const periodTable = rev2 && split ? splitPeriodTable(r.compensation) : null;
+  // Tätare rader bredvid underlaget; utgåva 2 (högre underlag) tätast.
+  const denseRows = rev2
+    ? "[&_tbody_td]:py-[0.8mm]! [&_tbody_th]:py-[0.8mm]!"
+    : "[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!";
   const splitTable = (dense: boolean) =>
     periodTable ? (
       <>
@@ -555,7 +610,7 @@ export function StoreReportDocument({
           columns={splitPeriodColumns(periodTable.periods)}
           rows={periodTable.rows}
           rowKey={(x) => x.key}
-          className={dense ? "[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!" : undefined}
+          className={dense ? denseRows : undefined}
         />
         {periodTable.extras.map((x) => (
           <div
@@ -573,11 +628,32 @@ export function StoreReportDocument({
       <ReportTable
         caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
         columns={splitColumns}
-        rows={splitRows(r.compensation)}
+        rows={splitRows(r.compensation, rev2)}
         rowKey={(x) => x.key}
-        className={dense ? "[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!" : undefined}
+        className={dense ? denseRows : undefined}
       />
     );
+
+  // Utgåva 2 i den korta rapporten: avtalsraden (med villkoren) står i underlaget.
+  const agreementInNote =
+    rev2 && !view.details && agreementLine(basisData, snapshot.store.name, r.compensation) !== null;
+  // Fotnoten med formeln (vinstdelning) eller provisionen och hyran.
+  const calculationFormula = (
+    <ReportNote>
+      {split
+        ? `${noVmb ? "Vinst = försäljning − inköp − kortavgifter." : "Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter."} ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}${
+            // Utgåva 2: vad inköpet är. Med VMB dras ingen moms av på inköpen.
+            rev2 && basisData.vmb === true ? " Inköp räknas med moms." : ""
+          }`
+        : rev2
+          ? calculationNote(r)
+          : `Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen.${
+              r.compensation.rentOre !== 0 || r.compensation.model.endsWith("rent")
+                ? " Hyran räknas per dag när avtalet gäller en del av månaden."
+                : ""
+            }`}
+    </ReportNote>
+  );
 
   // Uträkningen: samma tabell i båda rapporterna (det är så butiken räknar efter sin andel).
   const calculation = (
@@ -590,7 +666,14 @@ export function StoreReportDocument({
           ? `Er ersättning för ${name}: ${kronor(r.compensation.totalOre)}.`
           : "Så räknas ersättningen."
       }
-      aside={split ? `Avtal: ${r.compensation.modelText}` : r.compensation.modelText}
+      aside={
+        // Utgåva 2 i den korta rapporten: avtalet med villkoren står i underlaget, en gång.
+        agreementInNote
+          ? undefined
+          : split
+            ? `Avtal: ${r.compensation.modelText}`
+            : r.compensation.modelText
+      }
       // Den korta rapporten: något tätare mellan rubrik, tabell och not (samma innehåll).
       className={view.details ? undefined : basisBeside ? "gap-[2mm]!" : "gap-[3mm]!"}
     >
@@ -599,6 +682,8 @@ export function StoreReportDocument({
           <div className="flex min-w-0 flex-col gap-[2mm]">
             {splitTable(true)}
             {totalInColumn ? totalRow : null}
+            {/* Utgåva 2: formeln står under tabellen i spalten (sparar en rad på arket). */}
+            {totalInColumn ? calculationFormula : null}
           </div>
           <section aria-label="Underlag för bokföringen" className="flex flex-col gap-[2mm]">
             {basisFacts}
@@ -615,15 +700,7 @@ export function StoreReportDocument({
         />
       )}
       {totalInColumn ? null : totalRow}
-      <ReportNote>
-        {split
-          ? `${noVmb ? "Vinst = försäljning − inköp − kortavgifter." : "Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter."} ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}`
-          : `Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen.${
-              r.compensation.rentOre !== 0 || r.compensation.model.endsWith("rent")
-                ? " Hyran räknas per dag när avtalet gäller en del av månaden."
-                : ""
-            }`}
-      </ReportNote>
+      {totalInColumn ? null : calculationFormula}
       {basisBeside ? basisNote : null}
     </ReportSection>
   );
@@ -778,8 +855,8 @@ export function StoreReportDocument({
   if (!view.details) {
     return (
       <ReportDocument {...doc}>
-        {/* Utgåva 2 har ett högre underlag (betalningar, VMB-texten): tätare mellan blocken. */}
-        <ReportPage className={basisBeside || rev2 ? "gap-[3.5mm]" : "gap-[5mm]"}>
+        {/* Utgåva 2 har ett högre underlag (betalningar, VMB-texten, platsen): tätast. */}
+        <ReportPage className={rev2 ? "gap-[2.5mm]" : basisBeside ? "gap-[3.5mm]" : "gap-[5mm]"}>
           {title}
           {kpiRow}
           {calculation}
@@ -788,7 +865,7 @@ export function StoreReportDocument({
               Med många automater står de i en tabell under (som kan delas mellan två ark). */}
           {weekData.length > 0 && r.machines.length <= SIDE_BY_SIDE_MACHINES ? (
             <div className="grid grid-cols-[6fr_5fr] items-start gap-[8mm]">
-              {weeks(SHORT_CHART, true)}
+              {weeks(rev2 ? SHORT_CHART_REV2 : SHORT_CHART, true)}
               {machineFacts(3)}
             </div>
           ) : (

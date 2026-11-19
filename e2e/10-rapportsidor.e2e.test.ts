@@ -30,6 +30,7 @@ import {
   type Page,
 } from "./support/browser";
 import {
+  LONG_NAMES,
   STEP1_BASIS,
   accountantSnapshot,
   ownerCaseSnapshot,
@@ -184,11 +185,33 @@ const CASES: {
       "Post 14–31 okt. 1–14 nov.",
       "Er ersättning totalt, exklusive moms",
       "Att fakturera",
-      "Redan betalt 16 nov. 2026",
+      // Oktoberavräkningen gällde hela oktober: bara delen 14–31 okt. räknas av.
+      "Redan betalt 5 nov. 2026 (avräkning oktober 2026)",
+      "Avräkningen för oktober 2026 betalades 5 nov. 2026",
+      "gäller dagar utanför rapporten.",
       "Kvar att betala",
       "köpdagen, inklusive moms.",
+      "Drottninggatan 5, 411 14 Göteborg",
+      "inte uthyrning av lokal.",
+      "exkl. moms.",
     ],
     absent: ["ingen moms tas ut", "1–2 nov.", "3–14 nov.", "Placeringsavtal", "undertecknat"],
+  },
+  // Samma fall med långa namn och adresser (bolaget, dess adress och butikens): fortfarande
+  // ett ark.
+  {
+    name: "butik-kort-agarens-fall-langa-namn",
+    snapshot: () => ownerCaseSnapshot({ long: true }),
+    minSheets: 1,
+    maxSheets: 1,
+    textInside: true,
+    texts: [
+      LONG_NAMES.company,
+      LONG_NAMES.address,
+      LONG_NAMES.storeAddress,
+      "Kvar att betala",
+      "Underlag per titel finns på begäran.",
+    ],
   },
   // En butik med bara hyra och ett skriftligt avtal, ingen utbetalning gjord.
   {
@@ -198,13 +221,21 @@ const CASES: {
     maxSheets: 1,
     textInside: true,
     texts: [
-      "Enligt Placeringsavtal Westfield Mall of Scandinavia från 1 januari 2025, undertecknat 18 december 2024.",
+      "Skriftligt avtal (Placeringsavtal Westfield Mall of Scandinavia) mellan Binderlab Sverige AB och Westfield Mall of Scandinavia från 1 januari 2025, undertecknat 18 december 2024: hyra 2 500 kr per månad.",
       "Er ersättning totalt, exklusive moms",
       "Att fakturera",
       "Äger och driver automaten.",
       "omfattas inte av VMB.",
+      "Ersättningen gäller platsen för automaten i butiken. Det är en tjänst med 25 % moms, inte uthyrning av lokal.",
     ],
-    absent: ["Redan betalt", "Kvar att betala", "Muntligt avtal", "ingen moms tas ut"],
+    absent: [
+      "Redan betalt",
+      "Kvar att betala",
+      "Muntligt avtal",
+      "ingen moms tas ut",
+      "Avtal utan provision",
+      "exkl. moms (",
+    ],
   },
   // Den korta rapporten med tio automater: tabellen får delas, inget går utanför arket.
   {

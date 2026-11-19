@@ -309,18 +309,18 @@ export async function queryStoreBasis(
   // Butikens val av avtalsform. Läses så att koden också fungerar innan kolumnen finns.
   const [storeRow] = Array.from(
     await tx.execute(
-      sql`select to_jsonb(st) ->> 'agreement_form' as form
+      sql`select to_jsonb(st) ->> 'agreement_form' as form, st.address
             from public.stores st
            where st.organization_id = ${orgId}::uuid and st.id = ${storeId}::uuid`,
     ),
-  ) as Array<{ form: string | null }>;
+  ) as Array<{ form: string | null; address: string | null }>;
   const agreementForm: AgreementForm | null =
     storeRow?.form === "oral" || storeRow?.form === "written" ? storeRow.form : null;
   // Betalda avräkningar för rapportens månader (bara läsning: avräkningarna ändras aldrig
   // härifrån). Beloppet som betalades, när det sparas skilt från avräkningens belopp.
   const paidRows = Array.from(
     await tx.execute(
-      sql`select ss.paid_on::text as paid_on,
+      sql`select ss.paid_on::text as paid_on, ss.month::text as month,
                  coalesce((to_jsonb(ss) ->> 'paid_amount_ore')::bigint, ss.amount_ore) as amount_ore
             from public.store_settlements ss
            where ss.organization_id = ${orgId}::uuid
@@ -330,9 +330,14 @@ export async function queryStoreBasis(
                               and ${period.end}::date
            order by ss.paid_on, ss.month`,
     ),
-  ) as Array<{ paid_on: string; amount_ore: string | number }>;
+  ) as Array<{ paid_on: string; month: string; amount_ore: string | number }>;
+  // Avräkningens månad: rapporten räknar bara av det som gäller dess dagar (store-basis).
   const payments = paidRows
-    .map((r) => ({ paidOn: r.paid_on as IsoDate, amountOre: Number(r.amount_ore) }))
+    .map((r) => ({
+      paidOn: r.paid_on as IsoDate,
+      amountOre: Number(r.amount_ore),
+      month: r.month.slice(0, 7) as IsoMonth,
+    }))
     .filter((p) => Number.isSafeInteger(p.amountOre) && p.amountOre > 0);
   const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
   const legalName = clean(company.companyName);
@@ -345,7 +350,9 @@ export async function queryStoreBasis(
       address: clean(company.companyAddress),
       vatNumber: settings.vatNumber,
       brand: brandOf(legalName, organization.name),
+      ownsMachines: settings.reportOwnsMachines,
     },
+    recipientAddress: clean(storeRow?.address ?? null),
     agreementForm,
     // Ett muntligt avtal går före en kontraktsrad som står som undertecknad: rapporten
     // påstår då inget skriftligt avtal.

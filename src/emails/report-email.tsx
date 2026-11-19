@@ -498,6 +498,11 @@ function BasisBlock({ b }: { b: StoreBasisBlock }) {
           <Text color={C.fg}>{b.recipient}</Text>
         </Fact>
       </Table>
+      {b.empty ? (
+        <Text size={13} color={C.muted} style={{ marginTop: "8px" }}>
+          {b.empty}
+        </Text>
+      ) : null}
       {b.amounts.length > 0 ? (
         <Statement
           lines={b.amounts.map((a) => ({
@@ -788,6 +793,20 @@ export function ReportEmail(props: ReportEmailProps) {
           {rowsTitle(props)}
         </SectionLabel>
         <MachineTable props={props} />
+      </Row>,
+    );
+  }
+  if (props.recipientKind === "butik" && props.details.basis?.calculation?.length) {
+    sections.push(
+      <Row key="calculation">
+        <SectionLabel index={next()}>Uträkning</SectionLabel>
+        <Statement
+          lines={props.details.basis.calculation.map((c) => ({
+            label: c.label,
+            value: formatKronor(c.amount),
+            total: c.total,
+          }))}
+        />
       </Row>,
     );
   }

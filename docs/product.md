@@ -77,22 +77,34 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
   - **Det revisorn frågade om** (utgåva 2 av underlaget, `report.basis.rev = 2`). Butikens revisor frågade vilket
     bolag som äger automaten, vilket avtal som gäller och om svensk moms gäller.
     - **Vem som betalar och äger automaten.** Betalaren är det juridiska företagsnamnet. Heter organisationen
-      något annat i appen står "Kortautomater i Norden AB (verksamheten kallas Binderlab)", en gång, och under det
-      "Äger och driver automaten." (flera automater: "automaterna").
+      något annat i appen står "Kortautomater i Norden AB (verksamheten kallas Binderlab)", en gång. Under det
+      står "Äger och driver automaten." (flera automater: "automaterna") bara när ägaren har slagit på **Vi äger
+      och driver automaterna i butikerna** (Inställningar → Företaget; standard av): appen vet inte vem som äger
+      automaten. Under "Mottagare" står butikens adress när den är ifylld (Butiker). Mejlet till butiken är från
+      det juridiska namnet (sidhuvud, sidfot, "avtalet om automatplats med …").
     - **Avtalets form per butik** (Butiker → butiken → Kontakt och rapport → **Avtalsform i rapporten**; ägare och
       admin): "Skriftligt avtal", "Muntligt avtal" eller "Inte valt".
-      - Skriftligt avtal: raden från det undertecknade kontraktet, som förut.
+      - Skriftligt avtal: "Skriftligt avtal (Placeringsavtal) mellan [bolaget] och [butiken] från 1 oktober 2026:
+        hyra 1 500 kr per månad." "Undertecknat [dag]" står bara när dagen är känd (inte för ett kontrakt
+        registrerat för hand). Utan kontrakt i appen: "Skriftligt avtal mellan [bolaget] och [butiken]: …".
       - Muntligt avtal: "Muntligt avtal mellan [bolaget] och [butiken]: 50 % av vinsten efter kostnader." med
         avtalets villkor i klartext. Går före ett kontrakt som står som undertecknat: rapporten påstår då inget
         skriftligt avtal.
-      - Inte valt: det undertecknade kontraktet om det finns (fältet visar då "Skriftligt avtal"). Annars står
-        ingen rad om avtalet, och Rapporter varnar **"Rapporten säger inte vilket avtal som gäller."** med länken
-        "Välj avtalsform". Godkännandet låses inte.
+      - Inte valt: det undertecknade kontraktet om det finns ("Enligt …", som förut). Annars står **"Avtal saknas
+        i underlaget."** i rapporten, och Rapporter varnar **"Rapporten säger inte vilket avtal som gäller."** med
+        länken "Välj avtalsform". Godkännandet låses inte.
     - **Vi säljer med vinstmarginalbeskattning (VMB)** (Inställningar → Företaget; ägare och admin; standard av).
       På: "[Bolaget] är säljare av varorna i automaten och redovisar momsen på den försäljningen enligt reglerna
       om vinstmarginalbeskattning (VMB). Den momsen berör inte butiken. Butikens ersättning är betalning för en
       tjänst och omfattas inte av VMB." Av: "[Bolaget] är säljare av varorna i automaten." Appen kan inte veta
-      hur bolaget redovisar sin moms; därför är det ett val. Valet ändrar ingen uträkning.
+      hur bolaget redovisar sin moms; därför är det ett val. Valet ändrar ingen uträkning. VMB gäller bara
+      begagnade varor, konst, samlarföremål och antikviteter: meningen är bolagets egen uppgift (knappens text
+      säger att revisorn ska tillfrågas).
+    - **Platsen, inte lokalhyra.** Med momsrad står också "Ersättningen gäller platsen för automaten i butiken.
+      Det är en tjänst med 25 % moms, inte uthyrning av lokal."
+    - **Momssats 0 %:** provisionen heter "10 % av 18 329,00 kr (kundernas betalning, 105 order)" och avtalet
+      "provision 10 % på kundernas betalning", aldrig "exkl. moms" om ett belopp där ingen moms är borttagen. En
+      rapport med bara hyra har ingen rad "Avtal utan provision".
     - **Försäljningen och momsen.** Rapporten påstår aldrig att ingen moms tas ut. Fotnoten säger vad
       försäljningssiffran är: med vinstdelning "Försäljningen är kundernas köp i automater som stod i [butiken]
       köpdagen, inklusive moms." (momssats 0 % i Inställningar: siffran är det kunderna betalade). Med provision
@@ -101,9 +113,22 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
     - **Totalrad.** Uträkningen slutar med "Er ersättning totalt, exklusive moms" (med "Visa ingen momsrad": "Er
       ersättning totalt").
     - **Redan betalt.** Är butikens avräkning för rapportens månader markerad som betald (Butiker → Utbetalning)
-      visar fakturablocket "Redan betalt 16 nov. 2026" och "Kvar att betala", oftast momsen. Rapporten läser
-      bara avräkningen. Är mer betalt än rapportens belopp (avräkningen gäller hela månaden, rapporten en del av
-      den) visas blocket utan betalningen.
+      visar fakturablocket "Redan betalt 5 nov. 2026 (avräkning oktober 2026)" och "Kvar att betala", oftast
+      momsen. Rapporten läser bara avräkningen. En avräkning gäller en hel kalendermånad: ligger månaden helt i
+      rapporten räknas hela beloppet av. Gäller rapporten bara en del av månaden (eget datum, t.ex. 14 okt.–14
+      nov.) räknas bara rapportens belopp för de dagarna av, och en mening säger resten: "Avräkningen för oktober
+      2026 betalades 5 nov. 2026 med 6 180,75 kr och gällde hela månaden. Av den räknas 5 987,75 kr av här, för
+      14–31 okt. 2026. Resten, 193,00 kr, gäller dagar utanför rapporten." Går delen inte att avgöra (provision
+      eller hyra) räknas inget av, och meningen säger det.
+    - **Ingen ersättning:** "Inget att fakturera för 1–18 nov. 2026 (ingen vinst, andelen blir 0 kr)." i stället
+      för ett tomt fakturablock, och raden "Er andel 50 % (ingen vinst, 0 kr)".
+    - **Exklusive moms överallt:** rubriken "Er ersättning för …: 10 278,25 kr exkl. moms.", nyckeltalet "Er
+      ersättning exkl. moms" (med momsrad).
+    - **Mejlet** har samma uträkning med totalraden, samma rader i underlaget, "Butiksrapport 14 okt.–14 nov.
+      2026" och "Här är försäljningen 14 okt.–14 nov. 2026 …" för eget datum, och samma klockslag som PDF:en
+      (organisationens tidszon).
+    - **Butiksportalen** visar rapporter med vinstdelning (förut "kan inte visas i portalen"), och en rapport
+      med eget datum heter "Butiksrapport 14 okt.–14 nov. 2026".
     - **Eget datum över två månader med vinstdelning:** oktober och november står bredvid varandra i en tabell
       (Post, 14–31 okt., 1–14 nov.). Förnyades avtalet mitt i en månad med samma villkor visas månaden som en
       period (inte en rad per avtal); beloppen är exakt summan av det som räknades per avtal.

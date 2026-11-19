@@ -13,28 +13,37 @@
  * mottagarna inte har konto i appen.
  */
 
-import type {
-  EmailAttachment,
-  EmailKpi,
-  EmailMachineRow,
-  ReportEmailProps,
-  StoreBasisBlock,
-  Sender,
+import {
+  DEFAULT_SENDER,
+  type EmailAttachment,
+  type EmailKpi,
+  type EmailMachineRow,
+  type ReportEmailProps,
+  type StoreBasisBlock,
+  type Sender,
 } from "@/emails/report-content";
 import { formatInt, formatKronor, formatMonth, MINUS } from "@/lib/format";
 import {
-  agreementLine,
   asStoreBasis,
+  basisNotes,
+  invoiceEmptyText,
   invoiceRows,
   isRev2,
   isWholeMonth,
   payerLines,
+  payerName,
+  payerText,
+  pctText,
   periodText,
+  recipientLines,
   salesVatLabel,
   sie4Verifications,
+  splitsOf,
   storeReportView,
-  vatSentences,
+  totalLabel,
+  type StoreBasis,
 } from "@/reports";
+import { wallClockIn } from "@/components/shell/period-state";
 import type { Period as DatePeriod } from "@/lib/period";
 
 import { TYPE_LABEL } from "./kinds";
@@ -114,7 +123,8 @@ function base(snapshot: ReportSnapshot, ctx: EmailContext) {
     reportUrl: ctx.reportUrl,
     attachments: [...ctx.attachments],
     reportId: ctx.reportId,
-    generatedAt: new Date(snapshot.generatedAt),
+    // Samma klocka som PDF:en: organisationens tidszon, inte serverns.
+    generatedAt: wallClockIn(new Date(snapshot.generatedAt), snapshot.organization.timeZone),
     sender: ctx.sender,
     ...(ctx.followText && ctx.followText.trim() !== "" ? { intro: ctx.followText.trim() } : {}),
   };
@@ -139,6 +149,49 @@ function salesKpiNote(r: StoreSnapshot["report"], rev2: boolean): { note?: strin
   return label ? { note: label } : {};
 }
 
+/**
+ * Uträkningen rad för rad, som i PDF:en, med totalraden sist (utgåva 2): vinstdelningens
+ * summor per period, eller stegen med provision och hyra.
+ */
+function calculationLines(
+  r: StoreSnapshot["report"],
+  basis: StoreBasis,
+): Array<{ label: string; amount: number; total?: boolean }> {
+  const c = r.compensation;
+  const splits = splitsOf(c);
+  const lines: Array<{ label: string; amount: number; total?: boolean }> = [];
+  if (splits.length > 0) {
+    const many = splits.length > 1;
+    for (const x of splits) {
+      const pre = many ? `${periodText(x.range)}: ` : "";
+      const pct = pctText(x.shareBp, x.shareBp % 100 === 0 ? 0 : 1);
+      lines.push({ label: `${pre}Försäljning`, amount: kr(x.salesInclVatOre) });
+      if ((x.refundsOre ?? 0) !== 0)
+        lines.push({ label: `${pre}Återbetalningar`, amount: -kr(x.refundsOre ?? 0) });
+      if (x.vmbBeforeSplit !== false)
+        lines.push({ label: `${pre}VMB-moms`, amount: -kr(x.vmbVatOre) });
+      lines.push(
+        { label: `${pre}Inköp`, amount: -kr(x.purchasesOre) },
+        { label: `${pre}Kortavgifter`, amount: -kr(x.cardFeesOre) },
+        { label: `${pre}Vinst`, amount: kr(x.profitOre) },
+        {
+          label: `${pre}Er andel ${pct}${x.profitOre < 0 && x.storeShareOre === 0 ? " (ingen vinst, 0 kr)" : ""}`,
+          amount: kr(x.storeShareOre),
+        },
+      );
+    }
+    if (c.commissionOre !== 0) lines.push({ label: "Provision", amount: kr(c.commissionOre) });
+    if (c.rentOre !== 0) lines.push({ label: "Hyra", amount: kr(c.rentOre) });
+  } else {
+    for (const step of c.steps) {
+      if (step.kind === "total") continue;
+      lines.push({ label: `${step.label}: ${step.calculation}`, amount: kr(step.amountOre) });
+    }
+  }
+  lines.push({ label: totalLabel(basis), amount: kr(c.totalOre), total: true });
+  return lines;
+}
+
 function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
   const r = s.report;
   // Samma val som PDF:en: utan "Visa detaljer" står beloppet i rubriken, och raderna om
@@ -146,6 +199,8 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
   const view = storeReportView(r);
   // Underlaget för bokföringen, samma rader som i PDF:en (saknas i äldre rapporter).
   const basisData = asStoreBasis(r.basis);
+  const rev2 = isRev2(basisData);
+  const exVat = rev2 && basisData.vatMode === "added";
   const kpis: EmailKpi[] = [
     {
       label: "Försäljning",
@@ -153,7 +208,7 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
       unit: "kr",
       change: change(r.comparison.revenueChangeBp),
       // Vad siffran är, aldrig att ingen moms tas ut (en äldre rapport står som den skrevs).
-      ...salesKpiNote(r, isRev2(basisData)),
+      ...salesKpiNote(r, rev2),
     },
     {
       label: "Sålda pack",
@@ -167,7 +222,7 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
           : `${r.comparison.ordersDiff > 0 ? "+" : MINUS}${formatInt(Math.abs(r.comparison.ordersDiff))} ${isWholeMonth(s.period) ? "mot förra månaden" : "mot perioden före"}`,
     },
     {
-      label: "Er ersättning",
+      label: exVat ? "Er ersättning exkl. moms" : "Er ersättning",
       value: kr(r.compensation.totalOre),
       unit: "kr",
       decimals: 2,
@@ -180,33 +235,43 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
     revenue: kr(m.revenueOre),
     packs: m.orders,
   }));
-  const agreement = basisData ? agreementLine(basisData, s.store.name, r.compensation) : null;
+  const empty = basisData ? invoiceEmptyText(basisData, r) : null;
   const basis: StoreBasisBlock | undefined = basisData
     ? {
         payer: payerLines(basisData, r.machines.length),
-        recipient: s.store.name,
-        amounts: invoiceRows(basisData, r.compensation.totalOre).map((row) => ({
+        ...(rev2 ? { payerText: payerText(basisData, r.machines.length) } : {}),
+        recipient: recipientLines(basisData, s.store.name).join(", "),
+        ...(rev2 ? { calculation: calculationLines(r, basisData) } : {}),
+        amounts: invoiceRows(basisData, r).map((row) => ({
           label: row.label,
           amount: kr(row.amountOre),
           ...(row.strong ? { total: true } : {}),
         })),
-        notes: [
-          ...(agreement ? [agreement] : []),
-          ...vatSentences(basisData, r.compensation.totalOre),
-        ],
+        ...(empty ? { empty } : {}),
+        notes: basisNotes(basisData, r, s.store.name),
       }
     : undefined;
+  // Utgåva 2 med juridiskt namn: mejlet är från bolaget avtalet är med, inte bara
+  // verksamhetens namn (sidhuvud, sidfot och raden om varför mejlet kommer).
+  const legal = rev2 && basisData.payer.legal;
+  const sender = legal
+    ? {
+        name: basisData.payer.name,
+        address: basisData.payer.address ?? ctx.sender?.address ?? "–",
+        email: ctx.sender?.email ?? DEFAULT_SENDER.email,
+      }
+    : ctx.sender;
   const refillsLast =
     view.details && s.service.refills.last ? localDate(s.service.refills.last) : MISSING_DATE;
   return {
-    ...base(s, ctx),
+    ...base(s, { ...ctx, sender }),
     summary: view.headline,
     reportUrl: portalUrlFor(ctx.reportUrl),
     recipientKind: "butik",
     intro:
       ctx.followText?.trim() ||
       (r.greeting ??
-        `Här är månadens försäljning i ${s.store.name} och er ersättning, uträknad steg för steg i den bifogade rapporten.`),
+        `Här är ${isWholeMonth(s.period) ? "månadens försäljning" : `försäljningen ${periodText(s.period)}`} i ${s.store.name} och er ersättning, uträknad steg för steg i den bifogade rapporten.`),
     kpis,
     rows,
     details: {
@@ -220,6 +285,7 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
         name: ctx.contact?.name ?? ctx.sender?.name ?? "Binderlab",
         phone: ctx.contact?.phone ?? "–",
       },
+      ...(legal ? { party: payerName(basisData) } : {}),
       ...(basis ? { basis } : {}),
     },
   };

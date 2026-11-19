@@ -322,3 +322,35 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
 - Tester: `store-basis.test.ts`, `store-report-merge.test.ts`, `store-report.test.tsx`, `sections.test.tsx`,
   `test/db/rapport-revisor.test.ts`, e2e 05 (varningen, avtalsformen, VMB-knappen, förhandsvisningen, mejlet) och
   e2e 10 (ägarens fall, bara hyra med skriftligt avtal, första utgåvan).
+
+## 19 nov. – rättelser efter granskningen av steg 2
+
+En granskare läste steg 2 som revisorn och godtog två av fyra fall. Rättat:
+
+- **Portalen visade ingen rapport med vinstdelning.** `private.portal_snapshot_safe` stoppade nycklarna för inköp
+  och vinst överallt, också i ersättningsdelen där de alltid står vid vinstdelning. Ny migrering
+  `20261218000300_portal_vinstdelning.sql`: samma regel som `assertStoreReportSafe` (nycklarna får stå i
+  `report.compensation` när `splits` har en rad; listor, andra butikers `storeId` och `orders` som inte är ett tal
+  stoppas överallt som förut). Felet fanns före steg 2. Portalens rubrik för eget datum: "Butiksrapport …".
+- **Redan betalt** drog av en hel månads avräkning från en rapport för en del av månaden. Nu sparas avräkningens
+  månad (`payments[].month`), och bara det som gäller rapportens dagar räknas av (`paymentParts`). Raden säger
+  vilken månad betalningen gäller, och en mening säger resten.
+- **"exkl. moms" om bruttot.** Med momssats 0 % heter beloppet "kundernas betalning" i uträkningen och i avtalets
+  villkor. Rapporter med bara hyra har inget steg "Avtal utan provision". Fotnoten om provisionen står bara när
+  ett avtal har provision.
+- **Mejlet**: juridiskt namn som avsändare (sidhuvud, sidfot, raden om varför mejlet kommer), "Butiksrapport" och
+  perioden för eget datum, organisationens tidszon för "Skapad", uträkningen med totalraden, "exkl. moms" vid
+  ersättningen, och bolaget i löptext utan trasiga skiljetecken (`payerText`).
+- **Avtalsraden**: "Skriftligt avtal (namn) mellan … och … från …: villkoren." Utan rad står "Avtal saknas i
+  underlaget." (rapporten tiger inte). Godkännandet låses fortfarande inte: det hade krävt att alla butiker får
+  ett val före nästa utskick.
+- **Äger och driver automaten** är ett val (`organization_settings.report_owns_machines`, standard av,
+  migrering `20261218000200_rapport_automat.sql`).
+- **Momsen**: en mening om att ersättningen gäller platsen och inte är lokalhyra. Med VMB: "Inköp räknas med moms."
+- **Mottagaren**: butikens adress (`basis.recipientAddress`). Butikens juridiska namn och org.nr finns inte i appen.
+- **Inget att fakturera** står när ersättningen är 0 kr, och "Er andel 50 % (ingen vinst, 0 kr)".
+- **Portalens sidhuvud och sidfot** påstår inget om vem som driver eller äger automaterna (verksamhetens namn).
+- **En sida med långa namn**: nytt fall i e2e 10 (`LONG_NAMES`: "Kortautomater i Norden Aktiebolag", adress med
+  box, lång butiksadress).
+- Avvisat: inget. Inte gjort: butikens juridiska namn och org.nr (finns inte i appen), att räkna provisionen på
+  beloppet utan VMB-moms (ändrar summor; avtalets ordalydelse är ägarens sak).

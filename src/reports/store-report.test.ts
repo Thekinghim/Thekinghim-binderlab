@@ -24,13 +24,13 @@ describe("butiksersättning", () => {
     });
     const r = buildStoreReport(src, "s-1", "2026-11");
     expect(r.compensation.model).toBe("commission");
-    expect(plain(r.compensation.modelText)).toBe("Provision 10 % på försäljningen exkl. moms.");
+    expect(plain(r.compensation.modelText)).toBe("Provision 10 % på kundernas betalning.");
     expect(r.compensation.commissionOre).toBe(3040);
     expect(r.compensation.rentOre).toBe(0);
     expect(r.compensation.totalOre).toBe(3040);
     expect(r.compensation.steps.map((s) => s.kind)).toEqual(["commission", "total"]);
     expect(plain(r.compensation.steps[0]!.calculation)).toBe(
-      "10 % av 304,00 kr exkl. moms (6 order) = 30,40 kr",
+      "10 % av 304,00 kr (kundernas betalning, 6 order) = 30,40 kr",
     );
     // Utan hyra i avtalet nämns ingen hyra i totalen ("+ hyra 0,00 kr" stod förut).
     const total = r.compensation.steps.find((x) => x.kind === "total")!;
@@ -191,7 +191,7 @@ describe("butiksersättning: stegens underlag förklarar hela intäkten", () => 
     const step = r.compensation.steps[0]!;
     expect(plain(step.label)).toBe("Avtal utan provision (1–15 nov. 2026)");
     expect(plain(step.calculation)).toBe(
-      "2 order (98,00 kr exkl. moms) såldes när avtalet bara hade hyra och ger ingen provision",
+      "2 order (98,00 kr) såldes när avtalet bara hade hyra och ger ingen provision",
     );
     expect(step.evidence.orderCount).toBe(2);
     expect(step.evidence.dates).toEqual(["2026-11-05"]);

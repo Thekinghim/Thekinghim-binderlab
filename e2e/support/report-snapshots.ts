@@ -199,10 +199,21 @@ export const STEP1_BASIS: StoreBasis = {
 export const FULL_BASIS: StoreBasis = {
   ...STEP1_BASIS,
   rev: 2,
-  payer: { ...STEP1_BASIS.payer, brand: "Binderlab" },
+  payer: { ...STEP1_BASIS.payer, brand: "Binderlab", ownsMachines: true },
   agreementForm: "written",
   vmb: true,
+  recipientAddress: "Stjärntorget 2, 169 79 Solna",
 };
+
+/**
+ * Längsta realistiska namn och adresser (en granskare fick två sidor med dem): ett långt
+ * juridiskt namn, en adress med box och en butik med lång adress.
+ */
+export const LONG_NAMES = {
+  company: "Kortautomater i Norden Aktiebolag",
+  address: "Industrivägen 123, Box 4567, 194 27 Upplands Väsby",
+  storeAddress: "Gallerian Väst, Entréplan, Stora Bernhardsgatan 101, 416 52 Göteborg",
+} as const;
 
 /** Dagen då ersättningen (exklusive moms) betalades ut i testfallen. */
 export const PAID_ON = "2026-11-05";
@@ -285,7 +296,7 @@ export function storeSnapshot(
  * (förut tre perioder i uträkningen, nu oktober och november), VMB-texten, ett juridiskt
  * namn som skiljer sig från "Binderlab" och ersättningen exklusive moms redan utbetald.
  */
-export function ownerCaseSnapshot(): ReportSnapshot {
+export function ownerCaseSnapshot(options: { long?: boolean } = {}): ReportSnapshot {
   const store = { id: "s-1", name: "Sega Gubben Spel & Samlarkort" };
   const titles = Array.from({ length: 6 }, (_, i) => ({
     id: `t-${i + 1}`,
@@ -323,14 +334,28 @@ export function ownerCaseSnapshot(): ReportSnapshot {
       unitCostOre: 4200 + (i % 3) * 450,
       validFrom: "2026-01-01",
     })),
-    agreements: [split("2026-10-14", "2026-11-02"), split("2026-11-03", null)],
+    // Avtalet gällde från 1 oktober: oktoberavräkningen gäller hela månaden, rapporten bara
+    // 14–31 okt.
+    agreements: [split("2026-10-01", "2026-11-02"), split("2026-11-03", null)],
     placements: [{ machineId: "m-1", storeId: store.id, from: "2026-09-01", to: null }],
     settings: { vatRateBp: 0, cardFeeBp: 150 },
     stores: [store],
     machines: [{ id: "m-1", name: "Pokémonautomaten", code: "BL-001" }],
     titles,
   };
-  const snap = build(
+  // Oktoberavräkningen (hela oktober, räknad som månadsrapporten) betalades 5 nov.,
+  // exklusive moms. Rapporten 14 okt.–14 nov. räknar bara av delen för 14–31 okt.
+  const october = build({
+    type: "butik",
+    month: "2026-10",
+    sources,
+    storeId: store.id,
+    storeDetails: false,
+    greeting: null,
+    storeService: { refills: { count: 0, last: null }, busiest: null, busiestOrders: 0 },
+  });
+  if (october.type !== "butik") throw new Error("fel typ");
+  return build(
     {
       type: "butik",
       month: "2026-10",
@@ -341,25 +366,35 @@ export function ownerCaseSnapshot(): ReportSnapshot {
       storeBasis: {
         rev: 2,
         payer: {
-          name: "Kortautomater i Norden AB",
+          name: options.long ? LONG_NAMES.company : "Kortautomater i Norden AB",
           legal: true,
           orgNumber: "559000-1234",
-          address: "Västra Hamngatan 12, 411 17 Göteborg",
+          address: options.long ? LONG_NAMES.address : "Västra Hamngatan 12, 411 17 Göteborg",
           vatNumber: "SE559000123401",
           brand: "Binderlab",
+          ownsMachines: true,
         },
         agreementForm: "oral",
         contract: null,
         vatMode: "added",
         vatRateBp: 2500,
         vmb: true,
+        recipientAddress: options.long
+          ? LONG_NAMES.storeAddress
+          : "Drottninggatan 5, 411 14 Göteborg",
+        payments: [
+          {
+            paidOn: "2026-11-05",
+            amountOre: october.report.compensation.totalOre,
+            month: "2026-10",
+          },
+        ],
       },
       greeting: null,
       storeService: { refills: { count: 4, last: "2026-11-10" }, busiest: null, busiestOrders: 0 },
     },
     "2026-11-17T08:00:00.000Z",
   );
-  return withPayment(snap, "2026-11-16");
 }
 
 /**

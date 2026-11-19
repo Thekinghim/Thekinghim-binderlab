@@ -13,10 +13,18 @@
  * Ren modul: samma texter på sidan, i PDF:en, i mejlet och i butiksportalen.
  */
 
-import { applyBp, type IsoDate, type Period } from "@/domain";
+import {
+  applyBp,
+  monthEnd,
+  monthOf,
+  monthStart,
+  type IsoDate,
+  type IsoMonth,
+  type Period,
+} from "@/domain";
 
 import type { StoreReport } from "./store-report";
-import { dateText, krText, periodText } from "./text";
+import { dateText, krText, monthText, periodText } from "./text";
 
 /** Momsen i butiksrapporten (Inställningar → Företaget). */
 export type ReportVatMode = "added" | "none";
@@ -45,6 +53,12 @@ export interface BasisPayer {
    * juridiska namnet. null eller saknas = samma namn, eller inget juridiskt namn ifyllt.
    */
   readonly brand?: string | null;
+  /**
+   * "Vi äger och driver automaterna i butikerna" (Inställningar → Företaget) när rapporten
+   * räknades. Sant: rapporten säger det. Saknas eller falskt: det sägs inte (appen vet inte
+   * vem som äger automaten).
+   */
+  readonly ownsMachines?: boolean;
 }
 
 /**
@@ -66,11 +80,37 @@ export function payerName(basis: StoreBasis): string {
 
 /**
  * Raden under bolaget som betalar: butikens revisor frågade vem som äger automaten. Bara i
- * rapporter från utgåva 2.
+ * rapporter från utgåva 2, och bara när ägaren har valt det i Inställningar (appen vet inte
+ * vem som äger automaten).
  */
 export function ownerLine(basis: StoreBasis, machines = 1): string | null {
-  if (!isRev2(basis)) return null;
+  if (!isRev2(basis) || basis.payer.ownsMachines !== true) return null;
   return machines > 1 ? "Äger och driver automaterna." : "Äger och driver automaten.";
+}
+
+/**
+ * Bolaget som betalar i löptext (mejlets textdel): "Kortautomater i Norden AB (verksamheten
+ * kallas Binderlab), som äger och driver automaten. Org.nr 559123-4567, Gatan 1, 111 22 Ort,
+ * Momsreg.nr SE559123456701."
+ */
+export function payerText(basis: StoreBasis, machines = 1): string {
+  const p = basis.payer;
+  const owner = ownerLine(basis, machines);
+  const name = owner
+    ? `${payerName(basis)}, som ${owner.charAt(0).toLowerCase()}${owner.slice(1)}`
+    : `${payerName(basis)}.`;
+  const rest = [
+    ...(p.orgNumber ? [`Org.nr ${p.orgNumber}`] : []),
+    ...(p.address ? [p.address] : []),
+    ...(p.vatNumber ? [`Momsreg.nr ${p.vatNumber}`] : []),
+  ];
+  return rest.length > 0 ? `${name} ${rest.join(", ")}.` : name;
+}
+
+/** Mottagaren: butikens namn och, i utgåva 2, adressen om den finns. */
+export function recipientLines(basis: StoreBasis, storeName: string): string[] {
+  const address = isRev2(basis) ? basis.recipientAddress?.trim() : "";
+  return address ? [storeName, address] : [storeName];
 }
 
 /** Avtalet som ersättningen vilar på. */
@@ -93,6 +133,8 @@ export interface BasisPayment {
   /** Dagen avräkningen betalades. */
   readonly paidOn: IsoDate;
   readonly amountOre: number;
+  /** Avräkningens månad (avräkningar görs per kalendermånad). */
+  readonly month?: IsoMonth;
 }
 
 /** Avtalets form, butikens val (Butiker → Kontakt och rapport). */
@@ -115,6 +157,8 @@ export interface StoreBasis {
    * (store_settlements; rapporten ändrar dem aldrig). Tom eller saknas = inget är betalt.
    */
   readonly payments?: readonly BasisPayment[];
+  /** Butikens adress när rapporten räknades (Butiker); null = inte ifylld. Utgåva 2. */
+  readonly recipientAddress?: string | null;
   /** Se `BASIS_REV`. Saknas = utgåva 1. */
   readonly rev?: number;
   readonly payer: BasisPayer;
@@ -217,21 +261,50 @@ export function contractLine(basis: StoreBasis): string | null {
  *
  * - Muntligt avtal: "Muntligt avtal mellan {bolag} och {butik}: {villkoren}." Villkoren är
  *   avtalets villkor i klartext (`compensation.termsText`); utan avtal i perioden ingen rad.
- * - Skriftligt avtal, eller inget val: det undertecknade kontraktet för perioden
- *   (`contractLine`), om det finns.
+ * - Skriftligt avtal (utgåva 2): "Skriftligt avtal ({kontraktets namn}) mellan {bolag} och
+ *   {butik} från {dag}: {villkoren}." "Undertecknat {dag}" står bara när dagen är känd (ett
+ *   kontrakt registrerat för hand har ingen). Utan kontrakt i appen: utan namn och datum.
+ * - Inget val: det undertecknade kontraktet för perioden (`contractLine`), om det finns.
  * - Annars ingen rad (null): rapporten säger då inte vilket avtal som gäller, och
- *   granskningen varnar (`agreementMissing`).
+ *   granskningen varnar (`agreementMissing`). Se `agreementText` för det som visas.
  */
 export function agreementLine(
   basis: StoreBasis,
   storeName: string,
   compensation: { readonly termsText?: string },
 ): string | null {
+  const terms = compensation.termsText?.trim();
+  const parties = `mellan ${basis.payer.name} och ${storeName}`;
   if (basis.agreementForm === "oral") {
-    const terms = compensation.termsText?.trim();
-    return terms ? `Muntligt avtal mellan ${basis.payer.name} och ${storeName}: ${terms}.` : null;
+    return terms ? `Muntligt avtal ${parties}: ${terms}.` : null;
+  }
+  if (basis.agreementForm === "written" && isRev2(basis)) {
+    const c = basis.contract;
+    const what = c
+      ? `Skriftligt avtal (${c.title}) ${parties} från ${dateText(c.validFrom)}${
+          c.signedOn ? `, undertecknat ${dateText(c.signedOn)}` : ""
+        }`
+      : `Skriftligt avtal ${parties}`;
+    return terms ? `${what}: ${terms}.` : `${what}.`;
   }
   return contractLine(basis);
+}
+
+/** Raden i rapporten när den inte säger vilket avtal som gäller (utgåva 2). */
+export const AGREEMENT_MISSING_LINE = "Avtal saknas i underlaget.";
+
+/**
+ * Raden om avtalet som den står i rapporten: `agreementLine`, eller i utgåva 2
+ * "Avtal saknas i underlaget." när raden saknas (rapporten ska säga det, inte tiga).
+ */
+export function agreementText(
+  basis: StoreBasis,
+  storeName: string,
+  compensation: { readonly termsText?: string },
+): string | null {
+  const line = agreementLine(basis, storeName, compensation);
+  if (line !== null) return line;
+  return isRev2(basis) ? AGREEMENT_MISSING_LINE : null;
 }
 
 /** Texten i granskningen när rapporten inte säger vilket avtal som gäller. */
@@ -279,47 +352,220 @@ export function vatRows(basis: StoreBasis, compensationOre: number): BasisVatRow
   ];
 }
 
-/** Utbetalningarna per dag (flera avräkningar betalda samma dag blir en rad), äldst först. */
-function paymentsByDay(basis: StoreBasis): BasisPayment[] {
-  const byDay = new Map<IsoDate, number>();
+/** Rapporten som fakturablocket räknar på: perioden och ersättningen. */
+export type InvoiceReport = Pick<StoreReport, "period" | "compensation">;
+
+/**
+ * Den del av rapportens ersättning som gäller en kalendermånad, när den går att avgöra: bara
+ * vinstdelning utan provision och hyra (andelen räknas per kalendermånad, en rad per månad
+ * i uträkningen). Annars null.
+ */
+function monthShareOre(report: InvoiceReport, month: IsoMonth): number | null {
+  const c = report.compensation;
+  const splits = (c as { splits?: StoreReport["compensation"]["splits"] }).splits ?? [];
+  if (splits.length === 0 || c.commissionOre !== 0 || c.rentOre !== 0) return null;
+  if (splits.some((x) => x.pending)) return null;
+  return splits
+    .filter((x) => monthOf(x.range.start) === month)
+    .reduce((n, x) => n + x.storeShareOre, 0);
+}
+
+/** En utbetalning och hur mycket av den som räknas av i rapporten. */
+interface PaymentPart {
+  readonly paidOn: IsoDate;
+  readonly amountOre: number;
+  readonly month: IsoMonth | null;
+  /** Avräkningens månad ligger helt inom rapportens period (eller månaden är okänd). */
+  readonly whole: boolean;
+  /** Rapportens dagar i avräkningens månad. */
+  readonly part: Period | null;
+  /** Rapportens ersättning för avräkningens månad; null = går inte att avgöra. */
+  readonly monthOre: number | null;
+  /** Det som räknas av: hela beloppet för en hel månad, annars rapportens del av månaden. */
+  readonly countedOre: number;
+}
+
+/**
+ * Utbetalningarna med det som räknas av, äldst först. En avräkning gäller en hel
+ * kalendermånad. Ligger månaden helt inom rapporten räknas hela beloppet av. Gäller
+ * rapporten bara en del av månaden (eget datum mitt i en månad) räknas bara rapportens
+ * belopp för de dagarna av, och högst det som betalades; går det inte att avgöra räknas
+ * inget av. Meningarna i `paymentNotes` säger vad som räknades.
+ */
+function paymentParts(basis: StoreBasis, report: InvoiceReport): PaymentPart[] {
+  const out: PaymentPart[] = [];
   for (const p of basis.payments ?? []) {
     if (!(p.amountOre > 0) || typeof p.paidOn !== "string") continue;
-    byDay.set(p.paidOn, (byDay.get(p.paidOn) ?? 0) + p.amountOre);
+    const month = typeof p.month === "string" ? p.month : null;
+    if (month === null) {
+      out.push({
+        paidOn: p.paidOn,
+        amountOre: p.amountOre,
+        month,
+        whole: true,
+        part: null,
+        monthOre: null,
+        countedOre: p.amountOre,
+      });
+      continue;
+    }
+    const start = monthStart(month);
+    const end = monthEnd(month);
+    const part: Period = {
+      start: report.period.start > start ? report.period.start : start,
+      end: report.period.end < end ? report.period.end : end,
+    };
+    const whole = part.start === start && part.end === end;
+    const monthOre = monthShareOre(report, month);
+    const countedOre = whole
+      ? p.amountOre
+      : monthOre !== null && monthOre > 0
+        ? Math.min(p.amountOre, monthOre)
+        : 0;
+    out.push({
+      paidOn: p.paidOn,
+      amountOre: p.amountOre,
+      month,
+      whole,
+      part,
+      monthOre,
+      countedOre,
+    });
   }
-  return [...byDay.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([paidOn, amountOre]) => ({ paidOn, amountOre }));
+  return out.sort((x, y) =>
+    x.paidOn !== y.paidOn
+      ? x.paidOn < y.paidOn
+        ? -1
+        : 1
+      : (x.month ?? "") < (y.month ?? "")
+        ? -1
+        : (x.month ?? "") > (y.month ?? "")
+          ? 1
+          : 0,
+  );
+}
+
+/** Det som räknas av och beloppet att betala, eller null när inget räknas av. */
+function paidSummary(
+  basis: StoreBasis,
+  report: InvoiceReport,
+): { parts: PaymentPart[]; paidOre: number; dueOre: number } | null {
+  const compensationOre = report.compensation.totalOre;
+  if (!isRev2(basis) || compensationOre <= 0) return null;
+  const base = vatRows(basis, compensationOre);
+  const dueOre = base.length > 0 ? base[base.length - 1]!.amountOre : compensationOre;
+  const parts = paymentParts(basis, report);
+  if (parts.length === 0) return null;
+  const paidOre = parts.reduce((n, p) => n + p.countedOre, 0);
+  return { parts, paidOre, dueOre };
 }
 
 /**
  * Fakturablocket: ersättningen, momsen och beloppet att fakturera (`vatRows`), och när en
- * utbetalning redan är gjord också "Redan betalt {datum}" och "Kvar att betala" (oftast
- * momsen: butiken fick ersättningen exklusive moms innan fakturan fanns).
+ * utbetalning redan är gjord också "Redan betalt {dag} (avräkning {månad})" och "Kvar att
+ * betala" (oftast momsen: butiken fick ersättningen exklusive moms innan fakturan fanns).
  *
- * Det betalda visas bara när det går ihop: summan av utbetalningarna är högst beloppet att
- * betala. Är mer betalt (avräkningen gäller en hel månad, rapporten en del av den) visas
- * blocket utan betalningarna, som förut, hellre än ett negativt "Kvar att betala".
- * Utan momsrad ("Visa ingen momsrad") börjar blocket med "Er ersättning".
+ * Det som räknas av är bara det som gäller rapportens dagar (`paymentParts`). Det betalda
+ * visas bara när det går ihop: det som räknas av är högst beloppet att betala, annars visas
+ * blocket utan betalningarna, hellre än ett negativt "Kvar att betala" (och `paymentNotes`
+ * säger varför). Utan momsrad ("Visa ingen momsrad") börjar blocket med "Er ersättning".
  */
-export function invoiceRows(basis: StoreBasis, compensationOre: number): BasisVatRow[] {
+export function invoiceRows(basis: StoreBasis, report: InvoiceReport): BasisVatRow[] {
+  const compensationOre = report.compensation.totalOre;
   const base = vatRows(basis, compensationOre);
-  if (!isRev2(basis) || compensationOre <= 0) return base;
-  const dueOre = base.length > 0 ? base[base.length - 1]!.amountOre : compensationOre;
-  const paid = paymentsByDay(basis);
-  const paidOre = paid.reduce((n, p) => n + p.amountOre, 0);
-  if (paid.length === 0 || paidOre > dueOre) return base;
+  const sum = paidSummary(basis, report);
+  const counted = sum ? sum.parts.filter((p) => p.countedOre > 0) : [];
+  if (!sum || counted.length === 0 || sum.paidOre > sum.dueOre) return base;
   const head: BasisVatRow[] =
     base.length > 0
       ? base
       : [{ key: "amount", label: "Er ersättning", amountOre: compensationOre, strong: true }];
   return [
     ...head,
-    ...paid.map((p) => ({
-      key: `paid-${p.paidOn}`,
-      label: `Redan betalt ${periodText({ start: p.paidOn, end: p.paidOn })}`,
-      amountOre: p.amountOre,
+    ...counted.map((p) => ({
+      key: `paid-${p.paidOn}-${p.month ?? ""}`,
+      label: `Redan betalt ${periodText({ start: p.paidOn, end: p.paidOn })}${
+        p.month ? ` (avräkning ${monthText(p.month)})` : ""
+      }`,
+      amountOre: p.countedOre,
     })),
-    { key: "left", label: "Kvar att betala", amountOre: dueOre - paidOre, strong: true },
+    { key: "left", label: "Kvar att betala", amountOre: sum.dueOre - sum.paidOre, strong: true },
+  ];
+}
+
+/**
+ * Meningarna om betalningar som inte räknas av helt: en avräkning för en hel månad när
+ * rapporten bara gäller en del av den, en avräkning som skiljer från rapportens belopp för
+ * månaden, och betalningar som är mer än beloppet att betala. Tom när allt går jämnt ut.
+ */
+export function paymentNotes(basis: StoreBasis, report: InvoiceReport): string[] {
+  const sum = paidSummary(basis, report);
+  if (!sum) return [];
+  const kr = (ore: number) => krText(ore, "always");
+  const day = (d: IsoDate) => periodText({ start: d, end: d });
+  const notes: string[] = [];
+  for (const p of sum.parts) {
+    if (!p.month) continue;
+    const m = monthText(p.month);
+    const paid = `Avräkningen för ${m} betalades ${day(p.paidOn)} med ${kr(p.amountOre)}`;
+    if (!p.whole) {
+      if (p.countedOre === 0) {
+        notes.push(
+          `${paid}. Den gäller hela ${m}, också dagar utanför rapporten, och räknas inte av här.`,
+        );
+        continue;
+      }
+      const rest = p.amountOre - p.countedOre;
+      notes.push(
+        `${paid} och gällde hela månaden. Av den räknas ${kr(p.countedOre)} av här, för ${periodText(p.part!)}.${
+          rest > 0 ? ` Resten, ${kr(rest)}, gäller dagar utanför rapporten.` : ""
+        }`,
+      );
+      continue;
+    }
+    if (p.monthOre !== null && p.monthOre !== p.amountOre) {
+      notes.push(`${paid}. Rapportens belopp för ${m} är ${kr(p.monthOre)}.`);
+    }
+  }
+  if (sum.paidOre > sum.dueOre) {
+    notes.push(
+      `Det som redan är betalt (${kr(sum.paidOre)}) är mer än beloppet att betala och räknas inte av här.`,
+    );
+  }
+  return notes;
+}
+
+/**
+ * Raden i fakturablocket när det inte finns något att fakturera (utgåva 2): "Inget att
+ * fakturera för 1–18 nov. 2026 (ingen vinst, andelen blir 0 kr)." null när ersättningen är
+ * mer än 0 kr.
+ */
+export function invoiceEmptyText(
+  basis: StoreBasis,
+  report: Pick<StoreReport, "period" | "compensation" | "month">,
+): string | null {
+  if (!isRev2(basis) || report.compensation.totalOre > 0) return null;
+  const c = report.compensation;
+  const splits = (c as { splits?: StoreReport["compensation"]["splits"] }).splits ?? [];
+  const what = periodText(report.period);
+  const loss =
+    splits.length > 0 &&
+    c.commissionOre === 0 &&
+    c.rentOre === 0 &&
+    splits.every((x) => !x.pending && x.profitOre <= 0);
+  return `Inget att fakturera för ${what}${loss ? " (ingen vinst, andelen blir 0 kr)" : ""}.`;
+}
+
+/**
+ * Meningarna under underlaget, i ordning: avtalet, betalningarna och momsen. Samma på
+ * skärmen, i PDF:en, i mejlet och i butiksportalen.
+ */
+export function basisNotes(basis: StoreBasis, report: StoreReport, storeName: string): string[] {
+  const agreement = agreementText(basis, storeName, report.compensation);
+  return [
+    ...(agreement ? [agreement] : []),
+    ...paymentNotes(basis, report),
+    ...vatSentences(basis, report.compensation.totalOre),
   ];
 }
 
@@ -363,6 +609,12 @@ export function vatSentences(basis: StoreBasis, compensationOre: number): string
   const pct = ratePct(basis.vatRateBp);
   return [
     `Ersättningen är exklusive moms. Ni fakturerar ${who} och lägger på svensk moms, ${pct} %.`,
+    // Utgåva 2: ordet hyra kan läsas som lokalhyra (momsfri). Ersättningen är för platsen.
+    ...(isRev2(basis)
+      ? [
+          `Ersättningen gäller platsen för automaten i butiken. Det är en tjänst med ${pct} % moms, inte uthyrning av lokal.`,
+        ]
+      : []),
     seller,
   ];
 }
@@ -428,22 +680,15 @@ export function totalLabel(basis: StoreBasis): string {
 }
 
 /** Blocket som text, rad för rad (mejlets textdel och tester). */
-export function basisText(
-  basis: StoreBasis,
-  storeName: string,
-  compensationOre: number,
-  compensation: { readonly termsText?: string } = {},
-  machines = 1,
-): string[] {
-  const contract = agreementLine(basis, storeName, compensation);
+export function basisText(basis: StoreBasis, report: StoreReport, storeName: string): string[] {
+  const machines = report.machines.length;
+  const empty = invoiceEmptyText(basis, report);
   return [
-    `Ersättningen betalas av: ${payerLines(basis, machines).join(", ")}`,
-    `Mottagare: ${storeName}`,
-    ...(contract ? [contract] : []),
-    ...invoiceRows(basis, compensationOre).map(
-      (r) => `${r.label}: ${krText(r.amountOre, "always")}`,
-    ),
-    ...vatSentences(basis, compensationOre),
+    `Ersättningen betalas av: ${isRev2(basis) ? payerText(basis, machines) : payerLines(basis, machines).join(", ")}`,
+    `Mottagare: ${recipientLines(basis, storeName).join(", ")}`,
+    ...invoiceRows(basis, report).map((r) => `${r.label}: ${krText(r.amountOre, "always")}`),
+    ...(empty ? [empty] : []),
+    ...basisNotes(basis, report, storeName),
   ];
 }
 

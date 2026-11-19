@@ -98,6 +98,11 @@ export type StoreDetails = {
   nextVisit: Date;
   contact: { name: string; phone: string };
   /**
+   * Bolaget avtalet om automatplatsen är med, som det ska stå i mejlet: "Kortautomater i
+   * Norden AB (verksamheten kallas Binderlab)". Saknas = avsändarens namn.
+   */
+  party?: string;
+  /**
    * Underlag för butikens bokföring: vem som betalar ersättningen, mottagaren, avtalet och
    * momsen. Saknas i rapporter från före uppgifterna fanns (sektionen visas då inte).
    */
@@ -107,9 +112,18 @@ export type StoreDetails = {
 export type StoreBasisBlock = {
   /** Bolaget som betalar: namn, org.nr, adress, momsreg.nr (en rad var). */
   payer: string[];
+  /** Bolaget som betalar i löptext (textdelen). Saknas = raderna med komma emellan. */
+  payerText?: string;
   recipient: string;
+  /**
+   * Uträkningen av ersättningen, rad för rad, med totalraden sist ("Er ersättning totalt,
+   * exklusive moms"). Saknas i äldre rapporter.
+   */
+  calculation?: Array<{ label: string; amount: number; total?: boolean }>;
   /** Ersättning exkl. moms, moms och att fakturera, i kronor. Tom = ingen momsrad. */
   amounts: Array<{ label: string; amount: number; total?: boolean }>;
+  /** "Inget att fakturera för …" när ersättningen är 0 kr. */
+  empty?: string;
   /** Avtalet och meningarna om momsen. */
   notes: string[];
 };
@@ -284,7 +298,10 @@ export function nextPeriodName(period: Period): string {
 export function eyebrow(props: ReportEmailProps): [string, string] {
   switch (props.recipientKind) {
     case "butik":
-      return ["Månadsrapport", props.details.siteName];
+      return [
+        isFullMonth(normalizePeriod(props.period)) ? "Månadsrapport" : "Butiksrapport",
+        props.details.siteName,
+      ];
     case "bokforing":
       return ["Bokföringsunderlag", props.details.company];
     case "delagare":
@@ -330,7 +347,7 @@ export function buildIntro(props: ReportEmailProps): string {
 export function buildReason(props: ReportEmailProps, sender: Sender): string {
   switch (props.recipientKind) {
     case "butik":
-      return `Du får detta mejl eftersom du är kontaktperson för ${props.details.siteName} i avtalet om automatplats med ${sender.name}.`;
+      return `Du får detta mejl eftersom du är kontaktperson för ${props.details.siteName} i avtalet om automatplats med ${props.details.party ?? sender.name}.`;
     case "bokforing":
       return `Du får detta mejl eftersom du sköter bokföringen för ${props.details.company}.`;
     case "delagare":
@@ -556,10 +573,15 @@ export function renderReportText(props: ReportEmailProps): string {
     case "butik": {
       const d = props.details;
       if (d.basis) {
+        if (d.basis.calculation && d.basis.calculation.length > 0) {
+          section("Uträkning");
+          for (const c of d.basis.calculation) out.push(`${c.label}: ${formatKronor(c.amount)}`);
+        }
         section("Underlag för bokföringen");
-        out.push(`Ersättningen betalas av: ${d.basis.payer.join(", ")}`);
+        out.push(`Ersättningen betalas av: ${d.basis.payerText ?? d.basis.payer.join(", ")}`);
         out.push(`Mottagare: ${d.basis.recipient}`);
         for (const a of d.basis.amounts) out.push(`${a.label}: ${formatKronor(a.amount)}`);
+        if (d.basis.empty) out.push(d.basis.empty);
         for (const note of d.basis.notes) out.push(note);
       }
       section("Drift och service");

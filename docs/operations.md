@@ -43,10 +43,12 @@ skapas. Första gången efter driftsättningen av `20261217000000_rapport_underl
 butiksrapporter gamla: skapa ny version och godkänn den. Momsvalet ("Moms tillkommer (25 %)" eller "Visa ingen
 momsrad") bestäms tillsammans med revisorn.
 
-**Före utskicket till en butik vars revisor ska ha rapporten** (migreringarna `20261218000000_rapport_vmb.sql` och
-`20261218000100_avtalsform.sql`, bara tillägg): slå på **Vi säljer med vinstmarginalbeskattning (VMB)** under
-Inställningar → Företaget om det stämmer för bolaget, och välj **Avtalsform i rapporten** för butiken (Butiker →
-butiken → Kontakt och rapport). Utan vald avtalsform och utan undertecknat kontrakt varnar Rapporter "Rapporten
+**Före utskicket till en butik vars revisor ska ha rapporten** (migreringarna `20261218000000_rapport_vmb.sql`,
+`20261218000100_avtalsform.sql` och `20261218000200_rapport_automat.sql`, bara tillägg, och
+`20261218000300_portal_vinstdelning.sql`, som byter portalens kontroll mot samma regel som appen): slå på **Vi
+säljer med vinstmarginalbeskattning (VMB)** och **Vi äger och driver automaterna i butikerna** under Inställningar
+→ Företaget om det stämmer för bolaget, och välj **Avtalsform i rapporten** för butiken (Butiker → butiken →
+Kontakt och rapport). Fyll i butikens adress (Butiker) så står den under "Mottagare". Utan vald avtalsform och utan undertecknat kontrakt varnar Rapporter "Rapporten
 säger inte vilket avtal som gäller." Är avräkningen redan betald (Butiker → Utbetalning) visar rapporten "Redan
 betalt" och "Kvar att betala"; markera den som betald innan rapporten skapas, annars skapa en ny version. Efter
 driftsättningen är alla utkast av butiksrapporter gamla igen (underlaget har fått fler uppgifter): skapa ny version.
