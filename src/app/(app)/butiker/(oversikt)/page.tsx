@@ -15,6 +15,7 @@ import { requireRoute, requireViewer } from "@/server/data/core";
 import { MobileMore } from "../../_mobil/mobile-more";
 import { StoreKpis } from "../_components/kpis";
 import { PageHead } from "../_components/page-head";
+import { OwnersView } from "../_components/owners-view";
 import { SettlementsView } from "../_components/settlements-view";
 import { StoreTable } from "../_components/store-table";
 import { loadStoreList } from "../_lib/data";
@@ -32,6 +33,8 @@ import { loadStoreStartDataSafe } from "./_lib/start-facts";
 
 export const metadata: Metadata = { title: "Butiker" };
 
+/** Fliken Butiksägare (?vy=agare). */
+const OWNERS_VIEW = "agare";
 /** Fliken Utbetalning (?vy=utbetalning). */
 const PAYOUT_VIEW = "utbetalning";
 /** Flikens gamla namn (Butiksportal), som gamla länkar och bokmärken har. */
@@ -65,6 +68,11 @@ export default async function ButikerPage({
   if (sp.vy === PORTAL_VIEW_OLD) redirect(utbetalningHref(sp));
   // Butiker → Utbetalning: att betala till butikerna, avräkningarna och längst ner
   // butiksportalens inbjudningar (?vy=utbetalning).
+  // Butiker → Butiksägare (?vy=agare): bolagen som äger butikerna.
+  if (sp.vy === OWNERS_VIEW) {
+    const ctx = await requireRoute("butiker");
+    return <OwnersView viewer={await requireViewer()} canEdit={ctx.canEdit} />;
+  }
   if (sp.vy === PAYOUT_VIEW) {
     const ctx = await requireRoute("butiker");
     return <SettlementsView viewer={await requireViewer()} today={ctx.today} />;

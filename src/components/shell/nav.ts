@@ -549,6 +549,8 @@ export const navSections: ReadonlyArray<NavSection> = [
     icon: "columns",
     tabs: [
       tab("butiker", "Butiker"),
+      // Bolagen som äger butikerna (?vy=agare); perioden och filtret gäller inte här.
+      tab("butiker", "Butiksägare", "agare", { short: "Ägare", context: false }),
       tab("avtal", "Kontrakt"),
       tab("expansion", "Expansion"),
       tab("butiker", "Utbetalning", "utbetalning", { context: false }),
