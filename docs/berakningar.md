@@ -1015,4 +1015,4 @@ För en betald avräkning jämförs tre belopp:
 
 ### Avräkningar för äldre månader
 
-Avräkningar skapas (jobbet och knappen på Utbetalning) för förra månaden **och för varje äldre avslutad månad där en butik sålde men saknar avräkning**, om månaden inte är stängd. De äldre månaderna står på Utbetalning och i Att göra. Förut skapades och listades bara förra månaden: en butik vars avräkning inte gick att räkna i tid (saknat inköpspris under vinstdelning) eller vars automat kopplades i efterhand föll bort när månaden bytte.
+Avräkningar skapas (jobbet och knappen på Utbetalning) för förra månaden **och för varje äldre avslutad månad där en butik sålde men saknar avräkning**, om månaden inte är stängd. Bara månader från och med organisationens första avräkningsmånad räknas: det som såldes innan appen började avräkna har betalats utanför appen. De äldre månaderna står på Utbetalning och i Att göra. Förut skapades och listades bara förra månaden: en butik vars avräkning inte gick att räkna i tid (saknat inköpspris under vinstdelning) eller vars automat kopplades i efterhand föll bort när månaden bytte.

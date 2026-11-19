@@ -6,6 +6,8 @@
  *   september och oktober  båda butikerna sålde, inga avräkningar finns
  *   augusti                Vinsten (vinstdelning) sålde en titel utan inköpspris
  *   juli                   Provision sålde, men månaden är stängd
+ *   juni                   organisationens första avräkning (Provision, 0 kr): härifrån räknas
+ *   maj                    Provision sålde, före första avräkningen: betalt utanför appen
  */
 
 import { sql } from "drizzle-orm";
@@ -69,6 +71,11 @@ beforeAll(async () => {
                 ${machine}, ${`h-${key}-${f.orgId.slice(0, 8)}`})`);
     await order(f.machines.m1, unpricedTitle, "2026-08-10", "aug-1");
     await order(f.machines.m2, f.titleId, "2026-07-10", "jul-1");
+    await order(f.machines.m2, f.titleId, "2026-05-10", "maj-1");
+    // Appen började avräkna i juni (en avräkning på 0 kr räcker som första månad).
+    await tx.execute(sql`insert into public.store_settlements
+        (organization_id, store_id, month, amount_ore, statement, calc_version)
+      values (${f.orgId}, ${f.stores.provision}, '2026-06-01', 0, '{}'::jsonb, 'test')`);
   });
   await asUser(f.ownerUser, (tx) =>
     tx.execute(sql`select public.close_period(${f.orgId}, '2026-07-01'::date)`),
@@ -84,7 +91,8 @@ describe("äldre månader utan avräkning", () => {
     const older = await withUserDbFor(f.owner.user, (tx) =>
       queryOlderMissingSettlements(tx, f.orgId, "2026-10"),
     );
-    // Juli är stängd och räknas inte. Augusti: bara Vinsten sålde.
+    // Maj ligger före första avräkningen (juni) och juli är stängd: de räknas inte.
+    // Augusti: bara Vinsten sålde.
     expect(older).toEqual([
       { month: "2026-08", storeIds: [f.stores.vinsten] },
       { month: "2026-09", storeIds: [f.stores.provision, f.stores.vinsten].sort() },
@@ -104,7 +112,7 @@ describe("äldre månader utan avräkning", () => {
     const run = await ensureSettlementsFor(f.owner, NOW);
     expect(run).toMatchObject({ created: 4, olderMonths: ["2026-09"] });
     expect(run!.errors).toHaveLength(1);
-    expect(await months()).toEqual(["2026-09:2", "2026-10:2"]);
+    expect(await months()).toEqual(["2026-06:1", "2026-09:2", "2026-10:2"]);
     const page = await loadSettlementPageFor(f.owner, NOW);
     expect(page.missing).toEqual([]);
     expect(page.failed.map((x) => `${x.month} ${x.storeName}`)).toEqual(["2026-08 Vinsten"]);
@@ -120,8 +128,8 @@ describe("äldre månader utan avräkning", () => {
     const [run] = await createMonthlySettlements(db(), later, { organizationIds: [f.orgId] });
     expect(run!.errors).toEqual([]);
     expect(await months()).toContain("2026-08:1");
-    // Den stängda månaden (juli) får ingen avräkning.
-    expect((await months()).some((m) => m.startsWith("2026-07"))).toBe(false);
+    // Den stängda månaden (juli) och månaden före första avräkningen (maj) får ingen.
+    expect((await months()).some((m) => /^2026-0[57]/.test(m))).toBe(false);
     const aug = await asPostgres((tx) =>
       one<{ amount_ore: string }>(
         tx,
@@ -131,5 +139,19 @@ describe("äldre månader utan avräkning", () => {
     );
     // Augusti: 100 kr sålt, 40 kr inköp → 30 kr till butiken.
     expect(Number(aug.amount_ore)).toBe(3_000);
+  });
+});
+
+describe("en organisation som aldrig avräknat", () => {
+  it("har inga äldre månader: bara förra månaden skapas, som förut", async () => {
+    vi.setSystemTime(NOW);
+    const g = await seedMoneyFixture("Aldrig avräknat");
+    expect(
+      await withUserDbFor(g.owner.user, (tx) =>
+        queryOlderMissingSettlements(tx, g.orgId, "2026-10"),
+      ),
+    ).toEqual([]);
+    const page = await loadSettlementPageFor(g.owner, NOW);
+    expect(page.missing.map((m) => m.month)).toEqual(["2026-10", "2026-10"]);
   });
 });

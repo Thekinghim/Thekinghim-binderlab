@@ -95,7 +95,9 @@ describe("sidan läser bara", () => {
   it("öppna Butiksportal skapar ingen avräkning; den visas som saknad med en knapp", async () => {
     const page = await loadSettlementPageFor(owner, APRIL);
     expect(page.rows).toEqual([]);
-    expect(page.missing).toEqual([{ storeId: t.storeId, storeName: "Sega gubben Läs" }]);
+    expect(page.missing).toEqual([
+      { storeId: t.storeId, storeName: "Sega gubben Läs", month: page.month },
+    ]);
     const n = await asPostgres((tx) =>
       rows(tx, sql`select id from public.store_settlements where organization_id = ${t.orgId}`),
     );

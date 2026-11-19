@@ -257,6 +257,10 @@ Efter granskningen av produktionen (Sega gubben, oktober: betalt 8 388,08 kr, go
 
 Vägval och det som är kvar:
 
+- Äldre månader räknas från organisationens **första avräkningsmånad**. Det som såldes innan appen började avräkna
+  har betalats utanför appen och dyker inte upp som obetalt.
+- Butiksportalens egna försäljningslistor (`portal_sales` med flera, SQL) läser placeringarna som de är sparade.
+  Avräkningen och rapporten som butiken ser där följer den nya regeln.
 - Jämförelsen mot rapporten gäller rapporter för **hela månaden**. En rapport med eget datum jämförs inte.
 - Skillnaden kan bara läggas på en avräkning som finns. Finns ingen obetald för butiken väntar punkten i Att göra
   tills nästa skapas den 1:a.

@@ -84,6 +84,10 @@ export async function queryMissingSettlements(
  * Utan det här föll en butik bort för gott när månaden inte kunde räknas i tid (saknat
  * inköpspris under vinstdelning) eller när automaten kopplades i efterhand: bara förra
  * månaden skapades och listades.
+ *
+ * Bara månader från och med organisationens FÖRSTA avräkningsmånad räknas: det som såldes
+ * innan appen började avräkna har betalats utanför appen och ska inte dyka upp som obetalt.
+ * En organisation utan någon avräkning har alltså inga äldre månader (bara förra månaden).
  */
 export async function queryOlderMissingSettlements(
   tx: Tx,
@@ -106,18 +110,17 @@ export async function queryOlderMissingSettlements(
       from public.period_closes
       where organization_id = ${orgId}::uuid and reopened_at is null`),
   ]);
-  const have = new Set(
-    (Array.from(existing) as { store_id: string; month: string }[]).map(
-      (r) => `${r.store_id}|${r.month}`,
-    ),
-  );
+  const existingRows = Array.from(existing) as { store_id: string; month: string }[];
+  const have = new Set(existingRows.map((r) => `${r.store_id}|${r.month}`));
+  const firstMonth = existingRows.map((r) => r.month).sort()[0];
+  if (firstMonth === undefined) return [];
   const closedMonths = new Set((Array.from(closed) as { month: string }[]).map((r) => r.month));
   const index = new PlacementIndex(placements);
   const byMonth = new Map<string, Set<string>>();
   for (const r of Array.from(days) as { machine_id: string; day: string }[]) {
     const day = r.day.slice(0, 10) as IsoDate;
     const month = day.slice(0, 7);
-    if (closedMonths.has(month)) continue;
+    if (month < firstMonth || closedMonths.has(month)) continue;
     const storeId = index.storeOn(String(r.machine_id), day);
     if (storeId === null || have.has(`${storeId}|${month}`)) continue;
     const set = byMonth.get(month);
