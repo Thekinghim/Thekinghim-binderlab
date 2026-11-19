@@ -78,7 +78,7 @@ import {
   queryAgreements,
   queryMachines,
   queryOrders,
-  queryPlacements,
+  queryEffectivePlacements,
   queryPrices,
   querySettings,
   queryStores,
@@ -183,7 +183,7 @@ async function economicsSources(
   const [prices, agreements, placements, settings, refunds] = await Promise.all([
     queryPrices(tx, orgId),
     queryAgreements(tx, orgId),
-    queryPlacements(tx, orgId),
+    queryEffectivePlacements(tx, orgId),
     querySettings(tx, orgId),
     queryPeriodRefunds(tx, orgId, ALL_TIME),
   ]);
@@ -1265,7 +1265,7 @@ async function buildBookkeeping(
     queryLedgerAccounts(tx, orgId),
     queryStores(tx, orgId),
     queryTitles(tx, orgId),
-    queryPlacements(tx, orgId),
+    queryEffectivePlacements(tx, orgId),
   ]);
   const fiscalYear = fiscalYearOf(month, sources.settings.fiscalYearStartMonth);
   const yearToDate = { start: fiscalYear.start, end: period.end };
@@ -1746,7 +1746,7 @@ export async function loadFixedCostsFor(
       economicsSources(tx, orgId),
       queryOrders(tx, orgId, period, NO_SCOPE),
       queryFixedCosts(tx, orgId),
-      queryPlacements(tx, orgId),
+      queryEffectivePlacements(tx, orgId),
     ]);
     const machines = await queryMachines(tx, orgId, placements, today);
     try {
@@ -2174,7 +2174,7 @@ export async function monthReportsIn(
     economicsSources(tx, orgId),
     queryStores(tx, orgId),
     queryTitles(tx, orgId),
-    queryPlacements(tx, orgId),
+    queryEffectivePlacements(tx, orgId),
     // Mottaget antal (högst beställt) × pris, per mottagningsdag. Även för en order med status
     // 'received' räknas bara det som faktiskt kom.
     tx.execute(sql`

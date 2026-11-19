@@ -11,7 +11,11 @@ import { eq, sql } from "drizzle-orm";
 import * as s from "@/db/schema";
 import { addMonths, monthEnd, monthOf, monthStart, type IsoMonth, type Period } from "@/domain";
 import { businessToday } from "@/server/data/core/loaders";
-import { queryFirstOrderDate, queryPlacements, queryStores } from "@/server/data/core/queries";
+import {
+  queryFirstOrderDate,
+  queryEffectivePlacements,
+  queryStores,
+} from "@/server/data/core/queries";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 
 import { allowsRange, isCustomRange, rangeError } from "./range";
@@ -106,7 +110,7 @@ export async function loadReportsPage(
   const base = await withUserDbFor(viewer.user, async (tx) => {
     const [dataStart, placements, stores, recipients, owners] = await Promise.all([
       queryFirstOrderDate(tx, orgId),
-      queryPlacements(tx, orgId),
+      queryEffectivePlacements(tx, orgId),
       queryStores(tx, orgId),
       listRecipientsTx(tx, orgId),
       tx

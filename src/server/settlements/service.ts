@@ -32,7 +32,7 @@ import {
 } from "@/domain";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
-import { queryAgreements, queryPlacements } from "@/server/data/core/queries";
+import { queryAgreements, queryEffectivePlacements } from "@/server/data/core/queries";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { pgErrorOf } from "@/server/errors";
 import { krText } from "@/reports";
@@ -98,7 +98,7 @@ export async function computeSettlementTx(
 
 /** Butikerna som ska ha en avräkning för månaden: de som hade en automat någon dag. */
 async function storesForMonth(tx: Tx, orgId: string, month: IsoMonth): Promise<string[]> {
-  const placements = await queryPlacements(tx, orgId);
+  const placements = await queryEffectivePlacements(tx, orgId);
   return storesPlacedIn(placements, { start: monthStart(month), end: monthEnd(month) });
 }
 
@@ -125,7 +125,7 @@ async function monthAgreementGaps(
 ): Promise<Omit<SettlementAgreementGap, "storeName">[]> {
   if (storeIds.length === 0) return [];
   const [placements, agreements] = await Promise.all([
-    queryPlacements(tx, orgId),
+    queryEffectivePlacements(tx, orgId),
     queryAgreements(tx, orgId),
   ]);
   return agreementGaps({ placements, agreements, period: monthPeriod(month), storeIds }).map(

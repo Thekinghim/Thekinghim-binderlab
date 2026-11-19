@@ -29,6 +29,7 @@ import {
 } from "@/domain";
 import type { Refund } from "@/domain/refunds";
 
+import { placementsFromFirstSale } from "./placements";
 import type {
   DataScope,
   MachineRecord,
@@ -265,6 +266,37 @@ export async function queryPlacements(tx: Tx, orgId: string): Promise<PlacementR
     .where(eq(s.machinePlacements.organizationId, orgId))
     .orderBy(asc(s.machinePlacements.machineId), asc(s.machinePlacements.validFrom));
   return rows;
+}
+
+/** Första försäljningsdagen per automat (testköp räknas inte). */
+export async function queryFirstSaleByMachine(
+  tx: Tx,
+  orgId: string,
+): Promise<Map<string, IsoDate>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      select o.machine_id, min(o.business_date)::text as first_day
+      from public.orders o
+      where o.organization_id = ${orgId}::uuid and o.machine_id is not null
+        and o.test_purchase_at is null
+      group by o.machine_id`),
+  ) as { machine_id: string; first_day: string }[];
+  return new Map(rows.map((r) => [String(r.machine_id), r.first_day.slice(0, 10) as IsoDate]));
+}
+
+/**
+ * Placeringarna som pengarna räknas med (avräkning, butiksrapport, bokföring, och vilka
+ * butiker som ska ha en avräkning): en automats första placering gäller också dagarna före
+ * den, tillbaka till automatens första försäljning. Samma regel som panelen
+ * (effectivePlacements i ./placements.ts och placedInStore ovan), se docs/berakningar.md
+ * avsnitt 2. queryPlacements ger placeringarna som de är sparade (för att visa och ändra).
+ */
+export async function queryEffectivePlacements(tx: Tx, orgId: string): Promise<PlacementRecord[]> {
+  const [placements, firstSale] = await Promise.all([
+    queryPlacements(tx, orgId),
+    queryFirstSaleByMachine(tx, orgId),
+  ]);
+  return placementsFromFirstSale(placements, firstSale);
 }
 
 /** Automaterna, med butiken de står i `today` (aktuell placering). */

@@ -14,7 +14,7 @@ import type { SettlementRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { monthPeriod, type IsoDate, type IsoMonth } from "@/domain";
-import { queryPlacements } from "@/server/data/core/queries";
+import { queryEffectivePlacements } from "@/server/data/core/queries";
 import { storesPlacedIn } from "@/server/reports/sources";
 
 import { liveFor } from "./live";
@@ -60,7 +60,7 @@ export async function queryMissingSettlements(
   month: IsoMonth,
 ): Promise<{ month: IsoMonth; storeIds: string[] }> {
   const [placements, existing] = await Promise.all([
-    queryPlacements(tx, orgId),
+    queryEffectivePlacements(tx, orgId),
     tx
       .select({ storeId: s.storeSettlements.storeId })
       .from(s.storeSettlements)

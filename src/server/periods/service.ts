@@ -22,7 +22,7 @@ import type { Tx } from "@/db/client";
 import { monthEnd, monthStart, type IsoDate, type IsoMonth } from "@/domain";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
-import { queryPlacements } from "@/server/data/core/queries";
+import { queryEffectivePlacements } from "@/server/data/core/queries";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { pgErrorOf } from "@/server/errors";
 import { storesPlacedIn } from "@/server/reports/sources";
@@ -95,7 +95,7 @@ export async function settlementsDoneTx(tx: Tx, orgId: string, month: IsoMonth):
   if (!rows.some((r) => r.paid_on !== null)) return false;
   if (rows.some((r) => r.paid_on === null && Number(r.amount_ore) !== 0)) return false;
   const have = new Set(rows.map((r) => String(r.store_id)));
-  const wanted = storesPlacedIn(await queryPlacements(tx, orgId), {
+  const wanted = storesPlacedIn(await queryEffectivePlacements(tx, orgId), {
     start: monthStart(month),
     end: monthEnd(month),
   });
