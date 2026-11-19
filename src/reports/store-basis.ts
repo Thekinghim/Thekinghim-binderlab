@@ -107,10 +107,75 @@ export function payerText(basis: StoreBasis, machines = 1): string {
   return rest.length > 0 ? `${name} ${rest.join(", ")}.` : name;
 }
 
-/** Mottagaren: butikens namn och, i utgåva 2, adressen om den finns. */
+/**
+ * Bolaget som får ersättningen: butikens ägare (Butiker → Butiksägare) när rapporten
+ * räknades. Bara bolagets egna uppgifter, aldrig något om ägarens andra butiker.
+ */
+export interface BasisRecipient {
+  /** Juridiskt namn. */
+  readonly name: string;
+  /** NNNNNN-NNNN. */
+  readonly orgNumber: string;
+  /** Momsregistreringsnummer, bara om ett är sparat. */
+  readonly vatNumber: string | null;
+  /** "Gatan 1, 111 22 Ort", null = inte ifylld. */
+  readonly address: string | null;
+}
+
+/** Mottagaren uppdelad: namn, org.nr, momsreg.nr, adress och butiken när namnet är ett annat. */
+export interface RecipientParts {
+  readonly name: string;
+  readonly orgNumber: string | null;
+  readonly vatNumber: string | null;
+  readonly address: string | null;
+  /** "För butiken ICA Lund" när bolagets namn inte är butikens; annars null. */
+  readonly storeLine: string | null;
+}
+
+/**
+ * Mottagaren: butikens ägare (juridiskt namn, org.nr, momsreg.nr, adress) när butiken har en,
+ * annars butikens namn och, i utgåva 2, butikens adress.
+ */
+export function recipientParts(basis: StoreBasis, storeName: string): RecipientParts {
+  const r = isRev2(basis) ? basis.recipient : null;
+  if (r && r.name.trim() !== "") {
+    const norm = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
+    const address = r.address?.trim() || basis.recipientAddress?.trim() || null;
+    return {
+      name: r.name.trim(),
+      orgNumber: r.orgNumber.trim() || null,
+      vatNumber: r.vatNumber?.trim() || null,
+      address,
+      storeLine: norm(r.name) === norm(storeName) ? null : `För butiken ${storeName}`,
+    };
+  }
+  const address = isRev2(basis) ? basis.recipientAddress?.trim() || null : null;
+  return { name: storeName, orgNumber: null, vatNumber: null, address, storeLine: null };
+}
+
+/** Mottagaren som rader: namn, butiken, org.nr, adress och momsreg.nr (det som finns), som betalaren. */
 export function recipientLines(basis: StoreBasis, storeName: string): string[] {
-  const address = isRev2(basis) ? basis.recipientAddress?.trim() : "";
-  return address ? [storeName, address] : [storeName];
+  const p = recipientParts(basis, storeName);
+  return [
+    p.name,
+    ...(p.storeLine ? [p.storeLine] : []),
+    ...(p.orgNumber ? [`Org.nr ${p.orgNumber}`] : []),
+    ...(p.address ? [p.address] : []),
+    ...(p.vatNumber ? [`Momsreg.nr ${p.vatNumber}`] : []),
+  ];
+}
+
+/**
+ * Sant när rapporten (utgåva 2) inte har butikens bolag: butiken hade ingen ägare när
+ * rapporten räknades. Butikens revisor behöver bolagets juridiska namn och org.nr.
+ */
+export function recipientMissing(basis: StoreBasis | null): boolean {
+  return isRev2(basis) && !basis.recipient;
+}
+
+/** Namnet på den som får ersättningen: ägarens juridiska namn, annars butikens namn. */
+export function recipientName(basis: StoreBasis, storeName: string): string {
+  return recipientParts(basis, storeName).name;
 }
 
 /** Avtalet som ersättningen vilar på. */
@@ -159,6 +224,11 @@ export interface StoreBasis {
   readonly payments?: readonly BasisPayment[];
   /** Butikens adress när rapporten räknades (Butiker); null = inte ifylld. Utgåva 2. */
   readonly recipientAddress?: string | null;
+  /**
+   * Butikens ägare när rapporten räknades (Butiker → Butiksägare). Saknas = butiken hade
+   * ingen ägare; mottagaren är då butiken. Utgåva 2.
+   */
+  readonly recipient?: BasisRecipient | null;
   /** Se `BASIS_REV`. Saknas = utgåva 1. */
   readonly rev?: number;
   readonly payer: BasisPayer;
@@ -274,7 +344,7 @@ export function agreementLine(
   compensation: { readonly termsText?: string },
 ): string | null {
   const terms = compensation.termsText?.trim();
-  const parties = `mellan ${basis.payer.name} och ${storeName}`;
+  const parties = `mellan ${basis.payer.name} och ${recipientName(basis, storeName)}`;
   if (basis.agreementForm === "oral") {
     return terms ? `Muntligt avtal ${parties}: ${terms}.` : null;
   }

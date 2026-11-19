@@ -142,6 +142,25 @@ export function ReviewPanel({
         }
       : null;
 
+  // Rapporten har inte butikens bolag (butiken har ingen ägare): butikens revisor behöver
+  // bolagets juridiska namn och org.nr. Varnar tills den är skickad; låser inget.
+  const recipientWarning =
+    !legacy && report.type === "butik" && report.status !== "sent" && report.recipientMissing
+      ? {
+          message: "Rapporten visar inte butikens bolag.",
+          detail: canEdit
+            ? "Butikens revisor behöver bolagets namn och org.nr. Välj butikens ägare och skapa sedan en ny version."
+            : "Butikens revisor behöver bolagets namn och org.nr.",
+          action:
+            canEdit && report.storeId
+              ? {
+                  label: "Välj ägare →",
+                  href: `/butiker/${encodeURIComponent(report.storeId)}?vy=kontakt#agare`,
+                }
+              : undefined,
+        }
+      : null;
+
   function approve() {
     setError(null);
     start(async () => {
@@ -323,6 +342,17 @@ export function ReviewPanel({
             message={agreementWarning.message}
             detail={agreementWarning.detail}
             action={agreementWarning.action}
+            className="px-0"
+          />
+        ) : null}
+
+        {recipientWarning ? (
+          <StateMessage
+            kind="error"
+            compact
+            message={recipientWarning.message}
+            detail={recipientWarning.detail}
+            action={recipientWarning.action}
             className="px-0"
           />
         ) : null}

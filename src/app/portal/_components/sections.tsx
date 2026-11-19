@@ -323,7 +323,10 @@ export function BasisSection({ report }: { report: StoreReport }) {
           <dt className="label text-subtle">Ersättningen betalas av</dt>
           <dd className="flex flex-col gap-1">
             {payerLines(basis, report.machines.length).map((line, i) => (
-              <span key={line} className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}>
+              <span
+                key={`${i}-${line}`}
+                className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}
+              >
                 {line}
               </span>
             ))}
@@ -333,7 +336,10 @@ export function BasisSection({ report }: { report: StoreReport }) {
           <dt className="label text-subtle">Mottagare</dt>
           <dd className="flex flex-col gap-1">
             {recipientLines(basis, report.store.name).map((line, i) => (
-              <span key={line} className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}>
+              <span
+                key={`${i}-${line}`}
+                className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}
+              >
                 {line}
               </span>
             ))}

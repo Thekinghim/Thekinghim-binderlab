@@ -31,6 +31,8 @@ import {
   payerText,
   paymentNotes,
   recipientLines,
+  recipientMissing,
+  recipientParts,
   salesBasis,
   salesNote,
   salesVatLabel,
@@ -745,6 +747,61 @@ describe("inget att fakturera, mottagaren och platsen för automaten", () => {
     expect(recipientLines({ ...BASIS, recipientAddress: "Torget 2" }, "Sega gubben")).toEqual([
       "Sega gubben",
     ]);
+  });
+
+  it("mottagaren är butikens ägare när butiken har en", () => {
+    const owned: StoreBasis = {
+      ...rev2,
+      recipientAddress: "Torget 2, 411 01 Exempelstad",
+      recipient: {
+        name: "Godisbolaget Väst AB",
+        orgNumber: "559900-1236",
+        vatNumber: "SE559900123601",
+        address: "Exempelgatan 4, 411 01 Exempelstad",
+      },
+    };
+    expect(recipientLines(owned, "Kiosken Stationen")).toEqual([
+      "Godisbolaget Väst AB",
+      "För butiken Kiosken Stationen",
+      "Org.nr 559900-1236",
+      "Exempelgatan 4, 411 01 Exempelstad",
+      "Momsreg.nr SE559900123601",
+    ]);
+    expect(recipientMissing(owned)).toBe(false);
+    // Bolaget heter som butiken: ingen rad om butiken. Utan ägarens adress: butikens.
+    const same: StoreBasis = {
+      ...owned,
+      recipient: {
+        name: "Kiosken Stationen",
+        orgNumber: "559900-1236",
+        vatNumber: null,
+        address: null,
+      },
+    };
+    expect(recipientLines(same, "kiosken  stationen")).toEqual([
+      "Kiosken Stationen",
+      "Org.nr 559900-1236",
+      "Torget 2, 411 01 Exempelstad",
+    ]);
+    expect(recipientParts(owned, "Kiosken Stationen").storeLine).toBe(
+      "För butiken Kiosken Stationen",
+    );
+    // Avtalsraden nämner bolaget, inte butikens namn.
+    expect(
+      agreementLine({ ...owned, agreementForm: "oral" }, "Kiosken Stationen", {
+        termsText: "hyra 1 500 kr per månad",
+      }),
+    ).toContain("mellan Binderlab AB och Godisbolaget Väst AB");
+    // Utgåva 1 visar aldrig bolaget (rapporten visas som den visades då).
+    expect(recipientLines({ ...owned, rev: undefined }, "Kiosken Stationen")).toEqual([
+      "Kiosken Stationen",
+    ]);
+  });
+
+  it("utan ägare saknas butikens bolag (utgåva 2), aldrig i en äldre rapport", () => {
+    expect(recipientMissing(rev2)).toBe(true);
+    expect(recipientMissing(BASIS)).toBe(false);
+    expect(recipientMissing(null)).toBe(false);
   });
 
   it("momsen: ersättningen gäller platsen, en tjänst med 25 % moms, inte lokalhyra", () => {

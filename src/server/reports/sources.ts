@@ -28,6 +28,7 @@ import {
   brandOf,
   contractForPeriod,
   type AgreementForm,
+  type BasisRecipient,
   type LedgerAccount,
   type PartnerOwner,
   type ReportSources,
@@ -275,6 +276,26 @@ async function queryStoreRefillDates(
   return Array.from(rows).map((r) => String((r as { d: string }).d));
 }
 
+/** Ägarens rad i store_owners som mottagare i rapporten. */
+function recipientOf(row: {
+  legal_name: string;
+  org_number: string;
+  vat_number: string | null;
+  street_address: string | null;
+  postal_code: string | null;
+  city: string | null;
+}): BasisRecipient {
+  const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
+  const place = [clean(row.postal_code), clean(row.city)].filter(Boolean).join(" ");
+  const address = [clean(row.street_address), place || null].filter(Boolean).join(", ");
+  return {
+    name: row.legal_name.trim(),
+    orgNumber: row.org_number.trim(),
+    vatNumber: clean(row.vat_number),
+    address: address || null,
+  };
+}
+
 /**
  * Underlaget för butikens bokföring, läst nu: vårt bolag (Inställningar → Företaget),
  * butikens undertecknade avtal för perioden och momsvalet. Sparas i rapporten.
@@ -314,6 +335,25 @@ export async function queryStoreBasis(
            where st.organization_id = ${orgId}::uuid and st.id = ${storeId}::uuid`,
     ),
   ) as Array<{ form: string | null; address: string | null }>;
+  // Butikens ägare (Butiker → Butiksägare): bolaget som får ersättningen. Bara den här
+  // butikens ägare, och bara bolagets egna uppgifter (inga andra butiker hos ägaren).
+  const [ownerRow] = Array.from(
+    await tx.execute(
+      sql`select so.legal_name, so.org_number, so.vat_number, so.street_address,
+                 so.postal_code, so.city
+            from public.stores st
+            join public.store_owners so
+              on so.organization_id = st.organization_id and so.id = st.owner_id
+           where st.organization_id = ${orgId}::uuid and st.id = ${storeId}::uuid`,
+    ),
+  ) as Array<{
+    legal_name: string;
+    org_number: string;
+    vat_number: string | null;
+    street_address: string | null;
+    postal_code: string | null;
+    city: string | null;
+  }>;
   const agreementForm: AgreementForm | null =
     storeRow?.form === "oral" || storeRow?.form === "written" ? storeRow.form : null;
   // Betalda avräkningar för rapportens månader (bara läsning: avräkningarna ändras aldrig
@@ -353,6 +393,9 @@ export async function queryStoreBasis(
       ownsMachines: settings.reportOwnsMachines,
     },
     recipientAddress: clean(storeRow?.address ?? null),
+    // Bara när butiken har en ägare: annars är rapporten densamma som förut, så att utkast
+    // för butiker utan ägare inte blir gamla.
+    ...(ownerRow ? { recipient: recipientOf(ownerRow) } : {}),
     agreementForm,
     // Ett muntligt avtal går före en kontraktsrad som står som undertecknad: rapporten
     // påstår då inget skriftligt avtal.

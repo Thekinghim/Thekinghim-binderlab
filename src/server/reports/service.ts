@@ -51,6 +51,7 @@ import {
   agreementMissing as agreementMissingIn,
   asStoreBasis,
   basisGaps as gapsOf,
+  recipientMissing as recipientMissingIn,
 } from "@/reports/store-basis";
 import { isWholeMonth, monthText, periodText } from "@/reports/text";
 
@@ -175,6 +176,11 @@ export interface ArchiveRow {
    * för butiken och inget undertecknat kontrakt gäller perioden (@/reports/store-basis).
    */
   readonly agreementMissing?: boolean;
+  /**
+   * Sant när butiksrapporten inte har butikens bolag (juridiskt namn och org.nr): butiken
+   * hade ingen ägare när rapporten räknades (@/reports/store-basis).
+   */
+  readonly recipientMissing?: boolean;
 }
 
 export interface ReportDetail extends ArchiveRow {
@@ -340,6 +346,7 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
     let legacy = false;
     let basisGaps: ArchiveRow["basisGaps"];
     let agreementMissing = false;
+    let recipientMissing = false;
     try {
       const snapshot = asSnapshot(r.snapshot);
       conclusion = snapshot.report.conclusion.text;
@@ -350,6 +357,7 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
         agreementMissing =
           basis !== null &&
           agreementMissingIn(basis, snapshot.store.name, snapshot.report.compensation);
+        recipientMissing = recipientMissingIn(basis);
       }
     } catch {
       conclusion = "";
@@ -375,6 +383,7 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
       legacy,
       ...(basisGaps === undefined ? {} : { basisGaps }),
       ...(agreementMissing ? { agreementMissing } : {}),
+      ...(recipientMissing ? { recipientMissing } : {}),
       storagePath: r.storagePath,
       snapshot: r.snapshot,
     };

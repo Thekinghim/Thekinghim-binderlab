@@ -48,7 +48,7 @@ import {
   isRev2,
   isWholeMonth,
   ownerLine,
-  recipientLines,
+  recipientParts,
   periodText,
   pctText,
   salesNote,
@@ -468,71 +468,81 @@ export function StoreReportDocument({
   const vat = basisData ? invoiceRows(basisData, r) : [];
   // Ingen ersättning: blocket säger att inget ska faktureras (utgåva 2), i stället för att saknas.
   const nothingToInvoice = basisData && vat.length === 0 ? invoiceEmptyText(basisData, r) : null;
-  const recipientRows = basisData ? recipientLines(basisData, snapshot.store.name) : [];
-  const basisFacts = basisData ? (
-    <>
-      <ReportFact label="Ersättningen betalas av">
-        <p className="font-medium">
-          {basisData.payer.name}
-          {basisData.payer.brand ? (
-            <span className="font-normal text-muted">
-              {" "}
-              (verksamheten kallas {basisData.payer.brand})
-            </span>
+  const payee = basisData ? recipientParts(basisData, snapshot.store.name) : null;
+  const basisFacts =
+    basisData && payee ? (
+      <>
+        <ReportFact label="Ersättningen betalas av">
+          <p className="font-medium">
+            {basisData.payer.name}
+            {basisData.payer.brand ? (
+              <span className="font-normal text-muted">
+                {" "}
+                (verksamheten kallas {basisData.payer.brand})
+              </span>
+            ) : null}
+          </p>
+          {ownerLine(basisData, r.machines.length) ? (
+            <p className="text-muted">{ownerLine(basisData, r.machines.length)}</p>
           ) : null}
-        </p>
-        {ownerLine(basisData, r.machines.length) ? (
-          <p className="text-muted">{ownerLine(basisData, r.machines.length)}</p>
-        ) : null}
-        {/* Org.nr och momsreg.nr på samma rad när de får plats, annars på var sin. */}
-        {basisData.payer.orgNumber || basisData.payer.vatNumber ? (
-          <p className="tnum flex flex-wrap gap-x-[3mm] text-muted">
-            {basisData.payer.orgNumber ? (
-              <span className="whitespace-nowrap">Org.nr {basisData.payer.orgNumber}</span>
-            ) : null}
-            {basisData.payer.vatNumber ? (
-              <span className="whitespace-nowrap">Momsreg.nr {basisData.payer.vatNumber}</span>
-            ) : null}
-          </p>
-        ) : null}
-        {basisData.payer.address ? (
-          <p className="tnum text-muted">{basisData.payer.address}</p>
-        ) : null}
-      </ReportFact>
-      <ReportFact label="Mottagare">
-        {recipientRows.map((line, i) => (
-          <p key={line} className={i === 0 ? "font-medium" : "tnum text-muted"}>
-            {line}
-          </p>
-        ))}
-      </ReportFact>
-      {nothingToInvoice ? (
-        <ReportFact label={invoiceTitle(basisData)}>
-          <p className="text-muted">{nothingToInvoice}</p>
+          {/* Org.nr och momsreg.nr på samma rad när de får plats, annars på var sin. */}
+          {basisData.payer.orgNumber || basisData.payer.vatNumber ? (
+            <p className="tnum flex flex-wrap gap-x-[3mm] text-muted">
+              {basisData.payer.orgNumber ? (
+                <span className="whitespace-nowrap">Org.nr {basisData.payer.orgNumber}</span>
+              ) : null}
+              {basisData.payer.vatNumber ? (
+                <span className="whitespace-nowrap">Momsreg.nr {basisData.payer.vatNumber}</span>
+              ) : null}
+            </p>
+          ) : null}
+          {basisData.payer.address ? (
+            <p className="tnum text-muted">{basisData.payer.address}</p>
+          ) : null}
         </ReportFact>
-      ) : vat.length > 0 ? (
-        <ReportFact label={invoiceTitle(basisData)}>
-          <dl className="flex flex-col">
-            {vat.map((row) => (
-              <div
-                key={row.key}
-                className={
-                  row.strong
-                    ? "flex items-baseline justify-between gap-[3mm] border-t border-line font-medium"
-                    : "flex items-baseline justify-between gap-[3mm] text-muted"
-                }
-              >
-                <dt>{row.label}</dt>
-                <dd className="tnum font-mono text-[10.5px] whitespace-nowrap">
-                  {kronor(row.amountOre)}
-                </dd>
-              </div>
-            ))}
-          </dl>
+        <ReportFact label="Mottagare">
+          <p className="font-medium">{payee.name}</p>
+          {payee.storeLine ? <p className="text-muted">{payee.storeLine}</p> : null}
+          {/* Som betalaren: org.nr och momsreg.nr på samma rad när de får plats. */}
+          {payee.orgNumber || payee.vatNumber ? (
+            <p className="tnum flex flex-wrap gap-x-[3mm] text-muted">
+              {payee.orgNumber ? (
+                <span className="whitespace-nowrap">Org.nr {payee.orgNumber}</span>
+              ) : null}
+              {payee.vatNumber ? (
+                <span className="whitespace-nowrap">Momsreg.nr {payee.vatNumber}</span>
+              ) : null}
+            </p>
+          ) : null}
+          {payee.address ? <p className="tnum text-muted">{payee.address}</p> : null}
         </ReportFact>
-      ) : null}
-    </>
-  ) : null;
+        {nothingToInvoice ? (
+          <ReportFact label={invoiceTitle(basisData)}>
+            <p className="text-muted">{nothingToInvoice}</p>
+          </ReportFact>
+        ) : vat.length > 0 ? (
+          <ReportFact label={invoiceTitle(basisData)}>
+            <dl className="flex flex-col">
+              {vat.map((row) => (
+                <div
+                  key={row.key}
+                  className={
+                    row.strong
+                      ? "flex items-baseline justify-between gap-[3mm] border-t border-line font-medium"
+                      : "flex items-baseline justify-between gap-[3mm] text-muted"
+                  }
+                >
+                  <dt>{row.label}</dt>
+                  <dd className="tnum font-mono text-[10.5px] whitespace-nowrap">
+                    {kronor(row.amountOre)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </ReportFact>
+        ) : null}
+      </>
+    ) : null;
   // Avtalet, betalningarna och momsen i några meningar.
   const basisNote = basisData ? (
     <p
@@ -842,7 +852,8 @@ export function StoreReportDocument({
 
   const doc = {
     title: `Butiksrapport ${month}`,
-    recipient: recipient ?? snapshot.store.name,
+    // Mottagaren i sidhuvudet: butikens bolag när rapporten har det, annars butiken.
+    recipient: recipient ?? (payee ? payee.name : snapshot.store.name),
     // Avsändaren i sidhuvudet: bolaget som betalar, när det är sparat i rapporten.
     sender: basisData?.payer.name ?? snapshot.organization.name,
     period: datePeriod(snapshot.period),

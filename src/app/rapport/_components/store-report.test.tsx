@@ -362,6 +362,54 @@ describe("underlag för butikens bokföring", () => {
   });
 });
 
+describe("mottagaren är butikens bolag (butiksägaren)", () => {
+  const OWNED: StoreBasis = {
+    ...BASIS,
+    recipientAddress: "Butiksgatan 9, 411 05 Exempelstad",
+    recipient: {
+      name: "Godisbolaget Väst AB",
+      orgNumber: "559900-1236",
+      vatNumber: "SE559900123601",
+      address: "Exempelgatan 4, 411 01 Exempelstad",
+    },
+  };
+  const snap = snapshot(false, OWNED);
+  const html = renderToStaticMarkup(<StoreReportDocument snapshot={snap} />);
+  const plain = visibleText(html).replace(/\u00a0|\u202f/g, " ");
+  const LINES = [
+    "Godisbolaget Väst AB",
+    "För butiken Nordstan",
+    "Org.nr 559900-1236",
+    "Momsreg.nr SE559900123601",
+    "Exempelgatan 4, 411 01 Exempelstad",
+  ];
+
+  it("PDF:en visar bolagets namn, org.nr, momsreg.nr och adress, på ett ark", () => {
+    for (const text of LINES) expect(plain, text).toContain(text);
+    // Butikens egen adress ersätts av bolagets.
+    expect(plain).not.toContain("Butiksgatan 9");
+    expect(html.match(/data-page=/g)?.length ?? 0).toBe(PAGES_SHORT);
+    for (const re of FORBIDDEN) expect(plain, String(re)).not.toMatch(re);
+  });
+
+  it("mejlet (HTML och text) har samma mottagare", () => {
+    const email = emailFor(snap);
+    for (const body of [email.html, email.text]) {
+      const b = body.replace(/\u00a0|\u202f/g, " ");
+      for (const text of LINES) expect(b, text).toContain(text);
+      for (const re of FORBIDDEN) expect(b, String(re)).not.toMatch(re);
+    }
+  });
+
+  it("en butik utan ägare har mottagaren som förut", () => {
+    const own = visibleText(
+      renderToStaticMarkup(<StoreReportDocument snapshot={snapshot(false, BASIS)} />),
+    );
+    expect(own).not.toContain("Godisbolaget");
+    expect(own).not.toContain("För butiken");
+  });
+});
+
 describe("försäljningen och momsen säger inte emot varandra", () => {
   const render = (basis: StoreBasis | null) => {
     const snap = snapshot(false, basis);
