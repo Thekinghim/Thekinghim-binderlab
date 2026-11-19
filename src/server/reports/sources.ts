@@ -23,6 +23,7 @@ import {
   type Period,
 } from "@/domain";
 import {
+  BASIS_REV,
   STORE_VAT_RATE_BP,
   contractForPeriod,
   type LedgerAccount,
@@ -306,6 +307,7 @@ export async function queryStoreBasis(
   const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
   const legalName = clean(company.companyName);
   return {
+    rev: BASIS_REV,
     payer: {
       name: legalName ?? organization.name,
       legal: legalName !== null,

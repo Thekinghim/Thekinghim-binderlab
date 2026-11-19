@@ -36,6 +36,7 @@ export {
 } from "./store-report";
 
 export {
+  BASIS_REV,
   REPORT_VAT_MODE_LABEL,
   STORE_VAT_RATE_BP,
   asStoreBasis,
@@ -43,8 +44,12 @@ export {
   basisText,
   contractForPeriod,
   contractLine,
+  isRev2,
   normalizeVatNumber,
   payerLines,
+  salesBasis,
+  salesNote,
+  salesVatLabel,
   suggestedVatNumber,
   vatRows,
   vatSentences,

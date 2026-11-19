@@ -5,7 +5,9 @@ import { formatInt } from "@/lib/format";
 import {
   asStoreBasis,
   contractLine,
+  isRev2,
   payerLines,
+  salesNote,
   splitsOf,
   vatRows,
   vatSentences,
@@ -343,6 +345,9 @@ export function BasisSection({ report }: { report: StoreReport }) {
       <p className="max-w-2xl text-sm text-muted">
         {[agreement, ...vatSentences(basis, total)].filter(Boolean).join(" ")}
       </p>
+      {isRev2(basis) ? (
+        <p className="max-w-2xl text-sm text-muted">{salesNote(report, report.store.name)}</p>
+      ) : null}
     </section>
   );
 }

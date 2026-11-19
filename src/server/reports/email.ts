@@ -25,9 +25,11 @@ import { formatInt, formatKronor, formatMonth, MINUS } from "@/lib/format";
 import {
   asStoreBasis,
   contractLine,
+  isRev2,
   isWholeMonth,
   payerLines,
   periodText,
+  salesVatLabel,
   sie4Verifications,
   storeReportView,
   vatRows,
@@ -135,13 +137,20 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
   // Samma val som PDF:en: utan "Visa detaljer" står beloppet i rubriken, och raderna om
   // service (flest köp, påfyllningar) lämnas som saknade värden och tas bort ur mejlet.
   const view = storeReportView(r);
+  // Underlaget för bokföringen, samma rader som i PDF:en (saknas i äldre rapporter).
+  const basisData = asStoreBasis(r.basis);
   const kpis: EmailKpi[] = [
     {
       label: "Försäljning",
       value: kr(r.sales.revenueOre),
       unit: "kr",
       change: change(r.comparison.revenueChangeBp),
-      note: r.sales.vatOre === 0 ? "Ingen moms" : `Exkl. moms`,
+      // Vad siffran är, aldrig att ingen moms tas ut (en äldre rapport står som den skrevs).
+      note: isRev2(basisData)
+        ? salesVatLabel(r)
+        : r.sales.vatOre === 0
+          ? "Ingen moms"
+          : "Exkl. moms",
     },
     {
       label: "Sålda pack",
@@ -168,8 +177,6 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
     revenue: kr(m.revenueOre),
     packs: m.orders,
   }));
-  // Underlaget för bokföringen, samma rader som i PDF:en (saknas i äldre rapporter).
-  const basisData = asStoreBasis(r.basis);
   const agreement = basisData ? contractLine(basisData) : null;
   const basis: StoreBasisBlock | undefined = basisData
     ? {

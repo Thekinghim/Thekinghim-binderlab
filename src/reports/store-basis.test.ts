@@ -6,13 +6,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BASIS_REV,
   asStoreBasis,
   basisGaps,
   basisText,
   contractForPeriod,
   contractLine,
+  isRev2,
   normalizeVatNumber,
   payerLines,
+  salesBasis,
+  salesNote,
+  salesVatLabel,
   suggestedVatNumber,
   vatRows,
   vatSentences,
@@ -251,6 +256,51 @@ describe("Vi säljer med vinstmarginalbeskattning (VMB)", () => {
     // Utan valet tas ingenting bort, inte ens den fasta texten.
     expect(withoutVmbStatement(STATEMENT, BASIS)).toBe(STATEMENT);
     expect(withoutVmbStatement(STATEMENT, null)).toBe(STATEMENT);
+  });
+});
+
+describe("vad försäljningssiffran är", () => {
+  const sales = (vatOre: number) => ({ revenueOre: 100_000 - vatOre, vatOre }) as never;
+  const comp = (splits: number) =>
+    ({ splits: Array.from({ length: splits }, () => ({})) }) as never;
+
+  it("momssats 0 %: siffran är det kunderna betalade, inklusive moms", () => {
+    for (const splits of [0, 1]) {
+      const r = { sales: sales(0), compensation: comp(splits) };
+      expect(salesNote(r, "Sega gubben")).toBe(
+        "Försäljningen är kundernas köp i automater som stod i Sega gubben köpdagen, inklusive moms.",
+      );
+      expect(salesVatLabel(r)).toBe("Inkl. moms");
+      expect(salesBasis(r)).toEqual({ inclVat: true, splitInclVat: false });
+    }
+  });
+
+  it("med momssats: nyckeltalet är exklusive moms, vinstdelningen räknar inklusive moms", () => {
+    const provision = { sales: sales(20_000), compensation: comp(0) };
+    expect(salesNote(provision, "Sega gubben")).toBe(
+      "Försäljningen är kundernas köp i automater som stod i Sega gubben köpdagen, exklusive moms.",
+    );
+    expect(salesVatLabel(provision)).toBe("Exkl. moms");
+    const split = { sales: sales(20_000), compensation: comp(2) };
+    expect(salesNote(split, "Sega gubben")).toBe(
+      "Försäljningen överst är kundernas köp i automater som stod i Sega gubben köpdagen, exklusive moms. I uträkningen räknas försäljningen inklusive moms.",
+    );
+    expect(salesBasis(split)).toEqual({ inclVat: false, splitInclVat: true });
+  });
+
+  it("påstår aldrig att ingen moms tas ut", () => {
+    for (const vat of [0, 20_000])
+      for (const splits of [0, 1]) {
+        const r = { sales: sales(vat), compensation: comp(splits) };
+        expect(`${salesNote(r, "X")} ${salesVatLabel(r)}`).not.toMatch(/ingen moms|tas ut/i);
+      }
+  });
+
+  it("utgåvan: bara rapporter sparade med utgåva 2 får den nya texten", () => {
+    expect(BASIS_REV).toBe(2);
+    expect(isRev2({ ...BASIS, rev: 2 })).toBe(true);
+    expect(isRev2(BASIS)).toBe(false);
+    expect(isRev2(null)).toBe(false);
   });
 });
 

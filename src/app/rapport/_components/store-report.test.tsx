@@ -25,6 +25,7 @@ const ORG = { id: "org", name: "Binderlab AB", orgNumber: null, timeZone: "Europ
 
 /** Underlaget för butikens bokföring med allt ifyllt. */
 const BASIS: StoreBasis = {
+  rev: 2,
   payer: {
     name: "Binderlab Sverige AB",
     legal: true,
@@ -356,6 +357,45 @@ describe("underlag för butikens bokföring", () => {
       ])
         expect(b, text).toContain(text);
       for (const re of FORBIDDEN) expect(b, String(re)).not.toMatch(re);
+    }
+  });
+});
+
+describe("försäljningen och momsen säger inte emot varandra", () => {
+  const render = (basis: StoreBasis | null) => {
+    const snap = snapshot(false, basis);
+    return {
+      page: visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={snap} />)).replace(
+        /\u00a0|\u202f/g,
+        " ",
+      ),
+      email: emailFor(snap),
+    };
+  };
+
+  it("rapporten säger vad försäljningen är och aldrig att ingen moms tas ut", () => {
+    const { page, email } = render(BASIS);
+    expect(page).toContain("Moms 25 %");
+    expect(page).toContain(
+      "Försäljningen är kundernas köp i automater som stod i Nordstan köpdagen, inklusive moms.",
+    );
+    for (const body of [page, email.html, email.text]) {
+      expect(body).not.toMatch(/ingen moms/i);
+      expect(body).not.toMatch(/tas ut/i);
+      expect(body).not.toContain("exklusive moms (");
+    }
+    // Mejlets nyckeltal Försäljning: "Inkl. moms" (bredvid "Moms 25 %" i underlaget).
+    expect(email.html).toContain("Inkl. moms");
+    expect(email.html).toContain("Moms 25 %");
+  });
+
+  it("en rapport från före ändringen står som den skrevs", () => {
+    const { rev: _rev, ...old } = BASIS;
+    void _rev;
+    for (const basis of [old, null]) {
+      const { page, email } = render(basis);
+      expect(page).toContain("köpdagen, exklusive moms (ingen moms tas ut).");
+      expect(email.html).toContain("Ingen moms");
     }
   });
 });

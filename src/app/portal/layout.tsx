@@ -68,7 +68,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
               ? `${ctx.store.organizationName} driver automaterna i ${ctx.store.storeName}.`
               : "Binderlab butiksportal."}
           </span>
-          <span>Siffrorna räknas från automaternas försäljning, exkl. moms.</span>
+          <span>Siffrorna räknas från automaternas försäljning.</span>
         </div>
       </footer>
     </div>

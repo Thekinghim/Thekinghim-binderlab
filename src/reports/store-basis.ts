@@ -15,6 +15,7 @@
 
 import { applyBp, type IsoDate, type Period } from "@/domain";
 
+import type { StoreReport } from "./store-report";
 import { dateText, krText } from "./text";
 
 /** Momsen i butiksrapporten (Inställningar → Företaget). */
@@ -49,7 +50,16 @@ export interface BasisContract {
   readonly signedOn: IsoDate | null;
 }
 
+/**
+ * Underlagets utgåva. 2: rapporten säger vad försäljningssiffran är (aldrig "ingen moms tas
+ * ut"), har avtalsformen, betalningar och en totalrad. En sparad rapport utan utgåvan (från
+ * före 2) visas som den visades då.
+ */
+export const BASIS_REV = 2;
+
 export interface StoreBasis {
+  /** Se `BASIS_REV`. Saknas = utgåva 1. */
+  readonly rev?: number;
   readonly payer: BasisPayer;
   /** null = butiken har inget undertecknat avtal för perioden (raden visas inte). */
   readonly contract: BasisContract | null;
@@ -203,6 +213,48 @@ export function vatSentences(basis: StoreBasis, compensationOre: number): string
     `Ersättningen är exklusive moms. Ni fakturerar ${who} och lägger på svensk moms, ${pct} %.`,
     seller,
   ];
+}
+
+/** Sant för en rapport sparad med utgåva 2 eller senare (se `BASIS_REV`). */
+export function isRev2(basis: StoreBasis | null | undefined): basis is StoreBasis {
+  return basis !== null && basis !== undefined && (basis.rev ?? 1) >= 2;
+}
+
+/**
+ * Vad försäljningssiffran i rapporten är, exakt (docs/berakningar.md avsnitt 2 och 4).
+ *
+ * Nyckeltalet Försäljning är Σ belopp exkl. moms med momssatsen i Inställningar. Är den 0 %
+ * (kravet för VMB) dras ingen moms ur beloppet: siffran är då det kunderna betalade,
+ * inklusive moms. Vinstdelningen räknas alltid på försäljningen inklusive moms. Rapporten
+ * påstår aldrig att ingen moms tas ut: det vet den inte.
+ */
+export function salesBasis(report: Pick<StoreReport, "sales" | "compensation">): {
+  /** Nyckeltalet Försäljning är inklusive moms. */
+  readonly inclVat: boolean;
+  /** Uträkningen (vinstdelning) räknar på ett annat belopp än nyckeltalet: inklusive moms. */
+  readonly splitInclVat: boolean;
+} {
+  const inclVat = report.sales.vatOre === 0;
+  const split = ((report.compensation as { splits?: readonly unknown[] }).splits ?? []).length > 0;
+  return { inclVat, splitInclVat: split && !inclVat };
+}
+
+/** Meningen i rapportens fotnot: "Försäljningen är kundernas köp i automater som stod i …". */
+export function salesNote(
+  report: Pick<StoreReport, "sales" | "compensation">,
+  storeName: string,
+): string {
+  const { inclVat, splitInclVat } = salesBasis(report);
+  const what = `kundernas köp i automater som stod i ${storeName} köpdagen`;
+  if (inclVat) return `Försäljningen är ${what}, inklusive moms.`;
+  if (splitInclVat)
+    return `Försäljningen överst är ${what}, exklusive moms. I uträkningen räknas försäljningen inklusive moms.`;
+  return `Försäljningen är ${what}, exklusive moms.`;
+}
+
+/** Kort form under nyckeltalet Försäljning (mejlet). */
+export function salesVatLabel(report: Pick<StoreReport, "sales" | "compensation">): string {
+  return salesBasis(report).inclVat ? "Inkl. moms" : "Exkl. moms";
 }
 
 /** Blocket som text, rad för rad (mejlets textdel och tester). */

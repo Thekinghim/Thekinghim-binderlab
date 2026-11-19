@@ -40,9 +40,11 @@ import type { StoreSnapshot } from "@/server/reports/snapshot";
 import {
   asStoreBasis,
   contractLine,
+  isRev2,
   isWholeMonth,
   periodText,
   pctText,
+  salesNote,
   splitsOf,
   storeReportView,
   vatRows,
@@ -575,8 +577,13 @@ export function StoreReportDocument({
         </p>
       ) : null}
       <ReportNote>
-        Försäljningen är köp i automater som stod i {snapshot.store.name} köpdagen, exklusive moms
-        {r.sales.vatOre === 0 ? " (ingen moms tas ut)" : ""}.{" "}
+        {/* Vad försäljningssiffran är, aldrig "ingen moms tas ut" bredvid "Moms 25 %". En
+            rapport från före den utgåvan står som den skrevs. */}
+        {isRev2(basisData)
+          ? salesNote(r, snapshot.store.name)
+          : `Försäljningen är köp i automater som stod i ${snapshot.store.name} köpdagen, exklusive moms${
+              r.sales.vatOre === 0 ? " (ingen moms tas ut)" : ""
+            }.`}{" "}
         {custom && r.comparison.period
           ? `Perioden före (${periodText(r.comparison.period)})`
           : "Förra månaden"}
