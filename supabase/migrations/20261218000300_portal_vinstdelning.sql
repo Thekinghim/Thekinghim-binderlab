@@ -34,7 +34,7 @@ as $$
     cross join lateral jsonb_each(v.value) as kv(key, value)
     where jsonb_typeof(v.value) = 'object'
       and (
-        (not p_open
+        (not coalesce(p_open, false)
           and kv.key ~* '(cost|margin|profit|unpriced|inkop|inköp|vinst|marginal|purchase|owner)')
         or kv.key in ('stores', 'prices', 'agreements', 'placements', 'settings', 'investments')
         or (kv.key = 'orders' and jsonb_typeof(kv.value) <> 'number')
@@ -57,8 +57,12 @@ as $$
       or not private.portal_bad_keys(
         p_report -> 'compensation',
         p_store_id,
-        jsonb_typeof(p_report -> 'compensation' -> 'splits') = 'array'
-          and jsonb_array_length(p_report -> 'compensation' -> 'splits') > 0
+        -- coalesce: utan "splits" (null) gäller regeln, aldrig "okänt".
+        coalesce(
+          jsonb_typeof(p_report -> 'compensation' -> 'splits') = 'array'
+            and jsonb_array_length(p_report -> 'compensation' -> 'splits') > 0,
+          false
+        )
       )
     )
 $$;
