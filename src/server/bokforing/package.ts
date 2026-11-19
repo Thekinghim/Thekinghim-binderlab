@@ -21,7 +21,7 @@ import { buildMonthWorkbook, type ReceiptIndexRow } from "./excel";
 import type { MonthBook } from "./month";
 import { accountName, PLAN_KEYS, type AccountPlan } from "./plan";
 import { zipReceiptName } from "./receipts";
-import { buildSieFile, monthVerification, type MonthVerification } from "./sie";
+import { buildSieFile, monthVerification, SIE_FOR_IMPORT, type MonthVerification } from "./sie";
 import { summaryHtml } from "./summary";
 import { buildZip, type ZipEntry } from "./zip";
 
@@ -142,6 +142,8 @@ export async function buildMonthPackage(input: MonthPackageInput): Promise<Month
   const readme = [
     `Bokföring ${monthText(m)} – ${input.company}`,
     ...(preliminary ? [`PRELIMINÄR: ${preliminary} Bokför inte förrän ett nytt paket finns.`] : []),
+    // Viktigast först: vilken av appens två SIE-filer som ska importeras.
+    ...(hasVoucher ? [`${sieName}: ${SIE_FOR_IMPORT}`] : []),
     "",
     hasVoucher
       ? `${sieName}: importera i Fortnox under Bokföring → Importera SIE. Filen har kontonamn ` +

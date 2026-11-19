@@ -588,6 +588,14 @@ describe("preliminärt paket", () => {
         .find((f) => f.name === "LAS-MIG.txt")!
         .data.toString("utf8");
     expect(readme(final)).not.toContain("PRELIMINÄR");
+    // Andra raden säger vilken av appens två SIE-filer som ska importeras.
+    expect(readme(final).split("\r\n")[1]).toBe(
+      "verifikation-2026-10.si: Importera den här filen i bokföringen. Importera inte också SIE-filen från Rapporter - Bokföringsunderlag: då bokförs försäljningen två gånger.",
+    );
+    const sieText = decodeCp437(
+      new Uint8Array(readZip(final.bytes).find((f) => f.name === "verifikation-2026-10.si")!.data),
+    );
+    expect(sieText).toContain('#PROSA "Importera den här filen i bokföringen.');
     expect(readme(prel).split("\r\n")[1]).toBe(
       "PRELIMINÄR: 3 order saknar inköpspris, så butikens andel är inte klar. Bokför inte förrän ett nytt paket finns.",
     );
