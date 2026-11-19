@@ -84,7 +84,11 @@ beforeAll(async () => {
 
 describe("inställningarna", () => {
   it("standard: inget momsregistreringsnummer, moms tillkommer", async () => {
-    expect(await stored(f.a.orgId)).toEqual({ vatNumber: null, reportVatMode: "added" });
+    expect(await stored(f.a.orgId)).toEqual({
+      vatNumber: null,
+      reportVatMode: "added",
+      reportVmb: false,
+    });
   });
 
   it("ett anrop utan de nya fälten (äldre kod) ändrar dem inte", async () => {
@@ -99,7 +103,11 @@ describe("inställningarna", () => {
       companyName: "Annan AB",
     });
     expect(res).toEqual({ ok: true, data: { changed: true } });
-    expect(await stored(f.b.orgId)).toEqual({ vatNumber: "SE111111111101", reportVatMode: "none" });
+    expect(await stored(f.b.orgId)).toEqual({
+      vatNumber: "SE111111111101",
+      reportVatMode: "none",
+      reportVmb: false,
+    });
   });
 
   it("ett ogiltigt momsregistreringsnummer sparas inte (tjänsten och databasen)", async () => {
@@ -126,7 +134,11 @@ describe("inställningarna", () => {
       ),
     );
     expect(mode.ok).toBe(false);
-    expect(await stored(f.a.orgId)).toEqual({ vatNumber: null, reportVatMode: "added" });
+    expect(await stored(f.a.orgId)).toEqual({
+      vatNumber: null,
+      reportVatMode: "added",
+      reportVmb: false,
+    });
   });
 
   it("läsare, påfyllare och butiksanvändare får inte ändra (tjänsten och RLS)", async () => {
@@ -151,7 +163,11 @@ describe("inställningarna", () => {
       if (outcome.ok) expect(outcome.value).toBe(0);
       else expect(outcome.code).toBe("42501");
     }
-    expect(await stored(f.a.orgId)).toEqual({ vatNumber: null, reportVatMode: "added" });
+    expect(await stored(f.a.orgId)).toEqual({
+      vatNumber: null,
+      reportVatMode: "added",
+      reportVmb: false,
+    });
   });
 });
 

@@ -326,6 +326,7 @@ export async function queryStoreBasis(
     ),
     vatMode: settings.reportVatMode,
     vatRateBp: STORE_VAT_RATE_BP,
+    vmb: settings.reportVmb,
   };
 }
 

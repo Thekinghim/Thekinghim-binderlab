@@ -48,6 +48,8 @@ export {
   suggestedVatNumber,
   vatRows,
   vatSentences,
+  vmbStatement,
+  withoutVmbStatement,
   type BasisContract,
   type BasisContractRow,
   type BasisPayer,

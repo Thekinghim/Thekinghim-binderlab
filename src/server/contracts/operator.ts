@@ -97,18 +97,22 @@ export interface ReportBasisSettings {
   readonly vatNumber: string | null;
   /** Momsen i butiksrapporten. Standard: moms tillkommer. */
   readonly reportVatMode: ReportVatMode;
+  /** "Vi säljer med vinstmarginalbeskattning (VMB)" (20261218000000_rapport_vmb.sql). */
+  readonly reportVmb: boolean;
 }
 
 export const DEFAULT_REPORT_BASIS: ReportBasisSettings = {
   vatNumber: null,
   reportVatMode: "added",
+  reportVmb: false,
 };
 
 /** Momsregistreringsnumret och momsvalet för butiksrapporten. */
 export async function readReportBasisSettings(tx: Tx, orgId: string): Promise<ReportBasisSettings> {
   const row = Array.from(
     await tx.execute(sql`
-      select os.vat_number, os.report_vat_mode
+      select os.vat_number, os.report_vat_mode,
+             coalesce((to_jsonb(os) ->> 'report_vmb')::boolean, false) as report_vmb
         from public.organization_settings os
        where os.organization_id = ${orgId}::uuid`),
   )[0] as Record<string, unknown> | undefined;
@@ -116,5 +120,6 @@ export async function readReportBasisSettings(tx: Tx, orgId: string): Promise<Re
   return {
     vatNumber: typeof row.vat_number === "string" && row.vat_number.trim() ? row.vat_number : null,
     reportVatMode: row.report_vat_mode === "none" ? "none" : "added",
+    reportVmb: row.report_vmb === true,
   };
 }

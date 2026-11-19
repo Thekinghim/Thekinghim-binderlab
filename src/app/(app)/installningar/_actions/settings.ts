@@ -68,6 +68,7 @@ export async function updateCompanyDetails(input: {
   contactPhone: string;
   vatNumber?: string;
   reportVatMode?: string;
+  reportVmb?: boolean;
 }): Promise<ActionResult<{ changed: boolean }>> {
   const organization = await getActiveOrganization();
   if (!organization) return { ok: false, error: SETTINGS_MESSAGES.forbidden };
@@ -86,6 +87,7 @@ export async function updateCompanyDetails(input: {
       input?.reportVatMode === "none" || input?.reportVatMode === "added"
         ? input.reportVatMode
         : undefined,
+    reportVmb: typeof input?.reportVmb === "boolean" ? input.reportVmb : undefined,
   });
   if (result.ok && result.data?.changed) revalidateAppData();
   return result;

@@ -419,6 +419,8 @@ export const companyInput = z.object({
     .optional(),
   /** Momsen i butiksrapporten. Utelämnat = ändras inte. */
   reportVatMode: z.enum(["added", "none"]).optional(),
+  /** "Vi säljer med vinstmarginalbeskattning (VMB)". Utelämnat = ändras inte. */
+  reportVmb: z.boolean().optional(),
 });
 
 export type CompanyInput = z.input<typeof companyInput>;
@@ -470,12 +472,14 @@ export async function updateCompanyDetailsFor(
       const basisNow = await readReportBasisSettings(tx, input.organizationId);
       const vatNumber = input.vatNumber === undefined ? basisNow.vatNumber : input.vatNumber;
       const reportVatMode: ReportVatMode = input.reportVatMode ?? basisNow.reportVatMode;
+      const reportVmb = input.reportVmb ?? basisNow.reportVmb;
       const same =
         (Object.keys(next) as Array<keyof CompanyDetailsRow>).every(
           (k) => current[k] === next[k],
         ) &&
         vatNumber === basisNow.vatNumber &&
-        reportVatMode === basisNow.reportVatMode;
+        reportVatMode === basisNow.reportVatMode &&
+        reportVmb === basisNow.reportVmb;
       if (same) return { ok: true, data: { changed: false } };
       const updated = Array.from(
         await tx.execute(
@@ -483,7 +487,8 @@ export async function updateCompanyDetailsFor(
               set company_name = ${next.companyName}, org_number = ${next.orgNumber},
                   company_address = ${next.companyAddress}, contact_name = ${next.contactName},
                   contact_email = ${next.contactEmail}, contact_phone = ${next.contactPhone},
-                  vat_number = ${vatNumber}, report_vat_mode = ${reportVatMode}
+                  vat_number = ${vatNumber}, report_vat_mode = ${reportVatMode},
+                  report_vmb = ${reportVmb}
               where organization_id = ${input.organizationId}::uuid
               returning id`,
         ),
@@ -492,10 +497,10 @@ export async function updateCompanyDetailsFor(
         await tx.execute(
           sql`insert into public.organization_settings
                 (organization_id, company_name, org_number, company_address, contact_name,
-                 contact_email, contact_phone, vat_number, report_vat_mode)
+                 contact_email, contact_phone, vat_number, report_vat_mode, report_vmb)
               values (${input.organizationId}::uuid, ${next.companyName}, ${next.orgNumber},
                       ${next.companyAddress}, ${next.contactName}, ${next.contactEmail},
-                      ${next.contactPhone}, ${vatNumber}, ${reportVatMode})`,
+                      ${next.contactPhone}, ${vatNumber}, ${reportVatMode}, ${reportVmb})`,
         );
       }
       // Samma organisationsnummer i Bokföring (om den är inställd).

@@ -674,6 +674,8 @@ export const organizationSettings = pgTable("organization_settings", {
   /** Butiksrapporten som underlag (20261217000000_rapport_underlag.sql). */
   vatNumber: text("vat_number"),
   reportVatMode: text("report_vat_mode").$type<"added" | "none">().notNull().default("added"),
+  /** "Vi säljer med vinstmarginalbeskattning (VMB)" (20261218000000_rapport_vmb.sql). */
+  reportVmb: boolean("report_vmb").notNull().default(false),
   /** Prisråd: mål för marginalen före butikernas andel (20261120000000_prisrad.sql). */
   targetMarginBp: integer("target_margin_bp").notNull().default(2500),
   /** T5: momsgränsen vi varnar vid och "Revisorn har koll" (20261205000000_installningar_varning.sql). */

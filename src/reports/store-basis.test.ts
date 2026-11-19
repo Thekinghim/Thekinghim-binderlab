@@ -16,6 +16,8 @@ import {
   suggestedVatNumber,
   vatRows,
   vatSentences,
+  vmbStatement,
+  withoutVmbStatement,
   type BasisContractRow,
   type StoreBasis,
 } from "./store-basis";
@@ -204,6 +206,51 @@ describe("texterna i rapporten", () => {
       "Ersättningen är exklusive moms. Ni fakturerar Binderlab AB och lägger på svensk moms, 25 %.",
       "Binderlab AB är säljare av varorna i automaten.",
     ]);
+  });
+});
+
+describe("Vi säljer med vinstmarginalbeskattning (VMB)", () => {
+  const vmb: StoreBasis = { ...BASIS, vmb: true };
+  const STATEMENT =
+    "Binderlab AB är säljare av varorna i automaten och redovisar momsen på den försäljningen enligt reglerna om vinstmarginalbeskattning (VMB). Den momsen berör inte butiken. Butikens ersättning är betalning för en tjänst och omfattas inte av VMB.";
+
+  it("på: rapporten säger det, ord för ord", () => {
+    expect(vmbStatement("Binderlab AB")).toBe(STATEMENT);
+    expect(vatSentences(vmb, 749_300)).toEqual([
+      "Ersättningen är exklusive moms. Ni fakturerar Binderlab AB och lägger på svensk moms, 25 %.",
+      STATEMENT,
+    ]);
+    // Också utan momsrad och utan ersättning: det är vad bolaget säger om sin egen moms.
+    expect(vatSentences({ ...vmb, vatMode: "none" }, 749_300)).toEqual([STATEMENT]);
+    expect(vatSentences(vmb, 0)).toEqual([STATEMENT]);
+    expect(basisText(vmb, "Sega gubben", 749_300).at(-1)).toBe(STATEMENT);
+  });
+
+  it("av (standard, och rapporter från före valet): bara att vi är säljare", () => {
+    for (const b of [BASIS, { ...BASIS, vmb: false }])
+      expect(vatSentences(b, 749_300).at(-1)).toBe(
+        "Binderlab AB är säljare av varorna i automaten.",
+      );
+  });
+
+  it("kontrollen undantar bara den fasta texten, och bara när valet är på", () => {
+    const FORBIDDEN = /vinst|marginal/i;
+    const all = basisText(vmb, "Sega gubben", 749_300).join(" ");
+    expect(all).toMatch(FORBIDDEN);
+    expect(withoutVmbStatement(all, vmb)).not.toMatch(FORBIDDEN);
+    // Ordet någon annanstans stoppas som förut.
+    for (const leak of [
+      "Vinstmarginalbeskattning gäller.",
+      "Er marginal var 12 %.",
+      "Vår vinst blev 500 kr.",
+      // Nästan den fasta texten (ett annat bolag, ett ord till) är inte den fasta texten.
+      vmbStatement("Annat AB"),
+      STATEMENT.replace("Den momsen", "Den vinstmarginalen"),
+    ])
+      expect(withoutVmbStatement(`${all} ${leak}`, vmb), leak).toMatch(FORBIDDEN);
+    // Utan valet tas ingenting bort, inte ens den fasta texten.
+    expect(withoutVmbStatement(STATEMENT, BASIS)).toBe(STATEMENT);
+    expect(withoutVmbStatement(STATEMENT, null)).toBe(STATEMENT);
   });
 });
 

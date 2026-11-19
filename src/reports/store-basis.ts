@@ -56,6 +56,12 @@ export interface StoreBasis {
   readonly vatMode: ReportVatMode;
   /** Momssatsen i baspunkter (2 500 = 25 %). */
   readonly vatRateBp: number;
+  /**
+   * "Vi säljer med vinstmarginalbeskattning (VMB)" (Inställningar → Företaget) när rapporten
+   * räknades. Sant: rapporten säger det (`vmbStatement`). Saknas eller falskt: bara att vi
+   * är säljare av varorna.
+   */
+  readonly vmb?: boolean;
 }
 
 /** Momsregistreringsnumret för ett svenskt bolag: SE + organisationsnumrets tio siffror + 01. */
@@ -161,15 +167,36 @@ export function vatRows(basis: StoreBasis, compensationOre: number): BasisVatRow
 }
 
 /**
+ * Det bolaget säger om sin egen moms när ägaren har valt "Vi säljer med
+ * vinstmarginalbeskattning (VMB)". En fast text, ord för ord: det är det ENDA stället där
+ * skatteregelns namn får stå i något som når butiken (se `withoutVmbStatement`).
+ */
+export function vmbStatement(payerName: string): string {
+  return `${payerName} är säljare av varorna i automaten och redovisar momsen på den försäljningen enligt reglerna om vinstmarginalbeskattning (VMB). Den momsen berör inte butiken. Butikens ersättning är betalning för en tjänst och omfattas inte av VMB.`;
+}
+
+/**
+ * Texten utan den fasta VMB-texten, för kontrollen att inget som når butiken innehåller
+ * "vinst" eller "marginal". Bara hela den fasta texten för rapportens bolag tas bort, och
+ * bara när rapporten har valet på: ordet "vinstmarginalbeskattning" någon annanstans (eller
+ * i en rapport utan valet) står kvar och stoppas av kontrollen som förut.
+ */
+export function withoutVmbStatement(text: string, basis: StoreBasis | null | undefined): string {
+  if (!basis || basis.vmb !== true) return text;
+  return text.split(vmbStatement(basis.payer.name)).join(" ");
+}
+
+/**
  * Meningarna om momsen. Med momsrad: beloppet är exklusive moms och butiken fakturerar oss
  * med svensk moms. Alltid: vi är säljare av varorna (försäljningen i automaten är alltså
- * inte butikens). Hur vi själva redovisar momsen på försäljningen sägs inte: appen vet inte
- * det (momssatsen i Inställningar kan vara 0 %), och rapporten ska inte påstå något om skatt
- * som ingen har valt. Utan momsrad sägs bara vem som säljer varorna.
+ * inte butikens). Hur vi själva redovisar momsen på försäljningen sägs bara när ägaren har
+ * valt det i Inställningar ("Vi säljer med vinstmarginalbeskattning (VMB)", `basis.vmb`):
+ * appen kan inte veta det själv. Utan momsrad sägs bara vem som säljer varorna.
  */
 export function vatSentences(basis: StoreBasis, compensationOre: number): string[] {
   const who = basis.payer.name;
-  const seller = `${who} är säljare av varorna i automaten.`;
+  const seller =
+    basis.vmb === true ? vmbStatement(who) : `${who} är säljare av varorna i automaten.`;
   if (basis.vatMode !== "added" || compensationOre <= 0) return [seller];
   const pct = ratePct(basis.vatRateBp);
   return [

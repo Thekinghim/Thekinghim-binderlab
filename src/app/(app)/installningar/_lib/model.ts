@@ -253,6 +253,7 @@ const FIELD_LABEL: Record<AuditedTable, Record<string, string>> = {
     contact_phone: "Telefon",
     vat_number: "Momsregistreringsnummer",
     report_vat_mode: "Moms i butiksrapporten",
+    report_vmb: "Vi säljer med vinstmarginalbeskattning (VMB)",
   },
   owner_shares: {
     holder_name: "Ägare",
@@ -277,6 +278,7 @@ const COMPANY_FIELDS: ReadonlySet<string> = new Set([
   "contact_phone",
   "vat_number",
   "report_vat_mode",
+  "report_vmb",
 ]);
 
 export interface FieldChange {
@@ -306,6 +308,7 @@ function fieldValue(
   if (field.endsWith("_bp")) return formatBp(Number(value));
   if (field === "vat_limit_ore") return formatSek(Number(value) / 100);
   if (field === "vat_ok_at") return "Ja";
+  if (field === "report_vmb") return value === true || value === "true" ? "Ja" : "Nej";
   if (field === "report_vat_mode")
     return value === "none" ? REPORT_VAT_MODE_LABEL.none : REPORT_VAT_MODE_LABEL.added;
   if (field === "fiscal_year_start_month") return monthLabel(Number(value));

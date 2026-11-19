@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { renderReportEmail } from "@/emails/report-email";
-import type { StoreBasis } from "@/reports";
+import { vmbStatement, withoutVmbStatement, type StoreBasis } from "@/reports";
 import { agreement, ord, placement, price, sources } from "@/reports/testing/fixtures";
 import { reportEmailProps } from "@/server/reports/email";
 import { cleanEmailHtml, cleanEmailText } from "@/server/reports/email-cleanup";
@@ -357,6 +357,45 @@ describe("underlag för butikens bokföring", () => {
         expect(b, text).toContain(text);
       for (const re of FORBIDDEN) expect(b, String(re)).not.toMatch(re);
     }
+  });
+});
+
+describe("Vi säljer med vinstmarginalbeskattning (VMB)", () => {
+  const vmb: StoreBasis = { ...BASIS, vmb: true };
+  const snap = snapshot(false, vmb);
+  const html = renderToStaticMarkup(<StoreReportDocument snapshot={snap} />);
+  const plain = visibleText(html).replace(/\u00a0|\u202f/g, " ");
+  const STATEMENT = vmbStatement("Binderlab Sverige AB");
+
+  it("rapporten säger det, på ett ark", () => {
+    expect(STATEMENT).toBe(
+      "Binderlab Sverige AB är säljare av varorna i automaten och redovisar momsen på den försäljningen enligt reglerna om vinstmarginalbeskattning (VMB). Den momsen berör inte butiken. Butikens ersättning är betalning för en tjänst och omfattas inte av VMB.",
+    );
+    expect(plain).toContain(STATEMENT);
+    expect(html.match(/data-page=/g)?.length ?? 0).toBe(PAGES_SHORT);
+  });
+
+  it("skatteregelns namn står bara i den fasta texten: resten är lika strängt som förut", () => {
+    // Hela texten har ordet, men bara i den fasta texten.
+    expect(plain).toMatch(/vinstmarginalbeskattning/);
+    const rest = withoutVmbStatement(plain, vmb);
+    for (const re of FORBIDDEN) expect(rest, String(re)).not.toMatch(re);
+    const email = emailFor(snap);
+    for (const body of [email.html, email.text]) {
+      const b = body.replace(/\u00a0|\u202f/g, " ");
+      expect(b).toContain(STATEMENT);
+      for (const re of FORBIDDEN) expect(withoutVmbStatement(b, vmb), String(re)).not.toMatch(re);
+    }
+  });
+
+  it("av: ordet står ingenstans, och inget undantag görs", () => {
+    const off = snapshot(false, { ...BASIS, vmb: false });
+    const text = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={off} />));
+    expect(text).toContain("Binderlab Sverige AB är säljare av varorna i automaten.");
+    for (const re of FORBIDDEN) expect(text, String(re)).not.toMatch(re);
+    const email = emailFor(off);
+    for (const body of [email.html, email.text])
+      for (const re of FORBIDDEN) expect(body, String(re)).not.toMatch(re);
   });
 });
 
