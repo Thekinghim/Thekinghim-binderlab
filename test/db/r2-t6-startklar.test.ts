@@ -42,6 +42,10 @@ function byCode(list: readonly MachineReadiness[], code: string): MachineReadine
   return found;
 }
 
+/** "ÅÅÅÅ-MM-DD 12:00:00" för `daysAgo` dagar sedan (orderfilens tidsformat). */
+const csvTime = (daysAgo: number) =>
+  `${new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)} 12:00:00`;
+
 const open = (r: MachineReadiness) => r.steps.filter((s) => !s.done).map((s) => s.id);
 
 describe("Startklar per automat", () => {
@@ -64,8 +68,10 @@ describe("Startklar per automat", () => {
     firstMachine = await mapMachine(f, "BL-001 ICA Lund", "BL-001");
     await f.run(
       awishCsv([
-        { no: "1", machine: "Nya hallen", time: "2026-10-20 12:00:00" },
-        { no: "2", machine: "Nya hallen", time: "2026-10-22 12:00:00" },
+        // Nyss: Startklar-raden gäller bara automater vars första köp är yngre än
+        // NEW_MACHINE_DAYS. Med fasta datum slutade testet gälla 30 dagar efter dem.
+        { no: "1", machine: "Nya hallen", time: csvTime(10) },
+        { no: "2", machine: "Nya hallen", time: csvTime(8) },
       ]),
     );
     storeId = (

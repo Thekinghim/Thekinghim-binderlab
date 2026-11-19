@@ -5,7 +5,8 @@
  *
  *   september och oktober  båda butikerna sålde, inga avräkningar finns
  *   augusti                Vinsten (vinstdelning) sålde en titel utan inköpspris
- *   juli                   Provision sålde, men månaden är stängd
+ *   juli                   Provision sålde och månaden är stängd (bokföringen skickad):
+ *                          butiken ska ha sin avräkning ändå
  *   juni                   organisationens första avräkning (Provision, 0 kr): härifrån räknas
  *   maj                    Provision sålde, före första avräkningen: betalt utanför appen
  */
@@ -91,15 +92,17 @@ describe("äldre månader utan avräkning", () => {
     const older = await withUserDbFor(f.owner.user, (tx) =>
       queryOlderMissingSettlements(tx, f.orgId, "2026-10"),
     );
-    // Maj ligger före första avräkningen (juni) och juli är stängd: de räknas inte.
-    // Augusti: bara Vinsten sålde.
+    // Maj ligger före första avräkningen (juni) och räknas inte. Juli är stängd men räknas:
+    // en stängd månad får inte gömma att butiken saknar sina pengar. Augusti: bara Vinsten sålde.
     expect(older).toEqual([
+      { month: "2026-07", storeIds: [f.stores.provision] },
       { month: "2026-08", storeIds: [f.stores.vinsten] },
       { month: "2026-09", storeIds: [f.stores.provision, f.stores.vinsten].sort() },
     ]);
     const page = await loadSettlementPageFor(f.owner, NOW);
     expect(page.month).toBe("2026-10");
     expect(page.missing.map((m) => `${m.month} ${m.storeName}`).sort()).toEqual([
+      "2026-07 Provision",
       "2026-09 Provision",
       "2026-09 Vinsten",
       "2026-10 Provision",
@@ -110,9 +113,24 @@ describe("äldre månader utan avräkning", () => {
 
   it("knappen skapar också de äldre; den som inte går att räkna står kvar som fel", async () => {
     const run = await ensureSettlementsFor(f.owner, NOW);
-    expect(run).toMatchObject({ created: 4, olderMonths: ["2026-09"] });
+    expect(run).toMatchObject({ created: 5, olderMonths: ["2026-07", "2026-09"] });
     expect(run!.errors).toHaveLength(1);
-    expect(await months()).toEqual(["2026-06:1", "2026-09:2", "2026-10:2"]);
+    expect(await months()).toEqual(["2026-06:1", "2026-07:1", "2026-09:2", "2026-10:2"]);
+    // Juli är fortfarande stängd: avräkningen skapades utan att månaden öppnades.
+    const july = await asPostgres((tx) =>
+      one<{ amount_ore: string; closed: boolean }>(
+        tx,
+        sql`select s.amount_ore,
+                   exists (select 1 from public.period_closes pc
+                            where pc.organization_id = s.organization_id
+                              and pc.month = s.month and pc.reopened_at is null) as closed
+            from public.store_settlements s
+            where s.organization_id = ${f.orgId} and s.month = '2026-07-01'`,
+      ),
+    );
+    // 100 kr sålt, 10 % provision.
+    expect(Number(july.amount_ore)).toBe(1_000);
+    expect(july.closed).toBe(true);
     const page = await loadSettlementPageFor(f.owner, NOW);
     expect(page.missing).toEqual([]);
     expect(page.failed.map((x) => `${x.month} ${x.storeName}`)).toEqual(["2026-08 Vinsten"]);
@@ -129,8 +147,8 @@ describe("äldre månader utan avräkning", () => {
     const [run] = await createMonthlySettlements(db(), later, { organizationIds: [f.orgId] });
     expect(run!.errors).toEqual([]);
     expect(await months()).toContain("2026-08:1");
-    // Den stängda månaden (juli) och månaden före första avräkningen (maj) får ingen.
-    expect((await months()).some((m) => /^2026-0[57]/.test(m))).toBe(false);
+    // Månaden före första avräkningen (maj) får ingen.
+    expect((await months()).some((m) => m.startsWith("2026-05"))).toBe(false);
     const aug = await asPostgres((tx) =>
       one<{ amount_ore: string }>(
         tx,

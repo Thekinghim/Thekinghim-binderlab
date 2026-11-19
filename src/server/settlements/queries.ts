@@ -78,8 +78,12 @@ export async function queryMissingSettlements(
 
 /**
  * Äldre avslutade månader (före `beforeMonth`) där en butik hade försäljning men saknar
- * avräkning, äldst först. Stängda månader räknas inte (där ändras inget). Butiken för en
- * order är den automaten stod i orderns dag (samma placeringar som avräkningen räknar med).
+ * avräkning, äldst först. Butiken för en order är den automaten stod i orderns dag (samma
+ * placeringar som avräkningen räknar med).
+ *
+ * Stängda månader räknas också: en månad kan stängas av att bokföringen skickas (eller för
+ * hand) medan en butik fortfarande saknar avräkning, och butiken ska ha sina pengar ändå.
+ * Avräkningen ändrar inget i månaden, den räknas på det som redan står där.
  *
  * Utan det här föll en butik bort för gott när månaden inte kunde räknas i tid (saknat
  * inköpspris under vinstdelning) eller när automaten kopplades i efterhand: bara förra
@@ -94,7 +98,7 @@ export async function queryOlderMissingSettlements(
   orgId: string,
   beforeMonth: IsoMonth,
 ): Promise<{ month: IsoMonth; storeIds: string[] }[]> {
-  const [placements, days, existing, closed] = await Promise.all([
+  const [placements, days, existing] = await Promise.all([
     queryEffectivePlacements(tx, orgId),
     tx.execute(sql`
       select distinct o.machine_id, o.business_date::text as day
@@ -105,22 +109,17 @@ export async function queryOlderMissingSettlements(
     tx.execute(sql`
       select store_id, to_char(month, 'YYYY-MM') as month
       from public.store_settlements where organization_id = ${orgId}::uuid`),
-    tx.execute(sql`
-      select to_char(month, 'YYYY-MM') as month
-      from public.period_closes
-      where organization_id = ${orgId}::uuid and reopened_at is null`),
   ]);
   const existingRows = Array.from(existing) as { store_id: string; month: string }[];
   const have = new Set(existingRows.map((r) => `${r.store_id}|${r.month}`));
   const firstMonth = existingRows.map((r) => r.month).sort()[0];
   if (firstMonth === undefined) return [];
-  const closedMonths = new Set((Array.from(closed) as { month: string }[]).map((r) => r.month));
   const index = new PlacementIndex(placements);
   const byMonth = new Map<string, Set<string>>();
   for (const r of Array.from(days) as { machine_id: string; day: string }[]) {
     const day = r.day.slice(0, 10) as IsoDate;
     const month = day.slice(0, 7);
-    if (month < firstMonth || closedMonths.has(month)) continue;
+    if (month < firstMonth) continue;
     const storeId = index.storeOn(String(r.machine_id), day);
     if (storeId === null || have.has(`${storeId}|${month}`)) continue;
     const set = byMonth.get(month);

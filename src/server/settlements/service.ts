@@ -245,8 +245,8 @@ async function createMissing(
 
 /**
  * Skapar saknade avräkningar för äldre avslutade månader där en butik sålde (se
- * queryOlderMissingSettlements): en körning per månad, äldst först. Stängda månader rörs
- * inte. Ett fel i en butik (t.ex. saknat inköpspris) står i `errors` och stoppar inget.
+ * queryOlderMissingSettlements): en körning per månad, äldst först, också i stängda
+ * månader. Ett fel i en butik (t.ex. saknat inköpspris) står i `errors` och stoppar inget.
  */
 async function createOlderMissing(
   run: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>,
@@ -377,7 +377,8 @@ export async function createMonthlySettlements(
 
 /**
  * "Skapa avräkningar" på Utbetalning: förra månadens saknade avräkningar och saknade för
- * äldre månader där en butik sålde (inte stängda), som användaren (ägare och admin). Läsaren skapar inget. Felen (per butik) visas på sidan. Sidan i sig
+ * äldre månader där en butik sålde (också stängda), som användaren (ägare och admin).
+ * Läsaren skapar inget. Felen (per butik) visas på sidan. Sidan i sig
  * skapar aldrig något när den öppnas; det gör det schemalagda jobbet eller den här knappen.
  *
  * Saknar en butik avtal några dagar i månaden (den räknas då som 0 % de dagarna) skapas
