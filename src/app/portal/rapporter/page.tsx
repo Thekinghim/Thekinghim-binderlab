@@ -10,11 +10,11 @@ import { requirePortalContext } from "@/server/portal/session";
 import { dateTimeText, monthText } from "../_components/text";
 import { isWholeMonth, periodText } from "@/reports/text";
 
-/** "Månadsrapport oktober 2026", eller för eget datum "Rapport 15–31 okt. 2026". */
+/** "Månadsrapport oktober 2026", eller för eget datum "Butiksrapport 15–31 okt. 2026". */
 function portalReportTitle(start: string, end: string): string {
   return isWholeMonth({ start, end })
     ? `Månadsrapport ${monthText(start.slice(0, 7))}`
-    : `Rapport ${periodText({ start, end })}`;
+    : `Butiksrapport ${periodText({ start, end })}`;
 }
 
 export const metadata: Metadata = { title: "Rapporter" };

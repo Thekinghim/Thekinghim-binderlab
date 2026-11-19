@@ -110,7 +110,7 @@ export function PortalHeader({
             ) : (
               <p className="text-md font-medium text-balance text-fg">
                 {store.name}
-                <span className="text-subtle"> · automater från {store.operator}</span>
+                <span className="text-subtle"> · från {store.operator}</span>
               </p>
             )}
           </div>

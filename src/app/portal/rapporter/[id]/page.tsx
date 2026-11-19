@@ -26,7 +26,7 @@ import {
 } from "../../_components/sections";
 import { dateTimeText, kr, monthText, pct } from "../../_components/text";
 
-export const metadata: Metadata = { title: "Månadsrapport" };
+export const metadata: Metadata = { title: "Butiksrapport" };
 
 /**
  * Den sparade rapporten som den skickades: innehållet ur ögonblicksbilden
@@ -47,6 +47,10 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
   const details = report ? storeDetailsOf(report, false) : false;
   const legacy = report ? isLegacyUnsent(report, false) : false;
   const month = detail.periodStart.slice(0, 7);
+  // Hela månader heter månadsrapport; ett eget datum heter butiksrapport med sina dagar.
+  const range = { start: detail.periodStart, end: detail.periodEnd };
+  const whole = isWholeMonth(range);
+  const name = whole ? monthText(month) : periodText(range);
 
   return (
     <div className="flex flex-col py-10 md:py-12">
@@ -62,7 +66,7 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
           <span aria-hidden className="text-faint">
             /
           </span>
-          <span>{monthText(month)}</span>
+          <span>{name}</span>
         </span>
         <span className="flex items-center gap-2">
           {detail.storagePath && !legacy ? (
@@ -81,7 +85,7 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
         <div className="flex flex-col gap-8">
           <SectionHeader
             as="h1"
-            title={`Månadsrapport ${monthText(month)}.`}
+            title={`${whole ? "Månadsrapport" : "Butiksrapport"} ${name}.`}
             aside={`Skapad ${dateTimeText(detail.generatedAt, ctx.store.timezone)}.`}
             size="xl"
           />
@@ -101,7 +105,7 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
               eyebrow={
                 isWholeMonth(report.period)
                   ? `Månadsrapport · ${monthText(report.month)}`
-                  : `Rapport · ${periodText(report.period)}`
+                  : `Butiksrapport · ${periodText(report.period)}`
               }
               title={`${kr(report.sales.revenueOre)} i försäljning.`}
               aside={storeSummary(report, details)}

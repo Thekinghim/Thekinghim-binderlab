@@ -65,7 +65,9 @@ export default async function PortalLayout({ children }: { children: ReactNode }
         <div className="meta mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-2 px-4 py-6 text-subtle md:px-8">
           <span>
             {ctx
-              ? `${ctx.store.organizationName} driver automaterna i ${ctx.store.storeName}.`
+              ? // Verksamhetens namn, inget påstående om vem som äger automaterna: bolaget och
+                // vad det äger står i varje rapports underlag.
+                `Butiksportal för ${ctx.store.storeName} från ${ctx.store.organizationName}.`
               : "Binderlab butiksportal."}
           </span>
           <span>Siffrorna räknas från automaternas försäljning.</span>
