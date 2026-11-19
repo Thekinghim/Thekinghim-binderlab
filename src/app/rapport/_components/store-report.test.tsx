@@ -376,16 +376,15 @@ describe("försäljningen och momsen säger inte emot varandra", () => {
   it("rapporten säger vad försäljningen är och aldrig att ingen moms tas ut", () => {
     const { page, email } = render(BASIS);
     expect(page).toContain("Moms 25 %");
+    // Provision och hyra, momssats 0 %: det kunderna betalade, inget påstående om moms.
     expect(page).toContain(
-      "Försäljningen är kundernas köp i automater som stod i Nordstan köpdagen, inklusive moms.",
+      "Försäljningen är kundernas köp i automater som stod i Nordstan köpdagen. Förra månaden",
     );
     for (const body of [page, email.html, email.text]) {
       expect(body).not.toMatch(/ingen moms/i);
       expect(body).not.toMatch(/tas ut/i);
       expect(body).not.toContain("exklusive moms (");
     }
-    // Mejlets nyckeltal Försäljning: "Inkl. moms" (bredvid "Moms 25 %" i underlaget).
-    expect(email.html).toContain("Inkl. moms");
     expect(email.html).toContain("Moms 25 %");
   });
 
@@ -396,6 +395,38 @@ describe("försäljningen och momsen säger inte emot varandra", () => {
       const { page, email } = render(basis);
       expect(page).toContain("köpdagen, exklusive moms (ingen moms tas ut).");
       expect(email.html).toContain("Ingen moms");
+    }
+  });
+});
+
+describe("raden som avslutar uträkningen", () => {
+  const page = (basis: StoreBasis | null) =>
+    visibleText(
+      renderToStaticMarkup(<StoreReportDocument snapshot={snapshot(false, basis)} />),
+    ).replace(/\u00a0|\u202f/g, " ");
+
+  it("med momsrad: Er ersättning totalt, exklusive moms", () => {
+    const text = page(BASIS);
+    expect(text).toContain("Er ersättning totalt, exklusive moms");
+    // Raden står sist i uträkningen, med delarna och beloppet.
+    expect(text).toMatch(
+      /Er ersättning totalt, exklusive moms\s+Provision 18,84 kr \+ hyra 500,00 kr = 518,84 kr\s+518,84 kr/,
+    );
+  });
+
+  it("utan momsrad sägs ingenting om moms", () => {
+    const text = page({ ...BASIS, vatMode: "none" });
+    expect(text).toMatch(/Er ersättning totalt\s+Provision 18,84 kr/);
+    expect(text).not.toContain("totalt, exklusive moms");
+  });
+
+  it("en rapport från före ändringen har rubriken som förut", () => {
+    const { rev: _rev, ...old } = BASIS;
+    void _rev;
+    for (const basis of [old, null]) {
+      const text = page(basis);
+      expect(text).toContain("Ersättning totalt");
+      expect(text).not.toContain("Er ersättning totalt");
     }
   });
 });

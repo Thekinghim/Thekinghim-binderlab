@@ -221,22 +221,28 @@ export function isRev2(basis: StoreBasis | null | undefined): basis is StoreBasi
 }
 
 /**
- * Vad försäljningssiffran i rapporten är, exakt (docs/berakningar.md avsnitt 2 och 4).
+ * Vad försäljningssiffran i rapporten är (docs/berakningar.md avsnitt 2 och 4), per avtalstyp.
  *
- * Nyckeltalet Försäljning är Σ belopp exkl. moms med momssatsen i Inställningar. Är den 0 %
- * (kravet för VMB) dras ingen moms ur beloppet: siffran är då det kunderna betalade,
- * inklusive moms. Vinstdelningen räknas alltid på försäljningen inklusive moms. Rapporten
- * påstår aldrig att ingen moms tas ut: det vet den inte.
+ * Nyckeltalet Försäljning är Σ belopp exkl. moms med momssatsen i Inställningar.
+ * - Momssats över 0 %: siffran är exklusive moms. Vinstdelningen räknas ändå alltid på
+ *   försäljningen inklusive moms, och det sägs då också.
+ * - Momssats 0 % (kravet för VMB) och vinstdelning: ingen moms dras ur beloppet, och
+ *   vinstdelningen är definierad på försäljningen inklusive moms. Siffran är det kunderna
+ *   betalade, inklusive moms.
+ * - Momssats 0 % utan vinstdelning (provision, hyra, inget avtal): siffran är det kunderna
+ *   betalade. Om det är med eller utan moms sägs inte: appen vet inte det.
+ *
+ * Rapporten påstår aldrig att ingen moms tas ut.
  */
 export function salesBasis(report: Pick<StoreReport, "sales" | "compensation">): {
-  /** Nyckeltalet Försäljning är inklusive moms. */
-  readonly inclVat: boolean;
+  /** Vad nyckeltalet Försäljning är; null = sägs inte. */
+  readonly kpi: "incl" | "excl" | null;
   /** Uträkningen (vinstdelning) räknar på ett annat belopp än nyckeltalet: inklusive moms. */
   readonly splitInclVat: boolean;
 } {
-  const inclVat = report.sales.vatOre === 0;
   const split = ((report.compensation as { splits?: readonly unknown[] }).splits ?? []).length > 0;
-  return { inclVat, splitInclVat: split && !inclVat };
+  if (report.sales.vatOre !== 0) return { kpi: "excl", splitInclVat: split };
+  return { kpi: split ? "incl" : null, splitInclVat: false };
 }
 
 /** Meningen i rapportens fotnot: "Försäljningen är kundernas köp i automater som stod i …". */
@@ -244,17 +250,29 @@ export function salesNote(
   report: Pick<StoreReport, "sales" | "compensation">,
   storeName: string,
 ): string {
-  const { inclVat, splitInclVat } = salesBasis(report);
+  const { kpi, splitInclVat } = salesBasis(report);
   const what = `kundernas köp i automater som stod i ${storeName} köpdagen`;
-  if (inclVat) return `Försäljningen är ${what}, inklusive moms.`;
+  if (kpi === "incl") return `Försäljningen är ${what}, inklusive moms.`;
+  if (kpi === null) return `Försäljningen är ${what}.`;
   if (splitInclVat)
     return `Försäljningen överst är ${what}, exklusive moms. I uträkningen räknas försäljningen inklusive moms.`;
   return `Försäljningen är ${what}, exklusive moms.`;
 }
 
-/** Kort form under nyckeltalet Försäljning (mejlet). */
-export function salesVatLabel(report: Pick<StoreReport, "sales" | "compensation">): string {
-  return salesBasis(report).inclVat ? "Inkl. moms" : "Exkl. moms";
+/** Kort form under nyckeltalet Försäljning (mejlet); null = ingen rad. */
+export function salesVatLabel(report: Pick<StoreReport, "sales" | "compensation">): string | null {
+  const { kpi } = salesBasis(report);
+  return kpi === "incl" ? "Inkl. moms" : kpi === "excl" ? "Exkl. moms" : null;
+}
+
+/**
+ * Raden som avslutar uträkningen. Med momsrad är beloppet exklusive moms (momsen läggs på i
+ * fakturan); utan momsrad sägs ingenting om moms.
+ */
+export function totalLabel(basis: StoreBasis): string {
+  return basis.vatMode === "added"
+    ? "Er ersättning totalt, exklusive moms"
+    : "Er ersättning totalt";
 }
 
 /** Blocket som text, rad för rad (mejlets textdel och tester). */

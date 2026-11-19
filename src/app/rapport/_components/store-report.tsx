@@ -47,6 +47,7 @@ import {
   salesNote,
   splitsOf,
   storeReportView,
+  totalLabel,
   vatRows,
   vatSentences,
 } from "@/reports";
@@ -413,6 +414,27 @@ export function StoreReportDocument({
       </section>
     ) : null;
 
+  // Raden som avslutar uträkningen. En rapport från före utgåva 2 visar den som förut: bara
+  // när totalen är mer än "Er andel" (hyra eller provision), med stegets egen rubrik.
+  const rev2 = isRev2(basisData);
+  // Bredvid underlaget (vinstdelning i den korta rapporten) står raden i tabellens spalt.
+  const totalInColumn = rev2 && basisBeside;
+  const totalRow =
+    total && (rev2 || showTotal) ? (
+      <div
+        data-total-row
+        className="flex items-baseline justify-between gap-[4mm] border-t border-line-strong pt-[2mm] text-[12px] leading-[16px]"
+      >
+        <span className="font-medium text-fg">{rev2 ? totalLabel(basisData) : total.label}</span>
+        {showTotal && !totalInColumn ? (
+          <span className="text-muted">{total.calculation}</span>
+        ) : null}
+        <span className="tnum font-mono font-medium whitespace-nowrap text-fg">
+          {kronor(total.amountOre)}
+        </span>
+      </div>
+    ) : null;
+
   // Uträkningen: samma tabell i båda rapporterna (det är så butiken räknar efter sin andel).
   const calculation = (
     <ReportSection
@@ -430,13 +452,16 @@ export function StoreReportDocument({
     >
       {split && basisBeside ? (
         <div className="grid grid-cols-2 items-start gap-[8mm]">
-          <ReportTable
-            caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
-            columns={splitColumns}
-            rows={splitRows(r.compensation)}
-            rowKey={(x) => x.key}
-            className="[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!"
-          />
+          <div className="flex min-w-0 flex-col gap-[2mm]">
+            <ReportTable
+              caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
+              columns={splitColumns}
+              rows={splitRows(r.compensation)}
+              rowKey={(x) => x.key}
+              className="[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!"
+            />
+            {totalInColumn ? totalRow : null}
+          </div>
           <section aria-label="Underlag för bokföringen" className="flex flex-col gap-[2mm]">
             {basisFacts}
           </section>
@@ -456,13 +481,7 @@ export function StoreReportDocument({
           rowKey={(s, i) => `${s.kind}-${i}`}
         />
       )}
-      {total && showTotal ? (
-        <div className="flex items-baseline justify-between gap-[4mm] border-t border-line-strong pt-[2mm] text-[12px] leading-[16px]">
-          <span className="font-medium text-fg">{total.label}</span>
-          <span className="text-muted">{total.calculation}</span>
-          <span className="tnum font-mono font-medium text-fg">{kronor(total.amountOre)}</span>
-        </div>
-      ) : null}
+      {totalInColumn ? null : totalRow}
       <ReportNote>
         {split
           ? `${noVmb ? "Vinst = försäljning − inköp − kortavgifter." : "Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter."} ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}`

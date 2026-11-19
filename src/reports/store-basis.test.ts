@@ -264,15 +264,22 @@ describe("vad försäljningssiffran är", () => {
   const comp = (splits: number) =>
     ({ splits: Array.from({ length: splits }, () => ({})) }) as never;
 
-  it("momssats 0 %: siffran är det kunderna betalade, inklusive moms", () => {
-    for (const splits of [0, 1]) {
-      const r = { sales: sales(0), compensation: comp(splits) };
-      expect(salesNote(r, "Sega gubben")).toBe(
-        "Försäljningen är kundernas köp i automater som stod i Sega gubben köpdagen, inklusive moms.",
-      );
-      expect(salesVatLabel(r)).toBe("Inkl. moms");
-      expect(salesBasis(r)).toEqual({ inclVat: true, splitInclVat: false });
-    }
+  it("vinstdelning och momssats 0 %: det kunderna betalade, inklusive moms", () => {
+    const r = { sales: sales(0), compensation: comp(1) };
+    expect(salesNote(r, "Sega gubben")).toBe(
+      "Försäljningen är kundernas köp i automater som stod i Sega gubben köpdagen, inklusive moms.",
+    );
+    expect(salesVatLabel(r)).toBe("Inkl. moms");
+    expect(salesBasis(r)).toEqual({ kpi: "incl", splitInclVat: false });
+  });
+
+  it("provision eller hyra och momssats 0 %: det kunderna betalade, inget påstående om moms", () => {
+    const r = { sales: sales(0), compensation: comp(0) };
+    expect(salesNote(r, "Sega gubben")).toBe(
+      "Försäljningen är kundernas köp i automater som stod i Sega gubben köpdagen.",
+    );
+    expect(salesVatLabel(r)).toBeNull();
+    expect(salesBasis(r)).toEqual({ kpi: null, splitInclVat: false });
   });
 
   it("med momssats: nyckeltalet är exklusive moms, vinstdelningen räknar inklusive moms", () => {
@@ -285,7 +292,7 @@ describe("vad försäljningssiffran är", () => {
     expect(salesNote(split, "Sega gubben")).toBe(
       "Försäljningen överst är kundernas köp i automater som stod i Sega gubben köpdagen, exklusive moms. I uträkningen räknas försäljningen inklusive moms.",
     );
-    expect(salesBasis(split)).toEqual({ inclVat: false, splitInclVat: true });
+    expect(salesBasis(split)).toEqual({ kpi: "excl", splitInclVat: true });
   });
 
   it("påstår aldrig att ingen moms tas ut", () => {

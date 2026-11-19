@@ -51,6 +51,7 @@ export {
   salesNote,
   salesVatLabel,
   suggestedVatNumber,
+  totalLabel,
   vatRows,
   vatSentences,
   vmbStatement,

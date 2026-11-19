@@ -132,6 +132,13 @@ export function portalUrlFor(reportUrl: string): string {
   }
 }
 
+/** Raden under nyckeltalet Försäljning; utelämnas när rapporten inte säger något om moms. */
+function salesKpiNote(r: StoreSnapshot["report"], rev2: boolean): { note?: string } {
+  if (!rev2) return { note: r.sales.vatOre === 0 ? "Ingen moms" : "Exkl. moms" };
+  const label = salesVatLabel(r);
+  return label ? { note: label } : {};
+}
+
 function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
   const r = s.report;
   // Samma val som PDF:en: utan "Visa detaljer" står beloppet i rubriken, och raderna om
@@ -146,11 +153,7 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
       unit: "kr",
       change: change(r.comparison.revenueChangeBp),
       // Vad siffran är, aldrig att ingen moms tas ut (en äldre rapport står som den skrevs).
-      note: isRev2(basisData)
-        ? salesVatLabel(r)
-        : r.sales.vatOre === 0
-          ? "Ingen moms"
-          : "Exkl. moms",
+      ...salesKpiNote(r, isRev2(basisData)),
     },
     {
       label: "Sålda pack",

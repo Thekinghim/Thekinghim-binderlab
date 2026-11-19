@@ -9,6 +9,7 @@ import {
   payerLines,
   salesNote,
   splitsOf,
+  totalLabel,
   vatRows,
   vatSentences,
   type CompensationStep,
@@ -148,6 +149,7 @@ export function CompensationSection({
 }) {
   const c = report.compensation;
   const steps = visibleSteps(c.steps);
+  const total = totalText(report, "Totalt");
   if (hasAgreement && splitsOf(c).length > 0) return <SplitSection report={report} />;
   // Hyran nämns bara när avtalet har hyra (de flesta har ingen).
   const rent = c.rentOre !== 0 || c.rentParts.length > 0;
@@ -193,7 +195,7 @@ export function CompensationSection({
             </li>
           ))}
           <li className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-6 py-4 md:grid-cols-[10rem_minmax(0,1fr)_auto]">
-            <span className="label text-fg">Totalt</span>
+            <span className="label text-fg">{total}</span>
             <span className="hidden text-sm text-muted md:block">
               Provision {krExact(c.commissionOre)}
               {rent ? ` + hyra ${krExact(c.rentOre)}` : null}
@@ -266,7 +268,7 @@ function SplitSection({ report }: { report: StoreReport }) {
           {c.pending ? null : (
             <tr className="h-12">
               <th scope="row" className="text-left font-medium text-fg">
-                Er andel
+                {totalText(report, "Er andel")}
               </th>
               <td className="tnum pl-3 text-right text-xl font-medium whitespace-nowrap text-fg">
                 {krExact(c.totalOre)}
@@ -278,6 +280,15 @@ function SplitSection({ report }: { report: StoreReport }) {
       <EvidenceDetails evidence={c.evidence} summary="Så räknas er andel" />
     </section>
   );
+}
+
+/**
+ * Rubriken på raden som avslutar uträkningen: som i PDF:en för en sparad rapport med
+ * underlaget ("Er ersättning totalt, exklusive moms"), annars som förut.
+ */
+function totalText(report: StoreReport, fallback: string): string {
+  const basis = asStoreBasis(report.basis);
+  return isRev2(basis) ? totalLabel(basis) : fallback;
 }
 
 /** Etiketten utan radbrytning inne i "v. 44 (1 nov.)". */
