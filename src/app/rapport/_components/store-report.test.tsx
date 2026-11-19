@@ -399,6 +399,43 @@ describe("försäljningen och momsen säger inte emot varandra", () => {
   });
 });
 
+describe("redan betalt", () => {
+  // 518,84 kr är betalt (ersättningen exklusive moms); kvar är momsen, 129,71 kr.
+  const PAID: StoreBasis = { ...BASIS, payments: [{ paidOn: "2026-11-05", amountOre: 51_884 }] };
+  const snap = snapshot(false, PAID);
+  const html = renderToStaticMarkup(<StoreReportDocument snapshot={snap} />);
+
+  it("fakturablocket visar Redan betalt och Kvar att betala, på sidan och i mejlet", () => {
+    const email = emailFor(snap);
+    for (const body of [visibleText(html), email.html, email.text]) {
+      const b = body.replace(/\u00a0|\u202f/g, " ");
+      for (const text of [
+        "Att fakturera",
+        "648,55 kr",
+        "Redan betalt 5 nov. 2026",
+        "518,84 kr",
+        "Kvar att betala",
+        "129,71 kr",
+      ])
+        expect(b, text).toContain(text);
+    }
+    expect(email.text.replace(/\u00a0|\u202f/g, " ")).toContain(
+      "Redan betalt 5 nov. 2026: 518,84 kr",
+    );
+    expect(email.text.replace(/\u00a0|\u202f/g, " ")).toContain("Kvar att betala: 129,71 kr");
+    expect(html.match(/data-page=/g)?.length ?? 0).toBe(PAGES_SHORT);
+  });
+
+  it("inget betalt: blocket som förut", () => {
+    const text = visibleText(
+      renderToStaticMarkup(<StoreReportDocument snapshot={snapshot(false, BASIS)} />),
+    );
+    expect(text).toContain("Att fakturera");
+    expect(text).not.toContain("Redan betalt");
+    expect(text).not.toContain("Kvar att betala");
+  });
+});
+
 describe("avtalets form", () => {
   const ORAL =
     "Muntligt avtal mellan Binderlab Sverige AB och Nordstan: provision 12 % på försäljningen exkl. moms och hyra 500 kr per månad.";

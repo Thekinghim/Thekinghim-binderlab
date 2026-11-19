@@ -16,7 +16,7 @@
 import { applyBp, type IsoDate, type Period } from "@/domain";
 
 import type { StoreReport } from "./store-report";
-import { dateText, krText } from "./text";
+import { dateText, krText, periodText } from "./text";
 
 /** Momsen i butiksrapporten (Inställningar → Företaget). */
 export type ReportVatMode = "added" | "none";
@@ -57,6 +57,13 @@ export interface BasisContract {
  */
 export const BASIS_REV = 2;
 
+/** En utbetalning till butiken som redan är gjord (en betald avräkning). */
+export interface BasisPayment {
+  /** Dagen avräkningen betalades. */
+  readonly paidOn: IsoDate;
+  readonly amountOre: number;
+}
+
 /** Avtalets form, butikens val (Butiker → Kontakt och rapport). */
 export type AgreementForm = "written" | "oral";
 
@@ -72,6 +79,11 @@ export interface StoreBasis {
    * valt): `contract` gäller, om det finns. Saknas i utgåva 1.
    */
   readonly agreementForm?: AgreementForm | null;
+  /**
+   * Betalda avräkningar till butiken för rapportens månader, lästa när rapporten räknades
+   * (store_settlements; rapporten ändrar dem aldrig). Tom eller saknas = inget är betalt.
+   */
+  readonly payments?: readonly BasisPayment[];
   /** Se `BASIS_REV`. Saknas = utgåva 1. */
   readonly rev?: number;
   readonly payer: BasisPayer;
@@ -208,9 +220,12 @@ function ratePct(bp: number): string {
 }
 
 export interface BasisVatRow {
-  readonly key: "amount" | "vat" | "total";
+  /** "amount", "vat", "total", "paid-ÅÅÅÅ-MM-DD" eller "left". */
+  readonly key: string;
   readonly label: string;
   readonly amountOre: number;
+  /** Summarad (streck över, halvfet): "Att fakturera" och "Kvar att betala". */
+  readonly strong?: boolean;
 }
 
 /**
@@ -224,8 +239,57 @@ export function vatRows(basis: StoreBasis, compensationOre: number): BasisVatRow
   return [
     { key: "amount", label: "Ersättning exkl. moms", amountOre: compensationOre },
     { key: "vat", label: `Moms ${pct} %`, amountOre: vatOre },
-    { key: "total", label: "Att fakturera", amountOre: compensationOre + vatOre },
+    { key: "total", label: "Att fakturera", amountOre: compensationOre + vatOre, strong: true },
   ];
+}
+
+/** Utbetalningarna per dag (flera avräkningar betalda samma dag blir en rad), äldst först. */
+function paymentsByDay(basis: StoreBasis): BasisPayment[] {
+  const byDay = new Map<IsoDate, number>();
+  for (const p of basis.payments ?? []) {
+    if (!(p.amountOre > 0) || typeof p.paidOn !== "string") continue;
+    byDay.set(p.paidOn, (byDay.get(p.paidOn) ?? 0) + p.amountOre);
+  }
+  return [...byDay.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([paidOn, amountOre]) => ({ paidOn, amountOre }));
+}
+
+/**
+ * Fakturablocket: ersättningen, momsen och beloppet att fakturera (`vatRows`), och när en
+ * utbetalning redan är gjord också "Redan betalt {datum}" och "Kvar att betala" (oftast
+ * momsen: butiken fick ersättningen exklusive moms innan fakturan fanns).
+ *
+ * Det betalda visas bara när det går ihop: summan av utbetalningarna är högst beloppet att
+ * betala. Är mer betalt (avräkningen gäller en hel månad, rapporten en del av den) visas
+ * blocket utan betalningarna, som förut, hellre än ett negativt "Kvar att betala".
+ * Utan momsrad ("Visa ingen momsrad") börjar blocket med "Er ersättning".
+ */
+export function invoiceRows(basis: StoreBasis, compensationOre: number): BasisVatRow[] {
+  const base = vatRows(basis, compensationOre);
+  if (!isRev2(basis) || compensationOre <= 0) return base;
+  const dueOre = base.length > 0 ? base[base.length - 1]!.amountOre : compensationOre;
+  const paid = paymentsByDay(basis);
+  const paidOre = paid.reduce((n, p) => n + p.amountOre, 0);
+  if (paid.length === 0 || paidOre > dueOre) return base;
+  const head: BasisVatRow[] =
+    base.length > 0
+      ? base
+      : [{ key: "amount", label: "Er ersättning", amountOre: compensationOre, strong: true }];
+  return [
+    ...head,
+    ...paid.map((p) => ({
+      key: `paid-${p.paidOn}`,
+      label: `Redan betalt ${periodText({ start: p.paidOn, end: p.paidOn })}`,
+      amountOre: p.amountOre,
+    })),
+    { key: "left", label: "Kvar att betala", amountOre: dueOre - paidOre, strong: true },
+  ];
+}
+
+/** Blockets rubrik: "Er faktura" med momsrad, annars "Betalning". */
+export function invoiceTitle(basis: StoreBasis): string {
+  return basis.vatMode === "added" ? "Er faktura" : "Betalning";
 }
 
 /**
@@ -339,7 +403,9 @@ export function basisText(
     `Ersättningen betalas av: ${payerLines(basis).join(", ")}`,
     `Mottagare: ${storeName}`,
     ...(contract ? [contract] : []),
-    ...vatRows(basis, compensationOre).map((r) => `${r.label}: ${krText(r.amountOre, "always")}`),
+    ...invoiceRows(basis, compensationOre).map(
+      (r) => `${r.label}: ${krText(r.amountOre, "always")}`,
+    ),
     ...vatSentences(basis, compensationOre),
   ];
 }

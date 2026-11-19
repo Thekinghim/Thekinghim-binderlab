@@ -5,12 +5,13 @@ import { formatInt } from "@/lib/format";
 import {
   agreementLine,
   asStoreBasis,
+  invoiceRows,
+  invoiceTitle,
   isRev2,
   payerLines,
   salesNote,
   splitsOf,
   totalLabel,
-  vatRows,
   vatSentences,
   type CompensationStep,
   type StoreReport,
@@ -310,7 +311,7 @@ export function BasisSection({ report }: { report: StoreReport }) {
   const basis = asStoreBasis(report.basis);
   if (!basis) return null;
   const total = report.compensation.totalOre;
-  const rows = vatRows(basis, total);
+  const rows = invoiceRows(basis, total);
   const agreement = agreementLine(basis, report.store.name, report.compensation);
   return (
     <section className="flex flex-col gap-8 border-t border-line py-16" aria-labelledby="underlag">
@@ -334,13 +335,13 @@ export function BasisSection({ report }: { report: StoreReport }) {
         </div>
         {rows.length > 0 ? (
           <div className="flex min-w-0 flex-col gap-2">
-            <dt className="label text-subtle">Er faktura</dt>
+            <dt className="label text-subtle">{invoiceTitle(basis)}</dt>
             <dd className="flex flex-col">
               {rows.map((row) => (
                 <span
                   key={row.key}
                   className={
-                    row.key === "total"
+                    row.strong
                       ? "flex items-baseline justify-between gap-4 border-t border-line pt-1 font-medium text-fg"
                       : "flex items-baseline justify-between gap-4 pb-1 text-sm text-muted"
                   }

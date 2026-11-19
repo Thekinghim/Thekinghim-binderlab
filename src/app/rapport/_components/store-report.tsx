@@ -40,6 +40,8 @@ import type { StoreSnapshot } from "@/server/reports/snapshot";
 import {
   agreementLine,
   asStoreBasis,
+  invoiceRows,
+  invoiceTitle,
   isRev2,
   isWholeMonth,
   periodText,
@@ -48,7 +50,6 @@ import {
   splitsOf,
   storeReportView,
   totalLabel,
-  vatRows,
   vatSentences,
 } from "@/reports";
 import { periodDays } from "@/domain";
@@ -336,7 +337,7 @@ export function StoreReportDocument({
   // och momsen. Sparat i rapporten när den räknades; en äldre rapport utan uppgifterna
   // visas som förut, utan blocket.
   const basisData = asStoreBasis(r.basis);
-  const vat = basisData ? vatRows(basisData, r.compensation.totalOre) : [];
+  const vat = basisData ? invoiceRows(basisData, r.compensation.totalOre) : [];
   const basisFacts = basisData ? (
     <>
       <ReportFact label="Ersättningen betalas av">
@@ -360,13 +361,13 @@ export function StoreReportDocument({
         <p className="font-medium">{snapshot.store.name}</p>
       </ReportFact>
       {vat.length > 0 ? (
-        <ReportFact label="Er faktura">
+        <ReportFact label={invoiceTitle(basisData)}>
           <dl className="flex flex-col">
             {vat.map((row) => (
               <div
                 key={row.key}
                 className={
-                  row.key === "total"
+                  row.strong
                     ? "flex items-baseline justify-between gap-[3mm] border-t border-line font-medium"
                     : "flex items-baseline justify-between gap-[3mm] text-muted"
                 }
@@ -406,9 +407,12 @@ export function StoreReportDocument({
       >
         <div
           className={
-            vat.length > 0
-              ? "grid grid-cols-[5fr_3fr_4fr] items-start gap-[6mm]"
-              : "grid grid-cols-[5fr_7fr] items-start gap-[6mm]"
+            vat.length > 3
+              ? // Med "Redan betalt" och "Kvar att betala": bredare spalt för beloppen.
+                "grid grid-cols-[4fr_3fr_5fr] items-start gap-[6mm]"
+              : vat.length > 0
+                ? "grid grid-cols-[5fr_3fr_4fr] items-start gap-[6mm]"
+                : "grid grid-cols-[5fr_7fr] items-start gap-[6mm]"
           }
         >
           {basisFacts}

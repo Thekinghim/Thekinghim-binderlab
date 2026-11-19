@@ -315,6 +315,24 @@ export async function queryStoreBasis(
   ) as Array<{ form: string | null }>;
   const agreementForm: AgreementForm | null =
     storeRow?.form === "oral" || storeRow?.form === "written" ? storeRow.form : null;
+  // Betalda avräkningar för rapportens månader (bara läsning: avräkningarna ändras aldrig
+  // härifrån). Beloppet som betalades, när det sparas skilt från avräkningens belopp.
+  const paidRows = Array.from(
+    await tx.execute(
+      sql`select ss.paid_on::text as paid_on,
+                 coalesce((to_jsonb(ss) ->> 'paid_amount_ore')::bigint, ss.amount_ore) as amount_ore
+            from public.store_settlements ss
+           where ss.organization_id = ${orgId}::uuid
+             and ss.store_id = ${storeId}::uuid
+             and ss.paid_on is not null
+             and ss.month between ${monthStart(period.start.slice(0, 7) as IsoMonth)}::date
+                              and ${period.end}::date
+           order by ss.paid_on, ss.month`,
+    ),
+  ) as Array<{ paid_on: string; amount_ore: string | number }>;
+  const payments = paidRows
+    .map((r) => ({ paidOn: r.paid_on as IsoDate, amountOre: Number(r.amount_ore) }))
+    .filter((p) => Number.isSafeInteger(p.amountOre) && p.amountOre > 0);
   const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
   const legalName = clean(company.companyName);
   return {
@@ -348,6 +366,7 @@ export async function queryStoreBasis(
     vatMode: settings.reportVatMode,
     vatRateBp: STORE_VAT_RATE_BP,
     vmb: settings.reportVmb,
+    payments,
   };
 }
 

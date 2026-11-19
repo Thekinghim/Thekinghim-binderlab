@@ -16,6 +16,8 @@ import {
   basisText,
   contractForPeriod,
   contractLine,
+  invoiceRows,
+  invoiceTitle,
   isRev2,
   normalizeVatNumber,
   payerLines,
@@ -171,7 +173,7 @@ describe("texterna i rapporten", () => {
     expect(vatRows(BASIS, 749_300)).toEqual([
       { key: "amount", label: "Ersättning exkl. moms", amountOre: 749_300 },
       { key: "vat", label: "Moms 25 %", amountOre: 187_325 },
-      { key: "total", label: "Att fakturera", amountOre: 936_625 },
+      { key: "total", label: "Att fakturera", amountOre: 936_625, strong: true },
     ]);
     // Öresavrundning: halva ören uppåt.
     expect(vatRows(BASIS, 1_234_567).map((r) => r.amountOre)).toEqual([
@@ -260,6 +262,85 @@ describe("Vi säljer med vinstmarginalbeskattning (VMB)", () => {
     // Utan valet tas ingenting bort, inte ens den fasta texten.
     expect(withoutVmbStatement(STATEMENT, BASIS)).toBe(STATEMENT);
     expect(withoutVmbStatement(STATEMENT, null)).toBe(STATEMENT);
+  });
+});
+
+describe("redan betalt", () => {
+  const rev2: StoreBasis = { ...BASIS, rev: 2 };
+  const paid = (payments: StoreBasis["payments"]): StoreBasis => ({ ...rev2, payments });
+
+  it("butiken har fått ersättningen exklusive moms: kvar att betala är momsen", () => {
+    const b = paid([{ paidOn: "2026-11-05", amountOre: 749_300 }]);
+    expect(invoiceRows(b, 749_300)).toEqual([
+      { key: "amount", label: "Ersättning exkl. moms", amountOre: 749_300 },
+      { key: "vat", label: "Moms 25 %", amountOre: 187_325 },
+      { key: "total", label: "Att fakturera", amountOre: 936_625, strong: true },
+      { key: "paid-2026-11-05", label: `Redan betalt 5 nov. 2026`, amountOre: 749_300 },
+      { key: "left", label: "Kvar att betala", amountOre: 187_325, strong: true },
+    ]);
+    expect(invoiceTitle(b)).toBe("Er faktura");
+    const text = basisText(b, "Sega gubben", 749_300);
+    expect(text).toContain(`Redan betalt 5 nov. 2026: 7${NBSP}493,00${NBSP}kr`);
+    expect(text).toContain(`Kvar att betala: 1${NBSP}873,25${NBSP}kr`);
+  });
+
+  it("inget betalt: blocket som förut", () => {
+    for (const b of [rev2, paid([]), paid([{ paidOn: "2026-11-05", amountOre: 0 }])])
+      expect(invoiceRows(b, 749_300)).toEqual(vatRows(b, 749_300));
+  });
+
+  it("två avräkningar (två månader): en rad per betaldag, samma dag läggs ihop", () => {
+    const rows = invoiceRows(
+      paid([
+        { paidOn: "2026-12-02", amountOre: 300_000 },
+        { paidOn: "2026-11-05", amountOre: 200_000 },
+        { paidOn: "2026-11-05", amountOre: 100_000 },
+      ]),
+      749_300,
+    );
+    expect(rows.slice(3).map((r) => [r.key, r.amountOre])).toEqual([
+      ["paid-2026-11-05", 300_000],
+      ["paid-2026-12-02", 300_000],
+      ["left", 936_625 - 600_000],
+    ]);
+  });
+
+  it("allt betalt: kvar att betala 0 kr", () => {
+    const rows = invoiceRows(paid([{ paidOn: "2026-11-05", amountOre: 936_625 }]), 749_300);
+    expect(rows.at(-1)).toEqual({
+      key: "left",
+      label: "Kvar att betala",
+      amountOre: 0,
+      strong: true,
+    });
+  });
+
+  it("mer betalt än rapportens belopp (avräkningen gäller mer än rapporten): visas inte", () => {
+    const b = paid([{ paidOn: "2026-11-05", amountOre: 936_626 }]);
+    expect(invoiceRows(b, 749_300)).toEqual(vatRows(b, 749_300));
+  });
+
+  it("utan momsrad: Er ersättning, redan betalt och kvar att betala", () => {
+    const b: StoreBasis = {
+      ...paid([{ paidOn: "2026-11-05", amountOre: 700_000 }]),
+      vatMode: "none",
+    };
+    expect(invoiceRows(b, 749_300).map((r) => [r.label, r.amountOre])).toEqual([
+      ["Er ersättning", 749_300],
+      ["Redan betalt 5 nov. 2026", 700_000],
+      ["Kvar att betala", 49_300],
+    ]);
+    expect(invoiceTitle(b)).toBe("Betalning");
+    // Utan betalning: inget block alls, som förut.
+    expect(invoiceRows({ ...b, payments: [] }, 749_300)).toEqual([]);
+  });
+
+  it("ingen ersättning eller en rapport från före ändringen: inget om betalningar", () => {
+    const b = paid([{ paidOn: "2026-11-05", amountOre: 100 }]);
+    expect(invoiceRows(b, 0)).toEqual([]);
+    const { rev: _rev, ...old } = b;
+    void _rev;
+    expect(invoiceRows(old, 749_300)).toEqual(vatRows(old, 749_300));
   });
 });
 

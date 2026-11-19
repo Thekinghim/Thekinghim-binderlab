@@ -25,6 +25,7 @@ import { formatInt, formatKronor, formatMonth, MINUS } from "@/lib/format";
 import {
   agreementLine,
   asStoreBasis,
+  invoiceRows,
   isRev2,
   isWholeMonth,
   payerLines,
@@ -32,7 +33,6 @@ import {
   salesVatLabel,
   sie4Verifications,
   storeReportView,
-  vatRows,
   vatSentences,
 } from "@/reports";
 import type { Period as DatePeriod } from "@/lib/period";
@@ -185,10 +185,10 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
     ? {
         payer: payerLines(basisData),
         recipient: s.store.name,
-        amounts: vatRows(basisData, r.compensation.totalOre).map((row) => ({
+        amounts: invoiceRows(basisData, r.compensation.totalOre).map((row) => ({
           label: row.label,
           amount: kr(row.amountOre),
-          ...(row.key === "total" ? { total: true } : {}),
+          ...(row.strong ? { total: true } : {}),
         })),
         notes: [
           ...(agreement ? [agreement] : []),
