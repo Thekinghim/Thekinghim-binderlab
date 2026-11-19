@@ -281,6 +281,8 @@ export const storeAgreements = pgTable("store_agreements", {
   vmbBeforeSplit: boolean("vmb_before_split").notNull().default(false),
   rentProration: rentProration("rent_proration").notNull().default("daily"),
   note: text("note"),
+  /** Villkoren ändrades fast kontraktet var signerat (20261220100300). Null = aldrig. */
+  changedAfterSigningAt: ts("changed_after_signing_at"),
   ...stamps(),
 });
 

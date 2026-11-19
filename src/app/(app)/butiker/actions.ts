@@ -122,7 +122,8 @@ export async function createAgreement(input: {
 
 /**
  * Rättar ett avtals provision, hyra, anteckning och sista dag (utelämnad = oförändrad,
- * tom = tills vidare). En rättning som räknar om passerade dagar kräver `confirmHistory`.
+ * tom = tills vidare). En rättning som räknar om passerade dagar kräver `confirmHistory`,
+ * och ändrade villkor i ett signerat kontrakt kräver `confirmSigned`.
  */
 export async function updateAgreement(input: {
   agreementId: string;
@@ -133,6 +134,8 @@ export async function updateAgreement(input: {
   note?: string;
   vmbBeforeSplit?: boolean;
   confirmHistory?: boolean;
+  /** Bekräftat att villkoren i ett signerat kontrakt ändras. */
+  confirmSigned?: boolean;
 }): Promise<AgreementResult<{ storeId: string }>> {
   return run((v) => updateAgreementFor(v, input));
 }

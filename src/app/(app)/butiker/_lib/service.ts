@@ -34,6 +34,8 @@ import type { AgreementResult, RecipientView, StoreDetail } from "./types";
 import {
   agreementChangeImpact,
   archiveStoreSchema,
+  signedTermsWarning,
+  termsChanged,
   checkAgreementEnd,
   firstIssue,
   newAgreementImpact,
@@ -524,8 +526,33 @@ export async function createAgreementFor(
 }
 
 /**
+ * Dagen (i organisationens tidszon) då kontraktet som avtalet hör till signerades, eller
+ * null (inget kontrakt, eller inte signerat).
+ */
+async function contractSignedDay(
+  tx: Tx,
+  orgId: string,
+  contractId: string | null,
+  timeZone: string,
+): Promise<IsoDate | null> {
+  if (!contractId) return null;
+  const rows = await query<{ day: string | null }>(
+    tx,
+    sql`select ((c.signed_at at time zone ${timeZone})::date)::text as day
+        from public.contracts c
+        where c.organization_id = ${orgId}::uuid and c.id = ${contractId}::uuid
+          and c.signed_at is not null`,
+  );
+  return (rows[0]?.day?.slice(0, 10) as IsoDate | undefined) ?? null;
+}
+
+/**
  * Rättar ett avtal: provision, hyra, anteckning och sista dag. Startdagen ändras inte
  * (ett nytt villkor från ett datum är ett nytt avtal). Stängda månader skyddas av databasen.
+ *
+ * Hör avtalet till ett signerat kontrakt och villkoren ändras krävs `confirmSigned`: svaret
+ * har annars `needsConfirm` med varningen. Ändringen märks på raden
+ * (changed_after_signing_at) och loggas i audit_log.
  */
 export async function updateAgreementFor(
   viewer: Viewer,
@@ -551,6 +578,7 @@ export async function updateAgreementFor(
             monthlyRentOre: s.storeAgreements.monthlyRentOre,
             commissionBase: s.storeAgreements.commissionBase,
             vmbBeforeSplit: s.storeAgreements.vmbBeforeSplit,
+            contractId: s.storeAgreements.contractId,
           })
           .from(s.storeAgreements)
           .where(
@@ -586,12 +614,33 @@ export async function updateAgreementFor(
           },
           ref,
         );
+        // Villkor i ett signerat kontrakt: butiken har skrivit under de gamla. Ändras de
+        // ändå ska ägaren ha sett varningen, och ändringen märks på raden (och i loggen).
+        const signedDay = termsChanged(
+          {
+            commissionBp: a.commissionBp ?? null,
+            monthlyRentOre: a.monthlyRentOre === null ? null : Number(a.monthlyRentOre),
+            commissionBase: a.commissionBase,
+            vmbBeforeSplit: a.vmbBeforeSplit,
+          },
+          {
+            commissionBp: v.commissionBp,
+            monthlyRentOre: v.monthlyRentOre,
+            commissionBase: v.commissionBase,
+            vmbBeforeSplit: v.vmbBeforeSplit,
+          },
+        )
+          ? await contractSignedDay(tx, orgId, a.contractId, viewer.organization.timezone)
+          : null;
+        const warnings: string[] = [];
+        if (signedDay && !v.confirmSigned) {
+          warnings.push(signedTermsWarning(dayText(signedDay, ref)));
+        }
         if (impact && !v.confirmHistory) {
-          return {
-            ok: false,
-            needsConfirm: true,
-            error: await historyMessage(tx, orgId, a.storeId, impact, ref),
-          };
+          warnings.push(await historyMessage(tx, orgId, a.storeId, impact, ref));
+        }
+        if (warnings.length > 0) {
+          return { ok: false, needsConfirm: true, error: warnings.join(" ") };
         }
         await tx
           .update(s.storeAgreements)
@@ -601,6 +650,7 @@ export async function updateAgreementFor(
             monthlyRentOre: v.monthlyRentOre,
             commissionBase: v.commissionBase,
             ...(v.vmbBeforeSplit !== undefined ? { vmbBeforeSplit: v.vmbBeforeSplit } : {}),
+            ...(signedDay ? { changedAfterSigningAt: new Date() } : {}),
             note: v.note,
           })
           .where(
