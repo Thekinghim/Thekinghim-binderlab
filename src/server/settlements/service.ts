@@ -37,6 +37,7 @@ import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { pgErrorOf } from "@/server/errors";
 import { krText } from "@/reports";
 import { storesPlacedIn } from "@/server/reports/sources";
+import { closeMonthIfDoneTx, reopenAfterUndoTx, type UndoOutcome } from "@/server/periods/service";
 
 import {
   computeSettlementsTx,
@@ -589,6 +590,9 @@ function requireId(id: string): string {
  * låses som det är NU: går avräkningen inte att räkna (t.ex. saknat inköpspris) kan den
  * inte betalas, och har beloppet ändrats sedan ägaren såg det (`expectedOre`) får hen
  * se det nya först. Så betalas aldrig ett gammalt belopp.
+ *
+ * Är det månadens sista avräkning stängs månaden i samma transaktion (`monthClosed`):
+ * därefter stoppar databasen ändringar som skulle räkna om den (BL004).
  */
 export async function markSettlementPaidFor(
   viewer: Viewer,
@@ -596,10 +600,11 @@ export async function markSettlementPaidFor(
   paidOn: string,
   expectedOre: number | null = null,
   now: Date = new Date(),
-): Promise<{ storeName: string; amountOre: number }> {
+): Promise<{ storeName: string; amountOre: number; month: IsoMonth; monthClosed: boolean }> {
   const orgId = viewer.organization.id;
   await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
   const settlementId = requireId(id);
+  const today = businessToday(now, viewer.organization.timezone);
   if (!ISO_DATE.test(paidOn) || Number.isNaN(Date.parse(`${paidOn}T00:00:00Z`))) {
     throw new SettlementError("Välj ett datum.");
   }
@@ -664,7 +669,14 @@ export async function markSettlementPaidFor(
         .select({ name: s.stores.name })
         .from(s.stores)
         .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, paid.storeId)));
-      return { storeName: store?.name ?? "butiken", amountOre: paid.amountOre };
+      const month = row.month.slice(0, 7) as IsoMonth;
+      const monthClosed = await closeMonthIfDoneTx(tx, {
+        organizationId: orgId,
+        month,
+        trigger: "settlement_paid",
+        today,
+      });
+      return { storeName: store?.name ?? "butiken", amountOre: paid.amountOre, month, monthClosed };
     });
   } catch (error) {
     if (error instanceof SettlementError) throw error;
@@ -672,14 +684,20 @@ export async function markSettlementPaidFor(
   }
 }
 
-/** Ångrar "betald". */
-export async function undoSettlementPaidFor(viewer: Viewer, id: string): Promise<void> {
+/**
+ * Ångrar "betald". Stängdes månaden när den betalades öppnas den igen (bara ägaren kan
+ * öppna; för en admin ligger månaden kvar stängd och svaret säger det).
+ */
+export async function undoSettlementPaidFor(
+  viewer: Viewer,
+  id: string,
+): Promise<{ month: IsoMonth; period: UndoOutcome }> {
   const orgId = viewer.organization.id;
-  await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
+  const role = await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
   const settlementId = requireId(id);
   try {
-    const rows = await withUserDbFor(viewer.user, (tx) =>
-      tx
+    return await withUserDbFor(viewer.user, async (tx) => {
+      const rows = await tx
         .update(s.storeSettlements)
         .set({ paidOn: null })
         .where(
@@ -688,9 +706,18 @@ export async function undoSettlementPaidFor(viewer: Viewer, id: string): Promise
             eq(s.storeSettlements.id, settlementId),
           ),
         )
-        .returning({ id: s.storeSettlements.id }),
-    );
-    if (rows.length === 0) throw new SettlementError("Avräkningen finns inte.");
+        .returning({ id: s.storeSettlements.id, month: s.storeSettlements.month });
+      const row = rows[0];
+      if (!row) throw new SettlementError("Avräkningen finns inte.");
+      const month = row.month.slice(0, 7) as IsoMonth;
+      const period = await reopenAfterUndoTx(tx, {
+        organizationId: orgId,
+        month,
+        role,
+        reason: "Ångrade betald avräkning",
+      });
+      return { month, period };
+    });
   } catch (error) {
     if (error instanceof SettlementError) throw error;
     settlementDbError(error);

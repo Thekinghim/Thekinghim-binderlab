@@ -27,6 +27,8 @@ import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/
 import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage } from "@/server/errors";
 import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
+import { monthLong } from "@/server/periods/model";
+import { undoOutcomeText } from "@/server/periods/service";
 
 import { monthSchema } from "./_lib/schemas";
 
@@ -89,17 +91,29 @@ export async function setBokforingVmb(raw: { enabled: boolean }): Promise<Bokfor
   }
 }
 
+/**
+ * Markera som skickad (månaden stängs) eller ångra (månaden öppnas, om inget annat håller
+ * den stängd). `periodText` säger vad som hände med månaden, eller null.
+ */
 export async function setMonthSent(raw: {
   month: string;
   sent: boolean;
-}): Promise<BokforingResult> {
+}): Promise<BokforingResult<{ periodText: string | null }>> {
   try {
     const input = z.object({ month: monthSchema, sent: z.boolean() }).parse(raw);
     const { viewer, today } = await operator();
-    if (input.sent) await markMonthSentFor(viewer, input.month, today);
-    else await unmarkMonthSentFor(viewer, input.month);
+    let periodText: string | null = null;
+    if (input.sent) {
+      const sent = await markMonthSentFor(viewer, input.month, today);
+      if (sent.monthClosed) {
+        const name = monthLong(input.month);
+        periodText = `${name.charAt(0).toUpperCase()}${name.slice(1)} är stängd. Inget ändras där nu.`;
+      }
+    } else {
+      periodText = undoOutcomeText(await unmarkMonthSentFor(viewer, input.month), input.month);
+    }
     revalidateAppData();
-    return { ok: true, data: undefined };
+    return { ok: true, data: { periodText } };
   } catch (error) {
     return failure(error);
   }

@@ -123,6 +123,8 @@ export interface OrderDetail {
   } | null;
   /** Importerad till en redan stängd månad. */
   readonly lateInClosedPeriod: boolean;
+  /** Orderns månad är stängd nu: testköp kan inte ändras (saknas = öppen). */
+  readonly monthClosed?: boolean;
   readonly createdAt: string;
   /** Markerad som testköp: när (ISO) och av vem (namn, om det finns), annars null. */
   readonly testPurchase: { readonly at: string; readonly by: string | null } | null;

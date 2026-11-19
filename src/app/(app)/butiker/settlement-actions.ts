@@ -18,6 +18,8 @@ import {
   revalidateSettlementData,
 } from "@/server/data/core";
 import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
+import { monthLong } from "@/server/periods/model";
+import { undoOutcomeText } from "@/server/periods/service";
 import {
   ensureSettlementsFor,
   markSettlementPaidFor,
@@ -59,29 +61,51 @@ export async function markSettlementPaid(
   id: unknown,
   paidOn: unknown,
   expectedOre?: unknown,
-): Promise<SettlementActionResult<{ storeName: string; amountOre: number }>> {
+): Promise<
+  SettlementActionResult<{
+    storeName: string;
+    amountOre: number;
+    /** "Oktober 2026 är stängd." när betalningen stängde månaden, annars null. */
+    closedText: string | null;
+  }>
+> {
   try {
     const viewer = await operator();
-    const data = await markSettlementPaidFor(
+    const paid = await markSettlementPaidFor(
       viewer,
       idSchema.parse(id),
       dateSchema.parse(paidOn),
       expectedOre === undefined || expectedOre === null ? null : amountSchema.parse(expectedOre),
     );
     await revalidateSettlementData();
-    return { ok: true, data };
+    const name = monthLong(paid.month);
+    return {
+      ok: true,
+      data: {
+        storeName: paid.storeName,
+        amountOre: paid.amountOre,
+        closedText: paid.monthClosed
+          ? `${name.charAt(0).toUpperCase()}${name.slice(1)} är stängd. Inget ändras där nu.`
+          : null,
+      },
+    };
   } catch (error) {
     return failure(error);
   }
 }
 
-/** Ångra "betald". */
-export async function undoSettlementPaid(id: unknown): Promise<SettlementActionResult> {
+/**
+ * Ångra "betald". `periodText` säger vad som hände med månaden när den var stängd
+ * ("Oktober 2026 är öppen igen." eller "… är fortfarande stängd. Bara ägaren kan öppna den.").
+ */
+export async function undoSettlementPaid(
+  id: unknown,
+): Promise<SettlementActionResult<{ periodText: string | null }>> {
   try {
     const viewer = await operator();
-    await undoSettlementPaidFor(viewer, idSchema.parse(id));
+    const undo = await undoSettlementPaidFor(viewer, idSchema.parse(id));
     await revalidateSettlementData();
-    return { ok: true, data: undefined };
+    return { ok: true, data: { periodText: undoOutcomeText(undo.period, undo.month) } };
   } catch (error) {
     return failure(error);
   }

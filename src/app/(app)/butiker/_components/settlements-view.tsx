@@ -4,6 +4,8 @@ import type { CSSProperties } from "react";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatSek } from "@/lib/format";
 import type { Viewer } from "@/server/data/core/loaders";
+import { CLOSE_TRIGGER_TEXT } from "@/server/periods/model";
+import { loadPeriodOverviewFor } from "@/server/periods/service";
 import { payoutDueDate, STATE_LABEL } from "@/server/settlements/model";
 import { loadSettlementPageFor, type SettlementRow } from "@/server/settlements/service";
 
@@ -14,6 +16,7 @@ import {
   RecomputeButton,
   UndoPaidButton,
 } from "./settlement-actions";
+import { CloseMonthButton, ReopenMonthButton } from "../../_manad/period-controls";
 import { MoneyCount } from "./money-count";
 import { noAgreementLine, settlementIdleHeadline } from "../_lib/settlement-headline";
 
@@ -44,7 +47,12 @@ const dayLabel = (d: string) =>
  * knapp). Butiker utan avtal förra månaden (räknas som 0 %) varnas före "Skapa".
  */
 export async function SettlementsView({ viewer, today }: { viewer: Viewer; today: string }) {
-  const page = await loadSettlementPageFor(viewer);
+  const [page, periods] = await Promise.all([
+    loadSettlementPageFor(viewer),
+    loadPeriodOverviewFor(viewer),
+  ]);
+  const closedBy = new Map(periods.closed.map((c) => [c.month as string, c]));
+  const reopenedBy = new Map(periods.reopened.map((r) => [r.month as string, r]));
   // Obetalda har beloppet räknat nu. En som inte kan räknas (t.ex. saknat inköpspris)
   // räknas inte in i summan och kan inte betalas.
   const unpaid = page.rows.filter((r) => r.state === "unpaid" && !r.blocked);
@@ -133,7 +141,29 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
         ) : (
           [...byMonth.entries()].map(([month, rows]) => (
             <div key={month} className="flex flex-col gap-2" id={`avrakning-${month}`}>
-              <h2 className="label text-subtle">{monthLabel(month)}</h2>
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <h2 className="label text-subtle">{monthLabel(month)}</h2>
+                {closedBy.has(month) ? (
+                  <div className="flex flex-wrap items-center gap-3" data-month-closed={month}>
+                    <span className="text-sm text-muted">
+                      Stängd: {CLOSE_TRIGGER_TEXT[closedBy.get(month)!.trigger]}. Inget ändras här.
+                    </span>
+                    {periods.canReopen ? (
+                      <ReopenMonthButton month={month} monthLabel={monthLabel(month)} />
+                    ) : null}
+                  </div>
+                ) : reopenedBy.has(month) ? (
+                  <div className="flex flex-wrap items-center gap-3" data-month-reopened={month}>
+                    <span className="text-sm text-signal-fg">
+                      Öppnad igen
+                      {reopenedBy.get(month)!.reason ? `: ${reopenedBy.get(month)!.reason}` : ""}
+                    </span>
+                    {periods.canClose ? (
+                      <CloseMonthButton month={month} monthLabel={monthLabel(month)} />
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
               <ul className="flex flex-col border-t border-line">
                 {rows.map((r) => (
                   <li

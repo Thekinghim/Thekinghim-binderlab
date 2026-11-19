@@ -32,6 +32,7 @@ import {
 } from "@/server/data/core/queries";
 import { ECONOMY_ROLES, OPERATOR_ROLES, type DataScope } from "@/server/data/core/types";
 import { pgErrorOf } from "@/server/errors";
+import { closedMonthMessage } from "@/server/periods/model";
 import type { Tx } from "@/db/client";
 
 import { searchTerms, type OrderParams } from "./params";
@@ -354,6 +355,7 @@ export async function loadOrderDetailFor(
             }
           : null,
       lateInClosedPeriod: r.lateInClosedPeriod,
+      monthClosed: r.monthClosed,
       createdAt: r.createdAt,
       testPurchase: r.testPurchaseAt ? { at: r.testPurchaseAt, by: r.testPurchaseBy } : null,
     };
@@ -403,7 +405,10 @@ export async function setTestPurchaseFor(
     });
   } catch (error) {
     const pg = pgErrorOf(error);
-    if (pg && (pg.code === "22023" || pg.code === "BL004") && pg.message) {
+    if (pg && pg.code === "BL004" && pg.message) {
+      throw new TestPurchaseError(closedMonthMessage(pg.message));
+    }
+    if (pg && pg.code === "22023" && pg.message) {
       throw new TestPurchaseError(pg.message);
     }
     throw error;

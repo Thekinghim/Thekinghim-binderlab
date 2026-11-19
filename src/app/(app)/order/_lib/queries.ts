@@ -380,6 +380,8 @@ export interface RawOrderDetail {
   readonly importAt: string | null;
   readonly importRowNumber: number | null;
   readonly lateInClosedPeriod: boolean;
+  /** Orderns månad är stängd nu (testköp kan inte ändras). */
+  readonly monthClosed: boolean;
   readonly createdAt: string;
   /** Markerad som testköp (ISO), eller null. */
   readonly testPurchaseAt: string | null;
@@ -409,6 +411,10 @@ export async function queryOrderDetail(
                  and ir.order_id = o.id
                order by ir.row_number limit 1) as import_row_number,
              o.late_in_closed_period, o.created_at, o.test_purchase_at,
+             exists (select 1 from public.period_closes pc
+                      where pc.organization_id = o.organization_id
+                        and pc.reopened_at is null
+                        and pc.month = date_trunc('month', o.business_date)::date) as month_closed,
              (select p.display_name
                 from public.audit_log a
                 left join public.profiles p
@@ -462,6 +468,7 @@ export async function queryOrderDetail(
         ? null
         : toNumber(r.import_row_number),
     lateInClosedPeriod: Boolean(r.late_in_closed_period),
+    monthClosed: Boolean(r.month_closed),
     createdAt: toIso(r.created_at),
     testPurchaseAt: r.test_purchase_at ? toIso(r.test_purchase_at) : null,
     testPurchaseBy: str(r.test_purchase_by),

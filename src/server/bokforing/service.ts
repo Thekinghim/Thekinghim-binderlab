@@ -16,7 +16,7 @@ import { z } from "zod";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import type { MemberRole } from "@/db/schema";
-import { eachMonth, type IsoDate } from "@/domain";
+import { eachMonth, type IsoDate, type IsoMonth } from "@/domain";
 import type { FileStore } from "@/import/file-store";
 import { sha256Hex } from "@/import/hash";
 import { monthText } from "@/reports";
@@ -26,6 +26,7 @@ import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { querySettings } from "@/server/data/core/queries";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
+import { closeMonthIfDoneTx, reopenAfterUndoTx, type UndoOutcome } from "@/server/periods/service";
 
 import {
   bookMonths,
@@ -44,7 +45,7 @@ export type MonthStatus = "open" | "closed" | "sent";
 
 export const STATUS_LABEL: Record<MonthStatus, string> = {
   open: "öppen",
-  closed: "stängd",
+  closed: "inte skickad",
   sent: "skickad",
 };
 
@@ -438,12 +439,15 @@ export async function setBokforingVmbFor(viewer: Viewer, enabled: boolean): Prom
 // Skickad
 // ---------------------------------------------------------------------------
 
-/** Markerar en avslutad månad som skickad, med dagens siffror som ögonblicksbild. */
+/**
+ * Markerar en avslutad månad som skickad, med dagens siffror som ögonblicksbild. Månaden
+ * stängs i samma transaktion (`monthClosed`): det som bokhållaren fått ändras inte sedan.
+ */
 export async function markMonthSentFor(
   viewer: Viewer,
   month: string,
   today: IsoDate,
-): Promise<{ sentAt: string }> {
+): Promise<{ sentAt: string; monthClosed: boolean }> {
   assertMonth(month);
   if (month >= today.slice(0, 7)) {
     throw new BokforingError(`${capital(monthText(month))} är inte slut.`);
@@ -469,23 +473,40 @@ export async function markMonthSentFor(
                         then excluded.snapshot else bookkeeping_months.snapshot end
       returning sent_at::text as sent_at`);
     const row = Array.from(result)[0] as { sent_at: string };
-    return { sentAt: new Date(row.sent_at).toISOString() };
+    const monthClosed = await closeMonthIfDoneTx(tx, {
+      organizationId: orgId,
+      month: month as IsoMonth,
+      trigger: "bookkeeping_sent",
+      today,
+    });
+    return { sentAt: new Date(row.sent_at).toISOString(), monthClosed };
   });
 }
 
-/** Ångrar "skickad" (månaden blir stängd igen). */
-export async function unmarkMonthSentFor(viewer: Viewer, month: string): Promise<void> {
+/**
+ * Ångrar "skickad". Stängdes månaden när den skickades öppnas den igen, om inte betalda
+ * avräkningar håller den stängd (bara ägaren kan öppna; för admin ligger den kvar stängd).
+ */
+export async function unmarkMonthSentFor(viewer: Viewer, month: string): Promise<UndoOutcome> {
   assertMonth(month);
-  await asRole(viewer, OPERATOR_ROLES, async (tx) => {
+  const orgId = viewer.organization.id;
+  const role = await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
+  return withUserDbFor(viewer.user, async (tx) => {
     await tx
       .update(s.bookkeepingMonths)
       .set({ sentAt: null })
       .where(
         and(
-          eq(s.bookkeepingMonths.organizationId, viewer.organization.id),
+          eq(s.bookkeepingMonths.organizationId, orgId),
           eq(s.bookkeepingMonths.month, `${month}-01`),
         ),
       );
+    return reopenAfterUndoTx(tx, {
+      organizationId: orgId,
+      month: month as IsoMonth,
+      role,
+      reason: "Ångrade skickad bokföring",
+    });
   });
 }
 

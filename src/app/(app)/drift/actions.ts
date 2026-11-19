@@ -12,6 +12,7 @@
  * - undoRefills: Ångra efter Klar i Fyll på (egna, 30 minuter).
  */
 
+import { closedMonthMessage } from "@/server/periods/model";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { and, eq, isNull } from "drizzle-orm";
@@ -59,7 +60,8 @@ function pgMessage(error: unknown): string | null {
   };
   const code = e?.code ?? e?.cause?.code;
   const message = e?.cause?.message ?? e?.message;
-  if (code === "22023" || code === "BL004" || code === "BL020") return message ?? null;
+  if (code === "BL004") return message ? closedMonthMessage(message) : null;
+  if (code === "BL020" || code === "22023") return message ?? null;
   return null;
 }
 

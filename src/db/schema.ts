@@ -603,6 +603,8 @@ export const periodCloses = pgTable("period_closes", {
   closedBy: uuid("closed_by"),
   reopenedAt: ts("reopened_at"),
   reopenedBy: uuid("reopened_by"),
+  /** Varför månaden öppnades (20261220100000_manadsstangning_fran_appen.sql). */
+  reopenedReason: text("reopened_reason"),
   snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull().default({}),
   ...stamps(),
 });
@@ -663,6 +665,11 @@ export const organizationSettings = pgTable("organization_settings", {
   organizationId: orgId(),
   vatRateBp: integer("vat_rate_bp").notNull().default(0),
   cardFeeBp: integer("card_fee_bp").notNull().default(0),
+  /** Kortavgiften med startdatum (20261220100100_kortavgift_fran_datum.sql). Tom = en sats. */
+  cardFeeHistory: jsonb("card_fee_history")
+    .$type<{ from: string; bp: number }[]>()
+    .notNull()
+    .default([]),
   fiscalYearStartMonth: integer("fiscal_year_start_month").notNull().default(1),
   /** Företagsuppgifter i kontrakt (20261106050000_foretagsuppgifter.sql). null = tom rad. */
   companyName: text("company_name"),

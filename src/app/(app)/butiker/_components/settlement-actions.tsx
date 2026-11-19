@@ -60,11 +60,16 @@ export function MarkPaidButton({
           amountOre < 0
             ? `Klart! ${kr(-amountOre)} från ${storeName} är betald.`
             : `Klart! ${kr(amountOre)} till ${storeName} är betald.`,
+        meta: res.data.closedText ?? undefined,
         tone: "ok",
         action: {
           label: "Ångra",
           onClick: () => {
-            void undoSettlementPaid(id).then(() => router.refresh());
+            void undoSettlementPaid(id).then((undo) => {
+              router.refresh();
+              if (undo.ok && undo.data.periodText) toast({ title: undo.data.periodText });
+              if (!undo.ok) toast({ title: undo.error, tone: "critical" });
+            });
           },
         },
       });
@@ -134,6 +139,7 @@ export function UndoPaidButton({ id, storeName }: { id: string; storeName: strin
         start(async () => {
           const res = await undoSettlementPaid(id);
           if (!res.ok) toast({ title: res.error, tone: "critical" });
+          else if (res.data.periodText) toast({ title: res.data.periodText });
           router.refresh();
         })
       }

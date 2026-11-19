@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { SectionHeader } from "@/components/ui/section-header";
 import { requireRoute } from "@/server/data/core";
 
+import { ClosedMonthsBanner } from "../../_manad/closed-note";
 import { IncidentForm } from "../_components/incident-form";
 import { loadIncident } from "../_lib/load";
 import { utcToLocalInput } from "../_lib/model";
@@ -33,6 +34,7 @@ export default async function NewIncidentPage({
         title="Nytt ärende."
         aside="Välj automat och helst ordern."
       />
+      <ClosedMonthsBanner />
       <IncidentForm
         initial={{
           machineId,
