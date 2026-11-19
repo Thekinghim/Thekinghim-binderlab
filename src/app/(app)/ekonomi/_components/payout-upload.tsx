@@ -27,9 +27,12 @@ export function PayoutUpload({
   columns,
   today,
   shownPayoutIds,
+  cardFeeFrom,
 }: {
   columns: { payouts: string; lines: string };
   today: string;
+  /** Förvalt startdatum för en ändrad kortavgift (null = all försäljning). */
+  cardFeeFrom: string | null;
   /** Utbetalningarna som avstämningen visar just nu (där står kortavgiftens rad redan). */
   shownPayoutIds: readonly string[];
 }) {
@@ -216,6 +219,8 @@ export function PayoutUpload({
               payoutId={nayax.payoutId}
               statementBp={nayax.statementCardFeeBp}
               settingBp={nayax.settingCardFeeBp}
+              defaultFrom={cardFeeFrom}
+              today={today}
             />
           )}
         </div>
