@@ -10,7 +10,8 @@ import { headers } from "next/headers";
 
 import { getServerEnv } from "@/lib/env";
 import { nextCookieJar } from "@/server/auth/next-cookies";
-import { getMailer, mailerStatus } from "@/server/mail/report-mailer";
+import { MAIL_OFF_TEXT, mailCanSend } from "@/server/mail/can-send";
+import { getMailer, MailError, mailerStatus } from "@/server/mail/report-mailer";
 import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
 import { resolveAppBaseUrl } from "@/server/request-info";
 import { AuthorizationError, getActiveOrganization, requireUser } from "@/server/session";
@@ -80,8 +81,14 @@ export function reportSender(organizationName: string) {
   return { name: organizationName, address: "–", email: email.trim() };
 }
 
+/** Felet när någon försöker mejla en rapport utan e-postleverantör. */
+export const REPORT_MAIL_OFF = `${MAIL_OFF_TEXT}. Dela rapporten själv med Dela.`;
+
 /** Allt utskicket behöver i den här förfrågan. */
 export async function sendDeps(organizationName: string): Promise<SendDeps> {
+  // Utan e-postleverantör skickas inget och inget får stå som skickat med e-post: ägaren
+  // delar PDF:en själv (Dela på Rapporter) och svarar sedan på "Skickade du den?".
+  if (!mailCanSend()) throw new MailError(REPORT_MAIL_OFF);
   const base = await appBaseUrl();
   return {
     sender: reportSender(organizationName),
