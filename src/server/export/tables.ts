@@ -34,6 +34,12 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   },
   { file: "butiker.csv", table: "stores", description: "Butikerna där automaterna står." },
   {
+    file: "butiksagare.csv",
+    table: "store_owners",
+    description:
+      "Bolagen som äger butikerna: juridiskt namn, organisationsnummer, moms och kontakt.",
+  },
+  {
     file: "butiksavtal.csv",
     table: "store_agreements",
     description: "Butikens ersättning: provision (baspunkter) och hyra (öre) per period.",
