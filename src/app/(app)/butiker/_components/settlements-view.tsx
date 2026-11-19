@@ -27,7 +27,12 @@ import {
 } from "./settlement-actions";
 import { CloseMonthButton, ReopenMonthButton } from "../../_manad/period-controls";
 import { MoneyCount } from "./money-count";
-import { missingLines, noAgreementLine, settlementIdleHeadline } from "../_lib/settlement-headline";
+import {
+  exactKr,
+  missingLines,
+  noAgreementLine,
+  settlementIdleHeadline,
+} from "../_lib/settlement-headline";
 
 const kr = (ore: number) => formatSek(ore / 100);
 const rise = (i: number) => ({ "--i": i }) as CSSProperties;
@@ -228,7 +233,7 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                               data-correction
                             >
                               {correctionStep(c).label}: {c.amountOre < 0 ? "−" : "+"}
-                              {kr(Math.abs(c.amountOre))}
+                              {exactKr(Math.abs(c.amountOre))}
                               {page.canEdit ? (
                                 <RemoveCorrectionButton
                                   targetId={r.id}
@@ -396,7 +401,7 @@ function PaidCompare({ row, canEdit }: { row: SettlementRow; canEdit: boolean })
       {row.correctedOre !== 0 ? (
         <span className="text-muted">
           Rättelse {row.correctedOre < 0 ? "−" : "+"}
-          {kr(Math.abs(row.correctedOre))} ligger på en senare avräkning.
+          {exactKr(Math.abs(row.correctedOre))} ligger på en senare avräkning.
         </span>
       ) : null}
       {row.differenceOre !== 0 ? (

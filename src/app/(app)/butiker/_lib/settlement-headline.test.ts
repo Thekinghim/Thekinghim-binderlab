@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { missingLines, noAgreementLine, settlementIdleHeadline } from "./settlement-headline";
+import {
+  exactKr,
+  missingLines,
+  noAgreementLine,
+  settlementIdleHeadline,
+} from "./settlement-headline";
 
 describe("settlementIdleHeadline (Utbetalning utan något att betala)", () => {
   const base = { blocked: 0, failed: 0, missing: 0, monthLabel: "oktober 2026" };
@@ -59,5 +64,16 @@ describe("missingLines (rutan Saknas, också äldre månader)", () => {
       "Sega gubben: augusti 2026 saknar avräkning. Den skulle redan ha varit betald.",
       "2 butiker saknar avräkning för oktober 2026.",
     ]);
+  });
+});
+
+describe("exactKr (betalningar och rättelser)", () => {
+  it("visar öre när beloppet inte är jämna kronor, så att rättelsen stämmer med raden", () => {
+    expect(exactKr(-4_552).replace(/ /g, " ")).toBe("−45,52 kr");
+    expect(exactKr(4_552).replace(/ /g, " ")).toBe("45,52 kr");
+    expect(exactKr(150_000).replace(/ /g, " ")).toBe("1 500 kr");
+  });
+  it("två belopp som skiljer sig med öre ser aldrig lika ut", () => {
+    expect(exactKr(807_218)).not.toBe(exactKr(807_240));
   });
 });

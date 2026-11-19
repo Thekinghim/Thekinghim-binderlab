@@ -7,10 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { formatSek } from "@/lib/format";
 import { inviteStoreUser } from "@/server/portal/actions";
 
-import { noAgreementLine } from "../_lib/settlement-headline";
+import { exactKr, noAgreementLine } from "../_lib/settlement-headline";
 import {
   carrySettlementDifference,
   createMissingSettlements,
@@ -20,7 +19,8 @@ import {
   undoSettlementPaid,
 } from "../settlement-actions";
 
-const kr = (ore: number) => formatSek(ore / 100);
+// Betalningar och rättelser med öre: ett avrundat belopp kan få två val att se lika ut.
+const kr = exactKr;
 
 /**
  * "Markera som betald" med datum (i dag förvalt) och "Ångra" i toasten. Server actions

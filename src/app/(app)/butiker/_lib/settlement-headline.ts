@@ -1,3 +1,5 @@
+import { krText } from "@/reports/text";
+
 /**
  * Rubriken på Butiker → Utbetalning när inget går att betala just nu. "Allt är betalt."
  * får bara stå när ingen avräkning saknas eller är spärrad: en butik vars avräkning inte
@@ -83,4 +85,14 @@ export function missingLines(
         ? `${names[0]}: ${monthLabel(month)} saknar avräkning.${old ? " Den skulle redan ha varit betald." : ""}`
         : `${names.length} butiker saknar avräkning för ${monthLabel(month)}.${old ? " De skulle redan ha varit betalda." : ""}`;
     });
+}
+
+/**
+ * Belopp i öre som kronor med öre när beloppet inte är jämna kronor: 4 552 → "45,52 kr",
+ * 150 000 → "1 500 kr". För betalningar och rättelser, där ett avrundat belopp kan få två
+ * olika belopp att se lika ut (rapporten 8 072,18 kr mot dagens uträkning 8 072,40 kr) eller
+ * en rättelse att se annorlunda ut än raden den kommer från (46 kr mot 45,52 kr).
+ */
+export function exactKr(ore: number): string {
+  return krText(ore);
 }
