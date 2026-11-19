@@ -66,6 +66,7 @@ import {
   type AwishStockSummary,
 } from "./stock";
 import { machinesJustLow, type SlotBalance } from "./stock-drop";
+import { raiseOrderAttention, resolveOrderAttention, type OrderAttention } from "./order-attention";
 
 type Row = Record<string, unknown>;
 
@@ -747,6 +748,14 @@ export async function syncAwishSource(
       pages,
     });
 
+    // Order att hantera för hand (återbetald efter importen, betald men oläslig): ett larm
+    // per order som står kvar i Att göra tills den är hanterad. De hanterade stängs.
+    await raiseOrderAttention(deps.db, source, outcome.attention, now());
+    await resolveOrderAttention(deps.db, source.organization_id, {
+      sourceId: source.id,
+      now: now(),
+    });
+
     // Automater som importen just skapade får sitt läge nu.
     await saveMachinesConnectivity(machines.filter((m) => !connectivitySaved.has(m.id)));
 
@@ -1081,6 +1090,8 @@ interface ImportOutcome {
   summary: ImportSummary | null;
   otherSourceDuplicates: number;
   refundReported: string[];
+  /** Order som ägaren måste ta hand om (./order-attention.ts): sedda i den här körningen. */
+  attention: OrderAttention;
 }
 
 /** Tolkar och importerar orderna i en transaktion (samma lås som filimporten). */
@@ -1140,6 +1151,9 @@ async function importOrders(
     );
     const reported = new Set(input.refundReported);
     const newlyReported: string[] = [];
+    // Varje importerad order som Awish säger är återbetald, i varje körning (inte bara
+    // första gången den loggas): larmet om den ska finnas tills den är hanterad.
+    const refundedSeen: string[] = [];
     let storedDuplicates = 0;
     let skippedUnpaid = 0;
     const batch: AwishGrpcOrder[] = [];
@@ -1151,9 +1165,13 @@ async function importOrders(
         // annars loggas som "ej betald" i varje import; de räknas bara.
         if (paid) batch.push(o);
         else skippedUnpaid += 1;
-      } else if (statusKind(o.status) === "refund" && !reported.has(o.id)) {
-        batch.push(o);
-        newlyReported.push(o.id);
+      } else if (statusKind(o.status) === "refund") {
+        refundedSeen.push(o.id);
+        if (reported.has(o.id)) storedDuplicates += 1;
+        else {
+          batch.push(o);
+          newlyReported.push(o.id);
+        }
       } else {
         storedDuplicates += 1;
       }
@@ -1171,6 +1189,13 @@ async function importOrders(
       return true;
     });
     const parsed = { ...mapped, errors };
+    const attention: OrderAttention = {
+      refunded: refundedSeen,
+      // Alla betalda order som inte gick att tolka, också de som redan är loggade.
+      unreadable: mapped.errors
+        .filter((e) => e.isPaid !== false)
+        .map((e) => ({ externalId: e.externalId ?? null, message: e.message })),
+    };
 
     // Samma försäljning i en annan Awish-källa (t.ex. en uppladdad CSV med andra
     // ordernummer): samma betaltid (sekund) och belopp.
@@ -1186,7 +1211,7 @@ async function importOrders(
       parsed.errors.some((e) => e.isPaid !== false) ||
       newlyReported.length > 0;
     if (!worthImport) {
-      return { importId: null, summary: null, otherSourceDuplicates, refundReported };
+      return { importId: null, summary: null, otherSourceDuplicates, refundReported, attention };
     }
 
     const ctx = {
@@ -1227,7 +1252,7 @@ async function importOrders(
               status = 'succeeded', finished_at = clock_timestamp()
           where organization_id = ${org}::uuid and id = ${created.id}::uuid`,
     );
-    return { importId: created.id, summary: s, otherSourceDuplicates, refundReported };
+    return { importId: created.id, summary: s, otherSourceDuplicates, refundReported, attention };
   });
 }
 

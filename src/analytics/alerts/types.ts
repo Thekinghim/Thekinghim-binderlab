@@ -34,7 +34,13 @@ export type AlertKind =
   /** Awish har en automat som inte är kopplad till någon butik (managerpaket 8). */
   | "machine_discovered"
   /** Daglig kontroll: en av kontrollerna gick inte igenom (skrivs av src/server/self-check). */
-  | "self_check";
+  | "self_check"
+  /**
+   * En order som ägaren måste ta hand om (skrivs av Awish-synken,
+   * src/server/awish/order-attention.ts): återbetald i Awish efter importen, eller betald
+   * men omöjlig att läsa. Står kvar tills den är hanterad.
+   */
+  | "order_attention";
 
 /**
  * Familj av larm. Typerna i en familj delar incident (t.ex. misstänkt fel som blir offline är

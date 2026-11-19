@@ -734,7 +734,14 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         ? { kind: "link", label: a.label, href: item.link }
         : null;
     case "open-alert":
-      return canOpen(input.role, item.link.startsWith("/datakallor") ? "datakallor" : "drift")
+      return canOpen(
+        input.role,
+        item.link.startsWith("/datakallor")
+          ? "datakallor"
+          : item.link.startsWith("/inkorg")
+            ? "inkorg"
+            : "drift",
+      )
         ? { kind: "link", label: a.label, href: item.link }
         : null;
     case "open-machine":

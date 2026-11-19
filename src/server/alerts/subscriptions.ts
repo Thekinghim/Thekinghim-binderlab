@@ -45,6 +45,7 @@ export const KIND_LABEL: Record<AlertKind, string> = {
   job_failed: "Misslyckat schemalagt jobb",
   machine_discovered: "Ny automat hittad",
   self_check: "Kontrollen hittade fel",
+  order_attention: "Order att hantera",
 };
 
 export const SEVERITY_LABEL: Record<AlertSeverity, string> = {

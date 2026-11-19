@@ -264,6 +264,44 @@ export interface IncidentDetail {
 }
 
 /** Ett ärende (eller tomt för ett nytt) med stamdata och ändringshistorik. */
+/** Ordern som ett nytt ärende ska börja från (länken från Att göra: "Hantera ordern"). */
+export interface PrefillOrder {
+  readonly id: string;
+  readonly externalId: string;
+  readonly orderedAt: string;
+  readonly amountOre: number;
+  readonly titleId: string | null;
+  readonly titleName: string | null;
+  readonly machineId: string | null;
+}
+
+/** Läser ordern som den inloggade (RLS). null om den inte finns i organisationen. */
+export async function loadPrefillOrder(ctx: AppContext, id: string): Promise<PrefillOrder | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  return withUserDb(async (tx) => {
+    const [o] = await tx
+      .select({
+        id: s.orders.id,
+        externalId: s.orders.externalId,
+        orderedAt: s.orders.orderedAt,
+        amountOre: s.orders.amountOre,
+        titleId: s.orders.titleId,
+        titleName: s.titles.name,
+        machineId: s.orders.machineId,
+      })
+      .from(s.orders)
+      .leftJoin(
+        s.titles,
+        and(
+          eq(s.titles.organizationId, s.orders.organizationId),
+          eq(s.titles.id, s.orders.titleId),
+        ),
+      )
+      .where(and(eq(s.orders.organizationId, ctx.organization.id), eq(s.orders.id, id)));
+    return o ? { ...o, orderedAt: o.orderedAt.toISOString() } : null;
+  });
+}
+
 /**
  * Finns ärendet i organisationen? Den snabba kontrollen före sidans laddningsläge, så att ett
  * okänt id får HTTP 404 (se [id]/layout.tsx). Som den inloggade med RLS.

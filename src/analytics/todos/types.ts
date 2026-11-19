@@ -181,6 +181,8 @@ export interface AlertRef {
   readonly openedAt: string;
   /** Kvitterat av någon: då tar någon hand om det och det står inte i Att göra. */
   readonly acknowledged: boolean;
+  /** Sidan där larmet åtgärdas (alerts.link), när larmet har en egen. */
+  readonly link?: string | null;
 }
 
 /** Förlorad försäljning per titel och automat (@/analytics/lost-sales via servern). */

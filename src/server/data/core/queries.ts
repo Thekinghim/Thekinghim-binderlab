@@ -1005,6 +1005,7 @@ export async function queryOpenAlerts(tx: Tx, orgId: string): Promise<AlertRef[]
       message: s.alerts.message,
       triggeredAt: s.alerts.triggeredAt,
       acknowledgedAt: s.alerts.acknowledgedAt,
+      link: s.alerts.link,
     })
     .from(s.alerts)
     .where(
@@ -1028,6 +1029,7 @@ export async function queryOpenAlerts(tx: Tx, orgId: string): Promise<AlertRef[]
     detail: r.message ?? "",
     openedAt: r.triggeredAt.toISOString(),
     acknowledged: r.acknowledgedAt !== null,
+    link: r.link,
   }));
 }
 

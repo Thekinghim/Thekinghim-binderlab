@@ -31,6 +31,9 @@ export const ACTION_ALERT_KINDS: ReadonlySet<string> = new Set([
   "job_failed",
   // Daglig kontroll (src/server/self-check): en kontroll gick inte igenom.
   "self_check",
+  // En order att hantera (src/server/awish/order-attention.ts): återbetald i Awish efter
+  // importen, eller betald men omöjlig att läsa. Står kvar tills den är hanterad.
+  "order_attention",
 ]);
 
 const KIND_RULE: Record<string, string> = {
@@ -43,10 +46,23 @@ const KIND_RULE: Record<string, string> = {
   report_failed: "Ett rapportutskick eller månadens utkast misslyckades.",
   job_failed: "Ett schemalagt jobb misslyckades.",
   self_check: "Daglig kontroll: en av kontrollerna gick inte igenom.",
+  order_attention:
+    "Awish-synken såg en order som måste hanteras för hand: återbetald efter importen, eller betald men omöjlig att läsa.",
 };
 
+/** Larmtyper där larmets egen länk (alerts.link) leder till åtgärden. */
+const OWN_LINK_KINDS: ReadonlySet<string> = new Set(["job_failed", "order_attention"]);
+
+function ownLink(a: Pick<AlertRef, "kind" | "link">): string | null {
+  if (!OWN_LINK_KINDS.has(a.kind)) return null;
+  const link = a.link ?? "";
+  return link.startsWith("/") && !link.startsWith("//") ? link : null;
+}
+
 /** Länk till underlaget: automatens tidslinje på Drift, Datakällor för importer. */
-export function alertLink(a: Pick<AlertRef, "kind" | "machineId">): string {
+export function alertLink(a: Pick<AlertRef, "kind" | "machineId" | "link">): string {
+  const own = ownLink(a);
+  if (own) return own;
   if (a.kind === "import_failed") return "/datakallor";
   if (a.kind === "report_failed") return "/rapporter";
   if (a.kind === "self_check") return "/installningar/kontroll";
@@ -95,7 +111,14 @@ export function alertTodos(
       link: alertLink(a),
       action: {
         kind: "open-alert",
-        label: a.kind === "import_failed" ? "Visa importerna" : "Öppna automaten",
+        label:
+          a.kind === "import_failed"
+            ? "Visa importerna"
+            : a.kind === "order_attention"
+              ? "Hantera ordern"
+              : ownLink(a)
+                ? "Öppna"
+                : "Öppna automaten",
         params: { alertId: a.id },
       },
     });
