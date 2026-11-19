@@ -44,6 +44,12 @@ function byCode(list: readonly MachineReadiness[], code: string): MachineReadine
 
 const open = (r: MachineReadiness) => r.steps.filter((s) => !s.done).map((s) => s.id);
 
+/**
+ * Dagen för n dagar sedan (YYYY-MM-DD). Köpen ligger nära i dag, inte på fasta datum: raden
+ * i Att göra gäller bara automater vars första köp är nyare än 30 dagar.
+ */
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
 describe("Startklar per automat", () => {
   let f: ImportFixture;
   let owner: Viewer;
@@ -64,8 +70,8 @@ describe("Startklar per automat", () => {
     firstMachine = await mapMachine(f, "BL-001 ICA Lund", "BL-001");
     await f.run(
       awishCsv([
-        { no: "1", machine: "Nya hallen", time: "2026-10-20 12:00:00" },
-        { no: "2", machine: "Nya hallen", time: "2026-10-22 12:00:00" },
+        { no: "1", machine: "Nya hallen", time: `${daysAgo(10)} 12:00:00` },
+        { no: "2", machine: "Nya hallen", time: `${daysAgo(8)} 12:00:00` },
       ]),
     );
     storeId = (
@@ -107,11 +113,7 @@ describe("Startklar per automat", () => {
   });
 
   it("Koppla: den nya automaten ärver ansvarig och Fylls på från", async () => {
-    const r = await connectNewMachineFor(
-      owner,
-      { sourceMachineId: sourceId, storeId },
-      "2026-11-03",
-    );
+    const r = await connectNewMachineFor(owner, { sourceMachineId: sourceId, storeId }, daysAgo(1));
     expect(r).toMatchObject({ ok: true, data: { code: "BL-002", orders: 2 } });
     newMachine = r.ok ? r.data!.machineId : "";
     const m = await one<{ responsible_user_id: string | null; refill_source_id: string | null }>(
