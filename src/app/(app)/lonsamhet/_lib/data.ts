@@ -10,6 +10,7 @@ import type { SearchParamsInput } from "@/components/shell/period-state";
 import type { IsoDate } from "@/domain";
 import type { AppContext, AppPeriod, DomainInput } from "@/server/data/core/types";
 import type { PageLoaders } from "@/server/data/page-loaders";
+import { scopeFiltered } from "@/server/data/core/scope";
 
 import { buildLonsamhetModel, type LonsamhetModel } from "./model";
 
@@ -34,13 +35,15 @@ export async function loadLonsamhetWith(
       period: { start: IsoDate; end: IsoDate };
       storeId: string | null;
       machineId: string | null;
+      ownerId?: string | null;
+      storeIds?: readonly string[] | null;
     }) => Promise<IsoDate | null>;
   } = {},
 ): Promise<LonsamhetData> {
   const [ctx, p] = await Promise.all([loaders.context(), loaders.period(searchParams)]);
   // Fördelningen av de fasta kostnaderna räknas på hela organisationen även med filter
   // (annars fick automaten alla), så med filter läses också organisationens indata.
-  const filtered = Boolean(p.scope.machineId || p.scope.storeId);
+  const filtered = scopeFiltered(p.scope);
   const [input, organizationInput] = await Promise.all([
     loaders.domainInput({ period: p.period, compare: p.compare, ...p.scope }),
     filtered ? loaders.domainInput({ period: p.period }) : null,
@@ -64,6 +67,7 @@ export async function loadLonsamhetWith(
       machines: input.machines,
       stores: input.stores,
       scope: input.scope,
+      owners: input.owners,
     },
     {
       today: ctx.today,

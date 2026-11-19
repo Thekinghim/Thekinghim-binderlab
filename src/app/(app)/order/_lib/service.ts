@@ -30,6 +30,7 @@ import {
   queryStores,
   queryTitles,
 } from "@/server/data/core/queries";
+import { scopeStoreIds } from "@/server/data/core/scope";
 import { ECONOMY_ROLES, OPERATOR_ROLES, type DataScope } from "@/server/data/core/types";
 import { pgErrorOf } from "@/server/errors";
 import { closedMonthMessage } from "@/server/periods/model";
@@ -100,6 +101,7 @@ async function context(
     period: args.period,
     placements,
     storeId: args.scope.storeId,
+    storeIds: scopeStoreIds(args.scope),
     machineId: args.scope.machineId,
     titleId: args.params.titleId,
     terms: matchTerms(searchTerms(args.params.q), refs),

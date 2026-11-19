@@ -34,12 +34,14 @@ import type {
   DataScope,
   MachineRecord,
   OrgSettings,
+  OwnerRecord,
   PlacementRecord,
   SalesCountRow,
   StockRow,
   StoreRecord,
   TitleRecord,
 } from "./types";
+import { scopeStoreIds } from "./scope";
 
 export const DEFAULT_SETTINGS: OrgSettings = {
   vatRateBp: 0,
@@ -78,11 +80,23 @@ function iso(d: Date | null): string | null {
  * (samma regel som effectivePlacements i ./placements.ts). Utan den visade butiksfiltret
  * ingenting för en ny automat.
  */
-function placedInStore(machineColumn: SQL, dateColumn: SQL, orgId: string, storeId: string): SQL {
+function placedInStore(
+  machineColumn: SQL,
+  dateColumn: SQL,
+  orgId: string,
+  storeIds: readonly string[],
+): SQL {
+  // En butik eller en butiksägares butiker. En automat står i en butik per dag, så en
+  // ägares försäljning är summan av butikernas. Inga butiker (ägare utan butiker): inget.
+  if (storeIds.length === 0) return sql`false`;
+  const stores = sql.join(
+    storeIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
   return sql`exists (
     select 1 from public.machine_placements mp
     where mp.organization_id = ${orgId}::uuid
-      and mp.store_id = ${storeId}::uuid
+      and mp.store_id in (${stores})
       and mp.machine_id = ${machineColumn}
       and (
         (mp.valid_from <= ${dateColumn}
@@ -359,6 +373,7 @@ interface MasterRow {
   readonly titles: TitleRecord[];
   readonly placements: PlacementRecord[];
   readonly stores: StoreRecord[];
+  readonly owners: OwnerRecord[];
   readonly machines: Array<Omit<MachineRecord, "storeId">>;
 }
 
@@ -377,6 +392,7 @@ export async function queryMasterData(
   placements: PlacementRecord[];
   stores: StoreRecord[];
   machines: MachineRecord[];
+  owners: OwnerRecord[];
 }> {
   const rows = (await tx.execute(sql`
     select
@@ -395,9 +411,13 @@ export async function queryMasterData(
       (select coalesce(json_agg(json_build_object(
           'id', st.id, 'name', st.name, 'address', st.address, 'contactName', st.contact_name,
           'email', st.email, 'phone', st.phone, 'isExample', st.is_example,
-          'archived', st.archived_at is not null
+          'archived', st.archived_at is not null, 'ownerId', st.owner_id
         ) order by st.name, st.id), '[]'::json)
         from public.stores st where st.organization_id = ${orgId}::uuid) as stores,
+      (select coalesce(json_agg(json_build_object(
+          'id', so.id, 'name', so.legal_name, 'archived', so.archived_at is not null
+        ) order by so.legal_name, so.id), '[]'::json)
+        from public.store_owners so where so.organization_id = ${orgId}::uuid) as owners,
       (select coalesce(json_agg(json_build_object(
           'id', m.id, 'code', m.code, 'name', m.name, 'serial', m.serial,
           'activeFrom', m.active_from, 'activeTo', m.active_to, 'isExample', m.is_example,
@@ -416,6 +436,7 @@ export async function queryMasterData(
     placements,
     stores: row?.stores ?? [],
     machines: (row?.machines ?? []).map((m) => ({ ...m, storeId: current.get(m.id) ?? null })),
+    owners: row?.owners ?? [],
   };
 }
 
@@ -490,8 +511,9 @@ function orderConditions(orgId: string, range: Period, scope: DataScope): SQL[] 
     countedOrder(),
   ];
   if (scope.machineId) conditions.push(sql`o.machine_id = ${scope.machineId}::uuid`);
-  if (scope.storeId) {
-    conditions.push(placedInStore(sql`o.machine_id`, sql`o.business_date`, orgId, scope.storeId));
+  const storeIds = scopeStoreIds(scope);
+  if (storeIds) {
+    conditions.push(placedInStore(sql`o.machine_id`, sql`o.business_date`, orgId, storeIds));
   }
   return conditions;
 }
@@ -720,14 +742,15 @@ export async function querySalesCounts(
     lte(s.stockEvents.businessDate, range.end),
   ];
   if (scope.machineId) conditions.push(eq(s.stockLocations.machineId, scope.machineId));
-  if (scope.storeId) {
+  const storeIds = scopeStoreIds(scope);
+  if (storeIds) {
     conditions.push(isNotNull(s.stockLocations.machineId));
     conditions.push(
       placedInStore(
         sql`${s.stockLocations.machineId}`,
         sql`${s.stockEvents.businessDate}`,
         orgId,
-        scope.storeId,
+        storeIds,
       ),
     );
   }

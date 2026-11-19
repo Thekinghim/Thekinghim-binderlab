@@ -17,6 +17,9 @@ const BASE = "http://binderlab.invalid";
 function withScope(params: URLSearchParams, scope: DataScope | null): void {
   if (!scope) return;
   if (scope.storeId && !params.has("butik")) params.set("butik", scope.storeId);
+  else if (scope.ownerId && !params.has("butik") && !params.has("agare")) {
+    params.set("agare", scope.ownerId);
+  }
   if (scope.machineId && !params.has("automat")) params.set("automat", scope.machineId);
 }
 

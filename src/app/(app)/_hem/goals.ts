@@ -40,6 +40,8 @@ export interface HomeGoal {
 export interface HomeGoalScope {
   readonly month: string;
   readonly storeId?: string | null;
+  /** En vald butiksägares butiker (målen för dem visas). */
+  readonly storeIds?: readonly string[] | null;
   readonly machineId?: string | null;
   readonly machineStoreId?: string | null;
 }
@@ -59,6 +61,7 @@ function inScope(g: GoalProgress, scope: HomeGoalScope): boolean {
     return Boolean(scope.machineStoreId) && g.scopeId === scope.machineStoreId;
   }
   if (scope.storeId) return g.scope === "store" && g.scopeId === scope.storeId;
+  if (scope.storeIds) return g.scope === "store" && scope.storeIds.includes(g.scopeId ?? "");
   return true;
 }
 

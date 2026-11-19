@@ -21,10 +21,13 @@ import { StoreRevenueChart } from "../_components/charts";
 import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/detail-tables";
 import { StoreKpis } from "../_components/kpis";
 import { ClosedMonthsBanner } from "../../_manad/closed-note";
+import { StoreOwnerPicker } from "../_components/owner-dialogs";
 import { StoreActions } from "../_components/store-dialogs";
 import { Sub } from "../_components/sub";
 import { pickTab, ViewTabs } from "../../automater/_components/view-tabs";
 import { loadStoreDetail, storeNameOf, type StoreDetailData } from "../_lib/data";
+import { loadOwnersFor, type OwnerView } from "../_lib/owner-service";
+import { currentViewer } from "../_lib/session";
 import {
   contractAction,
   dayText,
@@ -74,8 +77,16 @@ export default async function StorePage({
 }) {
   const { butik } = await params;
   const sp = await searchParams;
-  const data = await loadStoreDetail(decodeURIComponent(butik), sp);
+  const [data, owners] = await Promise.all([
+    loadStoreDetail(decodeURIComponent(butik), sp),
+    currentViewer().then((viewer) => loadOwnersFor(viewer)),
+  ]);
   if (!data) notFound();
+  // Butikens ägare (bolaget), och de aktiva ägarna att välja bland.
+  const owner = owners.find((o) => o.stores.some((st) => st.id === data.store.id)) ?? null;
+  const choices = owners
+    .filter((o) => !o.archived || o.id === owner?.id)
+    .map((o) => ({ id: o.id, legalName: o.legalName, orgNumber: o.orgNumber }));
   const { ctx, store, period, headline, current } = data;
   const days = `${formatInt(period.days)}${NBSP}d`;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
@@ -141,6 +152,16 @@ export default async function StorePage({
             },
             { label: "Automater", value: formatInt(placed.length) },
             { label: "Modell", value: current ? MODEL_LABEL[current.model] : MISSING },
+            {
+              label: "Ägare",
+              value: owner ? (
+                <span data-store-owner>
+                  {owner.legalName} <span className="tnum text-muted">{owner.orgNumber}</span>
+                </span>
+              ) : (
+                MISSING
+              ),
+            },
           ]}
           actions={
             ctx.canEdit ? (
@@ -230,6 +251,7 @@ export default async function StorePage({
         {tab === "kontakt" ? (
           <>
             <ContactSection data={data} />
+            <OwnerSection data={data} owner={owner} choices={choices} />
             {/* Butiksportalen (fas 10): vem i butiken som har tillgång. Bara ägare och admin. */}
             {ctx.canEdit && !store.archived ? (
               <StorePortalAccess
@@ -473,6 +495,51 @@ function MachinesSection({ data, days }: { data: StoreDetailData; days: string }
           action={data.ctx.canEdit ? { label: "Öppna Automater", href: "/automater" } : undefined}
         />
       )}
+    </section>
+  );
+}
+
+/** Butikens ägare (bolaget): namn och organisationsnummer, och valet av ägare. */
+function OwnerSection({
+  data,
+  owner,
+  choices,
+}: {
+  data: StoreDetailData;
+  owner: OwnerView | null;
+  choices: ReadonlyArray<{ id: string; legalName: string; orgNumber: string }>;
+}) {
+  const { store, ctx } = data;
+  const others = owner ? owner.stores.filter((s) => s.id !== store.id && !s.archived) : [];
+  return (
+    <section aria-labelledby="agare" className="flex flex-col gap-6 border-t border-line pt-8">
+      <SectionHeader
+        id="agare"
+        eyebrow="Ägare"
+        title={owner ? owner.legalName : "Ingen ägare angiven."}
+        aside={
+          owner
+            ? `Org.nr ${owner.orgNumber.replace("-", "\u2011")}${others.length > 0 ? ` · äger också ${others.map((s) => s.name).join(", ")}` : ""}.`
+            : "Bolaget som äger butiken. Samma ägare för flera butiker ger statistik för alla tillsammans."
+        }
+      />
+      {ctx.canEdit && !store.archived ? (
+        <StoreOwnerPicker
+          key={owner?.id ?? "ingen"}
+          storeId={store.id}
+          storeName={store.name}
+          ownerId={owner?.id ?? null}
+          owners={choices}
+        />
+      ) : null}
+      <p className="text-sm text-muted">
+        <Link
+          href="/butiker?vy=agare"
+          className="rounded-xs underline decoration-line-strong underline-offset-4 hover:text-fg max-md:tap"
+        >
+          Alla butiksägare
+        </Link>
+      </p>
     </section>
   );
 }

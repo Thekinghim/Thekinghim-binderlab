@@ -38,7 +38,13 @@ import {
   storeShareLabel,
   storeShareTerms,
 } from "@/lib/store-share";
-import type { DataScope, MachineRecord, StoreRecord, TitleRecord } from "@/server/data/core/types";
+import type {
+  DataScope,
+  MachineRecord,
+  OwnerRecord,
+  StoreRecord,
+  TitleRecord,
+} from "@/server/data/core/types";
 import { coverageDays, isoDateToShellDate } from "@/server/data/core/period";
 
 import {
@@ -233,6 +239,8 @@ export interface LonsamhetInput {
   readonly machines: readonly MachineRecord[];
   readonly stores: readonly StoreRecord[];
   readonly scope: DataScope;
+  /** Butiksägarna (namnet när en ägare är vald). */
+  readonly owners?: readonly OwnerRecord[];
 }
 
 export interface LonsamhetOptions {
@@ -471,7 +479,13 @@ function scopeLabel(input: LonsamhetInput): string | null {
     return m.code ? `${m.code} ${m.name}` : m.name;
   }
   if (input.scope.storeId) return names.store(input.scope.storeId);
+  if (input.scope.ownerId) return ownerName(input);
   return null;
+}
+
+/** Namnet på vald butiksägare. */
+function ownerName(input: LonsamhetInput): string {
+  return input.owners?.find((o) => o.id === input.scope.ownerId)?.name ?? "Butiksägaren";
 }
 
 export function buildLonsamhetModel(
@@ -499,14 +513,18 @@ export function buildLonsamhetModel(
   // laddaren från vyknappen eller vald butik). Vinst, marginal, tabell och utveckling följer.
   const showShare = all.title.storeShareDeducted;
   const storeSelected = Boolean(input.scope.storeId && !input.scope.machineId);
+  const ownerSelected = Boolean(input.scope.ownerId && !input.scope.storeId);
   const shareLabel = storeSelected
     ? storeShareLabel({
         name: names.store(input.scope.storeId!),
         terms: storeShareTerms(input.current.agreements, input.scope.storeId!, period),
       })
-    : input.scope.machineId
-      ? "Butikens andel"
-      : STORES_SHARE_LABEL;
+    : ownerSelected && !input.scope.machineId
+      ? // Ägarens butiker kan ha olika villkor: "Andel till <ägaren>".
+        storeShareLabel({ name: ownerName(input), terms: null })
+      : input.scope.machineId
+        ? "Butikens andel"
+        : STORES_SHARE_LABEL;
   const profitLabel = showShare ? OUR_PART_LABEL : "Vår vinst";
   const totalsRow = all.title.totals;
   const unpriced = all.title.unpriced;

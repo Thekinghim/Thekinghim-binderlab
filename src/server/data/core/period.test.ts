@@ -62,6 +62,21 @@ describe("scopeFromSearchParams", () => {
       }),
     ).toEqual({ storeId: "8b9903c2-d902-432e-b6e4-db346de6689b", machineId: null });
   });
+
+  it("butiksägaren (?agare=): ägarens butiker läses av laddaren; en vald butik vinner", () => {
+    const owner = "1b9903c2-d902-432e-b6e4-db346de6689b";
+    expect(scopeFromSearchParams({ agare: owner.toUpperCase() })).toEqual({
+      storeId: null,
+      machineId: null,
+      ownerId: owner,
+      storeIds: undefined,
+    });
+    expect(scopeFromSearchParams({ agare: "inte-ett-id" }).ownerId).toBeUndefined();
+    expect(
+      scopeFromSearchParams({ agare: owner, butik: "8b9903c2-d902-432e-b6e4-db346de6689b" })
+        .ownerId,
+    ).toBeUndefined();
+  });
 });
 
 describe("isoDateToShellDate", () => {

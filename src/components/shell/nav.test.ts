@@ -51,7 +51,7 @@ describe("huvudflikar", () => {
         "Gratis-pack",
       ],
       "vart-lager": ["Vårt lager", "Mystery packs", "Inköp", "Prognos", "Inköpspriser"],
-      butiker: ["Butiker", "Kontrakt", "Expansion", "Utbetalning"],
+      butiker: ["Butiker", "Butiksägare", "Kontrakt", "Expansion", "Utbetalning"],
       pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter", "Värde"],
       mer: ["Inställningar", "Datakällor", "Assistent", "Marknad", "Effekt"],
     });
@@ -197,6 +197,8 @@ describe("periodraden", () => {
       ["/ekonomi", "bokforing", false],
       ["/ekonomi/bokforing/kvitto/1", null, false],
       ["/butiker", "utbetalning", false],
+      // Butiksägare: bolagens uppgifter, ingen period.
+      ["/butiker", "agare", false],
       ["/assistent", null, false],
       ["/drift", null, false],
       ["/drift/larm", null, false],

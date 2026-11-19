@@ -438,3 +438,39 @@ Vägval och det som är kvar:
   två larm om samma sak när hämtningen står still i över en timme.
 - Inte sett i en webbläsare mot produktionen. Lokalt: Hem (1 280 och 390 px), Drift, Notiser, Att göra och det
   förifyllda ärendet i Inkorg, med provdata.
+
+## 19 nov. – butiksägare: bolaget bakom butikerna, statistik och rapporter per ägare
+
+- Ägarens önskemål: flera butiker har samma ägare, och statistik och rapporter ska kunna gälla alla dem
+  tillsammans; bolagens uppgifter ska finnas i appen. Testerna och seeden har bara påhittade bolag.
+- **Datamodell** (`20261219000000_butiksagare.sql`, bara tillägg, säker medan den gamla koden kör): ny tabell
+  `store_owners` (juridiskt namn, organisationsnummer `NNNNNN-NNNN`, momsreg.nr `SE…01`, F-skatt, adress,
+  kontakt, fakturaadress, bankgiro, anteckning, arkivering) och `stores.owner_id` (sammansatt FK, null = ingen).
+  RLS som butiker: ägare och admin skriver, läsare läser, påfyllare och butiksrollen har ingen policy. Ingen
+  radering (BL003), ändringar i `audit_log`. Org.nr är unikt bland aktiva ägare. Kontrollsiffran (Luhn) prövas i
+  appen (`src/lib/swedish-ids.ts`), formatet i databasen.
+- **Butiker → Butiksägare** (`?vy=agare`, ny underflik): korten med uppgifter och butiker, Ny butiksägare,
+  Redigera, Arkivera (nekas så länge en aktiv butik har ägaren) och Återställ. Butikens sida: huvudet visar
+  ägarens namn och org.nr; Kontakt och rapport → Ägare har valet av ägare och "Ny ägare …" (skapar och kopplar i
+  samma transaktion).
+- **Statistik:** filtret Butik har ägare med fler än en aktiv butik först. `?agare=<id>` följer med mellan
+  sidorna som `?butik=` och löses upp till ägarens butiker (även arkiverade) av `loadPeriod` och laddarna
+  (`src/server/data/core/scope.ts`). En vald butik vinner över ägaren. Butikernas andel dras som för en vald
+  butik (`storeShareInView` med `ownerId`). Ändrat på Hem, Lönsamhet (även återbetalningar och gratis-pack per
+  butik), Automater, Svinn, Butiker, Lager, Order, Prognos, Inköpspriser (och Redigera vara) och Expansion.
+  Försäljning (Enkel vy) har inget filter. Ekonomi har en rad "filtret gäller inte här" som inte visas för en
+  ägare; filen hör till ett annat arbete och är inte ändrad här.
+- **Rapporter:** "En rapport per butik hos ägaren" skapar den vanliga butiksrapporten (utkast) för varje butik som
+  ägaren har och som hade automat i perioden. Själva rapporten är oförändrad.
+- **Tester:** `test/db/butiksagare.test.ts` (tjänsten, format, raderingsspärr, logg, RLS för alla roller och en
+  annan organisation), `test/db/agarfilter.test.ts` (ägaren = summan av butikerna för försäljning, order, pack,
+  vinst och andel, med och utan vyknappen, och på Lönsamhet, Hem, Automater och Butiker; en automat som flyttar
+  mellan två av ägarens butiker), `test/db/agarrapporter.test.ts`, rödteamets action-katalog, katalogtestet och
+  enhetstester (`swedish-ids`, `scope`, `owner-filter`, `period-state`, `store-share`, `nav`, `owner-choices`).
+  E2E: `e2e/28-butiksagare.e2e.test.ts` (1 280 och 375 px).
+- **Kvar till en samlad ägarrapport:** en rapporttyp för ägaren (t.ex. `owner_store_statement`) med ägarens
+  uppgifter i huvudet (namn, org.nr, momsreg.nr, fakturaadress), en rad per butik (försäljning, pack, andel, hyra)
+  och summan, ett eget underlag (snapshot) som räknas med samma motor som butiksrapporten per butik så att summan
+  stämmer med de enskilda rapporterna, mottagare per ägare (`report_recipients` med `owner_id`), PDF och mejl,
+  arkiv och godkännande som de andra typerna, och ett beslut om avräkningen ska göras per ägare (en betalning)
+  eller per butik som i dag.

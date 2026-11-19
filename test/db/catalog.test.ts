@@ -259,6 +259,8 @@ describe("tabeller", () => {
         "store_agreements",
         // Månadsavräkning per butik (20261104233400_butik_avrakning.sql).
         "store_settlements",
+        // Butiksägare: bolaget som äger butikerna (20261219000000_butiksagare.sql).
+        "store_owners",
         "stores",
         "supplier_items",
         "supplier_price_quotes",

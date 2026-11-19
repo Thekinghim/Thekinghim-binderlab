@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildLedger } from "./ledger";
 import { profitability, profitabilityViews } from "./profitability";
-import { entryProfitOre, storeShareDeducted } from "./store-share";
+import { entryProfitOre, storeShareDeducted, storeShareInView } from "./store-share";
 import type { ProfitabilityInput } from "./types";
 import { unitEconomics } from "./unit-economics";
 
@@ -150,5 +150,16 @@ describe("profitability med och utan butikernas andel", () => {
         if (!flag) expect(u.profitOre).toBe(rows.find((r) => r.key === u.machineId)!.profitOre);
       }
     }
+  });
+});
+
+describe("storeShareInView", () => {
+  it("vyknappen, en vald butik eller en vald butiksägare drar andelen; en automat inte", () => {
+    expect(storeShareInView({ toggle: false })).toBe(false);
+    expect(storeShareInView({ toggle: true })).toBe(true);
+    expect(storeShareInView({ toggle: false, storeId: "s1" })).toBe(true);
+    expect(storeShareInView({ toggle: false, ownerId: "o1" })).toBe(true);
+    expect(storeShareInView({ toggle: false, ownerId: "o1", machineId: "m1" })).toBe(false);
+    expect(storeShareInView({ toggle: false, storeId: "s1", machineId: "m1" })).toBe(false);
   });
 });

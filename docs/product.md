@@ -168,6 +168,23 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
     **Skapa ny version**, eller **Dela** i dela-läget, gör en ny kort rapport som godkänns och skickas. Bara en
     äldre rapport som faktiskt har skickats (ett utskick eller "Ja, skickad") står kvar som den skickades, med
     detaljer och sin sparade PDF, på Rapporter. Portalen visar den också kort.
+- **Butiksägare** (Butiker → Butiksägare): bolaget som äger en eller flera butiker, med juridiskt namn,
+  organisationsnummer (kontrollsiffran prövas, sparas NNNNNN-NNNN), momsregistreringsnummer (valfritt; förslaget
+  SE + numret + 01 visas bara som förslag), F-skatt, adress, kontaktperson, e-post, telefon, adress för
+  leverantörsfakturor, bankgiro och en anteckning. En butik har högst en ägare, som väljs på butikens sida
+  (Kontakt och rapport → Ägare, med **Ny ägare …**); butikens huvud visar ägarens namn och org.nr. Ägare
+  arkiveras, raderas aldrig (inte så länge en aktiv butik har dem). Ägare och admin ändrar, läsare ser,
+  påfyllare och butikernas portal ser inget.
+  - **Statistik per ägare:** en ägare med fler än en aktiv butik står först i filtret Butik ("Godisbolaget
+    Väst AB (3 butiker)"). Valet (`?agare=<id>`, går att dela) gäller alla ägarens butiker tillsammans, med
+    samma regler som en vald butik: butikernas andel dras alltid, bara de butikernas avtal och hyra räknas, och
+    en automat som flyttat mellan två av butikerna räknas en gång. Ägarens tal är exakt summan av butikernas
+    (försäljning, pack, vinst och andel). Gäller Hem, Lönsamhet, Automater, Butiker, Lager, Order, Prognos,
+    Inköpspriser och Expansion; Försäljning (Enkel vy) har inget filter. Arkiverade butiker med ägaren räknas
+    med i historiken.
+  - **Rapporter:** under butiksrapporten finns **En rapport per butik hos ägaren**: en vanlig butiksrapport
+    (utkast) per butik som ägaren har och som hade automat i perioden, med samma månad eller datum och hälsning.
+    Utkasten godkänns och skickas en och en. En samlad rapport för ägaren finns inte än.
 - **Ekonomi och avtal:** avstämning av leverantörens utbetalningar mot försäljningen, verifikationer, kassaflöde, fasta
   kostnader, avtal med påminnelse före sista uppsägningsdag.
 - **Enhetsekonomi och expansion:** vinst per automat och dag, återbetalningstid, och uppskattning för en ny plats från

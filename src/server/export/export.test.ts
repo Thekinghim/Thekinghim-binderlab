@@ -115,6 +115,7 @@ describe("tabellerna i exporten", () => {
     for (const t of [
       "machines",
       "stores",
+      "store_owners",
       "titles",
       "purchase_prices",
       "orders",

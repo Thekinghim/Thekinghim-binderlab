@@ -7,7 +7,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatDate, formatInt } from "@/lib/format";
 import { MISSING_PRICES_MESSAGE, periodText } from "@/reports";
-import { loadSyncInfo, requireRoute } from "@/server/data/core";
+import { loadMasterData, loadSyncInfo, requireRoute } from "@/server/data/core";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { loadReportsPage } from "@/server/reports/page-data";
 import { currentReportViewer, serviceStatus } from "@/server/reports/runtime";
@@ -22,6 +22,7 @@ import { ServiceLines } from "./_components/service-lines";
 import { ShareFlow } from "./_components/share-flow";
 import { pickView, ViewTabs } from "./_components/view-tabs";
 import { when } from "./_components/when";
+import { ownerReportChoices } from "./_lib/owner-choices";
 import { bookkeepingOverlap } from "./_lib/overlap";
 
 export const metadata: Metadata = { title: "Rapporter" };
@@ -57,7 +58,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
     till: one(sp.till),
   });
   const services = serviceStatus();
-  const sync = await loadSyncInfo();
+  const [sync, master] = await Promise.all([loadSyncInfo(), loadMasterData()]);
   const staleDay = staleImportDay(
     data.range?.end ?? monthEnd(data.month),
     sync?.syncedAt,
@@ -246,6 +247,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               months={data.months.map((m) => ({ value: m, label: monthLabel(m) }))}
               stores={data.stores}
               storeId={data.storeId}
+              owners={ownerReportChoices(master.owners ?? [], master.stores, data.stores)}
               canEdit={data.canEdit}
               canCreate={preview !== null}
               currentId={data.current?.id ?? null}

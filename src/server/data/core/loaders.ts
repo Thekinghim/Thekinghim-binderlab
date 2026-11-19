@@ -21,7 +21,10 @@ import {
   type TodoItem,
   type TodoKind,
 } from "@/analytics/todos";
+import { and, eq } from "drizzle-orm";
+
 import type { Tx } from "@/db/client";
+import * as s from "@/db/schema";
 import type { MemberRole } from "@/db/schema";
 import {
   addDays,
@@ -95,6 +98,7 @@ import { queryStockCountRefs } from "./stock-counts";
 import { queryTeamSize } from "./team-size";
 
 import { effectivePlacements } from "./placements";
+import { resolveOwnerScope, scopeFiltered, scopeStoreIds } from "./scope";
 import {
   ALL_ROLES,
   canSeeEconomy,
@@ -353,6 +357,10 @@ export interface DomainInputArgs {
   readonly compare?: Period | null;
   readonly storeId?: string | null;
   readonly machineId?: string | null;
+  /** En butiksägare: alla ägarens butiker tillsammans, som en vald butik (DataScope). */
+  readonly ownerId?: string | null;
+  /** Ägarens butiker om de redan är kända (AppPeriod.scope); annars läses de här. */
+  readonly storeIds?: readonly string[] | null;
   /**
    * Vyknappen "Med VMB": vår vinst bär VMB-moms (`Settings.vmb`, @/domain vmbApplies).
    * Standard av (vinst före VMB-moms). Bokföringen följer "VMB i bokföringen" (standard av).
@@ -380,16 +388,17 @@ function scopeSources(
   investments: readonly MachineInvestment[],
   scope: DataScope,
 ): ScopedSources {
-  if (!scope.storeId && !scope.machineId) {
+  const scopeStores = scopeStoreIds(scope);
+  if (!scopeStores && !scope.machineId) {
     return { sources: all, investments: [...investments] };
   }
   const placements = all.placements.filter(
     (p) =>
-      (!scope.storeId || p.storeId === scope.storeId) &&
+      (!scopeStores || scopeStores.includes(p.storeId)) &&
       (!scope.machineId || p.machineId === scope.machineId),
   );
   const storeIds = new Set(placements.map((p) => p.storeId));
-  if (scope.storeId) storeIds.add(scope.storeId);
+  for (const id of scopeStores ?? []) storeIds.add(id);
   const machineIds = new Set(placements.map((p) => p.machineId));
   if (scope.machineId) machineIds.add(scope.machineId);
   return {
@@ -408,9 +417,41 @@ function scopeSources(
   };
 }
 
-function normalizeScope(args: { storeId?: string | null; machineId?: string | null }): DataScope {
+interface ScopeArgs {
+  readonly storeId?: string | null;
+  readonly machineId?: string | null;
+  readonly ownerId?: string | null;
+  readonly storeIds?: readonly string[] | null;
+}
+
+/**
+ * Filtret ur anroparens argument. En vald butik vinner över en ägare. Ägarens butiker
+ * (`storeIds`) följer med när anroparen redan har dem; annars är de undefined och läses
+ * av withOwnerStores.
+ */
+function normalizeScope(args: ScopeArgs): DataScope {
   const clean = (v: string | null | undefined) => (v && v.trim() ? v.trim().toLowerCase() : null);
-  return { storeId: clean(args.storeId), machineId: clean(args.machineId) };
+  const storeId = clean(args.storeId);
+  const ownerId = storeId ? null : clean(args.ownerId);
+  const machineId = clean(args.machineId);
+  // Utan ägare: samma form som förut ({ storeId, machineId }); scopeStoreIds räknar fram resten.
+  if (!ownerId) return { storeId, machineId };
+  return {
+    storeId,
+    machineId,
+    ownerId,
+    storeIds: args.storeIds ? args.storeIds.map((id) => id.toLowerCase()) : undefined,
+  };
+}
+
+/** Ett ägarfilter med butikerna utlästa (ur butikernas owner_id, under RLS). */
+async function withOwnerStores(tx: Tx, orgId: string, scope: DataScope): Promise<DataScope> {
+  if (!scope.ownerId || scope.storeIds !== undefined) return scope;
+  const rows = await tx
+    .select({ id: s.stores.id, ownerId: s.stores.ownerId })
+    .from(s.stores)
+    .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.ownerId, scope.ownerId)));
+  return resolveOwnerScope(scope, rows);
 }
 
 /**
@@ -425,7 +466,7 @@ export async function loadDomainInputFor(
 ): Promise<DomainInput> {
   const orgId = viewer.organization.id;
   const today = businessToday(now, viewer.organization.timezone);
-  const scope = normalizeScope(args);
+  const requested = normalizeScope(args);
   const period = args.period;
   const compare = args.compare ?? null;
   const span: Period = compare
@@ -441,6 +482,7 @@ export async function loadDomainInputFor(
   masterP.catch(() => {});
   baseP.catch(() => {});
   const loaded = withUserDbFor(viewer.user, async (tx) => {
+    const scope = await withOwnerStores(tx, orgId, requested);
     const [orderResult, refundRows] = await Promise.all([
       queryOrders(tx, orgId, span, scope),
       queryPeriodRefunds(tx, orgId, span),
@@ -456,6 +498,7 @@ export async function loadDomainInputFor(
       deductStoreShare: storeShareInView({
         toggle: args.storeShare === true,
         storeId: scope.storeId,
+        ownerId: scope.ownerId,
         machineId: scope.machineId,
       }),
     };
@@ -510,13 +553,17 @@ export async function loadDomainInputFor(
       },
     };
   });
-  const filtered = scope.storeId !== null || scope.machineId !== null;
+  const filtered = scopeFiltered(requested);
   if (!filtered || args.vmb !== true) return loaded;
   // Filtrerad vy med VMB: VMB-momsen är organisationens (samlad per månad), så urvalets order
   // bär sin del av den, samma som i den ofiltrerade vyns rad (ledger.ts `vmbByOrder`).
   const [data, org] = await Promise.all([
     loaded,
-    loadDomainInputFor(viewer, { ...args, storeId: null, machineId: null }, now),
+    loadDomainInputFor(
+      viewer,
+      { ...args, storeId: null, machineId: null, ownerId: null, storeIds: null },
+      now,
+    ),
   ]);
   if (!vmbApplies(data.settings)) return data;
   const sharesOf = (input: ProfitabilityInput): Map<string, number> => {
@@ -542,10 +589,15 @@ export async function loadDomainInputFor(
  */
 export async function loadLastOrderDateFor(
   viewer: Viewer,
-  args: { period: Period; storeId?: string | null; machineId?: string | null },
+  args: { period: Period } & ScopeArgs,
 ): Promise<IsoDate | null> {
-  return asViewer(viewer, ECONOMY_ROLES, (tx) =>
-    queryLastOrderDate(tx, viewer.organization.id, args.period, normalizeScope(args)),
+  return asViewer(viewer, ECONOMY_ROLES, async (tx) =>
+    queryLastOrderDate(
+      tx,
+      viewer.organization.id,
+      args.period,
+      await withOwnerStores(tx, viewer.organization.id, normalizeScope(args)),
+    ),
   );
 }
 
@@ -613,10 +665,8 @@ export async function loadStockFor(viewer: Viewer): Promise<StockSnapshot> {
   };
 }
 
-export interface SalesCountsArgs {
+export interface SalesCountsArgs extends ScopeArgs {
   readonly period: Period;
-  readonly storeId?: string | null;
-  readonly machineId?: string | null;
 }
 
 /** Sålda pack per dag, titel och automat (lagerhändelser av typen sale). Alla roller, inga belopp. */
@@ -624,8 +674,8 @@ export async function loadSalesCountsFor(
   viewer: Viewer,
   args: SalesCountsArgs,
 ): Promise<SalesCounts> {
-  const scope = normalizeScope(args);
   return asViewer(viewer, ALL_ROLES, async (tx) => {
+    const scope = await withOwnerStores(tx, viewer.organization.id, normalizeScope(args));
     const rows = await querySalesCounts(tx, viewer.organization.id, args.period, scope);
     return {
       period: args.period,

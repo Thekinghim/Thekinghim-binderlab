@@ -35,6 +35,8 @@ import {
   loadMasterData,
   loadPeriod,
   requireRoute,
+  storeInScope,
+  storeScoped,
   type AppContext,
   type AppPeriod,
 } from "@/server/data/core";
@@ -239,7 +241,7 @@ export async function loadStoreListWith(
         loaders.domainInput({
           period: x.period,
           compare: x.compare,
-          ...(x.scope.storeId ? { storeShare: true } : {}),
+          ...(storeScoped(x.scope) ? { storeShare: true } : {}),
         }),
       ),
       loaders.domainInput({ period: month }),
@@ -257,7 +259,8 @@ export async function loadStoreListWith(
   );
   const views = agreements.map((a) => toAgreementView(a, ctx.today));
   const filterId = p.scope.storeId;
-  const shown = filterId ? stores.filter((s) => s.id === filterId) : stores;
+  // En butik eller en butiksägares butiker.
+  const shown = stores.filter((s) => storeInScope(p.scope, s.id));
   // Till butiken i perioden: samma motor och samma indata som avräkningen (alla order,
   // butikens eget avtal). Dras inte från vår vinst; det gör bara vyknappen.
   const toStore = new Map(
@@ -308,7 +311,11 @@ export async function loadStoreListWith(
     kpis: listKpis(rows, monthName, showShare),
     headline: listHeadline(rows, info.span, showShare),
     monthLabel: monthName,
-    scopeLabel: filterId ? (stores.find((s) => s.id === filterId)?.name ?? null) : null,
+    scopeLabel: filterId
+      ? (stores.find((s) => s.id === filterId)?.name ?? null)
+      : p.scope.ownerId
+        ? (master.owners?.find((o) => o.id === p.scope.ownerId)?.name ?? null)
+        : null,
     ignoredMachine: machineId
       ? (master.machines.find((m) => m.id === machineId)?.code ?? "vald automat")
       : null,

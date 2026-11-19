@@ -41,6 +41,7 @@ import {
 } from "@/domain";
 import { todayIn, toIsoDate } from "@/components/shell/period-state";
 import type { DataScope, MachineRecord, SyncInfo, TitleRecord } from "@/server/data/core/types";
+import { scopeFiltered, storeScoped } from "@/server/data/core/scope";
 import type { EconomicsSources } from "@/domain";
 import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
 import { formatInt, formatPercent, NBSP } from "@/lib/format";
@@ -668,7 +669,7 @@ function buildTodos(
       level: t.level,
       late: t.kind === "settlement" && t.daysLeft !== null && t.daysLeft < 0,
     }));
-  const filtered = Boolean(scope.machineId || scope.storeId);
+  const filtered = scopeFiltered(scope);
   const machineLabel = (id: string) => {
     const m = machines.find((x) => x.id === id);
     return m ? (m.code ? m.code.replace(/-/g, "\u2011") : m.name) : "automaten";
@@ -846,14 +847,18 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       }
     : null;
   const prevOurOre = previous ? profitability(previous, "title").totals.profitOre : null;
-  // Vald butik (inte automatens butik som skalet lägger till vid automatfilter).
-  const filtered = Boolean(input.scope.storeId && !input.scope.machineId);
+  // Vald butik eller butiksägare (inte automatens butik som skalet lägger till vid
+  // automatfilter).
+  const filtered = storeScoped(input.scope) && !input.scope.machineId;
   // En källa: indata säger om andelen dras (samma flagga som alla tal ovan).
   const showShare = byTitle.storeShareDeducted;
   const shareLabel = filtered
     ? storeShareLabel({
-        name: input.storeName ?? "Butiken",
-        terms: storeShareTerms(current.agreements, input.scope.storeId!, period),
+        name: input.storeName ?? (input.scope.storeId ? "Butiken" : "Butiksägaren"),
+        // Ägarens butiker kan ha olika villkor: bara namnet ("Andel till …").
+        terms: input.scope.storeId
+          ? storeShareTerms(current.agreements, input.scope.storeId, period)
+          : null,
       })
     : input.scope.machineId
       ? // En automat står i en butik: det är butikens andel (som på Lönsamhet).
@@ -926,8 +931,9 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       pricedOrders: byTitle.totals.pricedOrders,
       profitOre: profitSplit?.ourOre ?? km.profitOre,
       storesProfitOre: profitSplit && (hasStoreShare || filtered) ? profitSplit.storesOre : null,
-      // Rubrikens ord: en butiks andel med vald butik eller automat.
-      filtered: filtered || Boolean(input.scope.machineId),
+      // Rubrikens ord: en butiks andel med vald butik eller automat; en butiksägare har flera
+      // butiker ("butikernas andel").
+      filtered: Boolean(input.scope.storeId || input.scope.machineId),
       showStoreShare: showShare,
       storeShareLabel: shareLabel,
       marginBp: km.marginBp,

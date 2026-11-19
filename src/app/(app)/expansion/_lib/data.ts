@@ -40,6 +40,7 @@ import {
   loadDomainInput,
   loadPeriod,
   requireRoute,
+  scopeFiltered,
   type AppContext,
   type AppPeriod,
 } from "@/server/data/core";
@@ -149,7 +150,7 @@ export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<Unit
   ]);
   const inScope = new Set<string>(input.current.placements.map((pl) => pl.machineId));
   if (p.scope.machineId) inScope.add(p.scope.machineId);
-  if (!p.scope.storeId && !p.scope.machineId) {
+  if (!scopeFiltered(p.scope)) {
     for (const m of input.machines) if (!m.archived) inScope.add(m.id);
   }
   const machineIds = [...inScope].sort();

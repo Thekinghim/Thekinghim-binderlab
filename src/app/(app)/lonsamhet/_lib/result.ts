@@ -106,7 +106,12 @@ export interface ResultInput {
   readonly fixedCosts: readonly FixedCost[];
   /** Gratis-pack i perioden (saknas = inga). */
   readonly freePacks?: readonly FreePackCost[];
-  readonly scope: { readonly storeId: string | null; readonly machineId: string | null };
+  readonly scope: {
+    readonly storeId: string | null;
+    readonly machineId: string | null;
+    /** En butiksägares butiker (alla räknas tillsammans, som en butik). */
+    readonly storeIds?: readonly string[] | null;
+  };
   readonly machines?: readonly { readonly id: string; readonly name: string }[];
 }
 
@@ -115,9 +120,25 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
   const { current } = input;
   // Automatfiltret går först: skalet lägger alltid till automatens butik i adressen
   // (`?automat=…&butik=…`), och då gäller automatens återbetalningar och fasta kostnader.
+  const stores = input.scope.machineId
+    ? null
+    : (input.scope.storeIds ?? (input.scope.storeId ? [input.scope.storeId] : null));
   const scope = {
-    storeId: input.scope.machineId ? null : input.scope.storeId,
+    // Sant med butiks- eller ägarfilter (en eller flera butiker).
+    byStore: stores !== null,
     machineId: input.scope.machineId,
+  };
+  const inStores = (key: string) => stores !== null && stores.includes(key);
+  /** Summan över filtrets butiker (rader per butik). */
+  const storeSum = (
+    rows: ReadonlyArray<{ key: string; amountOre: number; count: number; refundIds: string[] }>,
+  ) => {
+    const picked = rows.filter((r) => inStores(r.key));
+    return {
+      amountOre: sumOre(picked.map((r) => r.amountOre)),
+      count: picked.reduce((n, r) => n + r.count, 0),
+      refundIds: picked.flatMap((r) => r.refundIds),
+    };
   };
   const period = current.period;
   const base = profitability(current, "machine");
@@ -130,7 +151,7 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
     revenueOre: r.revenueOre,
     profitOre: r.profitOre,
   }));
-  const refundRows = scope.storeId
+  const refundRows = scope.byStore
     ? []
     : applyRefunds(
         lines,
@@ -140,22 +161,20 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
         period,
         "machine",
       );
-  const storeRefunds = scope.storeId
-    ? summarizeRefunds(input.refunds, period, "store", input.organization.placements).rows.find(
-        (r) => r.key === scope.storeId,
-      )
+  const storeRefunds = scope.byStore
+    ? storeSum(summarizeRefunds(input.refunds, period, "store", input.organization.placements).rows)
     : undefined;
-  const refundOre = scope.storeId
+  const refundOre = scope.byStore
     ? (storeRefunds?.amountOre ?? 0)
     : sumOre(refundRows.map((r) => r.refundOre));
-  const refundCount = scope.storeId
+  const refundCount = scope.byStore
     ? (storeRefunds?.count ?? 0)
     : refundRows.reduce((n, r) => n + r.refundCount, 0);
   const profitAfterRefundsOre = sumOre([profitOre, -refundOre]);
 
   // Gratis-pack: samma regler som återbetalningarna (automat, eller butiken den dagen).
   const packs = input.freePacks ?? [];
-  const packRows = scope.storeId
+  const packRows = scope.byStore
     ? []
     : applyRefunds(
         lines,
@@ -163,19 +182,19 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
         period,
         "machine",
       );
-  const storePacks = scope.storeId
-    ? summarizeRefunds(asRefunds(packs), period, "store", input.organization.placements).rows.find(
-        (r) => r.key === scope.storeId,
+  const storePacks = scope.byStore
+    ? storeSum(
+        summarizeRefunds(asRefunds(packs), period, "store", input.organization.placements).rows,
       )
     : undefined;
-  const freePackOre = scope.storeId
+  const freePackOre = scope.byStore
     ? (storePacks?.amountOre ?? 0)
     : sumOre(packRows.map((r) => r.refundOre));
   const storePackIds = new Set(storePacks?.refundIds ?? []);
   const freePackCount = packs
     .filter((p) => p.day >= period.start && p.day <= period.end && p.costOre > 0)
     .filter((p) =>
-      scope.storeId
+      scope.byStore
         ? storePackIds.has(p.id)
         : scope.machineId === null || p.machineId === scope.machineId,
     )
@@ -184,7 +203,7 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
 
   let allocation: FixedCostAllocation | null = null;
   let fixedNote: string | null = null;
-  if (scope.storeId) {
+  if (scope.byStore) {
     fixedNote =
       "Fasta kostnader fördelas per automat, inte per butik. Välj en automat eller hela organisationen.";
   } else {
@@ -211,7 +230,7 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
 
   // Per automat (inte med butiksfilter): vinst, återbetalt, fasta och resultat.
   const machines: ResultMachineRow[] = [];
-  if (!scope.storeId) {
+  if (!scope.byStore) {
     const keys = new Set<string>([
       ...refundRows.map((r) => r.key),
       ...packRows.map((r) => r.key),

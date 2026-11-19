@@ -29,6 +29,7 @@ import { loadSignableContractsFor } from "@/server/contracts";
 import type { Viewer } from "@/server/data/core/loaders";
 import { weekShapesInRequest } from "@/server/data/week-shapes";
 import { loadSlotPeriodsFor } from "@/server/data/assortment";
+import { scopeFiltered } from "@/server/data/core/scope";
 import type { DomainInput, MasterData } from "@/server/data/core/types";
 import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders";
 
@@ -290,7 +291,9 @@ export async function loadOverviewWith(
     ? (base.master.machines.find((m) => m.id === p.scope.machineId)?.code ?? null)
     : p.scope.storeId
       ? (base.master.stores.find((s) => s.id === p.scope.storeId)?.name ?? null)
-      : null;
+      : p.scope.ownerId
+        ? (base.master.owners?.find((o) => o.id === p.scope.ownerId)?.name ?? null)
+        : null;
   return {
     ctx,
     period,
@@ -299,7 +302,7 @@ export async function loadOverviewWith(
     // Hela organisationens avtal bara utan butiks- och automatfilter (annars är de filtrerade).
     stores: storeOptions(
       base.master,
-      p.scope.storeId || p.scope.machineId ? undefined : loaded.current.agreements,
+      scopeFiltered(p.scope) ? undefined : loaded.current.agreements,
       contracts,
     ),
     scopeLabel,

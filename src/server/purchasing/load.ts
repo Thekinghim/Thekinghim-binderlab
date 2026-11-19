@@ -24,6 +24,7 @@ import { addDays, minDate, revenue, type IsoDate, type Period } from "@/domain";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, loadDomainInputFor, type Viewer } from "@/server/data/core/loaders";
 import { queryMysteryRecipeRefs, queryStock } from "@/server/data/core/queries";
+import { scopeFiltered, scopeStoreIds } from "@/server/data/core/scope";
 import {
   ECONOMY_ROLES,
   OPERATOR_ROLES,
@@ -91,9 +92,10 @@ export function planFrom(asOf: IsoDate): IsoDate {
 /** Automaterna som filtret omfattar (null = alla). */
 export function machinesInScope(input: DomainInput, scope: DataScope): Set<string> | null {
   if (scope.machineId) return new Set([scope.machineId]);
-  if (scope.storeId) {
+  const stores = scopeStoreIds(scope);
+  if (stores) {
     return new Set(
-      input.placements.filter((p) => p.storeId === scope.storeId).map((p) => p.machineId),
+      input.placements.filter((p) => stores.includes(p.storeId)).map((p) => p.machineId),
     );
   }
   return null;
@@ -339,7 +341,7 @@ export async function loadPrognosFor(
   const today = businessToday(now, viewer.organization.timezone);
   const asOf = addDays(today, -1);
   const scope: DataScope = args.scope ?? { storeId: null, machineId: null };
-  const scoped = Boolean(scope.storeId || scope.machineId);
+  const scoped = scopeFiltered(scope);
 
   const lostPeriod = lostPeriodOf(args.period, asOf);
   // Prognosen och inköpsplanen räknas alltid från planFrom (oberoende av periodvalet);

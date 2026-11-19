@@ -154,13 +154,33 @@ describe("skrivning", () => {
     }
   });
   it("filter: tolkning, sättning och borttagning", () => {
-    expect(parseScope(sp("butik=s1&automat=%20"))).toEqual({ butik: "s1", automat: null });
+    expect(parseScope(sp("butik=s1&automat=%20"))).toEqual({
+      butik: "s1",
+      agare: null,
+      automat: null,
+    });
     expect(withScope(sp("period=7d"), { butik: "s2", automat: "m4" }).toString()).toBe(
       "period=7d&butik=s2&automat=m4",
     );
     expect(withScope(sp("period=7d&butik=s2&automat=m4"), { automat: null }).toString()).toBe(
       "period=7d&butik=s2",
     );
+  });
+  it("butiksägaren (?agare=): en vald butik vinner, och butik och ägare är ett val", () => {
+    expect(parseScope(sp("agare=o1"))).toEqual({ butik: null, agare: "o1", automat: null });
+    expect(parseScope(sp("agare=o1&butik=s1")).agare).toBeNull();
+    expect(withScope(sp("period=7d"), { agare: "o1", butik: null }).toString()).toBe(
+      "period=7d&agare=o1",
+    );
+    // Ett val av butik (eller "Alla butiker") tar bort ägaren.
+    expect(withScope(sp("period=7d&agare=o1"), { butik: "s2" }).toString()).toBe(
+      "period=7d&butik=s2",
+    );
+    expect(withScope(sp("agare=o1&automat=m1"), { butik: null, automat: null }).toString()).toBe(
+      "",
+    );
+    // Följer med mellan sidor som butiken.
+    expect(carriedQuery(sp("period=7d&agare=o1&sort=x"))).toBe("?period=7d&agare=o1");
   });
   it("carriedQuery bär bara skalets parametrar", () => {
     expect(carriedQuery(sp("period=7d&sort=x&butik=s1"))).toBe("?period=7d&butik=s1");

@@ -17,7 +17,14 @@ import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { EN_DASH, formatInt, MINUS, NBSP } from "@/lib/format";
-import { loadMasterData, loadPeriod, requireRoute, requireViewer } from "@/server/data/core";
+import {
+  loadMasterData,
+  loadPeriod,
+  requireRoute,
+  requireViewer,
+  storeInScope,
+  storeScoped,
+} from "@/server/data/core";
 import { loadShrinkageFor } from "@/server/data/shrinkage";
 
 import { machineHref } from "../_lib/model";
@@ -44,9 +51,9 @@ export default async function SvinnPage({
   const aggregates = await loadShrinkageFor(viewer, p.period);
   const scoped = p.scope.machineId
     ? aggregates.filter((a) => a.machineId === p.scope.machineId)
-    : p.scope.storeId
-      ? aggregates.filter(
-          (a) => master.machines.find((m) => m.id === a.machineId)?.storeId === p.scope.storeId,
+    : storeScoped(p.scope)
+      ? aggregates.filter((a) =>
+          storeInScope(p.scope, master.machines.find((m) => m.id === a.machineId)?.storeId),
         )
       : aggregates;
   const report = buildShrinkage(scoped, master);

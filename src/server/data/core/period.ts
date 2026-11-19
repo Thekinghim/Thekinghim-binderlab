@@ -30,13 +30,16 @@ function localMidnight(date: IsoDate): Date {
   return new Date(y, m - 1, d);
 }
 
-/** Filtret ur URL:en. Värden som inte är uuid ignoreras (null). */
+/**
+ * Filtret ur URL:en. Värden som inte är uuid ignoreras (null). En butiksägare (?agare=) ger
+ * `ownerId`; dess butiker (`storeIds`) läses av laddaren (resolveOwnerScope i ./scope).
+ */
 export function scopeFromSearchParams(sp: SearchParamsInput): DataScope {
   const raw = parseScope(sp);
-  return {
-    storeId: isUuid(raw.butik) ? raw.butik.toLowerCase() : null,
-    machineId: isUuid(raw.automat) ? raw.automat.toLowerCase() : null,
-  };
+  const storeId = isUuid(raw.butik) ? raw.butik.toLowerCase() : null;
+  const ownerId = !storeId && isUuid(raw.agare) ? raw.agare.toLowerCase() : null;
+  const machineId = isUuid(raw.automat) ? raw.automat.toLowerCase() : null;
+  return ownerId ? { storeId, machineId, ownerId, storeIds: undefined } : { storeId, machineId };
 }
 
 export interface ResolveAppPeriodOptions {

@@ -240,6 +240,8 @@ export const stores = pgTable("stores", {
    * muntligt. null = inte valt.
    */
   agreementForm: text("agreement_form").$type<"written" | "oral">(),
+  /** Butikens ägare (store_owners, 20261219000000_butiksagare.sql). null = ingen. */
+  ownerId: uuid("owner_id"),
   ...stamps(),
 });
 
@@ -879,3 +881,6 @@ export * from "./schema/vecka";
 
 // Inköp: ett inskick skrivs aldrig två gånger (20261210000000_inkop_en_gang.sql).
 export * from "./schema/inkop";
+
+// Butiksägare: bolaget som äger butikerna (20261219000000_butiksagare.sql).
+export * from "./schema/butiksagare";

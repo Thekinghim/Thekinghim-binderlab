@@ -314,6 +314,37 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // Butiksägare (20261219000000_butiksagare.sql): bara ägare och admin.
+  {
+    module: "@/app/(app)/butiker/owner-actions",
+    name: "createOwner",
+    allowed: OP,
+    args: (c) => [sink(c, { legalName: "Rödteam AB", orgNumber: "559900-1236" })],
+  },
+  {
+    module: "@/app/(app)/butiker/owner-actions",
+    name: "updateOwner",
+    allowed: OP,
+    args: (c) => [
+      sink(c, {
+        ownerId: c.idsA.store_owners ?? c.A.storeId,
+        legalName: "Rödteam AB",
+        orgNumber: "559900-1236",
+      }),
+    ],
+  },
+  {
+    module: "@/app/(app)/butiker/owner-actions",
+    name: "setOwnerArchived",
+    allowed: OP,
+    args: (c) => [sink(c, { ownerId: c.idsA.store_owners ?? c.A.storeId, archived: true })],
+  },
+  {
+    module: "@/app/(app)/butiker/owner-actions",
+    name: "setStoreOwner",
+    allowed: OP,
+    args: (c) => [sink(c, { ownerId: "" })],
+  },
   // Datakällor
   {
     module: "@/app/(app)/datakallor/actions",
@@ -1179,6 +1210,13 @@ export const ACTIONS: ActionSpec[] = [
     args: (c) => [sink(c)],
   },
   // Rapporter
+  // En butiksrapport per butik hos en butiksägare (bara ägare och admin).
+  {
+    module: "@/app/(app)/rapporter/owner-actions",
+    name: "createOwnerReports",
+    allowed: OP,
+    args: (c) => [sink(c, { ownerId: c.idsA.store_owners ?? c.A.storeId, month: "2025-03" })],
+  },
   {
     module: "@/app/(app)/rapporter/actions",
     name: "createReport",

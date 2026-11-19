@@ -26,6 +26,7 @@ import type { MachineHealth } from "@/analytics/health";
 import { planVisits, type MachineCapacity, type VisitPlan } from "@/analytics/visits";
 import { retiredPairs } from "@/analytics/todos/assortment";
 import { sumOwnStock } from "@/server/data/core/own-stock";
+import { storeInScope } from "@/server/data/core/scope";
 import { planNow, weeklyVisitPlan } from "@/server/data/visit-plan";
 import { sellOut, type WeekShare } from "@/analytics/sellout";
 import {
@@ -150,7 +151,8 @@ function perDayTenths(v: SalesVelocity): number | null {
 
 function inScope(m: MachineRecord, scope: DataScope): boolean {
   if (scope.machineId !== null && m.id !== scope.machineId) return false;
-  if (scope.storeId !== null && m.storeId !== scope.storeId) return false;
+  // En butik eller en butiksägares butiker (automatens butik i dag).
+  if (!storeInScope(scope, m.storeId)) return false;
   return true;
 }
 

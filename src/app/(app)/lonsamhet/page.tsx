@@ -174,8 +174,8 @@ export default async function LonsamhetPage({
             className="max-md:absolute max-md:-top-2 max-md:-right-2"
           >
             <AiPageLine metric="vinsten" route="lonsamhet" menuItem />
-            {/* Med vald butik dras butikens andel alltid; knappen behövs bara utan butik. */}
-            {(p.scope.storeId && !p.scope.machineId) ||
+            {/* Med vald butik eller ägare dras andelen alltid; knappen behövs bara utan. */}
+            {((p.scope.storeId || p.scope.ownerId) && !p.scope.machineId) ||
             model.bridge.compensationOre === 0 ? null : (
               <Suspense fallback={null}>
                 <StoreShareToggle on={shareToggle} menuItem />

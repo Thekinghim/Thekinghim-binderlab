@@ -14,6 +14,7 @@ import type { ReportType } from "@/server/reports/kinds";
 import { allowsRange, defaultRange, rangeError } from "@/server/reports/range";
 
 import { createReport } from "../actions";
+import { OwnerReports, type OwnerReportChoice } from "./owner-reports";
 import { TextArea } from "./text-area";
 
 const TYPES: { value: ReportType; label: string }[] = [
@@ -40,6 +41,7 @@ export function ReportBuilder({
   canCreate,
   currentId,
   overlap = null,
+  owners = [],
 }: {
   type: ReportType;
   month: string;
@@ -57,6 +59,8 @@ export function ReportBuilder({
   currentId: string | null;
   /** Kort varning när underlaget överlappar ett annat (bokföring med eget datum). */
   overlap?: string | null;
+  /** Butiksägare med flera butiker i perioden: en rapport per butik i ett svep. */
+  owners?: readonly OwnerReportChoice[];
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -293,6 +297,15 @@ export function ReportBuilder({
           <p className="text-sm text-muted">Ägaren skapar och skickar.</p>
         )}
         {error ? <StateMessage kind="error" compact message={error} className="px-0" /> : null}
+        {type === "butik" && canEdit ? (
+          <OwnerReports
+            owners={owners}
+            month={month}
+            range={range}
+            greeting={text}
+            disabled={dirty}
+          />
+        ) : null}
       </div>
     </div>
   );

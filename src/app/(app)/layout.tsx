@@ -2,6 +2,7 @@ import { ConfigMissing } from "@/components/ui/config-missing";
 import { getConfigStatus } from "@/server/config-status";
 import type { ReactNode } from "react";
 import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
+import { ownerChoices } from "@/components/shell/owner-filter";
 import { routeById } from "@/components/shell/nav";
 import { getCookieLocale, getRequestLocale } from "@/i18n/request";
 import { formatInt } from "@/lib/format";
@@ -92,6 +93,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const stores: ShellStore[] = master.stores
     .filter((s) => !s.archived)
     .map((s) => ({ id: s.id, name: s.name }));
+  // Butiksägare med flera butiker blir val i filtret (tom lista för påfyllare: RLS).
+  const owners = ownerChoices(master.owners ?? [], master.stores);
   const machines: ShellMachine[] = master.machines
     .filter((m) => !m.archived)
     .map((m) => ({ id: m.id, name: m.name, code: m.code, storeId: m.storeId ?? undefined }));
@@ -118,6 +121,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         syncedAt={sync?.syncedAt ?? undefined}
         syncState={sync?.state}
         stores={stores}
+        owners={owners}
         machines={machines}
         earliest={dataStart ? isoDateToShellDate(dataStart) : undefined}
       >

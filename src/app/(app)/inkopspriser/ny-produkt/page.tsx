@@ -44,7 +44,12 @@ async function GoodsSection({
   preselect,
 }: {
   viewer: Viewer;
-  scope: { storeId: string | null; machineId: string | null };
+  scope: {
+    storeId: string | null;
+    machineId: string | null;
+    ownerId: string | null;
+    storeIds: readonly string[] | null;
+  };
   vmb: boolean;
   storeShare: boolean;
   preselect: { titleId: string | null; goodId: number | null };
@@ -118,6 +123,8 @@ export default async function NewProductPage({
   const scope = {
     storeId: period.scope.storeId ?? null,
     machineId: period.scope.machineId ?? null,
+    ownerId: period.scope.ownerId ?? null,
+    storeIds: period.scope.storeIds ?? null,
   };
 
   const tabs = [

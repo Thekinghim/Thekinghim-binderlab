@@ -5,6 +5,8 @@ import { cn } from "@/lib/cn";
 import { Icon } from "@/components/ui/icon";
 import { Segmented } from "@/components/ui/segmented";
 import { DateRangePicker } from "./date-range-picker";
+import { ownerFromOptionValue, ownerOptionLabel, ownerOptionValue } from "./owner-filter";
+import { useShellOwners } from "./owners-context";
 import { periodChoices, type PeriodKey } from "./period-state";
 import { usePeriod, useScope } from "./use-period";
 
@@ -249,6 +251,8 @@ function CompactSelect({
   value,
   onChange,
   options,
+  groups = [],
+  optionsLabel,
   allLabel,
   compactLabel = false,
   className,
@@ -257,6 +261,10 @@ function CompactSelect({
   value: string | null;
   onChange: (v: string | null) => void;
   options: Array<{ value: string; label: string }>;
+  /** Grupperade val före `options` (t.ex. butiksägare), med rubrik. */
+  groups?: Array<{ label: string; options: Array<{ value: string; label: string }> }>;
+  /** Rubriken för `options` när `groups` finns. */
+  optionsLabel?: string;
   allLabel: string;
   /** Etiketten bara för skärmläsare under xl (värdet "Alla butiker" bär betydelsen). */
   compactLabel?: boolean;
@@ -282,11 +290,30 @@ function CompactSelect({
           )}
         >
           <option value="">{allLabel}</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
+          {groups.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
+          {groups.length > 0 && optionsLabel ? (
+            <optgroup label={optionsLabel}>
+              {options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          ) : (
+            options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))
+          )}
         </select>
         <Icon
           name="chevronDown"
@@ -301,6 +328,8 @@ function CompactSelect({
 /**
  * Globalt filter på butik och automat. Val av butik begränsar
  * automatlistan; val av automat visar dess butik (utan att filtrera på den).
+ * Butiksägare med flera butiker står först i butikslistan: ett val av ägaren filtrerar på
+ * alla dess butiker tillsammans (?agare=).
  */
 export function ScopeFilter({
   stores,
@@ -316,27 +345,60 @@ export function ScopeFilter({
 }) {
   const scope = useScope();
   const { setScope } = scope;
+  const owners = useShellOwners();
+  const owner = scope.agare ? (owners.find((o) => o.id === scope.agare) ?? null) : null;
   // Med bara ?automat= visas automatens nuvarande butik som vald, men den skrivs inte in
   // i URL:en: automatfiltret gäller automatens hela försäljning, även den före
   // placeringen i butiken eller från en tidigare butik.
-  const impliedStore = scope.automat
-    ? (machines.find((m) => m.id === scope.automat)?.storeId ?? null)
-    : null;
+  const impliedStore =
+    scope.automat && !scope.agare
+      ? (machines.find((m) => m.id === scope.automat)?.storeId ?? null)
+      : null;
   const butik = scope.butik ?? impliedStore;
+  const storeValue = butik ?? (scope.agare ? ownerOptionValue(scope.agare) : null);
+  const inOwner = (storeId: string | undefined) =>
+    Boolean(owner && storeId && owner.storeIds.includes(storeId));
 
-  const visibleMachines = butik ? machines.filter((m) => m.storeId === butik) : machines;
+  const visibleMachines = butik
+    ? machines.filter((m) => m.storeId === butik)
+    : owner
+      ? machines.filter((m) => inOwner(m.storeId))
+      : machines;
   return (
     <div className={cn("flex min-w-0 items-center gap-4", className)}>
       {stores.length > 0 ? (
         <CompactSelect
           label="Butik"
-          value={butik}
+          value={storeValue}
           allLabel="Alla butiker"
           compactLabel={compact}
+          groups={
+            owners.length > 0
+              ? [
+                  {
+                    label: "Butiksägare",
+                    options: owners.map((o) => ({
+                      value: ownerOptionValue(o.id),
+                      label: ownerOptionLabel(o),
+                    })),
+                  },
+                ]
+              : []
+          }
+          optionsLabel="Butiker"
           options={stores.map((s) => ({ value: s.id, label: s.name }))}
           onChange={(next) => {
-            const keep = next && machines.find((m) => m.id === scope.automat)?.storeId === next;
-            setScope({ butik: next, automat: keep ? scope.automat : null });
+            const machineStore = machines.find((m) => m.id === scope.automat)?.storeId;
+            const ownerId = ownerFromOptionValue(next);
+            if (ownerId) {
+              const keep = owners
+                .find((o) => o.id === ownerId)
+                ?.storeIds.includes(machineStore ?? "");
+              setScope({ butik: null, agare: ownerId, automat: keep ? scope.automat : null });
+              return;
+            }
+            const keep = next && machineStore === next;
+            setScope({ butik: next, agare: null, automat: keep ? scope.automat : null });
           }}
           className="sm:max-w-[200px]"
         />
@@ -355,7 +417,13 @@ export function ScopeFilter({
             // Ett uttryckligt butiksval står kvar om automaten står där; annars bara automaten.
             const storeId = machines.find((m) => m.id === automat)?.storeId;
             const keep = automat && scope.butik && storeId === scope.butik;
-            setScope({ automat, butik: keep ? scope.butik : null });
+            // Likaså ägaren, om automaten står i en av ägarens butiker.
+            const keepOwner = Boolean(automat && owner && inOwner(storeId));
+            setScope({
+              automat,
+              butik: keep ? scope.butik : null,
+              agare: keepOwner ? scope.agare : null,
+            });
           }}
           className="sm:max-w-[220px]"
         />
@@ -367,5 +435,5 @@ export function ScopeFilter({
 /** Antal aktiva filter, för mobilens filterknapp. */
 export function useActiveFilterCount(): number {
   const s = useScope();
-  return (s.butik ? 1 : 0) + (s.automat ? 1 : 0);
+  return (s.butik || s.agare ? 1 : 0) + (s.automat ? 1 : 0);
 }

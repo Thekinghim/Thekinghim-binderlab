@@ -41,6 +41,7 @@ import {
 import { sellingSpan, withSellingDays } from "@/analytics/expansion/unit-economics-compare";
 import { parseIsoDate } from "@/components/shell/period-state";
 import { dataCoverage } from "@/server/data/core/period";
+import { storeInScope, storeScoped } from "@/server/data/core/scope";
 import {
   formatDate,
   formatDecimal,
@@ -540,11 +541,11 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
   // Filter: vid butik- eller automatfilter visas bara de automater som ingår.
   const inScope = (m: MachineRecord) => {
     if (scope.machineId) return m.id === scope.machineId;
-    if (scope.storeId) {
+    if (storeScoped(scope)) {
       return input.sources.placements.some(
         (p) =>
           p.machineId === m.id &&
-          p.storeId === scope.storeId &&
+          storeInScope(scope, p.storeId) &&
           p.from <= input.period.end &&
           (p.to === null || p.to >= input.period.start),
       );
@@ -654,7 +655,12 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
                   name: storeName.get(scope.storeId) ?? "butiken",
                   terms: storeShareTerms(input.current.agreements, scope.storeId, input.period),
                 }
-              : null,
+              : scope.ownerId && !scope.machineId
+                ? {
+                    name: input.owners?.find((o) => o.id === scope.ownerId)?.name ?? "butiksägaren",
+                    terms: null,
+                  }
+                : null,
           ),
         }
       : {}),

@@ -29,6 +29,7 @@ import {
 } from "@/domain";
 import { AuthorizationError, withUserDbFor } from "@/server/access";
 import { loadSlotPeriodsFor } from "@/server/data/assortment";
+import { scopeFiltered } from "@/server/data/core/scope";
 import type { AppContext, DomainInput } from "@/server/data/core/types";
 import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders";
 import { queryMachineStockEvents } from "@/server/purchasing/queries";
@@ -148,7 +149,7 @@ export async function loadFleetRankingWith(
 
   const inScope = new Set<string>(input.current.placements.map((pl) => pl.machineId));
   if (p.scope.machineId) inScope.add(p.scope.machineId);
-  if (!p.scope.storeId && !p.scope.machineId) {
+  if (!scopeFiltered(p.scope)) {
     for (const m of input.machines) if (!m.archived) inScope.add(m.id);
   }
   const machines = new Map<string, RankedMachine>(
