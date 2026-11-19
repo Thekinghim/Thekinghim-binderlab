@@ -190,6 +190,7 @@ describe("Butiksägare (dator)", () => {
     expect(text(await page.locator("[data-store-owner]").innerText())).toBe(
       `${OWNER_NAME} 559900-1236`,
     );
+    await page.locator("#agare").scrollIntoViewIfNeeded();
     await screenshot(page, "agare-02-butik-med-agare-1280");
 
     // Gamma: "Ny ägare …" skapar ägaren och kopplar butiken i ett steg.
@@ -213,9 +214,15 @@ describe("Butiksägare (dator)", () => {
     ]);
 
     await page.goto("/butiker?vy=agare");
+    await page.getByText("2 butiksägare.").waitFor();
     const card = page.locator(`[data-owner="${OWNER_NAME}"]`);
     expect(text(await card.innerText())).toContain("559900-1236 · 2 butiker");
     await screenshot(page, "agare-01-butiksagare-1280");
+
+    // Butikens huvud: ägarens namn och org.nr.
+    await page.goto(`/butiker/${storeIds.get("Butik Alfa")!}`);
+    await page.locator("[data-store-owner]").getByText(OWNER_NAME).waitFor();
+    await screenshot(page, "agare-02-butik-huvud-1280");
   });
 
   it("filtret har ägaren med flera butiker; Hem visar ägarens butiker tillsammans", async () => {
@@ -243,6 +250,10 @@ describe("Butiksägare (dator)", () => {
         storeIds.get("Butik Beta")!,
       ]}::uuid[])`;
     expect(Number(facit!.ore)).toBe(5 * 20 * 7900);
+    // Andelen heter "butikernas" (ägaren har flera butiker) och dras alltid.
+    await page.getByText("Totalt före butikernas andel").first().waitFor();
+    // Talen räknar upp: vänta tills animationen är klar före skärmbilden.
+    await new Promise((r) => setTimeout(r, 1500));
     await screenshot(page, "agare-03-hem-agare-1280");
   });
 });
@@ -264,6 +275,7 @@ describe("Butiksägare (375 px)", () => {
     await page.goto(`/?period=30d&agare=${await ownerId(OWNER_NAME)}`);
     await page.getByText(`Hem · ${OWNER_NAME}`).first().waitFor();
     await expectNoSideScroll(page);
+    await new Promise((r) => setTimeout(r, 1500));
     await screenshot(page, "agare-03-hem-agare-375");
   });
 });

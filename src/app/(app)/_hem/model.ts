@@ -927,8 +927,9 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       pricedOrders: byTitle.totals.pricedOrders,
       profitOre: profitSplit?.ourOre ?? km.profitOre,
       storesProfitOre: profitSplit && (hasStoreShare || filtered) ? profitSplit.storesOre : null,
-      // Rubrikens ord: en butiks andel med vald butik eller automat.
-      filtered: filtered || Boolean(input.scope.machineId),
+      // Rubrikens ord: en butiks andel med vald butik eller automat; en butiksägare har flera
+      // butiker ("butikernas andel").
+      filtered: Boolean(input.scope.storeId || input.scope.machineId),
       showStoreShare: showShare,
       storeShareLabel: shareLabel,
       marginBp: km.marginBp,

@@ -516,7 +516,7 @@ function OwnerSection({
         title={owner ? owner.legalName : "Ingen ägare angiven."}
         aside={
           owner
-            ? `Org.nr ${owner.orgNumber}${others.length > 0 ? ` · äger också ${others.map((s) => s.name).join(", ")}` : ""}.`
+            ? `Org.nr ${owner.orgNumber.replace("-", "\u2011")}${others.length > 0 ? ` · äger också ${others.map((s) => s.name).join(", ")}` : ""}.`
             : "Bolaget som äger butiken. Samma ägare för flera butiker ger statistik för alla tillsammans."
         }
       />
