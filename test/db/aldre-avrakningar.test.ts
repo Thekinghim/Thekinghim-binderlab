@@ -119,9 +119,10 @@ describe("äldre månader utan avräkning", () => {
   });
 
   it("när priset läggs in skapar det schemalagda jobbet augusti, också månader senare", async () => {
+    // Priset gäller från 1 augusti: juli är stängd, och ett pris som når dit nekas (BL004).
     await asPostgres((tx) =>
       tx.execute(sql`insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from)
-                     values (${f.orgId}, ${unpricedTitle}, 4000, '2026-01-01')`),
+                     values (${f.orgId}, ${unpricedTitle}, 4000, '2026-08-01')`),
     );
     const later = new Date("2027-02-03T10:00:00Z");
     vi.setSystemTime(later);

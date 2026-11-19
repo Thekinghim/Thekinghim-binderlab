@@ -125,9 +125,10 @@ describe("Inställningar: det som behöver kollas", () => {
   });
 
   it("kortavgift 1,5 %: kortraden försvinner, momsraden står kvar", async () => {
+    // December 2024 är stängd i fixturen: den nya kortavgiften gäller från 1 jan. 2025.
     expect(await save(admin, { cardFeeBp: 150, vatRateBp: 0 })).toEqual({
       ok: true,
-      data: { changed: true },
+      data: { changed: true, cardFeeFrom: "2025-01-01" },
     });
     const issues = await loadSettingsIssuesFor(owner, fx.orgId, TODAY);
     expect(issues.map((i) => i.kind)).toEqual(["vat"]);

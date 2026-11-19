@@ -6,9 +6,9 @@
 -- bokföringsmånaden markeras som skickad. Ägaren kan öppna månaden igen, med en
 -- anledning som sparas på stängningen (och i audit_log via t90_audit).
 --
--- Bara tillägg: en ny kolumn, en ny variant av reopen_period (med anledning) och
--- vakten som släpper igenom den nya kolumnen. Den gamla reopen_period(org, month)
--- finns kvar och fungerar som förut.
+-- Bara tillägg: en ny kolumn, en ny funktion reopen_period_with_reason och vakten som
+-- släpper igenom den nya kolumnen. Den gamla reopen_period(org, month) finns kvar och
+-- fungerar som förut.
 -- =============================================================================
 
 alter table public.period_closes
@@ -37,9 +37,13 @@ end
 $$;
 
 -- -----------------------------------------------------------------------------
--- reopen_period(org, month, reason). Bara ägare. Anledningen krävs.
+-- reopen_period_with_reason(org, month, reason). Bara ägare. Anledningen krävs.
 -- -----------------------------------------------------------------------------
-create function public.reopen_period(p_organization_id uuid, p_month date, p_reason text)
+create function public.reopen_period_with_reason(
+  p_organization_id uuid,
+  p_month date,
+  p_reason text
+)
 returns void
 language plpgsql security definer
 set search_path = ''
@@ -69,5 +73,5 @@ begin
 end
 $$;
 
-revoke all on function public.reopen_period(uuid, date, text) from public, anon;
-grant execute on function public.reopen_period(uuid, date, text) to authenticated;
+revoke all on function public.reopen_period_with_reason(uuid, date, text) from public, anon;
+grant execute on function public.reopen_period_with_reason(uuid, date, text) to authenticated;

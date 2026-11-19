@@ -79,7 +79,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import { loadStoreDetail, loadStoreList } from "@/app/(app)/butiker/_lib/data";
-import { buildLedger, storeShareDeducted } from "@/domain";
+import { buildLedger } from "@/domain";
 import { listOrganizationsFor, withUserDbFor } from "@/server/access";
 import { loadBokforingFor } from "@/server/bokforing/service";
 import { loadDomainInput, loadPeriod } from "@/server/data/core";
@@ -171,7 +171,8 @@ describe("försäljning före automatens första placering räknas till butiken,
     const p = await loadPeriod(sp);
     const input = await loadDomainInput({ period: p.period, ...p.scope });
     const ledger = buildLedger(input.current);
-    expect(storeShareDeducted(ledger)).toBe(SHARE);
+    // Lönsamhet: vinstdelningen i liggaren som sidan räknar på.
+    expect(ledger.profitSplits.reduce((n, x) => n + x.result.storeShareOre, 0)).toBe(SHARE);
     view.andel = false;
   });
 

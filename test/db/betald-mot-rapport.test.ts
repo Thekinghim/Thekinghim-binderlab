@@ -51,9 +51,10 @@ async function approvedReport(f: MoneyFixture, storeId: string, month: string, t
     const r = await one<{ id: string }>(
       tx,
       sql`insert into public.reports (organization_id, kind, period_start, period_end, store_id,
-                                      data_snapshot, calc_version)
+                                      storage_path, data_snapshot, calc_version)
           values (${f.orgId}, 'store_statement', ${`${month}-01`}::date,
                   (${`${month}-01`}::date + interval '1 month' - interval '1 day')::date, ${storeId},
+                  ${`${f.orgId}/reports/butik-${month}.pdf`},
                   ${JSON.stringify({ type: "butik", report: { compensation: { totalOre } } })}::jsonb,
                   'test')
           returning id`,
@@ -129,6 +130,9 @@ describe("A. rapporten butiken fick säger ett annat belopp", () => {
     vi.setSystemTime(DEC);
     // November: 100 kr sålt, 40 kr inköp → 30 kr till butiken.
     await f.order("m1", "2026-11-05", 10_000);
+    // Provision säljer också i november (och förblir obetald, så att månaden inte stängs:
+    // databasens klocka går inte att ställa fram till december i testet).
+    await f.order("m2", "2026-11-06", 10_000);
     await ensureSettlementsFor(f.owner, DEC);
     nov = await settlementId(f.orgId, f.stores.vinsten, "2026-11");
     expect((await rowOf(f, oct, DEC)).carryTarget).toEqual({ id: nov, month: "2026-11" });
@@ -184,7 +188,8 @@ describe("A. rapporten butiken fick säger ett annat belopp", () => {
 
   it("med rättelsen betald är båda låsta i databasen", async () => {
     await carryDifferenceFor(f.owner, oct, 1_000, DEC);
-    await markSettlementPaidFor(f.owner, nov, "2026-12-02", 4_000, DEC);
+    // Betaldatumet får inte ligga efter databasens i dag (klockan där går inte att ställa).
+    await markSettlementPaidFor(f.owner, nov, "2026-11-19", 4_000, DEC);
     for (const change of [
       sql`update public.store_settlements set corrections = '[]'::jsonb where id = ${nov}`,
       sql`update public.store_settlements set paid_amount_ore = 1 where id = ${oct}`,

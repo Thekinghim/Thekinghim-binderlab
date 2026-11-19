@@ -50,16 +50,30 @@ describe("updateSettingsFor", () => {
       vatRateBp: 0,
       fiscalYearStartMonth: 7,
     });
-    expect(r).toEqual({ ok: true, data: { changed: true } });
+    // December 2024 är stängd i fixturen: kortavgiften gäller från första öppna dagen.
+    expect(r).toEqual({ ok: true, data: { changed: true, cardFeeFrom: "2025-01-01" } });
 
     const page = await loadSettingsPageFor(owner, fx.orgId);
     expect(page.settings).toMatchObject({ cardFeeBp: 250, vatRateBp: 0, fiscalYearStartMonth: 7 });
+    expect(page.settings!.cardFeeRates).toEqual([
+      { validFrom: "2000-01-01", cardFeeBp: 0 },
+      { validFrom: "2025-01-01", cardFeeBp: 250 },
+    ]);
+    expect(page.cardFeeDefaultFrom).toBe("2025-01-01");
     const log = settingsLog(page.events, page.actorNames, (d) => d);
     const entry = log.find((e) => e.subject === "Avgifter och moms" && e.verb === "Ändrade");
-    expect(entry?.changes).toEqual([
-      { label: "Kortavgift", before: "0 %", after: "2,5 %" },
-      { label: "Räkenskapsåret börjar", before: "januari", after: "juli" },
-    ]);
+    expect(entry?.changes).toHaveLength(3);
+    expect(entry?.changes).toEqual(
+      expect.arrayContaining([
+        { label: "Kortavgift", before: "0 %", after: "2,5 %" },
+        {
+          label: "Kortavgift från datum",
+          before: "samma för alla datum",
+          after: "0 % · 2,5 % från 1 januari 2025",
+        },
+        { label: "Räkenskapsåret börjar", before: "januari", after: "juli" },
+      ]),
+    );
     expect(
       page.events.find((e) => e.table === "organization_settings" && e.action === "update")
         ?.actorId,

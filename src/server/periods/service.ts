@@ -160,7 +160,7 @@ export async function reopenAfterUndoTx(
   if (await settlementsDoneTx(tx, orgId, month)) return "kept";
   if (input.role !== "owner") return "owner-needed";
   await tx.execute(
-    sql`select public.reopen_period(${orgId}::uuid, ${`${month}-01`}::date, ${input.reason})`,
+    sql`select public.reopen_period_with_reason(${orgId}::uuid, ${`${month}-01`}::date, ${input.reason})`,
   );
   return "reopened";
 }
@@ -197,7 +197,9 @@ export async function reopenMonthFor(viewer: Viewer, month: string, reason: stri
   }
   try {
     await withUserDbFor(viewer.user, (tx) =>
-      tx.execute(sql`select public.reopen_period(${orgId}::uuid, ${`${month}-01`}::date, ${text})`),
+      tx.execute(
+        sql`select public.reopen_period_with_reason(${orgId}::uuid, ${`${month}-01`}::date, ${text})`,
+      ),
     );
   } catch (error) {
     periodDbError(error);

@@ -557,7 +557,8 @@ export type ContractTermsInput = z.infer<typeof contractTermsSchema>;
  * ett nytt kontrakt."
  */
 export function signedTermsWarning(signedDay: string): string {
-  return `Avtalet hör till ett kontrakt som signerades ${signedDay}. Ändrar du villkoren stämmer de inte längre med det butiken skrev under. Lägg hellre in nya villkor från ett datum och skriv ett nytt kontrakt.`;
+  // "3 nov." har redan punkt: en till ska inte följa.
+  return `Avtalet hör till ett kontrakt som signerades ${signedDay.replace(/\.$/, "")}. Ändrar du villkoren stämmer de inte längre med det butiken skrev under. Lägg hellre in nya villkor från ett datum och skriv ett nytt kontrakt.`;
 }
 
 /** Har villkoren (inte sista dag eller anteckning) ändrats? */

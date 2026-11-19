@@ -18,6 +18,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { setTestPurchaseFor } from "@/app/(app)/order/_lib/service";
 import { listOrganizationsFor, type SessionUser } from "@/server/access";
 import { loadTodosFor, type Viewer } from "@/server/data/core/loaders";
+import { reopenMonthFor } from "@/server/periods/service";
 import { buildSnapshot } from "@/server/reports/snapshot";
 import { loadSnapshotInput } from "@/server/reports/sources";
 import {
@@ -169,9 +170,19 @@ describe("obetald: beloppet som gäller nu", () => {
         sql`select id from public.orders where organization_id = ${t.orgId} and external_id = '42002'`,
       ),
     );
+    // Månaden stängdes när avräkningen betalades: testköpet stoppas där.
+    await expect(setTestPurchaseFor(owner, order!.id, true)).rejects.toThrow(
+      "Månaden är stängd. Testköp kan inte ändras där.",
+    );
+    // Ägaren öppnar månaden: underlaget ändras, det betalda beloppet står kvar och
+    // skillnaden mot dagens uträkning visas.
+    await reopenMonthFor(owner, "2025-03", "Testköp i mars");
     await setTestPurchaseFor(owner, order!.id, true);
-    const page = await loadSettlementPageFor(owner, APRIL);
-    expect(page.rows.find((r) => r.id === id)!.amountOre).toBe(share);
+    const row = (await loadSettlementPageFor(owner, APRIL)).rows.find((r) => r.id === id)!;
+    expect(row.amountOre).toBe(share);
+    expect(row.paidOre).toBe(share);
+    expect(row.liveOre).not.toBe(share);
+    expect(row.differenceOre).toBe(row.liveOre! - share);
     await setTestPurchaseFor(owner, order!.id, false);
   });
 });
