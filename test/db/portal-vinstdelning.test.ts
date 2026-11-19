@@ -83,7 +83,10 @@ describe("portal_snapshot_safe", () => {
 
   it("utan vinstdelning gäller samma regel som förut, också i ersättningsdelen", async () => {
     const report = splitReport(f.a.storeId);
-    const none = { ...report, compensation: { ...report.compensation, splits: [] } };
+    const none = {
+      ...report,
+      compensation: { ...report.compensation, splits: [], profitOre: 5 },
+    };
     expect(await safe(none, f.a.storeId)).toBe(false);
     const missing = { ...report, compensation: { totalOre: 100, profitOre: 5 } };
     expect(await safe(missing, f.a.storeId)).toBe(false);

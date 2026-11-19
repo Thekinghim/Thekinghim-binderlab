@@ -260,7 +260,7 @@ describe("avtalets form per butik", () => {
     expect(snap.report.basis).toMatchObject({ agreementForm: "oral", contract: null });
     // Villkoren i klartext: butikens avtal är provision 20 %.
     expect(snap.report.compensation.termsText?.replace(/ /g, " ")).toBe(
-      "provision 20 % på försäljningen exkl. moms",
+      "provision 20 % på kundernas betalning",
     );
     expect(
       agreementLine(snap.report.basis!, snap.store.name, snap.report.compensation)?.replace(
@@ -268,7 +268,7 @@ describe("avtalets form per butik", () => {
         " ",
       ),
     ).toBe(
-      "Muntligt avtal mellan Kortautomater i Norden AB och ICA Testbutik: provision 20 % på försäljningen exkl. moms.",
+      "Muntligt avtal mellan Kortautomater i Norden AB och ICA Testbutik: provision 20 % på kundernas betalning.",
     );
     expect((await archiveRow(oral)).agreementMissing).toBeUndefined();
     // Läsaren ser samma förhandsvisning.

@@ -371,13 +371,14 @@ describe("rapporten med företagsuppgifter", () => {
     const portal = await asUser(f.storeA1, (tx) => queryPortalReport(tx, f.a.storeId, approved));
     const report = portal.report as { basis?: StoreBasis };
     expect(report.basis).toEqual(await basisOf(owner, approved));
-    // Bara bolagets identitet, avtalet (form, namn och datum), momsvalen och butikens egna
-    // utbetalningar.
+    // Bara bolagets identitet, avtalet (form, namn och datum), momsvalen, butikens egna
+    // utbetalningar och butikens egen adress.
     expect(Object.keys(report.basis!).sort()).toEqual([
       "agreementForm",
       "contract",
       "payer",
       "payments",
+      "recipientAddress",
       "rev",
       "vatMode",
       "vatRateBp",
@@ -389,6 +390,7 @@ describe("rapporten med företagsuppgifter", () => {
       "legal",
       "name",
       "orgNumber",
+      "ownsMachines",
       "vatNumber",
     ]);
     // En annan butiks användare (samma organisation och en annan) når den inte.
