@@ -71,11 +71,11 @@ describe("scopeFromSearchParams", () => {
       ownerId: owner,
       storeIds: undefined,
     });
-    expect(scopeFromSearchParams({ agare: "inte-ett-id" }).ownerId).toBeNull();
+    expect(scopeFromSearchParams({ agare: "inte-ett-id" }).ownerId).toBeUndefined();
     expect(
       scopeFromSearchParams({ agare: owner, butik: "8b9903c2-d902-432e-b6e4-db346de6689b" })
         .ownerId,
-    ).toBeNull();
+    ).toBeUndefined();
   });
 });
 
