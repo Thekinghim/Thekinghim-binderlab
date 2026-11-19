@@ -58,7 +58,10 @@ describe("en rapport per butik hos ägaren", () => {
       db(),
       sql`select store_id, kind::text as kind, period_start::text as period_start
           from public.reports
-          where id = any(${result.created.map((c) => c.reportId)}::uuid[])`,
+          where id in (${sql.join(
+            result.created.map((c) => sql`${c.reportId}::uuid`),
+            sql`, `,
+          )})`,
     );
     expect(created.map((r) => r.store_id).sort()).toEqual([f.a.storeId, f.a2.storeId].sort());
     expect(

@@ -428,17 +428,14 @@ function normalizeScope(args: ScopeArgs): DataScope {
   const clean = (v: string | null | undefined) => (v && v.trim() ? v.trim().toLowerCase() : null);
   const storeId = clean(args.storeId);
   const ownerId = storeId ? null : clean(args.ownerId);
+  const machineId = clean(args.machineId);
+  // Utan ägare: samma form som förut ({ storeId, machineId }); scopeStoreIds räknar fram resten.
+  if (!ownerId) return { storeId, machineId };
   return {
     storeId,
-    machineId: clean(args.machineId),
+    machineId,
     ownerId,
-    storeIds: storeId
-      ? [storeId]
-      : ownerId
-        ? args.storeIds
-          ? args.storeIds.map((id) => id.toLowerCase())
-          : undefined
-        : null,
+    storeIds: args.storeIds ? args.storeIds.map((id) => id.toLowerCase()) : undefined,
   };
 }
 

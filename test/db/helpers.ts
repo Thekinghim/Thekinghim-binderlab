@@ -341,6 +341,11 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
 
   return asUser(owner, async (tx) => {
     const org = { organizationId: orgId };
+    // Butiksägaren (20261219000000_butiksagare.sql): ett påhittat bolag som äger butiken.
+    const [storeOwner] = await tx
+      .insert(s.storeOwners)
+      .values({ ...org, legalName: "Testbolaget AB", orgNumber: "559900-1236" })
+      .returning();
     const [store] = await tx
       .insert(s.stores)
       .values({
@@ -349,6 +354,7 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
         address: "Storgatan 1",
         contactName: "Anna",
         email: "anna@example.se",
+        ownerId: storeOwner!.id,
       })
       .returning();
     const [contract] = await tx

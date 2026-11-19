@@ -49,7 +49,7 @@ describe("resolveAppPeriod", () => {
       opts,
     );
     expect(p.key).toBe("30d");
-    expect(p.scope).toEqual({ storeId: null, machineId: null, ownerId: null, storeIds: null });
+    expect(p.scope).toEqual({ storeId: null, machineId: null });
   });
 });
 
@@ -60,12 +60,7 @@ describe("scopeFromSearchParams", () => {
         butik: "8B9903C2-D902-432E-B6E4-DB346DE6689B",
         automat: "'; drop table orders; --",
       }),
-    ).toEqual({
-      storeId: "8b9903c2-d902-432e-b6e4-db346de6689b",
-      machineId: null,
-      ownerId: null,
-      storeIds: ["8b9903c2-d902-432e-b6e4-db346de6689b"],
-    });
+    ).toEqual({ storeId: "8b9903c2-d902-432e-b6e4-db346de6689b", machineId: null });
   });
 
   it("butiksägaren (?agare=): ägarens butiker läses av laddaren; en vald butik vinner", () => {

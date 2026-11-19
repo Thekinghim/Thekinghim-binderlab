@@ -38,12 +38,8 @@ export function scopeFromSearchParams(sp: SearchParamsInput): DataScope {
   const raw = parseScope(sp);
   const storeId = isUuid(raw.butik) ? raw.butik.toLowerCase() : null;
   const ownerId = !storeId && isUuid(raw.agare) ? raw.agare.toLowerCase() : null;
-  return {
-    storeId,
-    machineId: isUuid(raw.automat) ? raw.automat.toLowerCase() : null,
-    ownerId,
-    storeIds: storeId ? [storeId] : ownerId ? undefined : null,
-  };
+  const machineId = isUuid(raw.automat) ? raw.automat.toLowerCase() : null;
+  return ownerId ? { storeId, machineId, ownerId, storeIds: undefined } : { storeId, machineId };
 }
 
 export interface ResolveAppPeriodOptions {
