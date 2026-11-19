@@ -41,6 +41,7 @@ import {
   planNewAgreement,
   recipientIdSchema,
   recipientSchema,
+  agreementFormSchema,
   reportDetailsSchema,
   storeSchema,
   updateAgreementSchema,
@@ -92,6 +93,7 @@ export async function loadStoresFor(viewer: Viewer): Promise<StoreDetail[]> {
         lat: s.stores.latitude,
         lng: s.stores.longitude,
         reportDetails: s.stores.reportDetails,
+        agreementForm: s.stores.agreementForm,
       })
       .from(s.stores)
       .where(eq(s.stores.organizationId, orgId))
@@ -431,6 +433,37 @@ export async function setStoreReportDetailsFor(
     });
   } catch (error) {
     return fail(error, "setStoreReportDetails");
+  }
+}
+
+/**
+ * Avtalets form i butiksrapporten: "Skriftligt avtal", "Muntligt avtal" eller inte valt.
+ * Muntligt går före ett kontrakt som står som undertecknat. Valet gäller rapporter som
+ * skapas härefter (det sparas i rapporten när den räknas): en godkänd eller skickad rapport
+ * ändras inte, och ett utkast blir inaktuellt. Bara ägare och admin.
+ */
+export async function setStoreAgreementFormFor(
+  viewer: Viewer,
+  raw: unknown,
+): Promise<ActionResult> {
+  const denied = await guard(viewer);
+  if (denied) return denied;
+  const parsed = agreementFormSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const { storeId, form } = parsed.data;
+  const orgId = viewer.organization.id;
+  try {
+    return await withUserDbFor(viewer.user, async (tx): Promise<ActionResult> => {
+      const rows = await tx
+        .update(s.stores)
+        .set({ agreementForm: form })
+        .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, storeId)))
+        .returning({ id: s.stores.id });
+      if (rows.length === 0) return { ok: false, error: "Butiken finns inte." };
+      return { ok: true, data: undefined };
+    });
+  } catch (error) {
+    return fail(error, "setStoreAgreementForm");
   }
 }
 

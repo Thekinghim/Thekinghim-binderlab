@@ -3,8 +3,8 @@ import { StateMessage } from "@/components/ui/state-message";
 import { splitRows } from "@/app/rapport/_components/store-report";
 import { formatInt } from "@/lib/format";
 import {
+  agreementLine,
   asStoreBasis,
-  contractLine,
   isRev2,
   payerLines,
   salesNote,
@@ -311,7 +311,7 @@ export function BasisSection({ report }: { report: StoreReport }) {
   if (!basis) return null;
   const total = report.compensation.totalOre;
   const rows = vatRows(basis, total);
-  const agreement = contractLine(basis);
+  const agreement = agreementLine(basis, report.store.name, report.compensation);
   return (
     <section className="flex flex-col gap-8 border-t border-line py-16" aria-labelledby="underlag">
       <h2 id="underlag" className="label text-subtle">

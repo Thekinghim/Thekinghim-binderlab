@@ -26,6 +26,7 @@ import {
   BASIS_REV,
   STORE_VAT_RATE_BP,
   contractForPeriod,
+  type AgreementForm,
   type LedgerAccount,
   type PartnerOwner,
   type ReportSources,
@@ -304,6 +305,16 @@ export async function queryStoreBasis(
       ),
     )
     .orderBy(asc(s.contracts.validFrom), asc(s.contracts.id));
+  // Butikens val av avtalsform. Läses så att koden också fungerar innan kolumnen finns.
+  const [storeRow] = Array.from(
+    await tx.execute(
+      sql`select to_jsonb(st) ->> 'agreement_form' as form
+            from public.stores st
+           where st.organization_id = ${orgId}::uuid and st.id = ${storeId}::uuid`,
+    ),
+  ) as Array<{ form: string | null }>;
+  const agreementForm: AgreementForm | null =
+    storeRow?.form === "oral" || storeRow?.form === "written" ? storeRow.form : null;
   const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
   const legalName = clean(company.companyName);
   return {
@@ -315,17 +326,25 @@ export async function queryStoreBasis(
       address: clean(company.companyAddress),
       vatNumber: settings.vatNumber,
     },
-    contract: contractForPeriod(
-      contracts.map((c) => ({
-        title: c.title,
-        validFrom: c.validFrom,
-        validTo: c.validTo,
-        terminatedOn: c.terminatedOn,
-        template: c.template,
-        signedOn: c.signedAt ? localDay(c.signedAt.toISOString(), organization.timeZone) : null,
-      })),
-      period,
-    ),
+    agreementForm,
+    // Ett muntligt avtal går före en kontraktsrad som står som undertecknad: rapporten
+    // påstår då inget skriftligt avtal.
+    contract:
+      agreementForm === "oral"
+        ? null
+        : contractForPeriod(
+            contracts.map((c) => ({
+              title: c.title,
+              validFrom: c.validFrom,
+              validTo: c.validTo,
+              terminatedOn: c.terminatedOn,
+              template: c.template,
+              signedOn: c.signedAt
+                ? localDay(c.signedAt.toISOString(), organization.timeZone)
+                : null,
+            })),
+            period,
+          ),
     vatMode: settings.reportVatMode,
     vatRateBp: STORE_VAT_RATE_BP,
     vmb: settings.reportVmb,

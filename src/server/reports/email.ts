@@ -23,8 +23,8 @@ import type {
 } from "@/emails/report-content";
 import { formatInt, formatKronor, formatMonth, MINUS } from "@/lib/format";
 import {
+  agreementLine,
   asStoreBasis,
-  contractLine,
   isRev2,
   isWholeMonth,
   payerLines,
@@ -180,7 +180,7 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
     revenue: kr(m.revenueOre),
     packs: m.orders,
   }));
-  const agreement = basisData ? contractLine(basisData) : null;
+  const agreement = basisData ? agreementLine(basisData, s.store.name, r.compensation) : null;
   const basis: StoreBasisBlock | undefined = basisData
     ? {
         payer: payerLines(basisData),

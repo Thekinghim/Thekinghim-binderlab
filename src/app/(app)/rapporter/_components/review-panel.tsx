@@ -8,6 +8,7 @@ import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { formatInt, formatSek } from "@/lib/format";
+import { AGREEMENT_MISSING_MESSAGE } from "@/reports/store-basis";
 import type { ArchiveRow, RecipientRow, StaleDraft } from "@/server/reports/service";
 
 import { approveReport, sendReport } from "../actions";
@@ -117,6 +118,25 @@ export function ReviewPanel({
               ? { label: "Öppna Inställningar →", href: "/installningar#foretaget" }
               : undefined,
           };
+
+  // Rapporten säger inte vilket avtal som gäller: avtalsformen är inte vald för butiken och
+  // inget undertecknat kontrakt gäller perioden. Varnar tills den är skickad; låser inget.
+  const agreementWarning =
+    !legacy && report.type === "butik" && report.status !== "sent" && report.agreementMissing
+      ? {
+          message: `${AGREEMENT_MISSING_MESSAGE}.`,
+          detail: canEdit
+            ? "Välj Skriftligt avtal eller Muntligt avtal för butiken och skapa sedan en ny version."
+            : "Butikens revisor behöver veta vilket avtal ersättningen vilar på.",
+          action:
+            canEdit && report.storeId
+              ? {
+                  label: "Välj avtalsform →",
+                  href: `/butiker/${encodeURIComponent(report.storeId)}?vy=kontakt#avtalsform`,
+                }
+              : undefined,
+        }
+      : null;
 
   function approve() {
     setError(null);
@@ -280,6 +300,17 @@ export function ReviewPanel({
             message={basisWarning.message}
             detail={basisWarning.detail}
             action={basisWarning.action}
+            className="px-0"
+          />
+        ) : null}
+
+        {agreementWarning ? (
+          <StateMessage
+            kind="error"
+            compact
+            message={agreementWarning.message}
+            detail={agreementWarning.detail}
+            action={agreementWarning.action}
             className="px-0"
           />
         ) : null}

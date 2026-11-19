@@ -201,6 +201,12 @@ export interface StoreCompensationBreakdown {
   readonly model: CompensationModel;
   /** Avtalet i klartext, t.ex. "Provision 10 % på försäljningen exkl. moms och hyra 1 000 kr per månad". */
   readonly modelText: string;
+  /**
+   * Bara villkoren, utan datum och utan punkt: "50 % av vinsten efter kostnader". Står i
+   * raden om ett muntligt avtal (./store-basis). Saknas utan avtal i perioden och i
+   * ögonblicksbilder från före raden fanns.
+   */
+  readonly termsText?: string;
   readonly steps: readonly CompensationStep[];
   readonly rentParts: readonly RentPart[];
   readonly daysInMonth: number;
@@ -1035,6 +1041,7 @@ function buildCompensation(
   return {
     model,
     modelText: modelText(inMonth, period),
+    ...(inMonth.length > 0 ? { termsText: termsText(inMonth, period) } : {}),
     steps,
     rentParts,
     daysInMonth: dim,
@@ -1276,28 +1283,34 @@ function agreementOn(agreements: readonly StoreAgreement[], date: IsoDate): Stor
   );
 }
 
-/** Avtalens villkor i klartext; flera avtal under månaden räknas upp med sina datum. */
-function modelText(agreements: readonly StoreAgreement[], period: Period): string {
-  if (agreements.length === 0) return "Inget avtal gällde under månaden.";
-  const terms = (a: StoreAgreement): string => {
-    const parts: string[] = [];
-    if (isProfitSplit(a)) {
-      const bp = a.commissionBp ?? 0;
-      parts.push(
-        `${pctText(bp, bp % 100 === 0 ? 0 : 1)} av vinsten efter kostnader${a.vmbBeforeSplit === true ? " (VMB-moms dras före delning)" : ""}`,
-      );
-    } else if ((a.commissionBp ?? 0) > 0) {
-      const bp = a.commissionBp!;
-      parts.push(`provision ${pctText(bp, bp % 100 === 0 ? 0 : 1)} på försäljningen exkl. moms`);
-    }
-    if ((a.monthlyRentOre ?? 0) > 0) parts.push(`hyra ${krText(a.monthlyRentOre!)} per månad`);
-    if (parts.length === 0) parts.push("ingen ersättning");
-    return listText(parts);
-  };
-  const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
-  // Avtal i följd med samma villkor (avtalet förnyades utan ändring) är ett villkor: det
-  // första avtalets startdag och det sistas slutdag.
-  const groups: { first: StoreAgreement; last: StoreAgreement }[] = [];
+/** Ett avtals villkor i klartext: "50 % av vinsten efter kostnader och hyra 500 kr per månad". */
+function agreementTerms(a: StoreAgreement): string {
+  const parts: string[] = [];
+  if (isProfitSplit(a)) {
+    const bp = a.commissionBp ?? 0;
+    parts.push(
+      `${pctText(bp, bp % 100 === 0 ? 0 : 1)} av vinsten efter kostnader${a.vmbBeforeSplit === true ? " (VMB-moms dras före delning)" : ""}`,
+    );
+  } else if ((a.commissionBp ?? 0) > 0) {
+    const bp = a.commissionBp!;
+    parts.push(`provision ${pctText(bp, bp % 100 === 0 ? 0 : 1)} på försäljningen exkl. moms`);
+  }
+  if ((a.monthlyRentOre ?? 0) > 0) parts.push(`hyra ${krText(a.monthlyRentOre!)} per månad`);
+  if (parts.length === 0) parts.push("ingen ersättning");
+  return listText(parts);
+}
+
+interface AgreementGroup {
+  first: StoreAgreement;
+  last: StoreAgreement;
+}
+
+/**
+ * Avtal i följd med samma villkor (avtalet förnyades utan ändring) är ett villkor: det
+ * första avtalets startdag och det sistas slutdag.
+ */
+function agreementGroups(agreements: readonly StoreAgreement[]): AgreementGroup[] {
+  const groups: AgreementGroup[] = [];
   for (const a of [...agreements].sort((x, y) => (x.validFrom < y.validFrom ? -1 : 1))) {
     const g = groups[groups.length - 1];
     if (
@@ -1309,22 +1322,41 @@ function modelText(agreements: readonly StoreAgreement[], period: Period): strin
       g.last = a;
     else groups.push({ first: a, last: a });
   }
-  const rangeOf = (g: { first: StoreAgreement; last: StoreAgreement }): Period =>
-    intersectPeriods(period, { start: g.first.validFrom, end: g.last.validTo ?? period.end })!;
+  return groups;
+}
+
+function groupRange(g: AgreementGroup, period: Period): Period {
+  return intersectPeriods(period, { start: g.first.validFrom, end: g.last.validTo ?? period.end })!;
+}
+
+/** Avtalens villkor i klartext; flera avtal under månaden räknas upp med sina datum. */
+function modelText(agreements: readonly StoreAgreement[], period: Period): string {
+  if (agreements.length === 0) return "Inget avtal gällde under månaden.";
+  const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+  const groups = agreementGroups(agreements);
   if (groups.length === 1) {
     const g = groups[0]!;
-    const range = rangeOf(g);
+    const range = groupRange(g, period);
     const whole = range.start === period.start && range.end === period.end;
     if (isProfitSplit(g.first))
-      return `${capital(terms(g.first))}, giltigt från ${dateText(g.first.validFrom)}.`;
-    return `${capital(terms(g.first))}${whole ? "" : ` (${periodText(range)})`}.`;
+      return `${capital(agreementTerms(g.first))}, giltigt från ${dateText(g.first.validFrom)}.`;
+    return `${capital(agreementTerms(g.first))}${whole ? "" : ` (${periodText(range)})`}.`;
   }
   return (
     groups
-      .map((g) => `${periodText(rangeOf(g))}: ${terms(g.first)}`)
+      .map((g) => `${periodText(groupRange(g, period))}: ${agreementTerms(g.first)}`)
       .map(capital)
       .join(". ") + "."
   );
+}
+
+/** Bara villkoren (se `StoreCompensationBreakdown.termsText`); olika villkor med sina datum. */
+function termsText(agreements: readonly StoreAgreement[], period: Period): string {
+  const groups = agreementGroups(agreements);
+  if (groups.length === 1) return agreementTerms(groups[0]!.first);
+  return groups
+    .map((g) => `${periodText(groupRange(g, period))}: ${agreementTerms(g.first)}`)
+    .join("; ");
 }
 
 /**

@@ -235,6 +235,11 @@ export const stores = pgTable("stores", {
    * visar också titlar och service. false = butiken får bara uträkningen.
    */
   reportDetails: boolean("report_details").notNull().default(false),
+  /**
+   * Avtalets form i butiksrapporten (20261218000100_avtalsform.sql): skriftligt eller
+   * muntligt. null = inte valt.
+   */
+  agreementForm: text("agreement_form").$type<"written" | "oral">(),
   ...stamps(),
 });
 

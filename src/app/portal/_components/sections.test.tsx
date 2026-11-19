@@ -60,6 +60,19 @@ describe("butiksportalen: underlag för bokföringen", () => {
     expect(out).not.toContain("Moms 25 %");
   });
 
+  it("muntligt avtal: raden med villkoren, och försäljningens mening", () => {
+    const out = text({
+      ...report,
+      basis: { ...BASIS, rev: 2, agreementForm: "oral", contract: null, vmb: true },
+    });
+    expect(out).toContain(`Muntligt avtal mellan Binderlab AB och ${report.store.name}: `);
+    expect(out).not.toContain("Enligt Placeringsavtal");
+    expect(out).toContain("enligt reglerna om vinstmarginalbeskattning (VMB)");
+    expect(out).toContain(
+      `Försäljningen är kundernas köp i automater som stod i ${report.store.name} köpdagen`,
+    );
+  });
+
   it("en rapport utan uppgifterna visar ingenting", () => {
     expect(renderToStaticMarkup(<BasisSection report={report} />)).toBe("");
   });

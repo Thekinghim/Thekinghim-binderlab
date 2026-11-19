@@ -36,9 +36,13 @@ export {
 } from "./store-report";
 
 export {
+  AGREEMENT_FORM_LABEL,
+  AGREEMENT_MISSING_MESSAGE,
   BASIS_REV,
   REPORT_VAT_MODE_LABEL,
   STORE_VAT_RATE_BP,
+  agreementLine,
+  agreementMissing,
   asStoreBasis,
   basisGaps,
   basisText,
@@ -56,6 +60,7 @@ export {
   vatSentences,
   vmbStatement,
   withoutVmbStatement,
+  type AgreementForm,
   type BasisContract,
   type BasisContractRow,
   type BasisPayer,

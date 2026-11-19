@@ -57,7 +57,21 @@ export interface BasisContract {
  */
 export const BASIS_REV = 2;
 
+/** Avtalets form, butikens val (Butiker → Kontakt och rapport). */
+export type AgreementForm = "written" | "oral";
+
+export const AGREEMENT_FORM_LABEL: Record<AgreementForm, string> = {
+  written: "Skriftligt avtal",
+  oral: "Muntligt avtal",
+};
+
 export interface StoreBasis {
+  /**
+   * Butikens val av avtalsform när rapporten räknades. "oral": avtalet är muntligt, också om
+   * ett kontrakt står som undertecknat (då är `contract` null). "written" eller null (inte
+   * valt): `contract` gäller, om det finns. Saknas i utgåva 1.
+   */
+  readonly agreementForm?: AgreementForm | null;
   /** Se `BASIS_REV`. Saknas = utgåva 1. */
   readonly rev?: number;
   readonly payer: BasisPayer;
@@ -148,6 +162,44 @@ export function contractLine(basis: StoreBasis): string | null {
   if (!c) return null;
   const signed = c.signedOn ? `, undertecknat ${dateText(c.signedOn)}` : "";
   return `Enligt ${c.title} från ${dateText(c.validFrom)}${signed}.`;
+}
+
+/**
+ * Raden om avtalet som ersättningen vilar på.
+ *
+ * - Muntligt avtal: "Muntligt avtal mellan {bolag} och {butik}: {villkoren}." Villkoren är
+ *   avtalets villkor i klartext (`compensation.termsText`); utan avtal i perioden ingen rad.
+ * - Skriftligt avtal, eller inget val: det undertecknade kontraktet för perioden
+ *   (`contractLine`), om det finns.
+ * - Annars ingen rad (null): rapporten säger då inte vilket avtal som gäller, och
+ *   granskningen varnar (`agreementMissing`).
+ */
+export function agreementLine(
+  basis: StoreBasis,
+  storeName: string,
+  compensation: { readonly termsText?: string },
+): string | null {
+  if (basis.agreementForm === "oral") {
+    const terms = compensation.termsText?.trim();
+    return terms ? `Muntligt avtal mellan ${basis.payer.name} och ${storeName}: ${terms}.` : null;
+  }
+  return contractLine(basis);
+}
+
+/** Texten i granskningen när rapporten inte säger vilket avtal som gäller. */
+export const AGREEMENT_MISSING_MESSAGE = "Rapporten säger inte vilket avtal som gäller";
+
+/**
+ * Sant när en rapport (utgåva 2) saknar raden om avtalet: avtalsformen är inte vald och inget
+ * undertecknat kontrakt gäller perioden (eller formen är vald men underlaget för raden
+ * saknas). En rapport från före utgåva 2 varnar inte: den hade inget val att göra.
+ */
+export function agreementMissing(
+  basis: StoreBasis,
+  storeName: string,
+  compensation: { readonly termsText?: string },
+): boolean {
+  return isRev2(basis) && agreementLine(basis, storeName, compensation) === null;
 }
 
 /** 2 500 → "25", 1 250 → "12,5". */
@@ -276,8 +328,13 @@ export function totalLabel(basis: StoreBasis): string {
 }
 
 /** Blocket som text, rad för rad (mejlets textdel och tester). */
-export function basisText(basis: StoreBasis, storeName: string, compensationOre: number): string[] {
-  const contract = contractLine(basis);
+export function basisText(
+  basis: StoreBasis,
+  storeName: string,
+  compensationOre: number,
+  compensation: { readonly termsText?: string } = {},
+): string[] {
+  const contract = agreementLine(basis, storeName, compensation);
   return [
     `Ersättningen betalas av: ${payerLines(basis).join(", ")}`,
     `Mottagare: ${storeName}`,

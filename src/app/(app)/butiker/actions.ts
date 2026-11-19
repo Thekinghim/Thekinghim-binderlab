@@ -24,6 +24,7 @@ import {
   createStoreRecipientFor,
   deleteStoreRecipientFor,
   setStoreArchivedFor,
+  setStoreAgreementFormFor,
   setStoreReportDetailsFor,
   updateAgreementFor,
   updateStoreFor,
@@ -98,6 +99,14 @@ export async function setStoreReportDetails(input: {
   details: boolean;
 }): Promise<ActionResult> {
   return run((v) => setStoreReportDetailsFor(v, input));
+}
+
+/** Avtalets form i butiksrapporten: skriftligt, muntligt eller inte valt (ägare och admin). */
+export async function setStoreAgreementForm(input: {
+  storeId: string;
+  form: "written" | "oral" | null;
+}): Promise<ActionResult> {
+  return run((v) => setStoreAgreementFormFor(v, input));
 }
 
 /**

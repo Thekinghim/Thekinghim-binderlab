@@ -126,6 +126,10 @@ describe("ägarens fall: 14–31 okt., 1–2 nov. och 3–14 nov. med 50 %", () 
     );
   });
 
+  it("villkoren utan datum (raden om ett muntligt avtal)", () => {
+    expect(plain(c.termsText ?? "")).toBe("50 % av vinsten efter kostnader");
+  });
+
   it("underlaget säger att perioden är flera avtalsperioder", () => {
     const nov = splitsOf(c)[1]!;
     expect(plain(nov.evidence.rule)).toContain(
@@ -236,6 +240,23 @@ describe("slås inte ihop", () => {
   });
 });
 
+describe("villkoren i klartext", () => {
+  it("olika villkor i perioden räknas upp med sina datum", () => {
+    const { c } = build([
+      split("2026-10-14", "2026-11-02"),
+      split("2026-11-03", null, { commissionBp: 4_000, monthlyRentOre: 50_000 }),
+    ]);
+    expect(plain(c.termsText ?? "")).toBe(
+      "14 okt.–2 nov. 2026: 50 % av vinsten efter kostnader; 3–14 nov. 2026: 40 % av vinsten efter kostnader och hyra 500 kr per månad",
+    );
+  });
+
+  it("utan avtal i perioden finns inga villkor", () => {
+    const src = sources({ orders, prices });
+    expect(buildStoreReport(src, "s-1", PERIOD).compensation.termsText).toBeUndefined();
+  });
+});
+
 describe("provision och hyra ändras inte", () => {
   it("avtal med provision i följd står kvar per avtal (provisionen räknas per order)", () => {
     const commission = (from: string, to: string | null): StoreAgreement => ({
@@ -253,5 +274,6 @@ describe("provision och hyra ändras inte", () => {
     expect(c.steps.filter((s) => s.kind === "commission")).toHaveLength(2);
     // Villkoren står ändå en gång.
     expect(plain(c.modelText)).toBe("Provision 10 % på försäljningen exkl. moms.");
+    expect(plain(c.termsText ?? "")).toBe("provision 10 % på försäljningen exkl. moms");
   });
 });

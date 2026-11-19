@@ -47,7 +47,11 @@ import {
 import { businessToday } from "@/server/data/core/loaders";
 import type { Mailer, MailAttachment } from "@/server/mail/report-mailer";
 import { recordReportSend, type MonitoringDeps } from "@/server/monitoring/failures";
-import { asStoreBasis, basisGaps as gapsOf } from "@/reports/store-basis";
+import {
+  agreementMissing as agreementMissingIn,
+  asStoreBasis,
+  basisGaps as gapsOf,
+} from "@/reports/store-basis";
 import { isWholeMonth, monthText, periodText } from "@/reports/text";
 
 import { buildSubject, renderReportText } from "@/emails/report-content";
@@ -166,6 +170,11 @@ export interface ArchiveRow {
    * före uppgifterna fanns och visar inte vilket bolag som betalar. Saknas för andra typer.
    */
   readonly basisGaps?: readonly string[] | null;
+  /**
+   * Sant när butiksrapporten inte säger vilket avtal som gäller: avtalsformen är inte vald
+   * för butiken och inget undertecknat kontrakt gäller perioden (@/reports/store-basis).
+   */
+  readonly agreementMissing?: boolean;
 }
 
 export interface ReportDetail extends ArchiveRow {
@@ -330,6 +339,7 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
     let conclusion = "";
     let legacy = false;
     let basisGaps: ArchiveRow["basisGaps"];
+    let agreementMissing = false;
     try {
       const snapshot = asSnapshot(r.snapshot);
       conclusion = snapshot.report.conclusion.text;
@@ -337,6 +347,9 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
       if (snapshot.type === "butik") {
         const basis = asStoreBasis(snapshot.report.basis);
         basisGaps = basis ? gapsOf(basis) : null;
+        agreementMissing =
+          basis !== null &&
+          agreementMissingIn(basis, snapshot.store.name, snapshot.report.compensation);
       }
     } catch {
       conclusion = "";
@@ -361,6 +374,7 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
       conclusion,
       legacy,
       ...(basisGaps === undefined ? {} : { basisGaps }),
+      ...(agreementMissing ? { agreementMissing } : {}),
       storagePath: r.storagePath,
       snapshot: r.snapshot,
     };

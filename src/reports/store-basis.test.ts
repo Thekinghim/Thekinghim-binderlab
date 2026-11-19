@@ -6,7 +6,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGREEMENT_FORM_LABEL,
+  AGREEMENT_MISSING_MESSAGE,
   BASIS_REV,
+  agreementLine,
+  agreementMissing,
   asStoreBasis,
   basisGaps,
   basisText,
@@ -256,6 +260,67 @@ describe("Vi säljer med vinstmarginalbeskattning (VMB)", () => {
     // Utan valet tas ingenting bort, inte ens den fasta texten.
     expect(withoutVmbStatement(STATEMENT, BASIS)).toBe(STATEMENT);
     expect(withoutVmbStatement(STATEMENT, null)).toBe(STATEMENT);
+  });
+});
+
+describe("avtalets form", () => {
+  const rev2: StoreBasis = { ...BASIS, rev: 2 };
+  const TERMS = { termsText: "50 % av vinsten efter kostnader" };
+  const WRITTEN = "Enligt Placeringsavtal från 3 november 2026, undertecknat 9 november 2026.";
+
+  it("skriftligt avtal: det undertecknade kontraktet, som förut", () => {
+    expect(agreementLine({ ...rev2, agreementForm: "written" }, "Sega gubben", TERMS)).toBe(
+      WRITTEN,
+    );
+    expect(agreementMissing({ ...rev2, agreementForm: "written" }, "Sega gubben", TERMS)).toBe(
+      false,
+    );
+  });
+
+  it("muntligt avtal: bolaget, butiken och villkoren i klartext", () => {
+    const oral: StoreBasis = { ...rev2, agreementForm: "oral", contract: null };
+    expect(agreementLine(oral, "Sega gubben", TERMS)).toBe(
+      "Muntligt avtal mellan Binderlab AB och Sega gubben: 50 % av vinsten efter kostnader.",
+    );
+    expect(agreementMissing(oral, "Sega gubben", TERMS)).toBe(false);
+    expect(basisText(oral, "Sega gubben", 749_300, TERMS)).toContain(
+      "Muntligt avtal mellan Binderlab AB och Sega gubben: 50 % av vinsten efter kostnader.",
+    );
+  });
+
+  it("muntligt går före ett kontrakt som står som undertecknat", () => {
+    // Också om kontraktet skulle ligga kvar i underlaget påstås inget skriftligt avtal.
+    const line = agreementLine({ ...rev2, agreementForm: "oral" }, "Sega gubben", TERMS);
+    expect(line).toMatch(/^Muntligt avtal/);
+    expect(line).not.toMatch(/Enligt|undertecknat/);
+  });
+
+  it("inte valt: kontraktet om det finns, annars ingen rad och en varning", () => {
+    expect(agreementLine({ ...rev2, agreementForm: null }, "Sega gubben", TERMS)).toBe(WRITTEN);
+    const none: StoreBasis = { ...rev2, agreementForm: null, contract: null };
+    expect(agreementLine(none, "Sega gubben", TERMS)).toBeNull();
+    expect(agreementMissing(none, "Sega gubben", TERMS)).toBe(true);
+    expect(AGREEMENT_MISSING_MESSAGE).toBe("Rapporten säger inte vilket avtal som gäller");
+  });
+
+  it("valt men utan underlag för raden: ingen rad och en varning", () => {
+    // Skriftligt utan undertecknat kontrakt.
+    const written: StoreBasis = { ...rev2, agreementForm: "written", contract: null };
+    expect(agreementLine(written, "Sega gubben", TERMS)).toBeNull();
+    expect(agreementMissing(written, "Sega gubben", TERMS)).toBe(true);
+    // Muntligt utan avtal i perioden (inga villkor att skriva).
+    const oral: StoreBasis = { ...rev2, agreementForm: "oral", contract: null };
+    expect(agreementLine(oral, "Sega gubben", {})).toBeNull();
+    expect(agreementMissing(oral, "Sega gubben", {})).toBe(true);
+  });
+
+  it("en rapport från före valet varnar inte och visar kontraktet som förut", () => {
+    expect(agreementLine(BASIS, "Sega gubben", {})).toBe(WRITTEN);
+    expect(agreementMissing({ ...BASIS, contract: null }, "Sega gubben", {})).toBe(false);
+  });
+
+  it("valen heter Skriftligt avtal och Muntligt avtal", () => {
+    expect(AGREEMENT_FORM_LABEL).toEqual({ written: "Skriftligt avtal", oral: "Muntligt avtal" });
   });
 });
 

@@ -122,6 +122,12 @@ export const archiveStoreSchema = z.object({ storeId: uuid, archived: z.boolean(
 /** "Visa detaljer i rapporten" på eller av för en butik. */
 export const reportDetailsSchema = z.object({ storeId: uuid, details: z.boolean() });
 
+/** Avtalets form i butiksrapporten: skriftligt, muntligt eller inte valt (null). */
+export const agreementFormSchema = z.object({
+  storeId: uuid,
+  form: z.enum(["written", "oral"]).nullable(),
+});
+
 // ---------------------------------------------------------------------------
 // Ersättning: provision i procent och hyra i kronor, som fälten visar dem
 // ---------------------------------------------------------------------------

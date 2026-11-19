@@ -15,6 +15,7 @@ import { StorePortalAccess } from "@/app/portal/_components/store-portal-access"
 
 import { AddAgreementButton } from "../_components/agreement-dialogs";
 import { AddRecipientButton } from "../_components/recipient-dialogs";
+import { AgreementFormSelect } from "../_components/agreement-form-select";
 import { ReportDetailsToggle } from "../_components/report-details-toggle";
 import { StoreRevenueChart } from "../_components/charts";
 import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/detail-tables";
@@ -569,6 +570,12 @@ function ContactSection({ data }: { data: StoreDetailData }) {
               storeId={store.id}
               storeName={store.name}
               initial={store.reportDetails === true}
+              canEdit={ctx.canEdit && !store.archived}
+            />
+            <AgreementFormSelect
+              storeId={store.id}
+              initial={store.agreementForm ?? null}
+              signedContract={data.contract === "signed"}
               canEdit={ctx.canEdit && !store.archived}
             />
           </div>

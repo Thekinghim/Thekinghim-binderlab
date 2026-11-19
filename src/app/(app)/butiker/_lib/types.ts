@@ -30,6 +30,11 @@ export interface StoreDetail {
    * också titlar och service. Saknas eller falskt = butiken får bara uträkningen.
    */
   readonly reportDetails?: boolean;
+  /**
+   * Avtalets form i butiksrapporten (20261218000100_avtalsform): skriftligt eller muntligt.
+   * Saknas eller null = inte valt.
+   */
+  readonly agreementForm?: "written" | "oral" | null;
 }
 
 /** Ett avtal (store_agreements) med färdiga texter. */

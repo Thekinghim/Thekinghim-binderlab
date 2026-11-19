@@ -38,8 +38,8 @@ import type {
 import type { StoreSnapshot } from "@/server/reports/snapshot";
 
 import {
+  agreementLine,
   asStoreBasis,
-  contractLine,
   isRev2,
   isWholeMonth,
   periodText,
@@ -385,7 +385,10 @@ export function StoreReportDocument({
   // Avtalet och momsen i en eller två meningar.
   const basisNote = basisData ? (
     <p className="text-[11px] leading-[15px] text-muted">
-      {[contractLine(basisData), ...vatSentences(basisData, r.compensation.totalOre)]
+      {[
+        agreementLine(basisData, snapshot.store.name, r.compensation),
+        ...vatSentences(basisData, r.compensation.totalOre),
+      ]
         .filter(Boolean)
         .join(" ")}
     </p>

@@ -399,6 +399,42 @@ describe("försäljningen och momsen säger inte emot varandra", () => {
   });
 });
 
+describe("avtalets form", () => {
+  const ORAL =
+    "Muntligt avtal mellan Binderlab Sverige AB och Nordstan: provision 12 % på försäljningen exkl. moms och hyra 500 kr per månad.";
+  const render = (basis: StoreBasis) => {
+    const snap = snapshot(false, basis);
+    const email = emailFor(snap);
+    return [
+      visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={snap} />)),
+      email.html,
+      email.text,
+    ].map((b) => b.replace(/\u00a0|\u202f/g, " "));
+  };
+
+  it("muntligt avtal: samma rad på sidan och i mejlet, och inget skriftligt avtal påstås", () => {
+    for (const body of render({ ...BASIS, agreementForm: "oral", contract: null })) {
+      expect(body).toContain(ORAL);
+      expect(body).not.toContain("Enligt Placeringsavtal");
+      expect(body).not.toContain("undertecknat");
+    }
+  });
+
+  it("skriftligt avtal: kontraktets rad som förut", () => {
+    for (const body of render({ ...BASIS, agreementForm: "written" }))
+      expect(body).toContain(
+        "Enligt Placeringsavtal från 3 november 2026, undertecknat 9 november 2026.",
+      );
+  });
+
+  it("inte valt och inget undertecknat kontrakt: ingen rad om avtalet", () => {
+    for (const body of render({ ...BASIS, agreementForm: null, contract: null })) {
+      expect(body).not.toContain("Muntligt avtal");
+      expect(body).not.toContain("Enligt ");
+    }
+  });
+});
+
 describe("raden som avslutar uträkningen", () => {
   const page = (basis: StoreBasis | null) =>
     visibleText(
