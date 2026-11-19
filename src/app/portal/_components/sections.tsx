@@ -2,7 +2,17 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { splitRows } from "@/app/rapport/_components/store-report";
 import { formatInt } from "@/lib/format";
-import { splitsOf, type CompensationStep, type StoreReport, type StoreWeek } from "@/reports";
+import {
+  asStoreBasis,
+  contractLine,
+  payerLines,
+  splitsOf,
+  vatRows,
+  vatSentences,
+  type CompensationStep,
+  type StoreReport,
+  type StoreWeek,
+} from "@/reports";
 import { visibleSteps } from "@/server/portal/model";
 
 import { EvidenceDetails } from "./evidence";
@@ -276,4 +286,63 @@ function nbsp(text: string): string {
 /** Meningen med exakt en avslutande punkt. */
 function withPeriod(text: string): string {
   return /[.!?]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
+}
+
+/**
+ * Underlaget för butikens bokföring, som i den sparade rapporten: vilket bolag som betalar
+ * ersättningen, mottagaren, avtalet och momsen. Ingenting för rapporter från före
+ * uppgifterna fanns (eller för översiktens siffror, som inte är en sparad rapport).
+ */
+export function BasisSection({ report }: { report: StoreReport }) {
+  const basis = asStoreBasis(report.basis);
+  if (!basis) return null;
+  const total = report.compensation.totalOre;
+  const rows = vatRows(basis, total);
+  const agreement = contractLine(basis);
+  return (
+    <section className="flex flex-col gap-8 border-t border-line py-16" aria-labelledby="underlag">
+      <h2 id="underlag" className="label text-subtle">
+        Underlag för bokföringen
+      </h2>
+      <dl className="grid gap-x-8 gap-y-8 md:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-2">
+          <dt className="label text-subtle">Ersättningen betalas av</dt>
+          <dd className="flex flex-col gap-1">
+            {payerLines(basis).map((line, i) => (
+              <span key={line} className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}>
+                {line}
+              </span>
+            ))}
+          </dd>
+        </div>
+        <div className="flex min-w-0 flex-col gap-2">
+          <dt className="label text-subtle">Mottagare</dt>
+          <dd className="text-fg">{report.store.name}</dd>
+        </div>
+        {rows.length > 0 ? (
+          <div className="flex min-w-0 flex-col gap-2">
+            <dt className="label text-subtle">Er faktura</dt>
+            <dd className="flex flex-col">
+              {rows.map((row) => (
+                <span
+                  key={row.key}
+                  className={
+                    row.key === "total"
+                      ? "flex items-baseline justify-between gap-4 border-t border-line pt-1 font-medium text-fg"
+                      : "flex items-baseline justify-between gap-4 pb-1 text-sm text-muted"
+                  }
+                >
+                  <span>{row.label}</span>
+                  <span className="tnum whitespace-nowrap">{krExact(row.amountOre)}</span>
+                </span>
+              ))}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      <p className="max-w-2xl text-sm text-muted">
+        {[agreement, ...vatSentences(basis, total)].filter(Boolean).join(" ")}
+      </p>
+    </section>
+  );
 }

@@ -18,10 +18,21 @@ import type {
   EmailKpi,
   EmailMachineRow,
   ReportEmailProps,
+  StoreBasisBlock,
   Sender,
 } from "@/emails/report-content";
 import { formatInt, formatKronor, formatMonth, MINUS } from "@/lib/format";
-import { isWholeMonth, periodText, sie4Verifications, storeReportView } from "@/reports";
+import {
+  asStoreBasis,
+  contractLine,
+  isWholeMonth,
+  payerLines,
+  periodText,
+  sie4Verifications,
+  storeReportView,
+  vatRows,
+  vatSentences,
+} from "@/reports";
 import type { Period as DatePeriod } from "@/lib/period";
 
 import { TYPE_LABEL } from "./kinds";
@@ -157,6 +168,24 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
     revenue: kr(m.revenueOre),
     packs: m.orders,
   }));
+  // Underlaget för bokföringen, samma rader som i PDF:en (saknas i äldre rapporter).
+  const basisData = asStoreBasis(r.basis);
+  const agreement = basisData ? contractLine(basisData) : null;
+  const basis: StoreBasisBlock | undefined = basisData
+    ? {
+        payer: payerLines(basisData),
+        recipient: s.store.name,
+        amounts: vatRows(basisData, r.compensation.totalOre).map((row) => ({
+          label: row.label,
+          amount: kr(row.amountOre),
+          ...(row.key === "total" ? { total: true } : {}),
+        })),
+        notes: [
+          ...(agreement ? [agreement] : []),
+          ...vatSentences(basisData, r.compensation.totalOre),
+        ],
+      }
+    : undefined;
   const refillsLast =
     view.details && s.service.refills.last ? localDate(s.service.refills.last) : MISSING_DATE;
   return {
@@ -181,6 +210,7 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
         name: ctx.contact?.name ?? ctx.sender?.name ?? "Binderlab",
         phone: ctx.contact?.phone ?? "–",
       },
+      ...(basis ? { basis } : {}),
     },
   };
 }

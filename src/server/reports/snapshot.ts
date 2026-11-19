@@ -23,6 +23,7 @@ import {
 import {
   buildAccountantReport,
   buildPartnerReport,
+  assertStoreReportSafe,
   buildStoreReport,
   isLegacyUnsent,
   isWholeMonth,
@@ -34,6 +35,7 @@ import {
   type PartnerReport,
   type ReportSources,
   type Sie4Options,
+  type StoreBasis,
   type StoreReport,
 } from "@/reports";
 
@@ -126,6 +128,11 @@ export interface SnapshotInput {
    * Standard falskt: rapporten innehåller inga titlar.
    */
   readonly storeDetails?: boolean;
+  /**
+   * Underlaget för butikens bokföring (butiksrapport): vem som betalar, avtalet och momsen,
+   * lästa när rapporten räknas. Sparas i rapporten (`report.basis`). Saknas = inget block.
+   */
+  readonly storeBasis?: StoreBasis | null;
   /** Egen kommentar (delägarrapport). */
   readonly comment?: string | null;
   /** Ägarandelar som gällde periodens sista dag (delägarrapport). */
@@ -254,10 +261,14 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
   switch (input.type) {
     case "butik": {
       if (!input.storeId) throw new DomainError("invalid_input", "Välj en butik.");
-      const report = buildStoreReport(input.sources, input.storeId, custom ? period : input.month, {
+      const built = buildStoreReport(input.sources, input.storeId, custom ? period : input.month, {
         greeting: cleanText(input.greeting, 1000),
         details: input.storeDetails === true,
       });
+      // Underlaget för bokföringen följer med rapporten (också till butiksportalen, som
+      // bara får `report`). Kontrolleras som resten av rapporten.
+      const report: StoreReport = input.storeBasis ? { ...built, basis: input.storeBasis } : built;
+      if (input.storeBasis) assertStoreReportSafe(report);
       return {
         ...base,
         type: "butik",

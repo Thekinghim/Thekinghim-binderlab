@@ -93,6 +93,30 @@ export function ReviewPanel({
   const approved = report.status === "approved" || report.status === "sent";
   // Äldre rapport (gamla mallen): visas kort, men skickas först som ny version.
   const legacy = report.legacy;
+  // Butiksrapporten som underlag för butikens bokföring: saknar rapporten vårt företagsnamn
+  // eller organisationsnummer (eller hela blocket, en rapport från före det fanns) räcker
+  // den inte för butikens revisor. Varnar tills den är skickad; godkännandet låses inte.
+  const gaps = report.type === "butik" && report.status !== "sent" ? report.basisGaps : undefined;
+  const basisWarning =
+    legacy || gaps === undefined || (gaps !== null && gaps.length === 0)
+      ? null
+      : gaps === null
+        ? {
+            message: "Rapporten visar inte vilket bolag som betalar.",
+            detail: canEdit
+              ? "Butikens revisor behöver det. Skapa ny version ovan."
+              : "Butikens revisor behöver det.",
+            action: undefined,
+          }
+        : {
+            message: `Rapporten saknar ${gaps.join(" och ")}.`,
+            detail: canEdit
+              ? "Butikens revisor behöver veta vilket bolag som betalar. Fyll i under Inställningar och skapa sedan en ny version."
+              : "Butikens revisor behöver veta vilket bolag som betalar.",
+            action: canEdit
+              ? { label: "Öppna Inställningar →", href: "/installningar#foretaget" }
+              : undefined,
+          };
 
   function approve() {
     setError(null);
@@ -247,6 +271,17 @@ export function ReviewPanel({
               Väntar på ägarens godkännande.
             </p>
           )
+        ) : null}
+
+        {basisWarning ? (
+          <StateMessage
+            kind="error"
+            compact
+            message={basisWarning.message}
+            detail={basisWarning.detail}
+            action={basisWarning.action}
+            className="px-0"
+          />
         ) : null}
 
         {approved && !legacy && !report.hasPdf ? (

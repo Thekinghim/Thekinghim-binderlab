@@ -36,6 +36,27 @@ export {
 } from "./store-report";
 
 export {
+  REPORT_VAT_MODE_LABEL,
+  STORE_VAT_RATE_BP,
+  asStoreBasis,
+  basisGaps,
+  basisText,
+  contractForPeriod,
+  contractLine,
+  normalizeVatNumber,
+  payerLines,
+  suggestedVatNumber,
+  vatRows,
+  vatSentences,
+  type BasisContract,
+  type BasisContractRow,
+  type BasisPayer,
+  type BasisVatRow,
+  type ReportVatMode,
+  type StoreBasis,
+} from "./store-basis";
+
+export {
   TITLES_ON_REQUEST,
   isLegacyUnsent,
   storeDetailsOf,

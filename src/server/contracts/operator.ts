@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import type { ContractParty } from "@/reports/contract-pdf";
+import type { ReportVatMode } from "@/reports/store-basis";
 
 /** Företagsuppgifterna som de står i databasen (null = inte ifyllt). */
 export interface CompanyDetailsRow {
@@ -88,4 +89,32 @@ export async function readOperator(
   organizationName: string,
 ): Promise<ContractParty> {
   return operatorParty(organizationName, await readCompanyDetails(tx, orgId));
+}
+
+/** Uppgifterna som bara butiksrapporten använder (20261217000000_rapport_underlag.sql). */
+export interface ReportBasisSettings {
+  /** Momsregistreringsnummer, null = inte sparat (visas inte). */
+  readonly vatNumber: string | null;
+  /** Momsen i butiksrapporten. Standard: moms tillkommer. */
+  readonly reportVatMode: ReportVatMode;
+}
+
+export const DEFAULT_REPORT_BASIS: ReportBasisSettings = {
+  vatNumber: null,
+  reportVatMode: "added",
+};
+
+/** Momsregistreringsnumret och momsvalet för butiksrapporten. */
+export async function readReportBasisSettings(tx: Tx, orgId: string): Promise<ReportBasisSettings> {
+  const row = Array.from(
+    await tx.execute(sql`
+      select os.vat_number, os.report_vat_mode
+        from public.organization_settings os
+       where os.organization_id = ${orgId}::uuid`),
+  )[0] as Record<string, unknown> | undefined;
+  if (!row) return DEFAULT_REPORT_BASIS;
+  return {
+    vatNumber: typeof row.vat_number === "string" && row.vat_number.trim() ? row.vat_number : null,
+    reportVatMode: row.report_vat_mode === "none" ? "none" : "added",
+  };
 }

@@ -231,3 +231,42 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
 - Underraden i knappen "Nytt inköpspris från i dag" gick 11 px utanför knappen på 1 280 px: radbrytningen sitter nu
   på knappens text (`Choice` i `price-form.tsx`), eftersom `cn()` inte låter en klass utifrån vinna över knappens
   egen.
+
+## 19 nov. – butiksrapporten som underlag för butikens bokföring
+
+- Anledningen: en butiks revisor godkände inte rapporten som underlag. "Det visar inte från vilket bolag som ni ska
+  få ersättning ifrån. Det framgår inte om det är svenskt moms som gäller eller ej." Rapporten namngav oss bara med
+  organisationens visningsnamn.
+- Rapporten visar nu **Ersättningen betalas av** (företagsnamn, org.nr, momsreg.nr, adress), **Mottagare**,
+  **Er faktura** (ersättning exkl. moms, moms 25 %, att fakturera), avtalet ("Enligt … från …, undertecknat ….") och två
+  meningar om momsen. Ren modul `src/reports/store-basis.ts`; samma texter på sidan och i PDF:en
+  (`store-report.tsx`), i mejlet (`src/emails`, sektionen "Underlag för bokföringen") och i butiksportalen
+  (`BasisSection`). Avsändaren i sidhuvudet är bolaget som betalar.
+- Uppgifterna läses när rapporten räknas (`queryStoreBasis` i `src/server/reports/sources.ts`) och sparas i
+  rapporten (`data_snapshot.report.basis`), så en godkänd eller skickad rapport ändras aldrig. De ligger i `report`
+  och inte bredvid, eftersom butiksportalen bara får `report`, och eftersom `sameReport` då gör ett utkast gammalt
+  när företagsuppgifterna, avtalet eller momsvalet ändras. Nycklarna innehåller inget av det portalens SQL-kontroll
+  stoppar (`private.portal_snapshot_safe`), så ingen portalfunktion behövde ändras.
+- `assertStoreReportSafe` undantar `basis` från ordkontrollen: företagsnamn, adress och avtalets namn skrivs av
+  människor ("Vinstdelningsavtal" ska inte stoppa rapporten). Ordet "vinstmarginalbeskattning" står bara i
+  renderingen, inte i den sparade rapporten.
+- Migrering `20261217000000_rapport_underlag.sql`: `organization_settings.vat_number` (valfri, `SE` + tio siffror +
+  `01`) och `report_vat_mode` (`added` standard, `none`), med kolumnvis `grant update`. Bara tillägg, säker medan
+  den gamla koden kör. Momsregistreringsnumret föreslås från organisationsnumret i formuläret men sparas aldrig
+  utan att någon har valt det.
+- Avtalet: butikens senaste kontrakt som gällde under perioden och är undertecknat (`signed_at`), eller registrerat
+  för hand (då utan datum för undertecknandet), samma regel som sidan Kontrakt. Inget sådant: ingen rad.
+- Rapporter (granskningen) varnar när rapporten saknar företagsnamn eller organisationsnummer, med länk till
+  Inställningar, och när en rapport från förr inte har blocket alls. Godkännandet låses inte av varningen.
+- **Vid driftsättningen blir alla utkast av butiksrapporter gamla** ("Rapporten har ändrats sedan utkastet
+  skapades."): de saknar underlaget. Skapa ny version och godkänn den. Godkända och skickade rapporter rörs inte.
+- En sida: blocket är 145 px högt och fick inte plats under den längsta uträkningen (vinstdelning med hyra och
+  VMB-moms; 15 px var lediga). Med vinstdelning står uppgifterna därför bredvid tabellen, som bara har två smala
+  kolumner, tabellens rader är något tätare och avstånden mellan avsnitten 3,5 mm i stället för 5. Mätt i
+  webbläsaren (e2e 10, arkets brödyta 853 px): tre automater 23 px lediga, en hälsning på tre rader 16 px lediga,
+  båda ett ark. Rapporter utan blocket ritas exakt som förut (eget fall i e2e 10).
+- Inte bekräftat av ägaren: att butiken ska fakturera med 25 % moms (därav valet "Visa ingen momsrad"), och att
+  meningen om vinstmarginalbeskattning stämmer för oss. Butikens eget juridiska namn och organisationsnummer finns
+  inte i appen: mottagaren är butikens namn.
+- Tester: `src/reports/store-basis.test.ts`, `store-report.test.tsx`, `snapshot.test.ts`,
+  `test/db/rapport-underlag.test.ts`, e2e 05 (varningen, Inställningar, förhandsvisningen, mejlet) och e2e 10.

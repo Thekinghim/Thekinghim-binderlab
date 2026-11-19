@@ -2,8 +2,8 @@
  * Rapportsidor: varje ark i varje rapport får plats på sitt A4-ark. Testet lägger in
  * rapporter med långa tabeller och listor (delägarrapport för en månad, en kort period, 366
  * dagar och med många ägare, automater och händelser; butiksrapporten med detaljer, den korta
- * (ett ark för en vanlig butik, också med vinstdelning, hyra och tre automater) och den korta
- * med många automater; bokföringsunderlag för
+ * (ett ark för en vanlig butik, också med vinstdelning, hyra, tre automater och underlaget
+ * för bokföringen med allt ifyllt) och den korta med många automater; bokföringsunderlag för
  * en månad och tio månader) direkt i databasen, öppnar utskriftssidan i utskriftsläge och
  * kontrollerar att inget element går utanför sitt ark eller nedanför arkets brödyta. Sedan
  * hämtas PDF:en (samma väg som knappen PDF) och antalet sidor jämförs med antalet ark.
@@ -44,6 +44,11 @@ const CASES: {
    * utanför brödytan; de ändras inte här.
    */
   textInside?: boolean;
+  /**
+   * Butiksrapporten: visas underlaget för bokföringen ("Ersättningen betalas av")? Standard
+   * ja (alla butiksrapporter här har det, med allt ifyllt: det högsta blocket).
+   */
+  basis?: boolean;
 }[] = [
   {
     name: "delagare-manad",
@@ -124,6 +129,15 @@ const CASES: {
     minSheets: 1,
     maxSheets: 1,
     textInside: true,
+  },
+  // En rapport från före underlaget för bokföringen fanns: visas som förut, på ett ark.
+  {
+    name: "butik-kort-utan-underlag",
+    snapshot: () => storeSnapshot("2026-10", 9, false, { split: true, basis: null }),
+    minSheets: 1,
+    maxSheets: 1,
+    textInside: true,
+    basis: false,
   },
   // Den korta rapporten med tio automater: tabellen får delas, inget går utanför arket.
   {
@@ -265,6 +279,10 @@ describe("rapportsidor", () => {
       expect(check.problems).toEqual([]);
       expect(check.sheets).toBeGreaterThanOrEqual(c.minSheets);
       if (c.maxSheets !== undefined) expect(check.sheets).toBeLessThanOrEqual(c.maxSheets);
+      if (c.name.startsWith("butik")) {
+        const shown = await page.locator(".bl-sheet").getByText("Ersättningen betalas av").count();
+        expect(shown).toBe(c.basis === false ? 0 : 1);
+      }
       // En sektion som fortsätter på nästa ark upprepar bara "forts."-raden, inte rubriken.
       const headings = await page.locator(".bl-sheet h2").allInnerTexts();
       expect(headings.length).toBe(new Set(headings).size);

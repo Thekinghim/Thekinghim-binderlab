@@ -10,7 +10,7 @@
 
 import "server-only";
 
-import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, lte, sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -22,7 +22,15 @@ import {
   type IsoMonth,
   type Period,
 } from "@/domain";
-import type { LedgerAccount, PartnerOwner, ReportSources } from "@/reports";
+import {
+  STORE_VAT_RATE_BP,
+  contractForPeriod,
+  type LedgerAccount,
+  type PartnerOwner,
+  type ReportSources,
+  type StoreBasis,
+} from "@/reports";
+import { readCompanyDetails, readReportBasisSettings } from "@/server/contracts/operator";
 import {
   COUNTED_ORDER,
   queryAgreements,
@@ -45,6 +53,7 @@ import {
   type SnapshotInput,
   type SnapshotOrganization,
   type SnapshotStockEvent,
+  localDay,
 } from "./snapshot";
 import { busiestWindow, refillSummary, type StoreService } from "./store-service";
 
@@ -263,6 +272,63 @@ async function queryStoreRefillDates(
   return Array.from(rows).map((r) => String((r as { d: string }).d));
 }
 
+/**
+ * Underlaget för butikens bokföring, läst nu: vårt bolag (Inställningar → Företaget),
+ * butikens undertecknade avtal för perioden och momsvalet. Sparas i rapporten.
+ */
+export async function queryStoreBasis(
+  tx: Tx,
+  organization: SnapshotOrganization,
+  storeId: string,
+  period: Period,
+): Promise<StoreBasis> {
+  const orgId = organization.id;
+  const company = await readCompanyDetails(tx, orgId);
+  const settings = await readReportBasisSettings(tx, orgId);
+  const contracts = await tx
+    .select({
+      title: s.contracts.title,
+      validFrom: s.contracts.validFrom,
+      validTo: s.contracts.validTo,
+      terminatedOn: s.contracts.terminatedOn,
+      template: s.contracts.template,
+      signedAt: s.contracts.signedAt,
+    })
+    .from(s.contracts)
+    .where(
+      and(
+        eq(s.contracts.organizationId, orgId),
+        eq(s.contracts.storeId, storeId),
+        isNull(s.contracts.archivedAt),
+      ),
+    )
+    .orderBy(asc(s.contracts.validFrom), asc(s.contracts.id));
+  const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
+  const legalName = clean(company.companyName);
+  return {
+    payer: {
+      name: legalName ?? organization.name,
+      legal: legalName !== null,
+      orgNumber: clean(company.orgNumber),
+      address: clean(company.companyAddress),
+      vatNumber: settings.vatNumber,
+    },
+    contract: contractForPeriod(
+      contracts.map((c) => ({
+        title: c.title,
+        validFrom: c.validFrom,
+        validTo: c.validTo,
+        terminatedOn: c.terminatedOn,
+        template: c.template,
+        signedOn: c.signedAt ? localDay(c.signedAt.toISOString(), organization.timeZone) : null,
+      })),
+      period,
+    ),
+    vatMode: settings.reportVatMode,
+    vatRateBp: STORE_VAT_RATE_BP,
+  };
+}
+
 type Env = Readonly<Record<string, string | undefined>>;
 
 /**
@@ -440,6 +506,7 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
         greeting: args.greeting ?? null,
         storeService,
         storeDetails: setting?.details === true,
+        storeBasis: await queryStoreBasis(tx, organization, storeId, period),
       };
     }
     case "bokforing": {

@@ -5,6 +5,7 @@
 
 import type { IsoDate } from "@/domain";
 import { formatInt, formatMonth, formatPercent, formatSek } from "@/lib/format";
+import { REPORT_VAT_MODE_LABEL } from "@/reports/store-basis";
 
 /** Högsta kortavgift som tas emot (20 %): mer är ett skrivfel. */
 export const MAX_FEE_BP = 2_000;
@@ -63,6 +64,7 @@ export const SETTINGS_MESSAGES = {
   invalid: "Uppgifterna stämmer inte. Kontrollera procentsatserna och försök igen.",
   companyInvalid: "Uppgifterna är för långa. Korta ner dem och försök igen.",
   orgNumberInvalid: "Organisationsnummer skrivs NNNNNN-NNNN.",
+  vatNumberInvalid: "Momsregistreringsnummer skrivs SE, tio siffror och 01, t.ex. SE559000123401.",
   emailInvalid: "E-postadressen ser inte rätt ut.",
   sharesInvalid: "Varje ägare behöver ett namn och en andel över 0 %.",
   sharesDuplicate: "Samma namn står två gånger. Varje ägare ska stå en gång.",
@@ -249,6 +251,8 @@ const FIELD_LABEL: Record<AuditedTable, Record<string, string>> = {
     contact_name: "Kontaktperson",
     contact_email: "E-post",
     contact_phone: "Telefon",
+    vat_number: "Momsregistreringsnummer",
+    report_vat_mode: "Moms i butiksrapporten",
   },
   owner_shares: {
     holder_name: "Ägare",
@@ -271,6 +275,8 @@ const COMPANY_FIELDS: ReadonlySet<string> = new Set([
   "contact_name",
   "contact_email",
   "contact_phone",
+  "vat_number",
+  "report_vat_mode",
 ]);
 
 export interface FieldChange {
@@ -300,6 +306,8 @@ function fieldValue(
   if (field.endsWith("_bp")) return formatBp(Number(value));
   if (field === "vat_limit_ore") return formatSek(Number(value) / 100);
   if (field === "vat_ok_at") return "Ja";
+  if (field === "report_vat_mode")
+    return value === "none" ? REPORT_VAT_MODE_LABEL.none : REPORT_VAT_MODE_LABEL.added;
   if (field === "fiscal_year_start_month") return monthLabel(Number(value));
   if (field === "valid_from") return formatDay(String(value).slice(0, 10));
   if (field === "member_user_id") return names[String(value)] ?? "Borttagen användare";

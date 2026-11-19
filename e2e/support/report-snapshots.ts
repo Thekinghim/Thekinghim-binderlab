@@ -5,7 +5,7 @@
  */
 
 import type { OrderLine, Placement, PurchasePrice, StoreAgreement } from "@/domain";
-import type { PartnerOwner, ReportSources } from "@/reports";
+import type { PartnerOwner, ReportSources, StoreBasis } from "@/reports";
 import { NO_TAX } from "@/reports/testing/fixtures";
 import {
   buildSnapshot,
@@ -167,15 +167,37 @@ export function partnerSnapshot(c: PartnerCase): ReportSnapshot {
 }
 
 /**
+ * Underlaget för butikens bokföring med allt ifyllt (det högsta blocket): företagsnamn,
+ * org.nr, adress, momsregistreringsnummer, ett undertecknat avtal och moms som tillkommer.
+ */
+export const FULL_BASIS: StoreBasis = {
+  payer: {
+    name: "Binderlab Sverige AB",
+    legal: true,
+    orgNumber: "559000-1234",
+    address: "Västra Hamngatan 12, 411 17 Göteborg",
+    vatNumber: "SE559000123401",
+  },
+  contract: {
+    title: "Placeringsavtal Westfield Mall of Scandinavia",
+    validFrom: "2025-01-01",
+    signedOn: "2024-12-18",
+  },
+  vatMode: "added",
+  vatRateBp: 2500,
+};
+
+/**
  * Butiksrapporten för butiken s-1, som har var tredje automat. `details` = butikens val
  * "Visa detaljer i rapporten" (standard av: den korta rapporten). `split` = avtalet är en
  * vinstdelning med hyra och VMB-moms före delning (den längsta uträkningen: åtta rader).
+ * `basis`: underlaget för bokföringen (standard allt ifyllt, `null` = en äldre rapport utan).
  */
 export function storeSnapshot(
   month: string,
   machines: number,
   details = false,
-  options: { split?: boolean; greeting?: string } = {},
+  options: { split?: boolean; greeting?: string; basis?: StoreBasis | null } = {},
 ): ReportSnapshot {
   const base = bigSources(machines, 30);
   const sources: ReportSources = options.split
@@ -206,6 +228,7 @@ export function storeSnapshot(
     sources,
     storeId: "s-1",
     storeDetails: details,
+    storeBasis: options.basis === undefined ? FULL_BASIS : options.basis,
     greeting:
       options.greeting ?? "Tack för ett bra samarbete! Hör av er om ni vill flytta någon automat.",
     storeService: {

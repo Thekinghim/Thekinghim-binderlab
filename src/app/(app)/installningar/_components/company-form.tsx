@@ -5,8 +5,13 @@ import { useState, useTransition, type FormEvent } from "react";
 
 import { FormError } from "@/app/logga-in/form-error";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import {
+  REPORT_VAT_MODE_LABEL,
+  suggestedVatNumber,
+  type ReportVatMode,
+} from "@/reports/store-basis";
 
 import { updateCompanyDetails } from "../_actions/settings";
 
@@ -17,10 +22,21 @@ export interface CompanyValues {
   readonly contactName: string;
   readonly contactEmail: string;
   readonly contactPhone: string;
+  /** Momsregistreringsnummer i butiksrapporten, tomt = visas inte. */
+  readonly vatNumber: string;
+  /** Momsen i butiksrapporten. */
+  readonly reportVatMode: ReportVatMode;
 }
 
+type TextKey = Exclude<keyof CompanyValues, "reportVatMode">;
+
+const VAT_MODES: Array<{ value: ReportVatMode; label: string }> = [
+  { value: "added", label: REPORT_VAT_MODE_LABEL.added },
+  { value: "none", label: REPORT_VAT_MODE_LABEL.none },
+];
+
 const FIELDS: ReadonlyArray<{
-  key: keyof CompanyValues;
+  key: TextKey;
   label: string;
   autoComplete: string;
   type?: string;
@@ -55,7 +71,13 @@ const FIELDS: ReadonlyArray<{
   },
 ];
 
-/** Våra företagsuppgifter, som står i varje kontrakt. Ägare och admin. */
+/**
+ * Våra företagsuppgifter, som står i varje kontrakt och i butiksrapporten (där de visar
+ * butikens revisor vilket bolag som betalar). Ägare och admin.
+ *
+ * Momsregistreringsnumret föreslås från organisationsnumret (SE + tio siffror + 01), men
+ * fylls bara i när man trycker på förslaget: det sparas aldrig utan att någon har valt det.
+ */
 export function CompanyForm({
   initial,
   organizationName,
@@ -80,12 +102,17 @@ export function CompanyForm({
       }
       toast({
         title: result.data?.changed ? "Företagsuppgifterna sparade" : "Inget att spara",
-        description: result.data?.changed ? "De står i nya kontrakt direkt." : undefined,
+        description: result.data?.changed
+          ? "De står i nya kontrakt och rapporter direkt."
+          : undefined,
         tone: result.data?.changed ? "ok" : "neutral",
       });
       router.refresh();
     });
   };
+
+  const suggestion = suggestedVatNumber(values.orgNumber);
+  const offer = values.vatNumber.trim() === "" ? suggestion : null;
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-5" aria-label="Företaget">
@@ -107,8 +134,57 @@ export function CompanyForm({
             }}
           />
         ))}
+        <div className="flex min-w-0 flex-col gap-2">
+          <Input
+            label="Momsregistreringsnummer"
+            name="vatNumber"
+            autoComplete="off"
+            placeholder="SE559000123401"
+            hint="Visas i butiksrapporten. Tomt = visas inte."
+            value={values.vatNumber}
+            onChange={(e) => {
+              setValues({ ...values, vatNumber: e.target.value });
+              setError(undefined);
+            }}
+          />
+          {offer ? (
+            <div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setValues({ ...values, vatNumber: offer });
+                  setError(undefined);
+                }}
+              >
+                Använd {offer}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        <Select
+          label="Moms i butiksrapporten"
+          name="reportVatMode"
+          options={VAT_MODES}
+          hint={
+            values.reportVatMode === "added"
+              ? "Rapporten visar ersättningen, momsen och beloppet att fakturera."
+              : "Rapporten visar bara ersättningen."
+          }
+          value={values.reportVatMode}
+          onChange={(e) => {
+            setValues({
+              ...values,
+              reportVatMode: e.target.value === "none" ? "none" : "added",
+            });
+            setError(undefined);
+          }}
+        />
       </div>
-      <p className="border-t border-line pt-4 text-sm text-muted">Står i varje nytt kontrakt.</p>
+      <p className="border-t border-line pt-4 text-sm text-muted">
+        Står i varje nytt kontrakt och i nya butiksrapporter.
+      </p>
       <FormError message={error} />
       <div className="flex justify-end">
         <Button type="submit" variant="primary" loading={pending}>

@@ -47,6 +47,7 @@ import {
 import { businessToday } from "@/server/data/core/loaders";
 import type { Mailer, MailAttachment } from "@/server/mail/report-mailer";
 import { recordReportSend, type MonitoringDeps } from "@/server/monitoring/failures";
+import { asStoreBasis, basisGaps as gapsOf } from "@/reports/store-basis";
 import { isWholeMonth, monthText, periodText } from "@/reports/text";
 
 import { buildSubject, renderReportText } from "@/emails/report-content";
@@ -159,6 +160,12 @@ export interface ArchiveRow {
    * mallen) och den kan inte godkännas eller skickas: en ny version skapas först.
    */
   readonly legacy: boolean;
+  /**
+   * Butiksrapporten som underlag för butikens bokföring: det som saknas i rapporten
+   * ("företagsnamn", "organisationsnummer"). Tom = inget saknas. `null` = rapporten är från
+   * före uppgifterna fanns och visar inte vilket bolag som betalar. Saknas för andra typer.
+   */
+  readonly basisGaps?: readonly string[] | null;
 }
 
 export interface ReportDetail extends ArchiveRow {
@@ -322,10 +329,15 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
     const deliveries = deliveriesBy.get(r.id) ?? [];
     let conclusion = "";
     let legacy = false;
+    let basisGaps: ArchiveRow["basisGaps"];
     try {
       const snapshot = asSnapshot(r.snapshot);
       conclusion = snapshot.report.conclusion.text;
       legacy = legacyUnsent(snapshot, wasSent(deliveries));
+      if (snapshot.type === "butik") {
+        const basis = asStoreBasis(snapshot.report.basis);
+        basisGaps = basis ? gapsOf(basis) : null;
+      }
     } catch {
       conclusion = "";
     }
@@ -348,6 +360,7 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
       deliveries,
       conclusion,
       legacy,
+      ...(basisGaps === undefined ? {} : { basisGaps }),
       storagePath: r.storagePath,
       snapshot: r.snapshot,
     };

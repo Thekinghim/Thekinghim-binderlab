@@ -209,7 +209,7 @@ export default async function SettingsPage() {
           title={companyGaps.length === 0 ? "Företaget." : "Företaget saknar uppgifter."}
           aside={
             companyGaps.length === 0
-              ? "Står i kontrakten."
+              ? "Står i kontrakten och i butiksrapporten."
               : `Tomt i kontrakten: ${companyGaps.join(", ")}.`
           }
         />
@@ -229,6 +229,8 @@ export default async function SettingsPage() {
                 contactName: company.contactName ?? "",
                 contactEmail: company.contactEmail ?? "",
                 contactPhone: company.contactPhone ?? "",
+                vatNumber: data.reportBasis.vatNumber ?? "",
+                reportVatMode: data.reportBasis.reportVatMode,
               }}
             />
           </div>

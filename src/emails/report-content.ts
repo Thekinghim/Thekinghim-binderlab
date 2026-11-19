@@ -97,6 +97,21 @@ export type StoreDetails = {
   refills: { count: number; last: Date };
   nextVisit: Date;
   contact: { name: string; phone: string };
+  /**
+   * Underlag för butikens bokföring: vem som betalar ersättningen, mottagaren, avtalet och
+   * momsen. Saknas i rapporter från före uppgifterna fanns (sektionen visas då inte).
+   */
+  basis?: StoreBasisBlock;
+};
+
+export type StoreBasisBlock = {
+  /** Bolaget som betalar: namn, org.nr, adress, momsreg.nr (en rad var). */
+  payer: string[];
+  recipient: string;
+  /** Ersättning exkl. moms, moms och att fakturera, i kronor. Tom = ingen momsrad. */
+  amounts: Array<{ label: string; amount: number; total?: boolean }>;
+  /** Avtalet och meningarna om momsen. */
+  notes: string[];
 };
 
 export type LedgerEntry = {
@@ -540,6 +555,13 @@ export function renderReportText(props: ReportEmailProps): string {
   switch (props.recipientKind) {
     case "butik": {
       const d = props.details;
+      if (d.basis) {
+        section("Underlag för bokföringen");
+        out.push(`Ersättningen betalas av: ${d.basis.payer.join(", ")}`);
+        out.push(`Mottagare: ${d.basis.recipient}`);
+        for (const a of d.basis.amounts) out.push(`${a.label}: ${formatKronor(a.amount)}`);
+        for (const note of d.basis.notes) out.push(note);
+      }
       section("Drift och service");
       out.push(`I drift: ${formatPercent(d.availability)} av öppettiden`);
       out.push(`Avbrott: ${incidentsSummary(d.incidents)}`);

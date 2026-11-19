@@ -54,6 +54,7 @@ import {
   type StoreMonthSplit,
 } from "@/domain";
 import { Catalog, evidence, fig, monthScope, sumEntries } from "./shared";
+import type { StoreBasis } from "./store-basis";
 import {
   dateText,
   isWholeMonth,
@@ -238,6 +239,12 @@ export interface StoreReport {
    * Saknas i ögonblicksbilder från före valet fanns (se `storeDetailsOf`).
    */
   readonly details?: boolean;
+  /**
+   * Underlaget för butikens bokföring: vem som betalar, avtalet och momsen, som det var när
+   * rapporten räknades (./store-basis). Saknas i ögonblicksbilder från före uppgifterna
+   * fanns, och i uträkningar som inte är en sparad rapport (avräkningen, portalens siffror).
+   */
+  readonly basis?: StoreBasis;
 }
 
 /** Inställningar för butiksrapporten. */
@@ -1272,20 +1279,23 @@ const FORBIDDEN_TEXT = /inköp|vinst|marginal|lönsam|ägar/i;
  * Kontrollerar att butiksrapporten inte innehåller inköp, marginal, vinst eller andra
  * butikers data: inga förbjudna nycklar eller ord någonstans (även nästlat; vid
  * vinstdelning är ersättningsdelen, `compensation`, undantagen), och varje
- * `storeId` i underlagen är butikens egen. Namn (butik, automat, titel) och hälsning skrivs
+ * `storeId` i underlagen är butikens egen. Namn (butik, automat, titel), hälsning och
+ * underlaget för bokföringen (vårt företag och avtalets namn) skrivs
  * av människor och undantas från ordkontrollen, även där de citeras i andra texter: en titel
  * som heter "Vinsttröja" stoppar alltså inte rapporten, men ordet "vinst" utanför ett namn
  * gör det. Kastar `DomainError` vid fynd.
  */
 export function assertStoreReportSafe(report: StoreReport): void {
   const own = report.store.id;
-  const isHumanText = (path: string): boolean =>
-    path.endsWith(".name") || path.endsWith(".greeting");
+  // Underlaget (`basis`) är våra egna företagsuppgifter och avtalets namn, skrivna av
+  // människor: ett avtal som heter "Vinstdelningsavtal" ska inte stoppa rapporten.
+  const isName = (path: string): boolean => path.endsWith(".name") || path.endsWith(".greeting");
+  const isHumanText = (path: string): boolean => isName(path) || path.startsWith("rapport.basis.");
   // Namn och hälsning i rapporten, längst först så att ett kort namn inte delar ett långt.
   const names = new Set<string>();
   const collect = (value: unknown, path: string): void => {
     if (typeof value === "string") {
-      if (isHumanText(path) && value.length > 0) names.add(value);
+      if (isName(path) && value.length > 0) names.add(value);
     } else if (Array.isArray(value)) {
       value.forEach((v, i) => collect(v, `${path}[${i}]`));
     } else if (value !== null && typeof value === "object") {

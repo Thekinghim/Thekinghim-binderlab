@@ -671,6 +671,9 @@ export const organizationSettings = pgTable("organization_settings", {
   contactName: text("contact_name"),
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
+  /** Butiksrapporten som underlag (20261217000000_rapport_underlag.sql). */
+  vatNumber: text("vat_number"),
+  reportVatMode: text("report_vat_mode").$type<"added" | "none">().notNull().default("added"),
   /** Prisråd: mål för marginalen före butikernas andel (20261120000000_prisrad.sql). */
   targetMarginBp: integer("target_margin_bp").notNull().default(2500),
   /** T5: momsgränsen vi varnar vid och "Revisorn har koll" (20261205000000_installningar_varning.sql). */

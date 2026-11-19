@@ -7,6 +7,9 @@
  * begäran." Med butikens val "Visa detaljer i rapporten" (`report.details`) visas också
  * titlarna och service, som förut. Vad som visas avgörs i `storeReportView` (@/reports).
  *
+ * Under uträkningen står underlaget för butikens bokföring (`report.basis`): vilket bolag
+ * som betalar, mottagaren, avtalet och momsen (@/reports/store-basis).
+ *
  * Innehåller ALDRIG inköp, marginal, vinst eller andra butikers siffror, utom månadens
  * summor i ersättningen när avtalet är en vinstdelning (då är de underlaget för butikens
  * andel); testet i store-report.test.tsx kontrollerar båda.
@@ -34,7 +37,17 @@ import type {
 } from "@/reports";
 import type { StoreSnapshot } from "@/server/reports/snapshot";
 
-import { isWholeMonth, periodText, pctText, splitsOf, storeReportView } from "@/reports";
+import {
+  asStoreBasis,
+  contractLine,
+  isWholeMonth,
+  periodText,
+  pctText,
+  splitsOf,
+  storeReportView,
+  vatRows,
+  vatSentences,
+} from "@/reports";
 import { periodDays } from "@/domain";
 
 import {
@@ -316,6 +329,88 @@ export function StoreReportDocument({
 
   const kpiRow = <ReportKpiRow items={view.kpis.map((k) => kpis[k])} />;
 
+  // Underlaget för butikens bokföring: vem som betalar, vem som får ersättningen, avtalet
+  // och momsen. Sparat i rapporten när den räknades; en äldre rapport utan uppgifterna
+  // visas som förut, utan blocket.
+  const basisData = asStoreBasis(r.basis);
+  const vat = basisData ? vatRows(basisData, r.compensation.totalOre) : [];
+  const basisFacts = basisData ? (
+    <>
+      <ReportFact label="Ersättningen betalas av">
+        <p className="font-medium">{basisData.payer.name}</p>
+        {/* Org.nr och momsreg.nr på samma rad när de får plats, annars på var sin. */}
+        {basisData.payer.orgNumber || basisData.payer.vatNumber ? (
+          <p className="tnum flex flex-wrap gap-x-[3mm] text-muted">
+            {basisData.payer.orgNumber ? (
+              <span className="whitespace-nowrap">Org.nr {basisData.payer.orgNumber}</span>
+            ) : null}
+            {basisData.payer.vatNumber ? (
+              <span className="whitespace-nowrap">Momsreg.nr {basisData.payer.vatNumber}</span>
+            ) : null}
+          </p>
+        ) : null}
+        {basisData.payer.address ? (
+          <p className="tnum text-muted">{basisData.payer.address}</p>
+        ) : null}
+      </ReportFact>
+      <ReportFact label="Mottagare">
+        <p className="font-medium">{snapshot.store.name}</p>
+      </ReportFact>
+      {vat.length > 0 ? (
+        <ReportFact label="Er faktura">
+          <dl className="flex flex-col">
+            {vat.map((row) => (
+              <div
+                key={row.key}
+                className={
+                  row.key === "total"
+                    ? "flex items-baseline justify-between gap-[3mm] border-t border-line font-medium"
+                    : "flex items-baseline justify-between gap-[3mm] text-muted"
+                }
+              >
+                <dt>{row.label}</dt>
+                <dd className="tnum font-mono text-[10.5px] whitespace-nowrap">
+                  {kronor(row.amountOre)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </ReportFact>
+      ) : null}
+    </>
+  ) : null;
+  // Avtalet och momsen i en eller två meningar.
+  const basisNote = basisData ? (
+    <p className="text-[11px] leading-[15px] text-muted">
+      {[contractLine(basisData), ...vatSentences(basisData, r.compensation.totalOre)]
+        .filter(Boolean)
+        .join(" ")}
+    </p>
+  ) : null;
+  // Den korta rapporten med vinstdelning (den längsta uträkningen): underlaget står bredvid
+  // tabellen, som bara har två smala kolumner, och tabellen är något tätare. Så får också
+  // åtta rader, hyra, tre automater och en lång hälsning plats på ett ark.
+  const basisBeside = basisData !== null && split && !view.details;
+  // Annars: ett eget block under uträkningen.
+  const basis =
+    basisData && !basisBeside ? (
+      <section
+        aria-label="Underlag för bokföringen"
+        className="flex flex-col gap-[2mm] border-t border-line-strong pt-[2.5mm]"
+      >
+        <div
+          className={
+            vat.length > 0
+              ? "grid grid-cols-[5fr_3fr_4fr] items-start gap-[6mm]"
+              : "grid grid-cols-[5fr_7fr] items-start gap-[6mm]"
+          }
+        >
+          {basisFacts}
+        </div>
+        {basisNote}
+      </section>
+    ) : null;
+
   // Uträkningen: samma tabell i båda rapporterna (det är så butiken räknar efter sin andel).
   const calculation = (
     <ReportSection
@@ -329,9 +424,22 @@ export function StoreReportDocument({
       }
       aside={split ? `Avtal: ${r.compensation.modelText}` : r.compensation.modelText}
       // Den korta rapporten: något tätare mellan rubrik, tabell och not (samma innehåll).
-      className={view.details ? undefined : "gap-[3mm]!"}
+      className={view.details ? undefined : basisBeside ? "gap-[2mm]!" : "gap-[3mm]!"}
     >
-      {split ? (
+      {split && basisBeside ? (
+        <div className="grid grid-cols-2 items-start gap-[8mm]">
+          <ReportTable
+            caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
+            columns={splitColumns}
+            rows={splitRows(r.compensation)}
+            rowKey={(x) => x.key}
+            className="[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!"
+          />
+          <section aria-label="Underlag för bokföringen" className="flex flex-col gap-[2mm]">
+            {basisFacts}
+          </section>
+        </div>
+      ) : split ? (
         <ReportTable
           caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
           columns={splitColumns}
@@ -362,6 +470,7 @@ export function StoreReportDocument({
                 : ""
             }`}
       </ReportNote>
+      {basisBeside ? basisNote : null}
     </ReportSection>
   );
 
@@ -488,7 +597,8 @@ export function StoreReportDocument({
   const doc = {
     title: `Butiksrapport ${month}`,
     recipient: recipient ?? snapshot.store.name,
-    sender: snapshot.organization.name,
+    // Avsändaren i sidhuvudet: bolaget som betalar, när det är sparat i rapporten.
+    sender: basisData?.payer.name ?? snapshot.organization.name,
     period: datePeriod(snapshot.period),
     generatedAt: new Date(snapshot.generatedAt),
     timeZone: snapshot.organization.timeZone,
@@ -499,10 +609,11 @@ export function StoreReportDocument({
   if (!view.details) {
     return (
       <ReportDocument {...doc}>
-        <ReportPage className="gap-[5mm]">
+        <ReportPage className={basisBeside ? "gap-[3.5mm]" : "gap-[5mm]"}>
           {title}
           {kpiRow}
           {calculation}
+          {basis}
           {/* En vanlig butik: veckorna och automaterna bredvid varandra, allt på en sida.
               Med många automater står de i en tabell under (som kan delas mellan två ark). */}
           {weekData.length > 0 && r.machines.length <= SIDE_BY_SIDE_MACHINES ? (
@@ -528,6 +639,7 @@ export function StoreReportDocument({
         {title}
         {kpiRow}
         {calculation}
+        {basis}
         {weeks()}
       </ReportPage>
 

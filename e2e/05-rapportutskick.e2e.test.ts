@@ -4,6 +4,10 @@
  * (MAIL_PROVIDER=outbox) med rätt mottagare, ämne, hälsning och PDF som bilaga. Till sist
  * pausas mottagaren, så att mottagarlistan inte växer för varje körning.
  *
+ * Först utan företagsuppgifter: Rapporter säger vad som saknas och länkar till Inställningar,
+ * där momsregistreringsnumret föreslås från organisationsnumret. Sedan står vårt bolag,
+ * momsen och beloppet att fakturera i förhandsvisningen, PDF:en och mejlet.
+ *
  * Rapporten är den korta (standard): uträkningen och summor på en A4-sida, utan titlar,
  * snittköp och service, i förhandsvisningen, PDF:en och mejlet. Med butikens val "Visa
  * detaljer i rapporten" visar förhandsvisningen titlarna och service igen, medan den
@@ -40,6 +44,13 @@ const DETAILS_ONLY = ["Snittköp", "Flest köp", "Titlar", "Service", "Påfyllni
 const MONTH = "oktober 2026";
 /** Butiken med den äldre rapporten (en annan än den som får utskicket). */
 const OLD_STORE = "Spelbutiken Centrum (exempel)";
+/** Våra företagsuppgifter (Inställningar → Företaget), som står i rapporten. */
+const COMPANY = {
+  name: "Binderlab E2E AB",
+  orgNumber: "559000-1234",
+  address: "Storgatan 1, 111 22 Stockholm",
+  vatNumber: "SE559000123401",
+};
 
 let browser: Browser;
 let context: BrowserContext;
@@ -151,6 +162,48 @@ describe("rapportutskick", () => {
     await page.getByText(recipient.email).first().waitFor();
   });
 
+  it("utan företagsuppgifter varnar Rapporter, och Inställningar föreslår momsregistreringsnumret", async () => {
+    // Börja utan företagsuppgifter (också när testet körts förut mot samma databas).
+    const org = e2e().organizationId;
+    await sql`update public.organization_settings
+              set company_name = null, org_number = null, company_address = null,
+                  vat_number = null, report_vat_mode = 'added'
+              where organization_id = ${org}`;
+    await sql`update public.bookkeeping_settings set org_number = null
+              where organization_id = ${org}`;
+
+    await page.goto("/rapporter");
+    const builder = await chooseStoreReport();
+    await builder.getByRole("button", { name: /^Skapa (utkast|ny version)$/ }).click();
+    const warning = page.getByText("Rapporten saknar företagsnamn och organisationsnummer.");
+    await warning.waitFor();
+    await warning.scrollIntoViewIfNeeded();
+    await screenshot(page, "05-rapport-saknar-foretagsuppgifter");
+    // Godkännandet är inte låst, men varningen länkar till Inställningar.
+    await page.getByRole("button", { name: "Godkänn för utskick" }).waitFor();
+    await page.getByRole("link", { name: "Öppna Inställningar →" }).click();
+    await page.waitForURL(/\/installningar#foretaget$/);
+
+    const form = page.getByRole("form", { name: "Företaget" });
+    await form.getByLabel("Företagsnamn").fill(COMPANY.name);
+    await form.getByLabel("Adress").fill(COMPANY.address);
+    // Förslaget kommer först när organisationsnumret är ifyllt, och fylls bara i på klick.
+    expect(await form.getByRole("button", { name: /^Använd SE/ }).count()).toBe(0);
+    await form.getByLabel("Organisationsnummer").fill(COMPANY.orgNumber);
+    expect(await form.getByLabel("Momsregistreringsnummer").inputValue()).toBe("");
+    await form.getByRole("button", { name: `Använd ${COMPANY.vatNumber}` }).click();
+    expect(await form.getByLabel("Momsregistreringsnummer").inputValue()).toBe(COMPANY.vatNumber);
+    expect(await form.getByLabel("Moms i butiksrapporten").inputValue()).toBe("added");
+    await screenshot(page, "05-installningar-foretaget");
+    await form.getByRole("button", { name: "Spara" }).click();
+    await page.getByText("Företagsuppgifterna sparade").first().waitFor();
+
+    // Utkastet från nyss stämmer inte längre: en ny version skapas (nästa test).
+    await page.goto("/rapporter");
+    await chooseStoreReport();
+    await page.getByText("Rapporten har ändrats sedan utkastet skapades.").waitFor();
+  });
+
   it("skapar, godkänner och skickar butiksrapporten", async () => {
     await page.goto("/rapporter");
     const builder = await chooseStoreReport();
@@ -170,6 +223,14 @@ describe("rapportutskick", () => {
       .waitFor();
     await preview.getByText("Så räknas ersättningen.").waitFor();
     for (const word of DETAILS_ONLY) expect(await preview.getByText(word).count(), word).toBe(0);
+    // Underlaget för butikens bokföring: vilket bolag som betalar, och momsen.
+    await preview.getByText("Ersättningen betalas av").waitFor();
+    await preview.getByText(COMPANY.name).first().waitFor();
+    await preview.getByText(`Org.nr ${COMPANY.orgNumber}`).waitFor();
+    await preview.getByText(`Momsreg.nr ${COMPANY.vatNumber}`).waitFor();
+    await preview.getByText("Att fakturera").waitFor();
+    await preview.getByText("Moms 25 %").waitFor();
+    expect(await page.getByText(/^Rapporten saknar /).count()).toBe(0);
     await screenshot(page, "05-rapport-utkast");
     await approve.click();
     await page.getByText("Rapporten är godkänd").first().waitFor({ timeout: 120_000 });
@@ -206,6 +267,22 @@ describe("rapportutskick", () => {
     // Mejlet: beloppet i rubriken, ingen service och inga titlar.
     const text = await readFile(path.join(mail.dir, "message.txt"), "utf8");
     expect(text).toMatch(/Er ersättning för oktober: /);
+    // Mejlet har samma underlag för bokföringen som PDF:en.
+    for (const body of [html, text]) {
+      const b = body.replace(/\u00a0|&nbsp;/g, " ");
+      expect(b).toMatch(/underlag för bokföringen/i);
+      for (const word of [
+        COMPANY.name,
+        `Org.nr ${COMPANY.orgNumber}`,
+        COMPANY.address,
+        `Momsreg.nr ${COMPANY.vatNumber}`,
+        "Ersättning exkl. moms",
+        "Moms 25 %",
+        "Att fakturera",
+        "(vinstmarginalbeskattning)",
+      ])
+        expect(b, word).toContain(word);
+    }
     for (const word of ["Flest köp", "Påfyllningar", "Snittköp", "Drift och service"]) {
       expect(html, word).not.toContain(word);
       expect(text, word).not.toContain(word);

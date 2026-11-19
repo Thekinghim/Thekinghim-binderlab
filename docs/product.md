@@ -52,6 +52,28 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
     sålt för 4 047 kr"). Rapporten får plats på en sida också med den längsta uträkningen (vinstdelning med hyra
     och VMB-moms) och tre automater; med fler automater, eller tre automater och en hälsning på flera rader, blir
     den två sidor.
+  - **Underlag för butikens bokföring.** Rapporten visar vilket bolag som betalar ersättningen och hur momsen
+    hanteras, så att butikens revisor kan ta den som underlag: **Ersättningen betalas av** (vårt företagsnamn,
+    org.nr, momsreg.nr och adress), **Mottagare** (butiken), **Er faktura** (ersättning exkl. moms, moms 25 %
+    och beloppet att fakturera) och en rad om avtalet ("Enligt Placeringsavtal från 3 november 2026, undertecknat 9 november
+    2026."). Texten om momsen: "Ersättningen är exklusive moms. Ni fakturerar [bolaget] och lägger på svensk moms,
+    25 %. [Bolaget] är säljare av varorna i automaten och redovisar momsen på den försäljningen
+    (vinstmarginalbeskattning)." Samma uppgifter står på sidan, i PDF:en, i mejlet och i butiksportalen.
+    - Uppgifterna kommer från **Inställningar → Företaget** (ägare och admin). Där finns också
+      **Momsregistreringsnummer** (valfritt; knappen "Använd SE…" föreslår numret från organisationsnumret, men
+      inget sparas förrän man har tryckt och sparat) och **Moms i butiksrapporten**: "Moms tillkommer (25 %)"
+      (standard) eller "Visa ingen momsrad" (då visas varken momsbeloppen eller något påstående om moms, bara vem
+      som säljer varorna).
+    - Avtalsraden gäller butikens senaste kontrakt som gällde under perioden och är undertecknat. Ett kontrakt som
+      är registrerat för hand räknas som undertecknat, utan datum för undertecknandet. Finns inget sådant kontrakt
+      står ingen rad om avtal.
+    - Är ersättningen 0 kr eller lägre visas inga belopp att fakturera.
+    - **Rapporter säger till när något saknas:** "Rapporten saknar företagsnamn och organisationsnummer." med länk
+      till Inställningar. Godkännandet låses inte, men när uppgifterna fylls i blir utkastet gammalt och godkänns
+      som ny version. En rapport från före uppgifterna fanns visas som förut, utan blocket, och Rapporter säger
+      "Rapporten visar inte vilket bolag som betalar." tills den är skickad eller ersatt av en ny version.
+    - Med vinstdelning står uppgifterna bredvid uträkningen, annars i ett eget block under den. Rapporten är
+      fortfarande en sida i samma fall som förut.
   - **Visa detaljer i rapporten** (Butiker → butiken → Kontakt och rapport; ägare och admin; standard av): på =
     den butikens rapport visar också titlarna och service (påfyllningsbesök, flest köp, snittköp), som förut. Sidan,
     PDF:en, mejlet, förhandsvisningen på Rapporter och butiksportalen följer samma val.

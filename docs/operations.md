@@ -36,6 +36,13 @@ läses när rapporten skapas och sparas i den: ändras det efteråt står godkä
 `20261215000000_rapport_detaljer.sql` gäller det alla utkast som redan låg och väntade: skapa ny version och
 godkänn den. Vill en butik ha underlaget per titel: slå på valet, skapa ny version och skicka den.
 
+**Butiksrapporten som underlag för butikens bokföring.** Rapporten visar vilket bolag som betalar (företagsnamn,
+org.nr, adress, momsreg.nr), avtalet och momsen. Fyll i **Inställningar → Företaget** före månadens utskick; saknas
+företagsnamn eller organisationsnummer säger Rapporter det vid granskningen. Uppgifterna sparas i rapporten när den
+skapas. Första gången efter driftsättningen av `20261217000000_rapport_underlag.sql` är alla utkast av
+butiksrapporter gamla: skapa ny version och godkänn den. Momsvalet ("Moms tillkommer (25 %)" eller "Visa ingen
+momsrad") bestäms tillsammans med revisorn.
+
 **Rapporter från före den korta rapporten** (skapade före `20261215000000_rapport_detaljer.sql`, utan sparat val i
 `data_snapshot.report.details`). De visas korta, också godkända, och deras sparade PDF (gamla mallen) används inte:
 `/rapport/[id]/fil/pdf` skapar en ny PDF vid varje hämtning (headless Chromium, samma väg som första hämtningen av

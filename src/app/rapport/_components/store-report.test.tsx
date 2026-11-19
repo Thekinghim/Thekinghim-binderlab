@@ -13,6 +13,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { renderReportEmail } from "@/emails/report-email";
+import type { StoreBasis } from "@/reports";
 import { agreement, ord, placement, price, sources } from "@/reports/testing/fixtures";
 import { reportEmailProps } from "@/server/reports/email";
 import { cleanEmailHtml, cleanEmailText } from "@/server/reports/email-cleanup";
@@ -22,7 +23,21 @@ import { StoreReportDocument } from "./store-report";
 
 const ORG = { id: "org", name: "Binderlab AB", orgNumber: null, timeZone: "Europe/Stockholm" };
 
-function snapshot(details = false): StoreSnapshot {
+/** Underlaget för butikens bokföring med allt ifyllt. */
+const BASIS: StoreBasis = {
+  payer: {
+    name: "Binderlab Sverige AB",
+    legal: true,
+    orgNumber: "559000-1234",
+    address: "Storgatan 1, 111 22 Stockholm",
+    vatNumber: "SE559000123401",
+  },
+  contract: { title: "Placeringsavtal", validFrom: "2026-11-03", signedOn: "2026-11-09" },
+  vatMode: "added",
+  vatRateBp: 2500,
+};
+
+function snapshot(details = false, basis: StoreBasis | null = null): StoreSnapshot {
   const src = sources({
     placements: [
       placement("m-1", "s-1", "2025-01-01", null),
@@ -52,6 +67,7 @@ function snapshot(details = false): StoreSnapshot {
     storeId: "s-1",
     greeting: "Tack för ett bra samarbete!",
     storeDetails: details,
+    storeBasis: basis,
     storeService: {
       refills: { count: 3, last: "2026-10-27" },
       busiest: "Lördagar 12–15",
@@ -228,6 +244,123 @@ describe("rapporter från före valet fanns", () => {
   it("utan regeln (valet okänt) visas aldrig mer än den korta rapporten", () => {
     const plain = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={legacy()} />));
     for (const re of DETAILS_ONLY) expect(plain, String(re)).not.toMatch(re);
+  });
+});
+
+describe("underlag för butikens bokföring", () => {
+  const snap = snapshot(false, BASIS);
+  const html = renderToStaticMarkup(<StoreReportDocument snapshot={snap} />);
+  const plain = visibleText(html).replace(/\u00a0|\u202f/g, " ");
+  // Rapportens enda ord med "vinst" och "marginal": skattereglernas namn, inget belopp.
+  const TAX_TERM = /vinstmarginalbeskattning/g;
+
+  it("visar vilket bolag som betalar, mottagaren och avtalet", () => {
+    expect(snap.report.basis).toEqual(BASIS);
+    for (const text of [
+      "Ersättningen betalas av",
+      "Binderlab Sverige AB",
+      "Org.nr 559000-1234",
+      "Momsreg.nr SE559000123401",
+      "Storgatan 1, 111 22 Stockholm",
+      "Mottagare",
+      "Enligt Placeringsavtal från 3 november 2026, undertecknat 9 november 2026.",
+    ])
+      expect(plain, text).toContain(text);
+    // Avsändaren i sidhuvudet är bolaget som betalar.
+    expect(plain).toContain("från Binderlab Sverige AB");
+  });
+
+  it("visar ersättningen, momsen och beloppet att fakturera", () => {
+    // 518,84 kr + 25 % moms (129,71 kr) = 648,55 kr.
+    for (const text of [
+      "Att fakturera",
+      "Ersättning exkl. moms",
+      "518,84 kr",
+      "Moms 25 %",
+      "129,71 kr",
+      "648,55 kr",
+      "Ersättningen är exklusive moms. Ni fakturerar Binderlab Sverige AB och lägger på svensk moms, 25 %.",
+      "Binderlab Sverige AB är säljare av varorna i automaten och redovisar momsen på den försäljningen (vinstmarginalbeskattning).",
+    ])
+      expect(plain, text).toContain(text);
+  });
+
+  it("är fortfarande ett ark och läcker inget", () => {
+    expect(html.match(/data-page=/g)?.length ?? 0).toBe(PAGES_SHORT);
+    const rest = plain.replace(TAX_TERM, "");
+    for (const re of FORBIDDEN) expect(rest, String(re)).not.toMatch(re);
+  });
+
+  it("samma block i rapporten med detaljer", () => {
+    const full = visibleText(
+      renderToStaticMarkup(<StoreReportDocument snapshot={snapshot(true, BASIS)} />),
+    ).replace(/\u00a0|\u202f/g, " ");
+    expect(full).toContain("Ersättningen betalas av");
+    expect(full).toContain("648,55 kr");
+  });
+
+  it("Visa ingen momsrad: inga momsbelopp och ingen mening om moms", () => {
+    const none = visibleText(
+      renderToStaticMarkup(
+        <StoreReportDocument snapshot={snapshot(false, { ...BASIS, vatMode: "none" })} />,
+      ),
+    ).replace(/\u00a0|\u202f/g, " ");
+    expect(none).toContain("Ersättningen betalas av");
+    expect(none).toContain("Binderlab Sverige AB är säljare av varorna i automaten.");
+    for (const text of ["Att fakturera", "Moms 25 %", "648,55", "redovisar momsen", "svensk moms"])
+      expect(none, text).not.toContain(text);
+  });
+
+  it("utan undertecknat avtal står ingen avtalsrad", () => {
+    const bare = visibleText(
+      renderToStaticMarkup(
+        <StoreReportDocument snapshot={snapshot(false, { ...BASIS, contract: null })} />,
+      ),
+    );
+    expect(bare).toContain("Ersättningen betalas av");
+    expect(bare).not.toContain("Enligt ");
+    expect(bare).not.toContain("undertecknat");
+  });
+
+  it("en rapport från före uppgifterna fanns visas som förut, utan blocket", () => {
+    const old = snapshot();
+    expect(old.report.basis).toBeUndefined();
+    const text = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={old} />));
+    for (const word of ["Ersättningen betalas av", "Att fakturera", "Org.nr", "Momsreg.nr"])
+      expect(text, word).not.toContain(word);
+    expect(text).toContain("från Binderlab AB");
+    const email = emailFor(old);
+    expect(email.html).not.toMatch(/underlag för bokföringen/i);
+    expect(email.text).not.toMatch(/underlag för bokföringen/i);
+  });
+
+  it("mejlet (HTML och text) har samma uppgifter som PDF:en", () => {
+    const email = emailFor(snap);
+    for (const body of [email.html, email.text]) {
+      const b = body.replace(/\u00a0|\u202f/g, " ");
+      // Rubriken står med versaler i textdelen.
+      expect(b).toMatch(/underlag för bokföringen/i);
+      for (const text of [
+        "Binderlab Sverige AB",
+        "Org.nr 559000-1234",
+        "Storgatan 1, 111 22 Stockholm",
+        "Momsreg.nr SE559000123401",
+        "Mottagare",
+        "Nordstan",
+        "Ersättning exkl. moms",
+        "518,84 kr",
+        "Moms 25 %",
+        "129,71 kr",
+        "Att fakturera",
+        "648,55 kr",
+        "Enligt Placeringsavtal från 3 november 2026, undertecknat 9 november 2026.",
+        "Ersättningen är exklusive moms. Ni fakturerar Binderlab Sverige AB och lägger på svensk moms, 25 %.",
+        "redovisar momsen på den försäljningen (vinstmarginalbeskattning).",
+      ])
+        expect(b, text).toContain(text);
+      const rest = b.replace(TAX_TERM, "");
+      for (const re of FORBIDDEN) expect(rest, String(re)).not.toMatch(re);
+    }
   });
 });
 

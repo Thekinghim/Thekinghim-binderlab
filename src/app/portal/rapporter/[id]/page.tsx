@@ -18,7 +18,12 @@ import { isWholeMonth, periodText } from "@/reports/text";
 import { loadPortalReport } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
 
-import { CompensationSection, TitlesHeader, WeeksBlock } from "../../_components/sections";
+import {
+  BasisSection,
+  CompensationSection,
+  TitlesHeader,
+  WeeksBlock,
+} from "../../_components/sections";
 import { dateTimeText, kr, monthText, pct } from "../../_components/text";
 
 export const metadata: Metadata = { title: "Månadsrapport" };
@@ -130,6 +135,8 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
             report={report}
             hasAgreement={report.compensation.model !== "none"}
           />
+
+          <BasisSection report={report} />
 
           {details ? (
             <section className="grid gap-x-8 gap-y-12 border-t border-line py-16 lg:grid-cols-12">

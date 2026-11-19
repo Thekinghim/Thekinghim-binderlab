@@ -31,7 +31,13 @@ import {
 } from "@/server/access";
 import type { ActionResult } from "@/server/auth/flows";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
-import { readCompanyDetails, type CompanyDetailsRow } from "@/server/contracts/operator";
+import { normalizeVatNumber, type ReportVatMode } from "@/reports/store-basis";
+import {
+  readCompanyDetails,
+  readReportBasisSettings,
+  type CompanyDetailsRow,
+  type ReportBasisSettings,
+} from "@/server/contracts/operator";
 import { fiscalYearAround, querySettingsFacts } from "@/server/self-check/queries";
 
 import {
@@ -61,6 +67,8 @@ export interface SettingsPageData {
   readonly members: Array<{ userId: string; name: string }>;
   /** Företagsuppgifterna som står i kontrakten (Inställningar → Företaget). */
   readonly company: CompanyDetailsRow;
+  /** Momsregistreringsnumret och momsvalet för butiksrapporten. */
+  readonly reportBasis: ReportBasisSettings;
 }
 
 function iso(value: unknown): string {
@@ -124,7 +132,7 @@ export async function loadSettingsPageFor(
 ): Promise<SettingsPageData> {
   const role = await requireRoleFor(user, organizationId, PAGE_ROLES);
   return withUserDbFor(user, async (tx) => {
-    const [settings, shares, accountResult, auditResult, profileResult, company] =
+    const [settings, shares, accountResult, auditResult, profileResult, company, reportBasis] =
       await Promise.all([
         querySettingsRow(tx, organizationId),
         queryShares(tx, organizationId),
@@ -155,6 +163,7 @@ export async function loadSettingsPageFor(
             order by p.display_name`,
         ),
         readCompanyDetails(tx, organizationId),
+        readReportBasisSettings(tx, organizationId),
       ]);
     const actorNames: Record<string, string> = {};
     const members: Array<{ userId: string; name: string }> = [];
@@ -198,6 +207,7 @@ export async function loadSettingsPageFor(
       actorNames,
       members,
       company,
+      reportBasis,
     };
   });
 }
@@ -397,12 +407,25 @@ export const companyInput = z.object({
     "contactEmail",
   ),
   contactPhone: optionalText(50),
+  /**
+   * Momsregistreringsnummer (SE + tio siffror + 01), tomt = inget. Utelämnat = ändras inte
+   * (äldre anrop som bara sparar kontraktets uppgifter).
+   */
+  vatNumber: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : (normalizeVatNumber(v) ?? "ogiltigt")))
+    .refine((v) => v !== "ogiltigt", "vatNumber")
+    .optional(),
+  /** Momsen i butiksrapporten. Utelämnat = ändras inte. */
+  reportVatMode: z.enum(["added", "none"]).optional(),
 });
 
 export type CompanyInput = z.input<typeof companyInput>;
 
 /**
- * Sparar företagsuppgifterna som står i kontrakten. Ägare och admin. Organisationsnumret
+ * Sparar företagsuppgifterna som står i kontrakten och i butiksrapporten (med
+ * momsregistreringsnumret och momsvalet). Ägare och admin. Organisationsnumret
  * skrivs också till Bokföring när den raden finns, så att SIE-filen och kontrakten har
  * samma nummer.
  */
@@ -418,9 +441,11 @@ export async function updateCompanyDetailsFor(
       error:
         field === "orgNumber"
           ? SETTINGS_MESSAGES.orgNumberInvalid
-          : field === "contactEmail"
-            ? SETTINGS_MESSAGES.emailInvalid
-            : SETTINGS_MESSAGES.companyInvalid,
+          : field === "vatNumber"
+            ? SETTINGS_MESSAGES.vatNumberInvalid
+            : field === "contactEmail"
+              ? SETTINGS_MESSAGES.emailInvalid
+              : SETTINGS_MESSAGES.companyInvalid,
     };
   }
   const input = parsed.data;
@@ -442,16 +467,23 @@ export async function updateCompanyDetailsFor(
         contactEmail: input.contactEmail,
         contactPhone: input.contactPhone,
       };
-      const same = (Object.keys(next) as Array<keyof CompanyDetailsRow>).every(
-        (k) => current[k] === next[k],
-      );
+      const basisNow = await readReportBasisSettings(tx, input.organizationId);
+      const vatNumber = input.vatNumber === undefined ? basisNow.vatNumber : input.vatNumber;
+      const reportVatMode: ReportVatMode = input.reportVatMode ?? basisNow.reportVatMode;
+      const same =
+        (Object.keys(next) as Array<keyof CompanyDetailsRow>).every(
+          (k) => current[k] === next[k],
+        ) &&
+        vatNumber === basisNow.vatNumber &&
+        reportVatMode === basisNow.reportVatMode;
       if (same) return { ok: true, data: { changed: false } };
       const updated = Array.from(
         await tx.execute(
           sql`update public.organization_settings
               set company_name = ${next.companyName}, org_number = ${next.orgNumber},
                   company_address = ${next.companyAddress}, contact_name = ${next.contactName},
-                  contact_email = ${next.contactEmail}, contact_phone = ${next.contactPhone}
+                  contact_email = ${next.contactEmail}, contact_phone = ${next.contactPhone},
+                  vat_number = ${vatNumber}, report_vat_mode = ${reportVatMode}
               where organization_id = ${input.organizationId}::uuid
               returning id`,
         ),
@@ -460,10 +492,10 @@ export async function updateCompanyDetailsFor(
         await tx.execute(
           sql`insert into public.organization_settings
                 (organization_id, company_name, org_number, company_address, contact_name,
-                 contact_email, contact_phone)
+                 contact_email, contact_phone, vat_number, report_vat_mode)
               values (${input.organizationId}::uuid, ${next.companyName}, ${next.orgNumber},
                       ${next.companyAddress}, ${next.contactName}, ${next.contactEmail},
-                      ${next.contactPhone})`,
+                      ${next.contactPhone}, ${vatNumber}, ${reportVatMode})`,
         );
       }
       // Samma organisationsnummer i Bokföring (om den är inställd).

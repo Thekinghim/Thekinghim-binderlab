@@ -55,7 +55,10 @@ export async function setVatAcknowledged(
   return result;
 }
 
-/** Företagsuppgifterna som står i kontrakten (namn, org.nr, adress, kontakt). Ägare och admin. */
+/**
+ * Företagsuppgifterna som står i kontrakten och i butiksrapporten (namn, org.nr, adress,
+ * kontakt, momsregistreringsnummer och momsvalet). Ägare och admin.
+ */
 export async function updateCompanyDetails(input: {
   companyName: string;
   orgNumber: string;
@@ -63,6 +66,8 @@ export async function updateCompanyDetails(input: {
   contactName: string;
   contactEmail: string;
   contactPhone: string;
+  vatNumber: string;
+  reportVatMode: string;
 }): Promise<ActionResult<{ changed: boolean }>> {
   const organization = await getActiveOrganization();
   if (!organization) return { ok: false, error: SETTINGS_MESSAGES.forbidden };
@@ -75,6 +80,8 @@ export async function updateCompanyDetails(input: {
     contactName: str(input?.contactName),
     contactEmail: str(input?.contactEmail),
     contactPhone: str(input?.contactPhone),
+    vatNumber: str(input?.vatNumber),
+    reportVatMode: input?.reportVatMode === "none" ? "none" : "added",
   });
   if (result.ok && result.data?.changed) revalidateAppData();
   return result;

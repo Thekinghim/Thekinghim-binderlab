@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { assertStoreReportSafe, type StoreBasis } from "@/reports";
 import { octoberExample } from "@/reports/testing/fixtures";
 
 import {
@@ -232,5 +233,58 @@ describe("Visa detaljer i rapporten: valet sparas i ögonblicksbilden", () => {
     const draft = withStoreDetails(legacy(), false);
     expect(sameReport(draft, make(false))).toBe(false);
     expect(sameReport(draft, make(true))).toBe(false);
+  });
+});
+
+describe("underlag för butikens bokföring: sparas i rapporten", () => {
+  const BASIS: StoreBasis = {
+    payer: {
+      name: "Binderlab AB",
+      legal: true,
+      orgNumber: "559000-1234",
+      address: "Vinstvägen 1, 111 22 Stockholm",
+      vatNumber: "SE559000123401",
+    },
+    // Avtalets namn och adressen skrivs av människor: orden stoppar inte rapporten.
+    contract: { title: "Vinstdelningsavtal", validFrom: "2026-01-01", signedOn: "2025-12-20" },
+    vatMode: "added",
+    vatRateBp: 2500,
+  };
+  const make = (storeBasis?: StoreBasis | null) => {
+    const snap = buildSnapshot({
+      type: "butik",
+      month: "2026-10",
+      organization: ORG,
+      sources: octoberExample(),
+      generatedAt: "2026-11-01T05:00:00.000Z",
+      storeId: "s-1",
+      storeBasis,
+    });
+    if (snap.type !== "butik") throw new Error("fel typ");
+    return snap;
+  };
+
+  it("följer med rapporten (det butiksportalen får), och ändrar inte uträkningen", () => {
+    const withBasis = make(BASIS);
+    const without = make();
+    expect(withBasis.report.basis).toEqual(BASIS);
+    expect(without.report.basis).toBeUndefined();
+    expect("basis" in without.report).toBe(false);
+    expect(withBasis.report.compensation).toEqual(without.report.compensation);
+    expect(() => assertStoreReportSafe(withBasis.report)).not.toThrow();
+  });
+
+  it("ett utkast blir inaktuellt när företagsuppgifterna, avtalet eller momsvalet ändras", () => {
+    const draft = make(BASIS);
+    expect(sameReport(draft, make(BASIS))).toBe(true);
+    expect(
+      sameReport(draft, make({ ...BASIS, payer: { ...BASIS.payer, orgNumber: "559000-9999" } })),
+    ).toBe(false);
+    expect(sameReport(draft, make({ ...BASIS, contract: null }))).toBe(false);
+    expect(sameReport(draft, make({ ...BASIS, vatMode: "none" }))).toBe(false);
+  });
+
+  it("ett utkast från före uppgifterna fanns är inaktuellt mot en ny uträkning", () => {
+    expect(sameReport(make(), make(BASIS))).toBe(false);
   });
 });

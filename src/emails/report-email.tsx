@@ -70,6 +70,7 @@ import {
   type LedgerDetails,
   type OwnerDetails,
   type ReportEmailProps,
+  type StoreBasisBlock,
   type StoreDetails,
 } from "./report-content";
 import {
@@ -476,6 +477,45 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** Underlaget för butikens bokföring: vem som betalar, mottagaren, beloppen och avtalet. */
+function BasisBlock({ b }: { b: StoreBasisBlock }) {
+  return (
+    <>
+      <Table style={{ marginTop: "4px" }}>
+        <Fact label="Betalas av">
+          {b.payer.map((line, i) => (
+            <Text
+              key={line}
+              size={i === 0 ? 14 : 13}
+              color={i === 0 ? C.fg : C.muted}
+              style={i === 0 ? undefined : { ...tnum, marginTop: "2px" }}
+            >
+              {line}
+            </Text>
+          ))}
+        </Fact>
+        <Fact label="Mottagare">
+          <Text color={C.fg}>{b.recipient}</Text>
+        </Fact>
+      </Table>
+      {b.amounts.length > 0 ? (
+        <Statement
+          lines={b.amounts.map((a) => ({
+            label: a.label,
+            value: formatKronor(a.amount),
+            total: a.total,
+          }))}
+        />
+      ) : null}
+      {b.notes.map((note) => (
+        <Text key={note} size={13} color={C.muted} style={{ marginTop: "8px" }}>
+          {note}
+        </Text>
+      ))}
+    </>
+  );
+}
+
 function StoreBlock({ d }: { d: StoreDetails }) {
   return (
     <Table style={{ marginTop: "4px" }}>
@@ -748,6 +788,14 @@ export function ReportEmail(props: ReportEmailProps) {
           {rowsTitle(props)}
         </SectionLabel>
         <MachineTable props={props} />
+      </Row>,
+    );
+  }
+  if (props.recipientKind === "butik" && props.details.basis) {
+    sections.push(
+      <Row key="basis">
+        <SectionLabel index={next()}>Underlag för bokföringen</SectionLabel>
+        <BasisBlock b={props.details.basis} />
       </Row>,
     );
   }
