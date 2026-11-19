@@ -133,7 +133,9 @@ Behörigheten kontrolleras **både** i serverkoden (`requireRole()` i varje serv
 
 ### 8. Perioder
 
-- **period_closes** _(ny)_: `month`, `closed_at`, `closed_by`, `reopened_at`, `reopened_by`, `snapshot jsonb`
+- **period_closes** _(ny)_: `month`, `closed_at`, `closed_by`, `reopened_at`, `reopened_by`, `reopened_reason`, `snapshot jsonb`
+  - Appen stänger månaden (`src/server/periods`): när sista avräkningen för månaden markeras som betald, eller när bokföringsmånaden markeras som skickad. `snapshot.app.trigger` säger vilket (`settlement_paid`, `bookkeeping_sent`, `manual`).
+  - Ägaren öppnar med en anledning (`reopened_reason`, `20261220100000_manadsstangning_fran_appen.sql`).
   - När en månad har stängts stoppas ändringar som påverkar den: inköpspriser med `valid_from` i månaden, lagerjusteringar och nya avtal.
   - Order som importeras sent till en stängd månad sparas, men flaggas och syns i nästa rapport.
   - Bara ägaren kan öppna en stängd månad, och det loggas.
@@ -146,7 +148,9 @@ Behörigheten kontrolleras **både** i serverkoden (`requireRole()` i varje serv
 
 ### 10. Inställningar och ägande
 
-- **organization_settings**: `vat_rate_bp = 0`, `card_fee_bp = 0`, `fiscal_year_start_month = 1`
+- **organization_settings**: `vat_rate_bp = 0`, `card_fee_bp = 0`, `card_fee_history = []` (kortavgiften med startdatum), `fiscal_year_start_month = 1`
+- **store_settlements** (tillägg `20261220100200_avrakning_betalt_mot_rapport.sql`): `paid_amount_ore` (betalt belopp när det inte är avräkningens, t.ex. rapportens), `live_amount_ore` och `live_checked_at` (månadens belopp med dagens underlag, sparat av det nattliga jobbet för betalda), `corrected_ore` (skillnad som redan lagts som rättelse på en senare avräkning) och `corrections jsonb` (rättelser som ligger på den här avräkningen; egna rader i `statement`, ingår i `amount_ore`). En betald avräkning låser också `corrections` och `paid_amount_ore`, och kan inte ångras medan `corrected_ore` ≠ 0 (BL081).
+- **store_agreements.changed_after_signing_at** (`20261220100300_avtal_andrat_efter_signering.sql`): senaste gången villkoren ändrades fast avtalet hör till ett signerat kontrakt (efter bekräftelse). Syns i `audit_log`.
 - **owner_shares**: `member_user_id` eller namn, `share_bp`, `valid_from`. Andelarna ska summera till 10 000. Vid fördelning går öresavrundningen till den största andelen, så att summan stämmer exakt.
 - **ledger_accounts**: nyckel (`sales`, `store_commission`, `rent`, `cogs`, …), BAS-konto och namn
 
@@ -190,6 +194,7 @@ först, och bara `authenticated` får köra dem.
 | `accept_invitation(token)`                            | Låser inbjudan och kontrollerar e-post mot JWT, giltighet och att den inte använts (BL010–BL014). Skapar medlemskap och profil. Ny version för butiksrollen i `…130100`.                                         | inloggad |
 | `close_period(org, month, snapshot)`                  | Månadsstängning: bara passerade månader (BL015 om redan stängd). Databasen sparar en egen sammanfattning (antal, intäkt, inköp, prisets täckning); appens beräkning sparas under `app`.                          | Ä/A      |
 | `reopen_period(org, month)`                           | Öppnar en stängd månad igen (BL016 om den inte är stängd). Loggas i `audit_log`.                                                                                                                                 | Ä        |
+| `reopen_period(org, month, reason)`                   | Som ovan, med en anledning (3–500 tecken) som sparas i `period_closes.reopened_reason`. Den appen använder.                                                                                                      | Ä        |
 | `merge_titles(org, from, into)`                       | Flyttar `orders.title_id` (varje ändring loggas), lagret med kompenserande `adjustment`; den gamla titeln får `merged_into_id` och arkiveras. Alias och `raw_title` skrivs inte om.                              | Ä/A      |
 | `set_test_purchase(org, order, test)`                 | Markerar en order som testköp eller ångrar (`orders.test_purchase_at`, tiden sätts av databasen). Loggas i `audit_log`. Inte i en stängd månad (BL004). Testköp räknas inte i ekonomin (`…070000_testkop`).      | Ä/A      |
 
@@ -420,7 +425,9 @@ Migreringarna följer v2. Följande preciserades eller ändrades när SQL:en skr
 - Tidszonen kan inte ändras av en klient när organisationen har stängda månader (BL004).
 - Sista ägaren skyddas även under REPEATABLE READ: den andra transaktionen får 40001.
 
-**Känd begränsning:** `organization_settings` (moms och kortavgift) är inte tidsversionerad. En ändring slår igenom bakåt i tiden utom för stängda månader, som har sin ögonblicksbild.
+**Kortavgiften gäller från ett datum** (`organization_settings.card_fee_history`, `20261220100100_kortavgift_fran_datum.sql`): en lista `[{"from": "ÅÅÅÅ-MM-DD", "bp": 400}]` med stigande datum, där första raden är grundsatsen. Tom lista = `card_fee_bp` gäller alla datum. `card_fee_bp` är satsen som gäller i dag. En ändring som ger någon dag i en stängd månad en annan sats nekas (BL004). Skrivs bara `card_fee_bp` (äldre kod) töms listan.
+
+**Känd begränsning:** momssatsen (`vat_rate_bp`) är inte tidsversionerad: en ändring slår igenom bakåt i tiden, också i stängda månader.
 
 ## Expansion och effekt (fas 6b och 10, migrering `20261102121500_expansion_leads.sql`)
 

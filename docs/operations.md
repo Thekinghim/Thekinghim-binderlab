@@ -56,6 +56,30 @@ Kontrollera en gång i veckan (fem minuter):
 3. **Datakällor**: "Data till" ska vara färsk för varje källa.
 4. **Supabase → Database → Backups**: senaste säkerhetskopian är från i natt.
 
+## Stängda månader, kortavgift och betalda avräkningar
+
+- **Månaden stängs av appen** när sista avräkningen för månaden markeras som betald eller när bokföringsmånaden
+  markeras som skickad. Ingen behöver trycka på något. Stängda månader står på Butiker → Utbetalning ("Stängd: …").
+- **Något är fel i en stängd månad:** ägaren trycker **Öppna månaden igen** på Utbetalning och skriver varför.
+  Rätta, och tryck sedan **Stäng månaden**. Öppningen och anledningen står i `period_closes` och `audit_log`.
+  En admin kan stänga men inte öppna.
+- **Efter en rättelse i en betald månad** visar Utbetalning "Betalt … Dagens uträkning …" och Att göra får punkten
+  "Betald avräkning skiljer sig från dagens uträkning". Tryck **Lägg på nästa avräkning**: skillnaden blir en egen
+  rad på butikens nästa obetalda avräkning. Finns ingen obetald än skapas den den 1:a; gör det då. Det betalda
+  beloppet ändras aldrig.
+- **Rapporten butiken fick säger ett annat belopp:** "Markera som betald" frågar vilket belopp som betalades.
+  Välj det som faktiskt gick ut från banken.
+- **Kortavgiften** ändras under Inställningar eller med knappen efter en uppladdad Nayax-rapport. Frågan säger
+  från vilken dag den gäller (förvalt första dagen som inte är låst). Stängda månader ändras inte.
+- **Det nattliga larmjobbet** (`/api/cron/larm`) skapar saknade avräkningar, också för äldre månader där en butik
+  sålde, räknar om obetalda och sparar dagens uträkning för betalda (de senaste tolv månaderna).
+- **Vid driftsättningen** stängs ingen månad i efterhand: redan betalda månader stängs när nästa avräkning för
+  månaden betalas, när bokföringen markeras som skickad, eller med **Stäng månaden** efter att månaden öppnats.
+  Vill ägaren låsa gamla månader direkt: markera bokföringsmånaden som skickad.
+- **Två SIE-filer:** bokhållaren importerar månadspaketet under Ekonomi → Bokföring. SIE-filen i Rapporter →
+  Bokföringsunderlag är ett underlag (det står överst i filen, `#PROSA`). Importeras båda bokförs försäljningen
+  två gånger.
+
 ## Fyll på i telefonen (iPhone)
 
 `/fyll-pa` är mobilsidan vid automaten: automaterna står efter behov (tomma fack först, sedan

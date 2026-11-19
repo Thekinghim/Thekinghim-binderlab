@@ -231,3 +231,38 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
 - Underraden i knappen "Nytt inköpspris från i dag" gick 11 px utanför knappen på 1 280 px: radbrytningen sitter nu
   på knappens text (`Choice` i `price-form.tsx`), eftersom `cn()` inte låter en klass utifrån vinna över knappens
   egen.
+
+## Pengar som inte kan driva (robusthet 1A)
+
+Efter granskningen av produktionen (Sega gubben, oktober: betalt 8 388,08 kr, godkända rapporter 8 072,18 och
+7 897,24 kr, dagens uträkning 9 178,28 kr). Sju punkter, en commit per punkt:
+
+- **Månaden stängs av appen.** `close_period`/`reopen_period` fanns men anropades aldrig. Nu stängs månaden när
+  sista avräkningen betalas eller bokföringen markeras som skickad (`src/server/periods`), ångra öppnar den, och
+  ägaren kan öppna med en anledning (`period_closes.reopened_reason`). Stängd månad visas på Utbetalning och där
+  priser, avtal, testköp och återbetalningar ändras. Alla sju vakterna prövas genom appens väg i
+  `test/db/manadsstangning.test.ts`. En sen order sparas och flaggas som förut.
+- **Kortavgiften gäller från ett datum** (`organization_settings.card_fee_history`). "Ändra till 4,0 %" frågar
+  först och säger från vilken dag. Ingen ny tabell: listan ligger på inställningsraden, så RLS, logg och export
+  är desamma. Äldre kod som bara skriver `card_fee_bp` tömmer listan (en sats för alla datum, som förut).
+- **Betalt mot rapporten mot dagens uträkning** på Utbetalning, med "Lägg på nästa avräkning" (en egen rad,
+  aldrig tyst), en fråga om vilket belopp som betalades när rapporten säger ett annat, en varning i den dagliga
+  kontrollen och punkten "Betald avräkning skiljer sig från dagens uträkning" i Att göra.
+- **Avräkningar för äldre månader** skapas och listas (förut bara förra månaden).
+- **En regel för placeringar:** första placeringen gäller från automatens första försäljning också i rapporten,
+  avräkningen och bokföringen. Beräkningsversion 1.4.0. `test/db/placering-en-regel.test.ts` är beviset.
+- **Signerat kontrakt:** ändrade villkor under Butiker varnar, kräver bekräftelse och märks på raden.
+- **Två bokföringsexporter:** underlagets SIE bokför nu återbetalningar som paketet, och båda filerna, LAS-MIG.txt
+  och sidorna säger vilken som ska importeras (paketet under Ekonomi → Bokföring).
+
+Vägval och det som är kvar:
+
+- Jämförelsen mot rapporten gäller rapporter för **hela månaden**. En rapport med eget datum jämförs inte.
+- Skillnaden kan bara läggas på en avräkning som finns. Finns ingen obetald för butiken väntar punkten i Att göra
+  tills nästa skapas den 1:a.
+- Butiksportalen visar avräkningens belopp som betalt också när ägaren betalade rapportens belopp; skillnaden syns
+  för butiken först som rättelseraden på nästa avräkning.
+- Bokföringsunderlagets PDF och Excel har ingen egen rad för återbetalningar (bara SIE-filen bokför dem).
+- Momssatsen är fortfarande en sats för alla datum.
+- Vid driftsättningen stängs inga gamla månader i efterhand, och oktober för Sega gubben rättas inte av koden:
+  ägaren ser skillnaden på Utbetalning och lägger den på nästa avräkning.

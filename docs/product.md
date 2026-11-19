@@ -34,6 +34,14 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
   med **Spara pris mot kund** (då på priset som gäller i dag). Ett nytt inköpspris från en leverans eller
   mystery-kalkylen tar över periodens pris mot kund. Läsare ser båda priserna, påfyllare och butikernas portal ser
   inget av dem.
+- **Pengar som inte kan driva:** en månad **stängs av sig själv** när dess sista avräkning är betald eller
+  bokföringen är markerad som skickad. Därefter går priser, avtal, placeringar, lager, testköp, återbetalningar och
+  kortavgift inte att ändra i månaden, och beskedet säger varför. Ägaren kan **öppna månaden igen** med en anledning
+  (Butiker → Utbetalning). **Kortavgiften gäller från ett datum**, inte bakåt. På Utbetalning står för varje betald
+  avräkning **betalt, rapporten butiken fick och dagens uträkning** när de skiljer sig, och skillnaden läggs med
+  ett klick som en egen rad på nästa avräkning. Avräkningar skapas också för **äldre månader** som aldrig fick någon.
+  Ändras villkoren i ett **signerat kontrakt** varnar appen först. Uträkningarna står i `docs/berakningar.md`
+  avsnitt 2 och 31.
 - **Att göra:** en lista som räknas om vid varje sidvisning: vilka titlar som tar slut inom 2,5 dagar, automater som
   inte sålt på 48 timmar, rapporter att godkänna och skicka, avtal att säga upp, titlar utan inköpspris. Varje punkt
   har sitt underlag och kronor i risk.
