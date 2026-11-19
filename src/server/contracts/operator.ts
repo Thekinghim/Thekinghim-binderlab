@@ -99,12 +99,15 @@ export interface ReportBasisSettings {
   readonly reportVatMode: ReportVatMode;
   /** "Vi säljer med vinstmarginalbeskattning (VMB)" (20261218000000_rapport_vmb.sql). */
   readonly reportVmb: boolean;
+  /** "Vi äger och driver automaterna i butikerna" (20261218000200_rapport_automat.sql). */
+  readonly reportOwnsMachines: boolean;
 }
 
 export const DEFAULT_REPORT_BASIS: ReportBasisSettings = {
   vatNumber: null,
   reportVatMode: "added",
   reportVmb: false,
+  reportOwnsMachines: false,
 };
 
 /** Momsregistreringsnumret och momsvalet för butiksrapporten. */
@@ -112,7 +115,9 @@ export async function readReportBasisSettings(tx: Tx, orgId: string): Promise<Re
   const row = Array.from(
     await tx.execute(sql`
       select os.vat_number, os.report_vat_mode,
-             coalesce((to_jsonb(os) ->> 'report_vmb')::boolean, false) as report_vmb
+             coalesce((to_jsonb(os) ->> 'report_vmb')::boolean, false) as report_vmb,
+             coalesce((to_jsonb(os) ->> 'report_owns_machines')::boolean, false)
+               as report_owns_machines
         from public.organization_settings os
        where os.organization_id = ${orgId}::uuid`),
   )[0] as Record<string, unknown> | undefined;
@@ -121,5 +126,6 @@ export async function readReportBasisSettings(tx: Tx, orgId: string): Promise<Re
     vatNumber: typeof row.vat_number === "string" && row.vat_number.trim() ? row.vat_number : null,
     reportVatMode: row.report_vat_mode === "none" ? "none" : "added",
     reportVmb: row.report_vmb === true,
+    reportOwnsMachines: row.report_owns_machines === true,
   };
 }

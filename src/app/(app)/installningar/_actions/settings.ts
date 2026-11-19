@@ -69,6 +69,7 @@ export async function updateCompanyDetails(input: {
   vatNumber?: string;
   reportVatMode?: string;
   reportVmb?: boolean;
+  reportOwnsMachines?: boolean;
 }): Promise<ActionResult<{ changed: boolean }>> {
   const organization = await getActiveOrganization();
   if (!organization) return { ok: false, error: SETTINGS_MESSAGES.forbidden };
@@ -88,6 +89,8 @@ export async function updateCompanyDetails(input: {
         ? input.reportVatMode
         : undefined,
     reportVmb: typeof input?.reportVmb === "boolean" ? input.reportVmb : undefined,
+    reportOwnsMachines:
+      typeof input?.reportOwnsMachines === "boolean" ? input.reportOwnsMachines : undefined,
   });
   if (result.ok && result.data?.changed) revalidateAppData();
   return result;

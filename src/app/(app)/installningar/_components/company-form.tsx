@@ -29,9 +29,11 @@ export interface CompanyValues {
   readonly reportVatMode: ReportVatMode;
   /** "Vi säljer med vinstmarginalbeskattning (VMB)": rapporten säger det. */
   readonly reportVmb: boolean;
+  /** "Vi äger och driver automaterna i butikerna": rapporten säger det. */
+  readonly reportOwnsMachines: boolean;
 }
 
-type TextKey = Exclude<keyof CompanyValues, "reportVatMode" | "reportVmb">;
+type TextKey = Exclude<keyof CompanyValues, "reportVatMode" | "reportVmb" | "reportOwnsMachines">;
 
 const VAT_MODES: Array<{ value: ReportVatMode; label: string }> = [
   { value: "added", label: REPORT_VAT_MODE_LABEL.added },
@@ -185,40 +187,35 @@ export function CompanyForm({
           }}
         />
         {/* Ägaren säger själv hur bolaget redovisar momsen: appen kan inte veta det. */}
-        <div className="flex items-center justify-between gap-4 rounded-md border border-line-strong px-4 py-3 sm:col-span-2">
-          <span className="flex min-w-0 flex-col">
-            <span id="report-vmb-label" className="text-base text-fg">
-              Vi säljer med vinstmarginalbeskattning (VMB)
-            </span>
-            <span className="meta text-subtle">
-              {values.reportVmb
-                ? "Butiksrapporten säger att vi redovisar momsen på försäljningen enligt VMB."
-                : "Av: butiksrapporten säger bara att vi är säljare av varorna."}
-            </span>
-          </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={values.reportVmb}
-            aria-labelledby="report-vmb-label"
-            onClick={() => {
-              setValues({ ...values, reportVmb: !values.reportVmb });
-              setError(undefined);
-            }}
-            className={cn(
-              "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors duration-fast ease-instrument max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1.5 max-md:before:content-['']",
-              values.reportVmb ? "border-up bg-up" : "border-line-control bg-raised",
-            )}
-          >
-            <span
-              aria-hidden
-              className={cn(
-                "shadow inline-block size-6 rounded-full bg-fg transition-transform duration-fast ease-instrument",
-                values.reportVmb ? "translate-x-7 bg-bg" : "translate-x-1",
-              )}
-            />
-          </button>
-        </div>
+        <ReportSwitch
+          id="report-vmb-label"
+          label="Vi säljer med vinstmarginalbeskattning (VMB)"
+          hint={
+            values.reportVmb
+              ? "Butiksrapporten säger att vi redovisar momsen på försäljningen enligt VMB. VMB gäller bara begagnade varor, konst, samlarföremål och antikviteter: fråga revisorn om det gäller era varor."
+              : "Av: butiksrapporten säger bara att vi är säljare av varorna."
+          }
+          checked={values.reportVmb}
+          onToggle={() => {
+            setValues({ ...values, reportVmb: !values.reportVmb });
+            setError(undefined);
+          }}
+        />
+        {/* Vem som äger automaten: appen vet det inte, så ägaren säger det. */}
+        <ReportSwitch
+          id="report-owns-label"
+          label="Vi äger och driver automaterna i butikerna"
+          hint={
+            values.reportOwnsMachines
+              ? "Butiksrapporten säger att bolaget äger och driver automaten."
+              : "Av: butiksrapporten säger inget om vem som äger automaten."
+          }
+          checked={values.reportOwnsMachines}
+          onToggle={() => {
+            setValues({ ...values, reportOwnsMachines: !values.reportOwnsMachines });
+            setError(undefined);
+          }}
+        />
       </div>
       <p className="border-t border-line pt-4 text-sm text-muted">
         Står i varje nytt kontrakt och i nya butiksrapporter.
@@ -230,5 +227,50 @@ export function CompanyForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** En brytare för ett val i butiksrapporten, med en rad om vad den gör. */
+function ReportSwitch({
+  id,
+  label,
+  hint,
+  checked,
+  onToggle,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-md border border-line-strong px-4 py-3 sm:col-span-2">
+      <span className="flex min-w-0 flex-col">
+        <span id={id} className="text-base text-fg">
+          {label}
+        </span>
+        <span className="meta text-subtle">{hint}</span>
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-labelledby={id}
+        onClick={onToggle}
+        className={cn(
+          "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors duration-fast ease-instrument max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1.5 max-md:before:content-['']",
+          checked ? "border-up bg-up" : "border-line-control bg-raised",
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "shadow inline-block size-6 rounded-full bg-fg transition-transform duration-fast ease-instrument",
+            checked ? "translate-x-7 bg-bg" : "translate-x-1",
+          )}
+        />
+      </button>
+    </div>
   );
 }

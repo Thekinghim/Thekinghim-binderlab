@@ -232,6 +232,7 @@ export default async function SettingsPage() {
                 vatNumber: data.reportBasis.vatNumber ?? "",
                 reportVatMode: data.reportBasis.reportVatMode,
                 reportVmb: data.reportBasis.reportVmb,
+                reportOwnsMachines: data.reportBasis.reportOwnsMachines,
               }}
             />
           </div>
