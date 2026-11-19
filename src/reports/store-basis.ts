@@ -128,7 +128,7 @@ export interface RecipientParts {
   readonly orgNumber: string | null;
   readonly vatNumber: string | null;
   readonly address: string | null;
-  /** "För butiken ICA Lund" när bolagets namn inte är butikens; annars null. */
+  /** "För butiken Exempelbutiken" när bolagets namn inte är butikens; annars null. */
   readonly storeLine: string | null;
 }
 

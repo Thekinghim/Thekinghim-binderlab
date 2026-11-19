@@ -3,6 +3,7 @@
 import {
   Children,
   createContext,
+  Fragment,
   isValidElement,
   use,
   type ReactElement,
@@ -58,7 +59,18 @@ export function FlowRows(props: FlowRowsProps) {
   const inSection = use(SectionContext);
   const from = slice?.from ?? 0;
   const to = Math.min(slice?.to ?? Infinity, props.rows.length);
-  const rows = props.rows.slice(from, to);
+  // Element från en Server Component (raderna, kolumnerna, rubrikerna) kan i utvecklingsläget
+  // komma fram som lata referenser i stället för färdiga element, och React varnar då för
+  // saknade nycklar ("unique key") när de står i en lista här. Därför står varje sådant
+  // element ensamt i ett Fragment med egen nyckel: radens egen nyckel när den finns, annars
+  // dess plats i hela tabellen (samma på varje ark). Ingen skillnad i DOM.
+  const rows = props.rows
+    .slice(from, to)
+    .map((row, i) => (
+      <Fragment key={isValidElement(row) && row.key != null ? row.key : `#${from + i}`}>
+        {row}
+      </Fragment>
+    ));
   const last = to >= props.rows.length;
   if (props.kind === "list") {
     return (
@@ -75,7 +87,7 @@ export function FlowRows(props: FlowRowsProps) {
         {props.caption}
         {continued || from > 0 ? " (fortsättning)" : ""}
       </caption>
-      {props.colgroup}
+      <Fragment key="colgroup">{props.colgroup}</Fragment>
       <thead>{continued ? props.headContinued : props.head}</thead>
       <tbody data-flow-rows="">{rows}</tbody>
       {last && props.foot ? <tfoot>{props.foot}</tfoot> : null}
@@ -123,16 +135,16 @@ export function FlowSection({
     // Raderna ligger djupare: allt visas, rubriken som fortsättning på följande ark.
     return (
       <SectionContext value={true}>
-        {first ? header : continuedHeader}
+        <Fragment key="header">{first ? header : continuedHeader}</Fragment>
         {items}
       </SectionContext>
     );
   }
   return (
     <SectionContext value={true}>
-      {first ? header : continuedHeader}
+      <Fragment key="header">{first ? header : continuedHeader}</Fragment>
       {first ? items.slice(0, at) : null}
-      {items[at] as ReactElement}
+      <Fragment key="rows">{items[at] as ReactElement}</Fragment>
       {last ? items.slice(at + 1) : null}
     </SectionContext>
   );
