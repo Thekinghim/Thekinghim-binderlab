@@ -53,7 +53,7 @@ export interface BasisPayer {
  * räknas inte).
  */
 export function brandOf(legalName: string | null, organizationName: string): string | null {
-  const norm = (v: string) => v.trim().replace(/\s+/g, " ").toLocaleLowerCase("sv-SE");
+  const norm = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
   if (!legalName || organizationName.trim() === "") return null;
   return norm(legalName) === norm(organizationName) ? null : organizationName.trim();
 }
