@@ -126,8 +126,11 @@ export function owners(count: number): PartnerOwner[] {
   }));
 }
 
-function build(input: Omit<SnapshotInput, "organization" | "generatedAt">): ReportSnapshot {
-  return buildSnapshot({ ...input, organization: ORGANIZATION, generatedAt: GENERATED_AT });
+function build(
+  input: Omit<SnapshotInput, "organization" | "generatedAt">,
+  generatedAt = GENERATED_AT,
+): ReportSnapshot {
+  return buildSnapshot({ ...input, organization: ORGANIZATION, generatedAt });
 }
 
 export interface PartnerCase {
@@ -167,10 +170,10 @@ export function partnerSnapshot(c: PartnerCase): ReportSnapshot {
 }
 
 /**
- * Underlaget för butikens bokföring med allt ifyllt (det högsta blocket): företagsnamn,
- * org.nr, adress, momsregistreringsnummer, ett undertecknat avtal och moms som tillkommer.
+ * Underlaget som det sparades i första utgåvan (före avtalsformen, VMB-valet, betalningarna
+ * och totalraden): en sådan rapport ska visas som den visades då.
  */
-export const FULL_BASIS: StoreBasis = {
+export const STEP1_BASIS: StoreBasis = {
   payer: {
     name: "Binderlab Sverige AB",
     legal: true,
@@ -186,6 +189,39 @@ export const FULL_BASIS: StoreBasis = {
   vatMode: "added",
   vatRateBp: 2500,
 };
+
+/**
+ * Underlaget för butikens bokföring med allt ifyllt (det högsta blocket): företagsnamn som
+ * skiljer sig från namnet verksamheten kallas, org.nr, adress, momsregistreringsnummer, ett
+ * undertecknat skriftligt avtal, moms som tillkommer, VMB-texten och (i `storeSnapshot`) en
+ * utbetalning som redan är gjord.
+ */
+export const FULL_BASIS: StoreBasis = {
+  ...STEP1_BASIS,
+  rev: 2,
+  payer: { ...STEP1_BASIS.payer, brand: "Binderlab" },
+  agreementForm: "written",
+  vmb: true,
+};
+
+/** Dagen då ersättningen (exklusive moms) betalades ut i testfallen. */
+export const PAID_ON = "2026-11-05";
+
+/** Rapporten med en utbetalning på hela ersättningen exklusive moms (kvar: momsen). */
+function withPayment(snap: ReportSnapshot, paidOn: string): ReportSnapshot {
+  if (snap.type !== "butik" || !snap.report.basis || snap.report.compensation.totalOre <= 0)
+    return snap;
+  return {
+    ...snap,
+    report: {
+      ...snap.report,
+      basis: {
+        ...snap.report.basis,
+        payments: [{ paidOn, amountOre: snap.report.compensation.totalOre }],
+      },
+    },
+  };
+}
 
 /**
  * Butiksrapporten för butiken s-1, som har var tredje automat. `details` = butikens val
@@ -222,7 +258,7 @@ export function storeSnapshot(
         ),
       }
     : base;
-  return build({
+  const snap = build({
     type: "butik",
     month,
     sources,
@@ -236,6 +272,117 @@ export function storeSnapshot(
       busiest: "Lördag 13–15",
       busiestOrders: 120,
     },
+  });
+  // Utgåva 2: en utbetalning är redan gjord (fakturablocket får två rader till).
+  return snap.type === "butik" && (snap.report.basis?.rev ?? 1) >= 2
+    ? withPayment(snap, PAID_ON)
+    : snap;
+}
+
+/**
+ * Ägarens verkliga fall: en automat i en butik, vinstdelning 50 %, muntligt avtal, eget
+ * datum över två månader (14 okt.–14 nov. 2026), avtalet förnyat utan ändring den 3 nov.
+ * (förut tre perioder i uträkningen, nu oktober och november), VMB-texten, ett juridiskt
+ * namn som skiljer sig från "Binderlab" och ersättningen exklusive moms redan utbetald.
+ */
+export function ownerCaseSnapshot(): ReportSnapshot {
+  const store = { id: "s-1", name: "Sega Gubben Spel & Samlarkort" };
+  const titles = Array.from({ length: 6 }, (_, i) => ({
+    id: `t-${i + 1}`,
+    name: `Pokémon ${["151", "Prismatic Evolutions", "Surging Sparks", "Journey Together", "Destined Rivals", "Paldean Fates"][i]} Booster`,
+  }));
+  const orders: OrderLine[] = [];
+  let n = 500_000;
+  days("2026-09-01", "2026-11-14").forEach((day, di) => {
+    const count = 2 + (di % 4);
+    for (let k = 0; k < count; k++) {
+      n++;
+      orders.push({
+        id: `o-${n}`,
+        externalId: String(n),
+        titleId: titles[(di + k) % titles.length]!.id,
+        machineId: "m-1",
+        businessDate: day,
+        amountOre: 6900 + ((di + k) % 3) * 1000,
+      });
+    }
+  });
+  const split = (validFrom: string, validTo: string | null): StoreAgreement => ({
+    storeId: store.id,
+    validFrom,
+    validTo,
+    commissionBp: 5000,
+    monthlyRentOre: null,
+    commissionBase: "profit_after_costs",
+    lossTreatment: "zero",
+  });
+  const sources: ReportSources = {
+    orders,
+    prices: titles.map((t, i) => ({
+      titleId: t.id,
+      unitCostOre: 4200 + (i % 3) * 450,
+      validFrom: "2026-01-01",
+    })),
+    agreements: [split("2026-10-14", "2026-11-02"), split("2026-11-03", null)],
+    placements: [{ machineId: "m-1", storeId: store.id, from: "2026-09-01", to: null }],
+    settings: { vatRateBp: 0, cardFeeBp: 150 },
+    stores: [store],
+    machines: [{ id: "m-1", name: "Pokémonautomaten", code: "BL-001" }],
+    titles,
+  };
+  const snap = build(
+    {
+      type: "butik",
+      month: "2026-10",
+      period: { start: "2026-10-14", end: "2026-11-14" },
+      sources,
+      storeId: store.id,
+      storeDetails: false,
+      storeBasis: {
+        rev: 2,
+        payer: {
+          name: "Kortautomater i Norden AB",
+          legal: true,
+          orgNumber: "559000-1234",
+          address: "Västra Hamngatan 12, 411 17 Göteborg",
+          vatNumber: "SE559000123401",
+          brand: "Binderlab",
+        },
+        agreementForm: "oral",
+        contract: null,
+        vatMode: "added",
+        vatRateBp: 2500,
+        vmb: true,
+      },
+      greeting: null,
+      storeService: { refills: { count: 4, last: "2026-11-10" }, busiest: null, busiestOrders: 0 },
+    },
+    "2026-11-17T08:00:00.000Z",
+  );
+  return withPayment(snap, "2026-11-16");
+}
+
+/**
+ * En butik med bara hyra och ett skriftligt, undertecknat avtal: en automat, hela oktober,
+ * VMB-texten, ingen utbetalning gjord (fakturablocket som i första utgåvan).
+ */
+export function rentCaseSnapshot(): ReportSnapshot {
+  const base = bigSources(3, 12);
+  const sources: ReportSources = {
+    ...base,
+    agreements: base.agreements.map((a) =>
+      a.storeId === "s-1" ? { ...a, commissionBp: null, monthlyRentOre: 250_000 } : a,
+    ),
+  };
+  return build({
+    type: "butik",
+    month: "2026-10",
+    sources,
+    storeId: "s-1",
+    storeDetails: false,
+    storeBasis: FULL_BASIS,
+    greeting: null,
+    storeService: { refills: { count: 2, last: "2026-10-20" }, busiest: null, busiestOrders: 0 },
   });
 }
 

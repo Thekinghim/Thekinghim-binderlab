@@ -216,6 +216,96 @@ export function splitRows(c: StoreCompensationBreakdown): SplitRow[] {
   return rows;
 }
 
+/** En rad i vinstdelningen med en kolumn per period. */
+interface SplitPeriodRow {
+  key: string;
+  label: string;
+  /** Beloppet per period, i periodernas ordning. */
+  amounts: readonly number[];
+  strong?: boolean;
+}
+
+/**
+ * Vinstdelningen med en kolumn per period, när rapporten har två perioder med samma villkor
+ * (eget datum över ett månadsskifte: oktober och november). Hälften så många rader som
+ * `splitRows`, så att rapporten får plats på ett ark, och månaderna går att jämföra rad för
+ * rad. Samma belopp som i `splitRows`. null = perioderna står under varandra som förut
+ * (en period, fler än två, olika andel eller VMB-val, eller en andel som inte är räknad).
+ */
+export function splitPeriodTable(c: StoreCompensationBreakdown): {
+  periods: { key: string; label: string }[];
+  rows: SplitPeriodRow[];
+  /** Provision och hyra: gäller hela rapporten, står under tabellen. */
+  extras: SplitRow[];
+} | null {
+  const splits = splitsOf(c);
+  const first = splits[0];
+  if (splits.length !== 2 || !first) return null;
+  if (splits.some((x) => x.pending)) return null;
+  const vmb = first.vmbBeforeSplit !== false;
+  if (splits.some((x) => x.shareBp !== first.shareBp || (x.vmbBeforeSplit !== false) !== vmb))
+    return null;
+  // Året står i rapportens rubrik: kolumnerna heter "14–31 okt." och "1–14 nov.".
+  const sameYear = splits.every((x) => x.range.end.slice(0, 4) === first.range.start.slice(0, 4));
+  const label = (x: (typeof splits)[number]) =>
+    sameYear ? periodText(x.range).replace(/\s\d{4}$/, "") : periodText(x.range);
+  const pct = pctText(first.shareBp, first.shareBp % 100 === 0 ? 0 : 1);
+  const row = (
+    key: string,
+    text: string,
+    pick: (x: (typeof splits)[number]) => number,
+    strong = false,
+  ): SplitPeriodRow => ({
+    key,
+    label: text,
+    amounts: splits.map(pick),
+    ...(strong ? { strong } : {}),
+  });
+  const rows: SplitPeriodRow[] = [row("sales", "Försäljning", (x) => x.salesInclVatOre)];
+  if (splits.some((x) => (x.refundsOre ?? 0) !== 0))
+    rows.push(row("refund", "Återbetalningar", (x) => -(x.refundsOre ?? 0)));
+  if (vmb) rows.push(row("vat", "VMB-moms", (x) => -x.vmbVatOre));
+  rows.push(
+    row("buy", "Inköp", (x) => -x.purchasesOre),
+    row("fee", "Kortavgifter", (x) => -x.cardFeesOre),
+    row("res", "Vinst", (x) => x.profitOre, true),
+    row("share", `Er andel ${pct}`, (x) => x.storeShareOre),
+  );
+  const extras: SplitRow[] = [];
+  if (c.commissionOre !== 0)
+    extras.push({ key: "commission", label: "Provision", amountOre: c.commissionOre });
+  if (c.rentOre !== 0) extras.push({ key: "rent", label: "Hyra", amountOre: c.rentOre });
+  return {
+    periods: splits.map((x) => ({ key: `${x.validFrom}-${x.range.start}`, label: label(x) })),
+    rows,
+    extras,
+  };
+}
+
+function splitPeriodColumns(
+  periods: readonly { key: string; label: string }[],
+): ReportColumn<SplitPeriodRow>[] {
+  return [
+    {
+      key: "label",
+      header: "Post",
+      render: (r) => (r.strong ? <span className="font-medium text-fg">{r.label}</span> : r.label),
+    },
+    ...periods.map((p, i): ReportColumn<SplitPeriodRow> => ({
+      key: p.key,
+      header: p.label,
+      numeric: true,
+      width: "31%",
+      render: (r) =>
+        r.strong ? (
+          <span className="font-medium text-fg">{kronor(r.amounts[i]!)}</span>
+        ) : (
+          kronor(r.amounts[i]!)
+        ),
+    })),
+  ];
+}
+
 const splitColumns: ReportColumn<SplitRow>[] = [
   {
     key: "label",
@@ -454,6 +544,41 @@ export function StoreReportDocument({
       </div>
     ) : null;
 
+  // Vinstdelningens tabell: två perioder med samma villkor står bredvid varandra (utgåva 2),
+  // annars under varandra som förut.
+  const periodTable = rev2 && split ? splitPeriodTable(r.compensation) : null;
+  const splitTable = (dense: boolean) =>
+    periodTable ? (
+      <>
+        <ReportTable
+          caption={`Vinstdelningen med ${snapshot.store.name} för ${name}, per period.`}
+          columns={splitPeriodColumns(periodTable.periods)}
+          rows={periodTable.rows}
+          rowKey={(x) => x.key}
+          className={dense ? "[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!" : undefined}
+        />
+        {periodTable.extras.map((x) => (
+          <div
+            key={x.key}
+            className="flex items-baseline justify-between gap-[4mm] text-[11px] leading-[15px]"
+          >
+            <span className="text-fg">{x.label}</span>
+            <span className="tnum font-mono text-[10.5px] whitespace-nowrap">
+              {kronor(x.amountOre ?? 0)}
+            </span>
+          </div>
+        ))}
+      </>
+    ) : (
+      <ReportTable
+        caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
+        columns={splitColumns}
+        rows={splitRows(r.compensation)}
+        rowKey={(x) => x.key}
+        className={dense ? "[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!" : undefined}
+      />
+    );
+
   // Uträkningen: samma tabell i båda rapporterna (det är så butiken räknar efter sin andel).
   const calculation = (
     <ReportSection
@@ -472,13 +597,7 @@ export function StoreReportDocument({
       {split && basisBeside ? (
         <div className="grid grid-cols-2 items-start gap-[8mm]">
           <div className="flex min-w-0 flex-col gap-[2mm]">
-            <ReportTable
-              caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
-              columns={splitColumns}
-              rows={splitRows(r.compensation)}
-              rowKey={(x) => x.key}
-              className="[&_tbody_td]:py-[1.1mm]! [&_tbody_th]:py-[1.1mm]!"
-            />
+            {splitTable(true)}
             {totalInColumn ? totalRow : null}
           </div>
           <section aria-label="Underlag för bokföringen" className="flex flex-col gap-[2mm]">
@@ -486,12 +605,7 @@ export function StoreReportDocument({
           </section>
         </div>
       ) : split ? (
-        <ReportTable
-          caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
-          columns={splitColumns}
-          rows={splitRows(r.compensation)}
-          rowKey={(x) => x.key}
-        />
+        splitTable(false)
       ) : (
         <ReportTable
           caption={`Ersättningen till ${snapshot.store.name} uträknad steg för steg.`}
@@ -607,14 +721,24 @@ export function StoreReportDocument({
     </ReportSection>
   );
 
+  // Utgåva 2: raden om underlag per titel står först i fotnoten (sparar höjd, så att
+  // underlaget för bokföringen får plats på samma ark).
+  const closingInline = rev2 && view.closing !== null;
   const footnotes = (
-    <div className="mt-auto flex flex-col gap-[1.5mm]">
-      {view.closing ? (
+    <div
+      className={
+        closingInline
+          ? "mt-auto flex flex-col gap-[1.5mm] border-t border-line pt-[2mm]"
+          : "mt-auto flex flex-col gap-[1.5mm]"
+      }
+    >
+      {view.closing && !closingInline ? (
         <p className="border-t border-line pt-[2.5mm] text-[12px] leading-[16px] text-fg">
           {view.closing}
         </p>
       ) : null}
       <ReportNote>
+        {closingInline ? <span className="text-fg">{view.closing} </span> : null}
         {/* Vad försäljningssiffran är, aldrig "ingen moms tas ut" bredvid "Moms 25 %". En
             rapport från före den utgåvan står som den skrevs. */}
         {isRev2(basisData)
@@ -654,7 +778,8 @@ export function StoreReportDocument({
   if (!view.details) {
     return (
       <ReportDocument {...doc}>
-        <ReportPage className={basisBeside ? "gap-[3.5mm]" : "gap-[5mm]"}>
+        {/* Utgåva 2 har ett högre underlag (betalningar, VMB-texten): tätare mellan blocken. */}
+        <ReportPage className={basisBeside || rev2 ? "gap-[3.5mm]" : "gap-[5mm]"}>
           {title}
           {kpiRow}
           {calculation}

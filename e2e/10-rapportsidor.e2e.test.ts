@@ -29,7 +29,14 @@ import {
   type BrowserContext,
   type Page,
 } from "./support/browser";
-import { accountantSnapshot, partnerSnapshot, storeSnapshot } from "./support/report-snapshots";
+import {
+  STEP1_BASIS,
+  accountantSnapshot,
+  ownerCaseSnapshot,
+  partnerSnapshot,
+  rentCaseSnapshot,
+  storeSnapshot,
+} from "./support/report-snapshots";
 import { e2e, login } from "./support/session";
 
 const CASES: {
@@ -49,6 +56,9 @@ const CASES: {
    * ja (alla butiksrapporter här har det, med allt ifyllt: det högsta blocket).
    */
   basis?: boolean;
+  /** Texter som ska stå på arket, och texter som inte får stå där. */
+  texts?: readonly string[];
+  absent?: readonly string[];
 }[] = [
   {
     name: "delagare-manad",
@@ -138,6 +148,63 @@ const CASES: {
     maxSheets: 1,
     textInside: true,
     basis: false,
+  },
+  // En rapport sparad med första utgåvan av underlaget: visas som den visades då, på ett ark.
+  {
+    name: "butik-kort-underlag-forsta-utgavan",
+    snapshot: () => storeSnapshot("2026-10", 9, false, { split: true, basis: STEP1_BASIS }),
+    minSheets: 1,
+    maxSheets: 1,
+    textInside: true,
+    texts: ["Att fakturera", "Binderlab Sverige AB är säljare av varorna i automaten."],
+    absent: [
+      "Redan betalt",
+      "Kvar att betala",
+      "Äger och driver",
+      "verksamheten kallas",
+      "vinstmarginalbeskattning",
+      "Er ersättning totalt",
+    ],
+  },
+  // Ägarens verkliga fall: en automat, vinstdelning, muntligt avtal, eget datum över två
+  // månader, VMB-texten och ersättningen redan utbetald. Ett ark.
+  {
+    name: "butik-kort-agarens-fall",
+    snapshot: ownerCaseSnapshot,
+    minSheets: 1,
+    maxSheets: 1,
+    textInside: true,
+    texts: [
+      "Kortautomater i Norden AB",
+      "(verksamheten kallas Binderlab)",
+      "Äger och driver automaten.",
+      "Muntligt avtal mellan Kortautomater i Norden AB och Sega Gubben Spel & Samlarkort: 50 % av vinsten efter kostnader.",
+      "redovisar momsen på den försäljningen enligt reglerna om vinstmarginalbeskattning (VMB). Den momsen berör inte butiken. Butikens ersättning är betalning för en tjänst och omfattas inte av VMB.",
+      // Oktober och november bredvid varandra (kolumnrubrikerna står med versaler).
+      "Post 14–31 okt. 1–14 nov.",
+      "Er ersättning totalt, exklusive moms",
+      "Att fakturera",
+      "Redan betalt 16 nov. 2026",
+      "Kvar att betala",
+      "köpdagen, inklusive moms.",
+    ],
+    absent: ["ingen moms tas ut", "1–2 nov.", "3–14 nov.", "Placeringsavtal", "undertecknat"],
+  },
+  // En butik med bara hyra och ett skriftligt avtal, ingen utbetalning gjord.
+  {
+    name: "butik-kort-hyra-skriftligt-avtal",
+    snapshot: rentCaseSnapshot,
+    minSheets: 1,
+    maxSheets: 1,
+    textInside: true,
+    texts: [
+      "Enligt Placeringsavtal Westfield Mall of Scandinavia från 1 januari 2025, undertecknat 18 december 2024.",
+      "Er ersättning totalt, exklusive moms",
+      "Att fakturera",
+      "Äger och driver automaten.",
+      "omfattas inte av VMB.",
+    ],
+    absent: ["Redan betalt", "Kvar att betala", "Muntligt avtal", "ingen moms tas ut"],
   },
   // Den korta rapporten med tio automater: tabellen får delas, inget går utanför arket.
   {
@@ -282,6 +349,16 @@ describe("rapportsidor", () => {
       if (c.name.startsWith("butik")) {
         const shown = await page.locator(".bl-sheet").getByText("Ersättningen betalas av").count();
         expect(shown).toBe(c.basis === false ? 0 : 1);
+      }
+      if (c.texts || c.absent) {
+        const text = (await page.locator(".bl-report").first().innerText())
+          .replace(/\u00a0|\u202f/g, " ")
+          .replace(/\s+/g, " ");
+        // Rubriker och etiketter står med versaler (CSS): jämför utan skiftläge.
+        const lower = text.toLocaleLowerCase("sv-SE");
+        for (const t of c.texts ?? []) expect(lower, t).toContain(t.toLocaleLowerCase("sv-SE"));
+        for (const t of c.absent ?? [])
+          expect(lower, t).not.toContain(t.toLocaleLowerCase("sv-SE"));
       }
       // En sektion som fortsätter på nästa ark upprepar bara "forts."-raden, inte rubriken.
       const headings = await page.locator(".bl-sheet h2").allInnerTexts();

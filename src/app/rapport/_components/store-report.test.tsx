@@ -19,7 +19,7 @@ import { reportEmailProps } from "@/server/reports/email";
 import { cleanEmailHtml, cleanEmailText } from "@/server/reports/email-cleanup";
 import { buildSnapshot, withStoreDetails, type StoreSnapshot } from "@/server/reports/snapshot";
 
-import { StoreReportDocument } from "./store-report";
+import { StoreReportDocument, splitPeriodTable, splitRows } from "./store-report";
 
 const ORG = { id: "org", name: "Binderlab AB", orgNumber: null, timeZone: "Europe/Stockholm" };
 
@@ -670,5 +670,133 @@ describe("butiksrapporten med vinstdelning", () => {
     expect(text).not.toContain("Andel 55,20 kr");
     expect(text).toContain("110,40");
     for (const re of [/Mobilia/, /777/, /999/]) expect(text, String(re)).not.toMatch(re);
+  });
+});
+
+describe("eget datum över två månader med vinstdelning (ägarens fall)", () => {
+  const split = (validFrom: string, validTo: string | null, rent: number | null = null) => ({
+    ...agreement("s-1", validFrom, validTo, { commissionBp: 5_000, monthlyRentOre: rent }),
+    commissionBase: "profit_after_costs" as const,
+    lossTreatment: "zero" as const,
+  });
+  function build(basis: StoreBasis | null, rent: number | null = null): StoreSnapshot {
+    const snap = buildSnapshot({
+      type: "butik",
+      month: "2026-10",
+      period: { start: "2026-10-14", end: "2026-11-14" },
+      organization: ORG,
+      sources: sources({
+        orders: [
+          ord("2026-10-20", { amountOre: 19_900 }),
+          ord("2026-11-02", { amountOre: 19_900 }),
+          ord("2026-11-10", { amountOre: 24_900 }),
+        ],
+        prices: [price("t-a", 13_000, "2026-01-01")],
+        // Avtalet förnyades den 3 november med samma villkor.
+        agreements: [split("2026-10-14", "2026-11-02", rent), split("2026-11-03", null, rent)],
+      }),
+      generatedAt: "2026-11-17T08:00:00.000Z",
+      storeId: "s-1",
+      storeBasis: basis,
+    });
+    if (snap.type !== "butik") throw new Error("fel typ");
+    return snap;
+  }
+  const OWNER: StoreBasis = {
+    ...BASIS,
+    payer: { ...BASIS.payer, name: "Kortautomater i Norden AB", brand: "Binderlab" },
+    agreementForm: "oral",
+    contract: null,
+    vmb: true,
+    // Vinst 69 + 69 + 119 kr, hälften: 128,50 kr. Betalt exklusive moms.
+    payments: [{ paidOn: "2026-11-16", amountOre: 12_850 }],
+  };
+  const page = (snap: StoreSnapshot) =>
+    visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={snap} />)).replace(
+      /\u00a0|\u202f/g,
+      " ",
+    );
+
+  it("oktober och november står bredvid varandra, med samma belopp som raderna", () => {
+    const snap = build(OWNER);
+    const c = snap.report.compensation;
+    expect(c.totalOre).toBe(12_850);
+    const table = splitPeriodTable(c)!;
+    expect(table.periods.map((p) => p.label)).toEqual(["14–31 okt.", "1–14 nov."]);
+    expect(table.rows.map((r) => [r.label.replace(/\u00a0/g, " "), ...r.amounts])).toEqual([
+      ["Försäljning", 19_900, 44_800],
+      ["Inköp", -13_000, -26_000],
+      ["Kortavgifter", -0, -0],
+      ["Vinst", 6_900, 18_800],
+      ["Er andel 50 %", 3_450, 9_400],
+    ]);
+    // Samma belopp som i raderna under varandra (butiksportalen).
+    const stacked = splitRows(c).map((r) => r.amountOre);
+    expect(stacked).toEqual([
+      19_900, -13_000, -0, 6_900, 3_450, 44_800, -26_000, -0, 18_800, 9_400,
+    ]);
+    expect(table.extras).toEqual([]);
+  });
+
+  it("hela rapporten: betalaren, det muntliga avtalet, VMB, totalraden och det som är betalt", () => {
+    const text = page(build(OWNER));
+    for (const part of [
+      "Er ersättning för 14 okt.–14 nov. 2026: 128,50 kr.",
+      "Post 14–31 okt. 1–14 nov.",
+      "Er andel 50 % 34,50 kr 94,00 kr",
+      "Er ersättning totalt, exklusive moms 128,50 kr",
+      "Kortautomater i Norden AB (verksamheten kallas Binderlab) Äger och driver automaten.",
+      "Muntligt avtal mellan Kortautomater i Norden AB och Nordstan: 50 % av vinsten efter kostnader.",
+      vmbStatement("Kortautomater i Norden AB"),
+      "Moms 25 % 32,13 kr",
+      "Att fakturera 160,63 kr",
+      "Redan betalt 16 nov. 2026 128,50 kr",
+      "Kvar att betala 32,13 kr",
+      "Underlag per titel finns på begäran. Försäljningen är kundernas köp i automater som stod i Nordstan köpdagen, inklusive moms.",
+    ])
+      expect(text, part).toContain(part);
+    for (const gone of ["1–2 nov.", "3–14 nov.", "ingen moms tas ut", "Enligt ", "undertecknat"])
+      expect(text, gone).not.toContain(gone);
+  });
+
+  it("med hyra: hyran står under tabellen, före totalraden", () => {
+    const snap = build(OWNER, 50_000);
+    expect(splitPeriodTable(snap.report.compensation)!.extras.map((x) => x.label)).toEqual([
+      "Hyra",
+    ]);
+    const text = page(snap);
+    expect(text).toMatch(
+      /Er andel 50 % 34,50 kr 94,00 kr\s+Hyra [\d ]+,\d\d kr\s+Er ersättning totalt, exklusive moms/,
+    );
+  });
+
+  it("en rapport från före ändringen har raderna under varandra, som förut", () => {
+    const { rev: _rev, ...old } = BASIS;
+    void _rev;
+    const text = page(build(old));
+    expect(text).toContain("14–31 okt. 2026: Försäljning");
+    expect(text).not.toContain("Post 14–31 okt. 1–14 nov.");
+  });
+
+  it("en månad, olika villkor eller en andel som inte är räknad: ingen kolumntabell", () => {
+    const one = buildSnapshot({
+      type: "butik",
+      month: "2026-11",
+      organization: ORG,
+      sources: sources({
+        orders: [ord("2026-11-10", { amountOre: 24_900 })],
+        prices: [price("t-a", 13_000, "2026-01-01")],
+        agreements: [split("2026-10-14", null)],
+      }),
+      generatedAt: "2026-12-01T08:00:00.000Z",
+      storeId: "s-1",
+    });
+    if (one.type !== "butik") throw new Error("fel typ");
+    expect(splitPeriodTable(one.report.compensation)).toBeNull();
+    const c = build(OWNER).report.compensation;
+    const [a, b] = c.splits;
+    expect(splitPeriodTable({ ...c, splits: [a!, { ...b!, shareBp: 4_000 }] })).toBeNull();
+    expect(splitPeriodTable({ ...c, splits: [a!, { ...b!, pending: true }] })).toBeNull();
+    expect(splitPeriodTable({ ...c, splits: [a!, b!, b!] })).toBeNull();
   });
 });
