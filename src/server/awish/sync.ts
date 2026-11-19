@@ -116,6 +116,11 @@ export interface AwishSyncState {
   leaseUntil: string | null;
   lastRun: AwishLastRun | null;
   lastSuccessAt: string | null;
+  /**
+   * Misslyckade körningar i rad (0 efter en lyckad). Vakten larmar kritiskt vid tre i rad
+   * eller 30 minuter utan lyckad hämtning (@/analytics/watch). Saknas i äldre lägen.
+   */
+  failures?: number;
   refundReported: string[];
   /**
    * Beloppsformatet som setts i källan: "decimal" när minst ett belopp med
@@ -200,6 +205,9 @@ export function parseState(text: unknown): AwishSyncState {
     leaseUntil: typeof value.leaseUntil === "string" ? value.leaseUntil : null,
     lastRun: lastRun as AwishLastRun | null,
     lastSuccessAt: typeof value.lastSuccessAt === "string" ? value.lastSuccessAt : null,
+    ...(Number.isInteger(value.failures) && Number(value.failures) > 0
+      ? { failures: Number(value.failures) }
+      : {}),
     refundReported: Array.isArray(value.refundReported)
       ? value.refundReported.filter((x): x is string => typeof x === "string")
       : [],
@@ -448,6 +456,10 @@ function integerPaidAmount(orders: readonly AwishGrpcOrder[]): AwishGrpcOrder | 
 }
 
 /** Fel som stoppar en körning med ett eget meddelande (läget sparas inte). */
+/** Felet när Orders inte svarade inom tidsgränsen och ingen sida lästes. */
+export const NO_ORDERS_IN_TIME =
+  "Awish svarade inte i tid när orderna skulle hämtas. Inga order hämtades.";
+
 class AwishSyncStop extends Error {
   constructor(message: string) {
     super(message);
@@ -573,6 +585,7 @@ export async function syncAwishSource(
       leaseUntil: null,
       lastRun,
       lastSuccessAt: result.ok ? at.toISOString() : before.lastSuccessAt,
+      ...(result.ok ? {} : { failures: (before.failures ?? 0) + 1 }),
       refundReported: refundReported.slice(-MAX_REFUND_REPORTED),
       amountFormat: extra.amountFormat ?? before.amountFormat,
       // Alla automater lästa: nästa läsning om STOCK_SYNC_INTERVAL_MS. Annars fortsätter
@@ -701,6 +714,12 @@ export async function syncAwishSource(
     });
     pages = collected.pages;
     fetched = collected.orders.length;
+    // Ingen sida med order lästes (anropet tog slut på tid): det är ett fel, inte en lyckad
+    // hämtning av noll order. Annars flyttas "senast hämtat" fram och allt ser färskt ut
+    // medan försäljningen står still. Automaternas anslutning är redan sparad ovan.
+    if (collected.pages === 0 && collected.budgetExhausted) {
+      throw new AwishSyncStop(NO_ORDERS_IN_TIME);
+    }
 
     // Beloppsformatet: så länge inget belopp med decimalpunkt har setts i källan
     // stoppas körningen på ett betalt heltalsbelopp (kan vara öre, se AwishSyncState).
