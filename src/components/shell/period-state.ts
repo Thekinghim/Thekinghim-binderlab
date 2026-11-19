@@ -4,6 +4,7 @@
  *   ?period=idag | 7d | 30d | manad | allt
  *   ?from=2026-10-13&to=2026-11-01           (eget intervall, båda ändar ingår)
  *   ?butik=<id>&automat=<id>                 (globalt filter)
+ *   ?agare=<id>                              (butiksägare: alla ägarens butiker tillsammans)
  *   ?vmb=1                                   (vyknappen "Med VMB": vinst efter VMB-moms)
  *   ?andel=1                                 (vyknappen "Visa butikernas andel")
  *
@@ -38,6 +39,11 @@ export const FROM_PARAM = "from";
 export const TO_PARAM = "to";
 export const STORE_PARAM = "butik";
 export const MACHINE_PARAM = "automat";
+/**
+ * Butiksägaren (store_owners): filtret gäller alla butiker med den ägaren tillsammans, med
+ * samma regler som en vald butik (butikens andel dras). En vald butik vinner över ägaren.
+ */
+export const OWNER_PARAM = "agare";
 export const VMB_PARAM = "vmb";
 /**
  * Vyknappen "Visa butikernas andel" (?andel=1, av = ?andel=0). Av (standard): vår vinst och
@@ -67,6 +73,7 @@ export const SHELL_PARAMS = [
   FROM_PARAM,
   TO_PARAM,
   STORE_PARAM,
+  OWNER_PARAM,
   MACHINE_PARAM,
   VMB_PARAM,
   STORE_SHARE_PARAM,
@@ -277,18 +284,30 @@ export function withPeriod(
   return next;
 }
 
-export type Scope = { butik: string | null; automat: string | null };
+/** Filtret: en butik, en butiksägare (alla dess butiker) eller ingen, och en automat. */
+export type Scope = { butik: string | null; agare: string | null; automat: string | null };
 
+/** Filtret ur URL:en. En vald butik vinner över en ägare (ägaren räknas då inte). */
 export function parseScope(sp: SearchParamsInput): Scope {
   const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
-  return { butik: clean(readParam(sp, STORE_PARAM)), automat: clean(readParam(sp, MACHINE_PARAM)) };
+  const butik = clean(readParam(sp, STORE_PARAM));
+  return {
+    butik,
+    agare: butik ? null : clean(readParam(sp, OWNER_PARAM)),
+    automat: clean(readParam(sp, MACHINE_PARAM)),
+  };
 }
 
-/** Ny query med filtret satt; null tar bort parametern. */
+/**
+ * Ny query med filtret satt; null tar bort parametern. Butik och ägare är ett val: anges
+ * butiken (eller tas den bort) utan ägare, tas ägaren också bort.
+ */
 export function withScope(current: SearchParamsInput, scope: Partial<Scope>): URLSearchParams {
   const next = toURLSearchParams(current);
+  if (scope.butik !== undefined && scope.agare === undefined) next.delete(OWNER_PARAM);
   for (const [param, value] of [
     [STORE_PARAM, scope.butik],
+    [OWNER_PARAM, scope.agare],
     [MACHINE_PARAM, scope.automat],
   ] as const) {
     if (value === undefined) continue;
@@ -361,7 +380,9 @@ export function withStoreShareView(current: SearchParamsInput, on: boolean): URL
 export function showStoreShare(sp: SearchParamsInput, toggleOn = parseStoreShareView(sp)): boolean {
   if (toggleOn) return true;
   // Skalet lägger till automatens butik vid automatfilter: det är inget val av butik.
-  return Boolean(readParam(sp, STORE_PARAM)) && !readParam(sp, MACHINE_PARAM);
+  // En butiksägare räknas som ett val av butik (alla ägarens butiker).
+  const scope = parseScope(sp);
+  return Boolean(scope.butik || scope.agare) && !scope.automat;
 }
 
 /** Bara skalets parametrar, för att bära period och filter mellan sidor. */

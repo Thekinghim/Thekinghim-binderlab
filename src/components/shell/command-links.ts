@@ -5,10 +5,17 @@
 
 import type { CarryMode } from "@/server/search/types";
 
-import { FROM_PARAM, MACHINE_PARAM, PERIOD_PARAM, STORE_PARAM, TO_PARAM } from "./period-state";
+import {
+  FROM_PARAM,
+  MACHINE_PARAM,
+  OWNER_PARAM,
+  PERIOD_PARAM,
+  STORE_PARAM,
+  TO_PARAM,
+} from "./period-state";
 
 const CARRIED: Record<CarryMode, readonly string[]> = {
-  all: [PERIOD_PARAM, FROM_PARAM, TO_PARAM, STORE_PARAM, MACHINE_PARAM],
+  all: [PERIOD_PARAM, FROM_PARAM, TO_PARAM, STORE_PARAM, OWNER_PARAM, MACHINE_PARAM],
   period: [PERIOD_PARAM, FROM_PARAM, TO_PARAM],
   none: [],
 };

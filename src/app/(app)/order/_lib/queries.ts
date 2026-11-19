@@ -42,6 +42,8 @@ export interface OrderQueryFilter {
   /** Organisationens placeringar (få), för butiksfilter, sökning på butik och sortering. */
   readonly placements: readonly PlacementWindow[];
   readonly storeId: string | null;
+  /** En butiksägares butiker (som en butik). Utelämnad: bara `storeId`. */
+  readonly storeIds?: readonly string[] | null;
   readonly machineId: string | null;
   readonly titleId: string | null;
   /** Varje sökord måste träffa ordernummer, originaltitel, titel, automat eller butik. */
@@ -126,7 +128,8 @@ function where(
     parts.push(sql`o.business_date <= ${period.end}::date`);
   }
   if (f.machineId) parts.push(sql`o.machine_id = ${f.machineId}::uuid`);
-  if (f.storeId) parts.push(placedIn(f.placements, [f.storeId]));
+  const stores = f.storeIds ?? (f.storeId ? [f.storeId] : null);
+  if (stores) parts.push(placedIn(f.placements, stores));
   if (f.titleId) parts.push(sql`o.title_id = ${f.titleId}::uuid`);
   for (const t of f.terms) parts.push(termCondition(t, f.placements));
   return sql.join(parts, sql` and `);

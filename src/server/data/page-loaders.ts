@@ -29,6 +29,7 @@ import {
   type Viewer,
 } from "@/server/data/core/loaders";
 import { resolveAppPeriod } from "@/server/data/core/period";
+import { resolveOwnerScope } from "@/server/data/core/scope";
 import type {
   AppContext,
   AppPeriod,
@@ -85,15 +86,20 @@ export function viewerPageLoaders(
   const inputs = new Map<string, Promise<DomainInput>>();
   const dataStart = options.dataStart ?? once(() => loadDataStartFor(viewer));
   const context = once(() => loadContextFor(viewer, [viewer.organization], now));
+  const masterData = once(() => loadMasterDataFor(viewer, now));
   return {
     viewer: async () => viewer,
     context,
-    period: async (sp) =>
-      resolveAppPeriod(sp, {
+    period: async (sp) => {
+      const p = resolveAppPeriod(sp, {
         timeZone: viewer.organization.timezone,
         dataStart: await dataStart(),
         now,
-      }),
+      });
+      // En butiksägare (?agare=): dess butiker ur stamdatan, som loadPeriod.
+      if (!p.scope.ownerId) return p;
+      return { ...p, scope: resolveOwnerScope(p.scope, (await masterData()).stores) };
+    },
     domainInput: (args) => {
       const full: DomainInputArgs = {
         period: args.period,
@@ -102,6 +108,9 @@ export function viewerPageLoaders(
         machineId: args.machineId ?? null,
         vmb: args.vmb ?? false,
         storeShare: args.storeShare ?? storeShare,
+        ...(args.ownerId && !args.storeId
+          ? { ownerId: args.ownerId, ...(args.storeIds ? { storeIds: args.storeIds } : {}) }
+          : {}),
       };
       const key = JSON.stringify(full);
       let p = inputs.get(key);
@@ -111,7 +120,7 @@ export function viewerPageLoaders(
       }
       return p;
     },
-    masterData: once(() => loadMasterDataFor(viewer, now)),
+    masterData,
     stock: once(() => loadStockFor(viewer)),
     machineHealth: once(() => loadMachineHealthFor(viewer, now)),
   };

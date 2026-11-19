@@ -21,6 +21,7 @@ import {
   loadStockFor,
   type Viewer,
 } from "@/server/data/core/loaders";
+import { scopeFiltered } from "@/server/data/core/scope";
 import { ALL_ROLES, type DataScope } from "@/server/data/core/types";
 
 import { querySlotPeriods } from "@/server/data/assortment";
@@ -262,7 +263,7 @@ export async function loadLagerFor(
 
   const titleName = new Map(master.titles.map((t) => [t.id, t.name]));
   const machineCode = new Map(master.machines.map((m) => [m.id, m.code]));
-  const filtered = args.scope.machineId !== null || args.scope.storeId !== null;
+  const filtered = scopeFiltered(args.scope);
   const history = await withUserDbFor(viewer.user, (tx) =>
     queryHistory(
       tx,

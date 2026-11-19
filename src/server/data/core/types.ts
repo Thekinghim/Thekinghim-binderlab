@@ -86,8 +86,19 @@ export interface AppContext {
 
 /** Globalt filter (?butik= ?automat=). Ogiltiga id:n (inte uuid) blir null. */
 export interface DataScope {
+  /** En vald butik (?butik=). */
   readonly storeId: string | null;
   readonly machineId: string | null;
+  /**
+   * En vald butiksägare (?agare=): alla ägarens butiker tillsammans, med samma regler som en
+   * vald butik. Utelämnad = ingen. Läs filtret med ./scope (scopeStoreIds, storeScoped).
+   */
+  readonly ownerId?: string | null;
+  /**
+   * Butikerna i filtret: [storeId], ägarens butiker (kan vara tom) eller null (inget
+   * butiksfilter). Utelämnad: räknas fram ur storeId (en ägare löses då upp av laddaren).
+   */
+  readonly storeIds?: readonly string[] | null;
 }
 
 /**
@@ -139,6 +150,15 @@ export interface StoreRecord extends StoreRef {
   readonly phone: string | null;
   readonly isExample: boolean;
   readonly archived: boolean;
+  /** Butiksägaren (store_owners), eller null. */
+  readonly ownerId?: string | null;
+}
+
+/** Butiksägare (bolaget som äger butikerna). Bara ägare, admin och läsare (RLS). */
+export interface OwnerRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly archived: boolean;
 }
 
 /** Placering (som @/domain Placement, med id). */
@@ -156,6 +176,8 @@ export interface MasterData {
   readonly machines: MachineRecord[];
   readonly stores: StoreRecord[];
   readonly placements: PlacementRecord[];
+  /** Butiksägarna. Tom för påfyllare (RLS). */
+  readonly owners?: OwnerRecord[];
 }
 
 /** Indata till beräkningarna för en period (och jämförelseperiod). */

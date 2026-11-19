@@ -48,6 +48,9 @@ describe("vyknappen Visa butikernas andel (?andel=1 eller kakan)", () => {
   it("dras med knappen eller vald butik, inte av ett automatfilter", () => {
     expect(showStoreShare(sp("period=allt"))).toBe(false);
     expect(showStoreShare(sp("andel=1"))).toBe(true);
+    // En butiksägare drar andelen som en vald butik; inte med ett automatfilter.
+    expect(showStoreShare(sp("agare=o1"))).toBe(true);
+    expect(showStoreShare(sp("agare=o1&automat=m1"))).toBe(false);
     expect(showStoreShare(sp("butik=s1"))).toBe(true);
     expect(showStoreShare(sp("automat=m1"))).toBe(false);
     // Serverns läge (kakan) går in som andra argument.

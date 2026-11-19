@@ -67,9 +67,9 @@ export interface HomeLoaders {
   goals?(today: IsoDate, options: { storeShare: boolean }): Promise<GoalProgress[]>;
 }
 
-/** Filtret som det visas: automatens kod och namn, eller butikens namn. */
+/** Filtret som det visas: automatens kod och namn, butikens eller butiksägarens namn. */
 export interface HomeScopeLabel {
-  readonly kind: "machine" | "store";
+  readonly kind: "machine" | "store" | "owner";
   readonly id: string;
   readonly name: string;
   readonly code: string | null;
@@ -140,6 +140,7 @@ export async function loadHomeWith(
             storeShare: storeShareInView({
               toggle: false,
               storeId: p.scope.storeId,
+              ownerId: p.scope.ownerId,
               machineId: p.scope.machineId,
             }),
           })
@@ -172,7 +173,9 @@ export async function loadHomeWith(
     // Butikernas andel följer indata (vyknappen eller vald butik, loadDomainInput).
     storeName: p.scope.storeId
       ? input.stores.find((x) => x.id === p.scope.storeId)?.name
-      : undefined,
+      : p.scope.ownerId
+        ? input.owners?.find((x) => x.id === p.scope.ownerId)?.name
+        : undefined,
     costLines: input.costLines,
   });
 
@@ -194,6 +197,15 @@ export async function loadHomeWith(
       name: s?.name ?? "Okänd butik",
       code: null,
       missing: !s,
+    };
+  } else if (p.scope.ownerId) {
+    const o = input.owners?.find((x) => x.id === p.scope.ownerId);
+    scope = {
+      kind: "owner",
+      id: p.scope.ownerId,
+      name: o?.name ?? "Okänd butiksägare",
+      code: null,
+      missing: !o,
     };
   }
 
@@ -217,6 +229,7 @@ export async function loadHomeWith(
           {
             month: monthOf(ctx.today),
             storeId: p.scope.storeId,
+            storeIds: p.scope.ownerId ? p.scope.storeIds : null,
             machineId: p.scope.machineId,
             machineStoreId: p.scope.machineId
               ? (input.machines.find((m) => m.id === p.scope.machineId)?.storeId ?? null)

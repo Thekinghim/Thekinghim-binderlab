@@ -9,6 +9,7 @@ import { DeniedNotice } from "@/components/shell/denied-notice";
 import { clearAllRecent } from "@/components/shell/command-recent";
 import type { Role } from "@/components/shell/nav";
 import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
+import { ShellOwnersProvider, type ShellOwner } from "@/components/shell/owners-context";
 import type {
   ShellOrganization,
   ShellUser,
@@ -39,6 +40,7 @@ export function AppFrame({
   syncedAt,
   syncState,
   stores,
+  owners = [],
   machines,
   earliest,
   vmbUserKey = null,
@@ -52,6 +54,8 @@ export function AppFrame({
   syncedAt?: string;
   syncState?: SyncState;
   stores: ShellStore[];
+  /** Butiksägare med flera butiker: val i filtret (?agare=). */
+  owners?: ShellOwner[];
   machines: ShellMachine[];
   earliest?: Date;
   /** Vyknappen "Med VMB" (roller som ser ekonomi): användarens id. */
@@ -85,37 +89,39 @@ export function AppFrame({
   return (
     // AI-panelen ligger utanför sidorna: samtalet finns kvar när man byter sida.
     <AssistantPanelProvider role={role} stores={stores}>
-      <AppShell
-        role={role}
-        user={user}
-        organizations={organizations}
-        activeOrganizationId={activeOrganizationId}
-        todoCount={todoCount}
-        syncedAt={syncedAt}
-        syncState={syncState}
-        stores={stores}
-        machines={machines}
-        earliest={earliest}
-        vmbUserKey={vmbUserKey}
-        crumbs={crumbsFor(pathname, orgName, view)}
-        view={view}
-        onOrganizationChange={(id) =>
-          startTransition(async () => {
-            const result = await switchOrganization(id);
-            if (result.ok) router.refresh();
-            else
-              toast({
-                title: "Kunde inte byta organisation",
-                description: result.error,
-                tone: "critical",
-              });
-          })
-        }
-        onSignOut={signOut}
-        onOpenCommand={openPalette}
-      >
-        {children}
-      </AppShell>
+      <ShellOwnersProvider owners={owners}>
+        <AppShell
+          role={role}
+          user={user}
+          organizations={organizations}
+          activeOrganizationId={activeOrganizationId}
+          todoCount={todoCount}
+          syncedAt={syncedAt}
+          syncState={syncState}
+          stores={stores}
+          machines={machines}
+          earliest={earliest}
+          vmbUserKey={vmbUserKey}
+          crumbs={crumbsFor(pathname, orgName, view)}
+          view={view}
+          onOrganizationChange={(id) =>
+            startTransition(async () => {
+              const result = await switchOrganization(id);
+              if (result.ok) router.refresh();
+              else
+                toast({
+                  title: "Kunde inte byta organisation",
+                  description: result.error,
+                  tone: "critical",
+                });
+            })
+          }
+          onSignOut={signOut}
+          onOpenCommand={openPalette}
+        >
+          {children}
+        </AppShell>
+      </ShellOwnersProvider>
       <Suspense fallback={null}>
         <DeniedNotice role={role} />
       </Suspense>

@@ -61,13 +61,18 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /** Kolumnrubriken för andelen och vem den gäller: vald butik, vald automat eller alla. */
 function shareScope(
-  scope: { storeId: string | null; machineId: string | null },
+  scope: { storeId: string | null; machineId: string | null; ownerId?: string | null },
   stores: ReadonlyArray<{ id: string; name: string }>,
   machines: ReadonlyArray<{ id: string; name: string; code?: string | null }>,
+  owners: ReadonlyArray<{ id: string; name: string }> = [],
 ): StoreShareColumns {
   if (scope.storeId) {
     const store = stores.find((s) => s.id === scope.storeId);
     return { header: "Butikens andel", scope: store?.name ?? "vald butik" };
+  }
+  if (scope.ownerId && !scope.machineId) {
+    const owner = owners.find((o) => o.id === scope.ownerId);
+    return { header: "Butikernas andel", scope: owner?.name ?? "vald butiksägare" };
   }
   if (scope.machineId) {
     const m = machines.find((x) => x.id === scope.machineId);
@@ -130,12 +135,14 @@ export default async function PurchasePricesPage({
   // Ägarens regel: hela beloppet (före butikens andel) som standard. Andelen och vår del
   // visas med vald butik, eller med "Visa butikernas andel" när någon titel har en andel:
   // samma flagga som alla sidors vinst (loadDomainInput, Settings.deductStoreShare).
-  const filtered = Boolean(period.scope.storeId && !period.scope.machineId);
+  const filtered = Boolean(
+    (period.scope.storeId || period.scope.ownerId) && !period.scope.machineId,
+  );
   const anyShare = allRows.some((r) => (r.storeShareOre ?? 0) !== 0);
   const shareToggle = storeShareDeducted(input.settings) && !filtered;
   const showShare = filtered || (shareToggle && anyShare);
   const shareColumns: StoreShareColumns | null = showShare
-    ? shareScope(period.scope, input.stores, input.machines)
+    ? shareScope(period.scope, input.stores, input.machines, input.owners)
     : null;
   const dates = { asOf: input.current.period.end, today: ctx.today };
   const headline = pageHeadline(allRows, dates);

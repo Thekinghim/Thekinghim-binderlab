@@ -75,6 +75,9 @@ export interface EditGoodDeps extends NewProductDeps {
    */
   storeId?: string | null;
   machineId?: string | null;
+  /** Vald butiksägare och dess butiker (som en vald butik). */
+  ownerId?: string | null;
+  storeIds?: readonly string[] | null;
   /** Vyknappen "Visa butikernas andel" (standard av: kvar per order före andelen). */
   storeShare?: boolean;
 }
@@ -84,6 +87,7 @@ function shareShown(deps: EditGoodDeps): boolean {
   return storeShareInView({
     toggle: deps.storeShare === true,
     storeId: deps.storeId,
+    ownerId: deps.ownerId,
     machineId: deps.machineId,
   });
 }
@@ -304,6 +308,8 @@ export async function goodsOverviewFor(
         period,
         storeId: deps.storeId ?? null,
         machineId: deps.machineId ?? null,
+        ownerId: deps.ownerId ?? null,
+        ...(deps.storeIds ? { storeIds: deps.storeIds } : {}),
         vmb: deps.vmb ?? false,
         storeShare: deps.storeShare ?? false,
       },
@@ -347,7 +353,7 @@ export async function goodsOverviewFor(
       economics,
       showShare: scoped,
       // Försäljningen gäller alla automater bara utan filter.
-      allMachines: !deps.storeId && !deps.machineId,
+      allMachines: !deps.storeId && !deps.ownerId && !deps.machineId,
     }),
     titles: domain.titles
       .filter((t) => !t.archived && t.mergedIntoId === null)
@@ -452,6 +458,8 @@ async function priceEffectLines(
       period,
       storeId: deps.storeId ?? null,
       machineId: deps.machineId ?? null,
+      ownerId: deps.ownerId ?? null,
+      ...(deps.storeIds ? { storeIds: deps.storeIds } : {}),
       vmb: deps.vmb ?? false,
       storeShare: deps.storeShare ?? false,
     },

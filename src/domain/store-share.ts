@@ -37,13 +37,15 @@ export function entryProfitOre(
 
 /**
  * Om en vy drar butikernas andel: vyknappen "Visa butikernas andel" (`toggle`), eller en
- * vald butik (då just den butikens andel). Ett automatfilter är inget val av butik (skalet
- * lägger till automatens butik i adressen), så `machineId` stänger av butiksregeln.
+ * vald butik (då just den butikens andel) eller butiksägare (då dess butikers andel). Ett
+ * automatfilter är inget val av butik (skalet lägger till automatens butik i adressen), så
+ * `machineId` stänger av butiksregeln.
  */
 export function storeShareInView(view: {
   readonly toggle: boolean;
   readonly storeId?: string | null;
+  readonly ownerId?: string | null;
   readonly machineId?: string | null;
 }): boolean {
-  return view.toggle || (Boolean(view.storeId) && !view.machineId);
+  return view.toggle || (Boolean(view.storeId || view.ownerId) && !view.machineId);
 }

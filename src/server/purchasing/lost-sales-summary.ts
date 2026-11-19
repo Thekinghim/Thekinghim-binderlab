@@ -24,6 +24,8 @@ import { businessToday, loadDomainInputFor, type Viewer } from "@/server/data/co
 import { canSeeEconomy, ECONOMY_ROLES, type DataScope } from "@/server/data/core/types";
 import { getActiveOrganization } from "@/server/session";
 
+import { scopeFiltered } from "@/server/data/core/scope";
+
 import { lostPeriodOf, machinesInScope } from "./load";
 import { queryMachineStockEvents } from "./queries";
 import { currentViewer } from "./session";
@@ -37,6 +39,7 @@ const NO_SCOPE: DataScope = { storeId: null, machineId: null };
 export function lostSalesHref(period: Period, scope: DataScope = NO_SCOPE): string {
   const q = new URLSearchParams({ from: period.start, to: period.end });
   if (scope.storeId) q.set("butik", scope.storeId);
+  else if (scope.ownerId) q.set("agare", scope.ownerId);
   if (scope.machineId) q.set("automat", scope.machineId);
   return `/prognos?${q.toString()}#forlorad-forsaljning`;
 }
@@ -58,7 +61,7 @@ export async function lostSalesSummaryFor(
   const from = addDays(lostPeriod.start, -LOOKBACK_DAYS);
 
   const range = { start: from, end: lostPeriod.end };
-  const scoped = Boolean(scope.storeId || scope.machineId);
+  const scoped = scopeFiltered(scope);
   const input = await loadDomainInputFor(viewer, { period: range }, now);
   const inScope = scoped
     ? await loadDomainInputFor(viewer, { period: range, ...scope }, now)
@@ -146,13 +149,23 @@ const lostSalesSummaryCached = cache(
     end: IsoDate,
     storeId: string | null,
     machineId: string | null,
+    ownerId: string | null,
+    /** Ägarens butiker som "id,id" ("" = inga). */
+    storeIdsKey: string | null,
   ): Promise<LostSalesSummary | null> => {
     // Butiksanvändare och den utan organisation har ingen ekonomi att visa.
     if (!(await getActiveOrganization())) return null;
     const viewer = await currentViewer();
     const role = await getRoleFor(viewer.user, viewer.organization.id);
     if (role === null || !canSeeEconomy(role)) return null;
-    return lostSalesSummaryFor(viewer, { start, end }, new Date(), { storeId, machineId });
+    const owner = ownerId
+      ? { ownerId, storeIds: storeIdsKey ? storeIdsKey.split(",") : [] }
+      : { ownerId: null, storeIds: storeId ? [storeId] : null };
+    return lostSalesSummaryFor(viewer, { start, end }, new Date(), {
+      storeId,
+      machineId,
+      ...owner,
+    });
   },
 );
 
@@ -170,5 +183,7 @@ export function lostSalesSummary(
     period.end,
     scope?.storeId ?? null,
     scope?.machineId ?? null,
+    scope?.storeId ? null : (scope?.ownerId ?? null),
+    scope?.storeId || !scope?.ownerId ? null : [...(scope.storeIds ?? [])].sort().join(","),
   );
 }

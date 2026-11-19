@@ -6,7 +6,7 @@ import { toURLSearchParams } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatKronor, formatPeriodShort, MISSING } from "@/lib/format";
-import { OPERATOR_ROLES, requireRoute } from "@/server/data/core";
+import { OPERATOR_ROLES, requireRoute, scopeFiltered } from "@/server/data/core";
 
 import { OrderBrowser } from "./_components/order-browser";
 import { isoToLocalDate, orderHeadline, sentence } from "./_lib/headline";
@@ -38,7 +38,7 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
     params.orderId ? loadOrderDetailFor(viewer, params.orderId) : Promise.resolve(null),
   ]);
 
-  const scoped = period.scope.storeId !== null || period.scope.machineId !== null;
+  const scoped = scopeFiltered(period.scope);
   const pageFiltered = hasPageFilter(params);
   const headline = orderHeadline({
     totals: list.totals,

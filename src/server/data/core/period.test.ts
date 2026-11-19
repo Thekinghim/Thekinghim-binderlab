@@ -49,7 +49,7 @@ describe("resolveAppPeriod", () => {
       opts,
     );
     expect(p.key).toBe("30d");
-    expect(p.scope).toEqual({ storeId: null, machineId: null });
+    expect(p.scope).toEqual({ storeId: null, machineId: null, ownerId: null, storeIds: null });
   });
 });
 
@@ -60,7 +60,27 @@ describe("scopeFromSearchParams", () => {
         butik: "8B9903C2-D902-432E-B6E4-DB346DE6689B",
         automat: "'; drop table orders; --",
       }),
-    ).toEqual({ storeId: "8b9903c2-d902-432e-b6e4-db346de6689b", machineId: null });
+    ).toEqual({
+      storeId: "8b9903c2-d902-432e-b6e4-db346de6689b",
+      machineId: null,
+      ownerId: null,
+      storeIds: ["8b9903c2-d902-432e-b6e4-db346de6689b"],
+    });
+  });
+
+  it("butiksägaren (?agare=): ägarens butiker läses av laddaren; en vald butik vinner", () => {
+    const owner = "1b9903c2-d902-432e-b6e4-db346de6689b";
+    expect(scopeFromSearchParams({ agare: owner.toUpperCase() })).toEqual({
+      storeId: null,
+      machineId: null,
+      ownerId: owner,
+      storeIds: undefined,
+    });
+    expect(scopeFromSearchParams({ agare: "inte-ett-id" }).ownerId).toBeNull();
+    expect(
+      scopeFromSearchParams({ agare: owner, butik: "8b9903c2-d902-432e-b6e4-db346de6689b" })
+        .ownerId,
+    ).toBeNull();
   });
 });
 

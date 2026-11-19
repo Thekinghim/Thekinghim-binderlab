@@ -1349,7 +1349,7 @@ export function buildPageModel(
       `Slutsålt kostade ${approxKr(data.lostSales.total.lostRevenueOre)} ${periodShort(data.lostSales.period, now)}.`,
     );
   }
-  const scoped = Boolean(data.scope.storeId || data.scope.machineId);
+  const scoped = Boolean(data.scope.storeId || data.scope.ownerId || data.scope.machineId);
 
   return {
     heading: {

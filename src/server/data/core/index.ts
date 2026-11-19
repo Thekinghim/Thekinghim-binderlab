@@ -63,6 +63,7 @@ import {
   verifiedViewer,
 } from "./loaders";
 import { resolveAppPeriod } from "./period";
+import { resolveOwnerScope } from "./scope";
 import type {
   AppContext,
   AppPeriod,
@@ -74,6 +75,13 @@ import type {
 } from "./types";
 
 export * from "./types";
+export {
+  resolveOwnerScope,
+  scopeFiltered,
+  scopeStoreIds,
+  storeInScope,
+  storeScoped,
+} from "./scope";
 export {
   coverageDays,
   dataCoverage,
@@ -198,11 +206,14 @@ export const loadDataStart = cache(async (): Promise<IsoDate | null> =>
  */
 export async function loadPeriod(searchParams: SearchParamsInput): Promise<AppPeriod> {
   const [ctx, dataStart] = await Promise.all([loadContext(), loadDataStart()]);
-  return resolveAppPeriod(searchParams, {
+  const p = resolveAppPeriod(searchParams, {
     timeZone: ctx.timeZone,
     dataStart,
     now: requestNow(),
   });
+  // En butiksägare (?agare=): dess butiker ur stamdatan (som nästan varje sida läser ändå).
+  if (!p.scope.ownerId) return p;
+  return { ...p, scope: resolveOwnerScope(p.scope, (await loadMasterData()).stores) };
 }
 
 /** Titlar, automater, butiker och placeringar. Alla roller. */
@@ -255,16 +266,47 @@ const loadDomainInputCached = cache(
     machineId: string | null,
     vmb: boolean,
     storeShare: boolean,
+    ownerId: string | null,
+    /** Ägarens butiker som "id,id" (cache-nyckel), "" = inga, null = läses av laddaren. */
+    storeIdsKey: string | null,
   ): Promise<DomainInput> => {
     const compare: Period | null =
       compareStart && compareEnd ? { start: compareStart, end: compareEnd } : null;
     return loadDomainInputFor(
       await requireViewer(),
-      { period: { start, end }, compare, storeId, machineId, vmb, storeShare },
+      {
+        period: { start, end },
+        compare,
+        storeId,
+        machineId,
+        vmb,
+        storeShare,
+        ...ownerArgs(ownerId, storeIdsKey),
+      },
       requestNow(),
     );
   },
 );
+
+/** Ägarfiltret ur cache-nyckeln: "a,b" → ["a", "b"], "" → [], null → läses av laddaren. */
+function ownerArgs(
+  ownerId: string | null,
+  storeIdsKey: string | null,
+): { ownerId: string | null; storeIds?: readonly string[] } {
+  if (!ownerId) return { ownerId: null };
+  if (storeIdsKey === null) return { ownerId };
+  return { ownerId, storeIds: storeIdsKey === "" ? [] : storeIdsKey.split(",") };
+}
+
+/** Ägaren och dess butiker som cache-nycklar (null när en butik är vald eller ingen ägare). */
+function ownerKeys(args: {
+  storeId?: string | null;
+  ownerId?: string | null;
+  storeIds?: readonly string[] | null;
+}): [string | null, string | null] {
+  if (args.storeId || !args.ownerId) return [null, null];
+  return [args.ownerId, args.storeIds ? [...args.storeIds].sort().join(",") : null];
+}
 
 /**
  * Indata till beräkningslagret för perioden (och jämförelsen): order, priser, avtal,
@@ -284,6 +326,7 @@ export async function loadDomainInput(args: DomainInputArgs): Promise<DomainInpu
     args.machineId ?? null,
     args.vmb ?? (await requestVmbView()),
     args.storeShare ?? (await requestStoreShareView()),
+    ...ownerKeys(args),
   );
 }
 
@@ -298,8 +341,15 @@ const loadSalesCountsCached = cache(
     end: IsoDate,
     storeId: string | null,
     machineId: string | null,
+    ownerId: string | null,
+    storeIdsKey: string | null,
   ): Promise<SalesCounts> =>
-    loadSalesCountsFor(await requireViewer(), { period: { start, end }, storeId, machineId }),
+    loadSalesCountsFor(await requireViewer(), {
+      period: { start, end },
+      storeId,
+      machineId,
+      ...ownerArgs(ownerId, storeIdsKey),
+    }),
 );
 
 /** Sålda pack per dag, titel och automat (ur lagret). Alla roller, inga belopp. */
@@ -309,6 +359,7 @@ export function loadSalesCounts(args: SalesCountsArgs): Promise<SalesCounts> {
     args.period.end,
     args.storeId ?? null,
     args.machineId ?? null,
+    ...ownerKeys(args),
   );
 }
 
@@ -361,8 +412,15 @@ const loadLastOrderDateCached = cache(
     end: IsoDate,
     storeId: string | null,
     machineId: string | null,
+    ownerId: string | null,
+    storeIdsKey: string | null,
   ): Promise<IsoDate | null> =>
-    loadLastOrderDateFor(await requireViewer(), { period: { start, end }, storeId, machineId }),
+    loadLastOrderDateFor(await requireViewer(), {
+      period: { start, end },
+      storeId,
+      machineId,
+      ...ownerArgs(ownerId, storeIdsKey),
+    }),
 );
 
 /**
@@ -373,12 +431,15 @@ export function loadLastOrderDate(args: {
   period: Period;
   storeId?: string | null;
   machineId?: string | null;
+  ownerId?: string | null;
+  storeIds?: readonly string[] | null;
 }): Promise<IsoDate | null> {
   return loadLastOrderDateCached(
     args.period.start,
     args.period.end,
     args.storeId ?? null,
     args.machineId ?? null,
+    ...ownerKeys(args),
   );
 }
 

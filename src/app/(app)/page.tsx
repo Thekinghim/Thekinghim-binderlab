@@ -115,7 +115,8 @@ async function HemContent({
 
   // Filtret pekar på en automat eller butik som inte finns (eller inte syns för rollen).
   if (scope?.missing) {
-    const noun = scope.kind === "machine" ? "Automaten" : "Butiken";
+    const noun =
+      scope.kind === "machine" ? "Automaten" : scope.kind === "owner" ? "Butiksägaren" : "Butiken";
     return (
       <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 pb-16 md:px-8 md:pt-12">
         <SectionHeader
@@ -155,8 +156,8 @@ async function HemContent({
               className="md:mt-1 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-3"
             >
               <AiPageLine metric="vinsten för perioden" route="hem" menuItem />
-              {/* Butikernas andel på begäran; med vald butik dras den alltid (under talet). */}
-              {model.hasStoreShare && scope?.kind !== "store" ? (
+              {/* Butikernas andel på begäran; med vald butik eller ägare dras den alltid. */}
+              {model.hasStoreShare && scope?.kind !== "store" && scope?.kind !== "owner" ? (
                 <Suspense fallback={null}>
                   <StoreShareToggle on={shareToggle} menuItem />
                 </Suspense>
