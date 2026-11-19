@@ -405,6 +405,7 @@ export const tables: Table[] = [
       { n: "organization_id", t: "uuid", k: "pk" },
       { n: "vat_rate_bp", t: "int" },
       { n: "card_fee_bp", t: "int" },
+      { n: "card_fee_history", t: "jsonb" },
     ],
   },
   {
@@ -433,6 +434,7 @@ export const tables: Table[] = [
       id,
       { n: "month", t: "date", k: "uk" },
       { n: "closed_by", t: "uuid", k: "fk", ref: "profiles" },
+      { n: "reopened_reason", t: "text" },
       { n: "snapshot", t: "jsonb" },
     ],
   },

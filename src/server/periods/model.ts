@@ -83,13 +83,3 @@ export function closedMonthsLine(months: readonly string[]): string | null {
 export function isClosedDay(months: readonly string[], day: string): boolean {
   return months.includes(day.slice(0, 7));
 }
-
-/** Första månaden som inte är stängd, från och med `from` (t.ex. den här månaden bakåt sett). */
-export function firstOpenMonth(months: readonly string[], latestCandidate: IsoMonth): IsoMonth {
-  const closed = [...months].sort();
-  const last = closed[closed.length - 1];
-  if (!last) return latestCandidate;
-  const [y, m] = last.split("-").map(Number) as [number, number];
-  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
-  return next as IsoMonth;
-}

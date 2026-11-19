@@ -28,15 +28,13 @@ const reasonSchema = z
   .min(3, "Skriv varför månaden öppnas.")
   .max(500, "Skriv kortare (högst 500 tecken).");
 
-function failure(error: unknown): { ok: false; error: string } {
+function failure(error: unknown, denied: string): { ok: false; error: string } {
   unstable_rethrow(error);
   if (error instanceof z.ZodError) {
     return { ok: false, error: error.issues[0]?.message ?? "Ogiltiga uppgifter." };
   }
   if (error instanceof PeriodError) return { ok: false, error: error.message };
-  if (error instanceof AuthorizationError) {
-    return { ok: false, error: "Bara ägaren kan öppna en stängd månad." };
-  }
+  if (error instanceof AuthorizationError) return { ok: false, error: denied };
   console.error("[manad]", safeErrorForLog(error));
   return { ok: false, error: dbErrorMessage(error) };
 }
@@ -50,7 +48,7 @@ export async function reopenMonth(month: unknown, reason: unknown): Promise<Peri
     await revalidateSettlementData();
     return { ok: true };
   } catch (error) {
-    return failure(error);
+    return failure(error, "Bara ägaren kan öppna en stängd månad.");
   }
 }
 
@@ -63,6 +61,6 @@ export async function closeMonth(month: unknown): Promise<PeriodActionResult> {
     await revalidateSettlementData();
     return { ok: true };
   } catch (error) {
-    return failure(error);
+    return failure(error, "Bara ägare och admin kan stänga en månad.");
   }
 }
