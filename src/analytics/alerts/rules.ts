@@ -58,6 +58,8 @@ export const ALERT_GROUP: Record<AlertKind, AlertGroup> = {
   machine_discovered: "import",
   // Daglig kontroll: skrivs direkt av kontrollen och stängs när den går igenom.
   self_check: "system",
+  // Skrivs av Awish-synken och stängs när ordern är hanterad (inte av larmjobbet).
+  order_attention: "system",
 };
 
 /** Rang för allvar: högre är allvarligare. */
@@ -75,6 +77,7 @@ const KIND_RANK: Record<AlertKind, number> = {
   job_failed: 0,
   machine_discovered: 0,
   self_check: 0,
+  order_attention: 0,
 };
 
 const MINUTE_MS = 60_000;

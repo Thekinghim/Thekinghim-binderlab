@@ -19,6 +19,7 @@ import { toSafeInteger } from "@/db/types";
 import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
 import {
   DEFAULT_TARGET_MARGIN_BP,
+  parseCardFeeHistory,
   type IsoDate,
   type MachineInvestment,
   type MysteryRecipeRef,
@@ -28,6 +29,7 @@ import {
 } from "@/domain";
 import type { Refund } from "@/domain/refunds";
 
+import { placementsFromFirstSale } from "./placements";
 import type {
   DataScope,
   MachineRecord,
@@ -136,12 +138,22 @@ export async function querySettings(tx: Tx, orgId: string): Promise<OrgSettings>
     .select({
       vatRateBp: s.organizationSettings.vatRateBp,
       cardFeeBp: s.organizationSettings.cardFeeBp,
+      cardFeeHistory: s.organizationSettings.cardFeeHistory,
       fiscalYearStartMonth: s.organizationSettings.fiscalYearStartMonth,
     })
     .from(s.organizationSettings)
     .where(eq(s.organizationSettings.organizationId, orgId))
     .limit(1);
-  return rows[0] ?? DEFAULT_SETTINGS;
+  const row = rows[0];
+  if (!row) return DEFAULT_SETTINGS;
+  // Kortavgiften med startdatum: tom lista = en sats för alla datum (cardFeeBp).
+  const cardFeeRates = parseCardFeeHistory(row.cardFeeHistory);
+  return {
+    vatRateBp: row.vatRateBp,
+    cardFeeBp: row.cardFeeBp,
+    fiscalYearStartMonth: row.fiscalYearStartMonth,
+    ...(cardFeeRates.length > 0 ? { cardFeeRates } : {}),
+  };
 }
 
 /** Antal aktiva automater per organisation (för organisationsväxlaren). */
@@ -254,6 +266,37 @@ export async function queryPlacements(tx: Tx, orgId: string): Promise<PlacementR
     .where(eq(s.machinePlacements.organizationId, orgId))
     .orderBy(asc(s.machinePlacements.machineId), asc(s.machinePlacements.validFrom));
   return rows;
+}
+
+/** Första försäljningsdagen per automat (testköp räknas inte). */
+export async function queryFirstSaleByMachine(
+  tx: Tx,
+  orgId: string,
+): Promise<Map<string, IsoDate>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      select o.machine_id, min(o.business_date)::text as first_day
+      from public.orders o
+      where o.organization_id = ${orgId}::uuid and o.machine_id is not null
+        and o.test_purchase_at is null
+      group by o.machine_id`),
+  ) as { machine_id: string; first_day: string }[];
+  return new Map(rows.map((r) => [String(r.machine_id), r.first_day.slice(0, 10) as IsoDate]));
+}
+
+/**
+ * Placeringarna som pengarna räknas med (avräkning, butiksrapport, bokföring, och vilka
+ * butiker som ska ha en avräkning): en automats första placering gäller också dagarna före
+ * den, tillbaka till automatens första försäljning. Samma regel som panelen
+ * (effectivePlacements i ./placements.ts och placedInStore ovan), se docs/berakningar.md
+ * avsnitt 2. queryPlacements ger placeringarna som de är sparade (för att visa och ändra).
+ */
+export async function queryEffectivePlacements(tx: Tx, orgId: string): Promise<PlacementRecord[]> {
+  const [placements, firstSale] = await Promise.all([
+    queryPlacements(tx, orgId),
+    queryFirstSaleByMachine(tx, orgId),
+  ]);
+  return placementsFromFirstSale(placements, firstSale);
 }
 
 /** Automaterna, med butiken de står i `today` (aktuell placering). */
@@ -962,6 +1005,7 @@ export async function queryOpenAlerts(tx: Tx, orgId: string): Promise<AlertRef[]
       message: s.alerts.message,
       triggeredAt: s.alerts.triggeredAt,
       acknowledgedAt: s.alerts.acknowledgedAt,
+      link: s.alerts.link,
     })
     .from(s.alerts)
     .where(
@@ -985,6 +1029,7 @@ export async function queryOpenAlerts(tx: Tx, orgId: string): Promise<AlertRef[]
     detail: r.message ?? "",
     openedAt: r.triggeredAt.toISOString(),
     acknowledged: r.acknowledgedAt !== null,
+    link: r.link,
   }));
 }
 

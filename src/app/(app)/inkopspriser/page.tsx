@@ -20,6 +20,7 @@ import {
 } from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
+import { ClosedMonthsNote } from "../_manad/closed-note";
 import { SimplePricesScreen } from "../_enkel/prices-screen";
 import { MobileMore } from "../_mobil/mobile-more";
 import { currentViewer } from "../lager/_lib/session";
@@ -417,6 +418,7 @@ export default async function PurchasePricesPage({
                 canEdit={ctx.canEdit}
               />
               <h3 className="label text-subtle">{own ? "Ändra kostnad" : "Ändra inköpspris"}</h3>
+              <ClosedMonthsNote months={data.closedMonths} />
               {ctx.canEdit && detail ? (
                 <PriceForm
                   key={selectedTitle.id}

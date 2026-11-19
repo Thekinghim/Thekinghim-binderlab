@@ -8,8 +8,9 @@
 
 import { timingSafeEqual } from "node:crypto";
 
-import { getServiceDb } from "@/db/client";
+import { freshServiceDb, getServiceDb } from "@/db/client";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
+import { recordSettlementRuns } from "@/server/monitoring/failures";
 import { createMonthlyDrafts } from "@/server/reports/drafts";
 import { createMonthlySettlements } from "@/server/settlements/service";
 
@@ -34,6 +35,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!authorized(request.headers.get("authorization"), secret)) {
     return Response.json({ ok: false, error: "Obehörig." }, { status: 401 });
   }
+  // En anslutning som dött medan funktionen låg fryst byts ut (se freshServiceDb).
+  await freshServiceDb();
   // Sentry Cron Monitors (när SENTRY_DSN finns): larmar när körningen uteblir eller felar.
   // Fel per organisation blir dessutom larm på Drift (src/server/monitoring).
   const results = await withCronMonitor(
@@ -50,6 +53,8 @@ export async function GET(request: Request): Promise<Response> {
       created: runs.reduce((n, r) => n + r.created, 0),
       errors: runs.reduce((n, r) => n + r.errors.length, 0),
     };
+    // En butik som inte gick att räkna ska höras (larmet job:avrakningar), inte bara loggas.
+    await recordSettlementRuns({ db: getServiceDb() }, runs);
     if (settlements.errors > 0) {
       console.error(
         "[cron/rapporter] avräkningar",

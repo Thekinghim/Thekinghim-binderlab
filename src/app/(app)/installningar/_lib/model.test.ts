@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   bpToInput,
+  cardFeeConfirm,
+  cardFeeDone,
+  cardFeeHistoryLines,
   fiscalYearLabel,
   formatBp,
   logAside,
@@ -204,5 +207,36 @@ describe("momsgränsen i fältet", () => {
   it("visas som den skrivs", () => {
     expect(vatLimitToInput(12_000_000)).toBe("120 000");
     expect(parseVatLimitInput(vatLimitToInput(8_000_000))).toEqual({ ok: true, ore: 8_000_000 });
+  });
+});
+
+describe("kortavgiften gäller från ett datum", () => {
+  const plain = (text: string) => text.replace(/\u00a0|\u202f/g, " ");
+
+  it("frågan säger från vilken dag och att stängda månader inte ändras", () => {
+    const c = cardFeeConfirm(400, 0, "2026-11-01");
+    expect(plain(c.title)).toBe("Ändra kortavgiften till 4 %?");
+    expect(plain(c.text)).toBe(
+      "Gäller från 1 november 2026. Försäljning före det räknas som förut, med 0 %. Stängda månader ändras inte.",
+    );
+    expect(plain(c.button)).toBe("Ja, ändra till 4 %");
+  });
+
+  it("utan datum: all försäljning, också bakåt", () => {
+    expect(plain(cardFeeConfirm(400, 0, null).text)).toBe(
+      "Gäller all försäljning, också bakåt. Det räknar om vinsten och butikernas andel för alla månader som inte är stängda.",
+    );
+  });
+
+  it("beskedet efteråt och raderna under formuläret", () => {
+    expect(plain(cardFeeDone(400, "2026-11-01"))).toBe("Kortavgiften är 4 % från 1 november 2026.");
+    expect(plain(cardFeeDone(400, null))).toBe("Kortavgiften är 4 % för all försäljning.");
+    expect(
+      cardFeeHistoryLines([
+        { validFrom: "2000-01-01", cardFeeBp: 0 },
+        { validFrom: "2026-11-01", cardFeeBp: 400 },
+      ]).map(plain),
+    ).toEqual(["4 % från 1 november 2026", "0 % före det"]);
+    expect(cardFeeHistoryLines([{ validFrom: "2000-01-01", cardFeeBp: 400 }])).toEqual([]);
   });
 });

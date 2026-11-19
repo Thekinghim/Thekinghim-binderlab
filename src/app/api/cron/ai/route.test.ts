@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/db/client", () => ({ getServiceDb: () => ({}) }));
+vi.mock("@/db/client", () => ({
+  getServiceDb: () => ({}),
+  freshServiceDb: async () => ({}),
+}));
 const run = vi.fn(async () => ({ organizations: [{ id: "org-1", status: "ok", accepted: 3 }] }));
 vi.mock("@/server/assistant/advisor/service", () => ({ runAdvisorForAll: run }));
 const briefs = vi.fn(async () => ({ organizations: [{ id: "org-1", status: "ok" }] }));

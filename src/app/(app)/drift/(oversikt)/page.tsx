@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { connectivityView, milliToTenths, probabilityText } from "@/analytics/health";
 import { fillLevels } from "@/analytics/visits";
@@ -11,6 +12,7 @@ import { requireRoute, requireViewer } from "@/server/data/core";
 import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
 
 import { AwishExpiry } from "../../_awish/awish-expiry";
+import { WatchLines } from "../../_vakt/watch-lines";
 
 import { AlertList } from "../_components/alert-list";
 import { HealthTable, type HealthRow } from "../_components/health-table";
@@ -139,6 +141,11 @@ export default async function DriftPage() {
           }
         />
       </div>
+
+      {/* Vakten: ingen får larm, kontrollen eller hämtningen har stannat. */}
+      <Suspense fallback={null}>
+        <WatchLines />
+      </Suspense>
 
       {awishExpiry ? <AwishExpiry notice={awishExpiry} className="mb-0 max-md:mb-0" /> : null}
 

@@ -83,7 +83,12 @@ import {
   queryStock,
   queryTodoDismissals,
 } from "./queries";
-import { queryMissingSettlements, queryUnpaidSettlements } from "@/server/settlements/queries";
+import {
+  queryMissingSettlements,
+  queryOlderMissingSettlements,
+  queryPaidDrift,
+  queryUnpaidSettlements,
+} from "@/server/settlements/queries";
 import { settlementMonthFor } from "@/server/settlements/model";
 import { querySlotCapacities, type SlotCapacityRow } from "./slot-capacity";
 import { queryStockCountRefs } from "./stock-counts";
@@ -801,6 +806,8 @@ export async function loadTodoStateFor(
         stockCounts,
         mysteryRecipes,
         targetMarginBp,
+        olderMissingSettlements,
+        paidDrift,
       ] = await Promise.all([
         queryOrders(tx, orgId, range, NO_SCOPE),
         queryReportRecipients(tx, orgId),
@@ -823,6 +830,10 @@ export async function loadTodoStateFor(
         queryMysteryRecipeRefs(tx, orgId),
         // Prisråd: organisationens mål för marginalen.
         queryTargetMarginBp(tx, orgId),
+        // Äldre månader där en butik sålde men aldrig fick någon avräkning.
+        queryOlderMissingSettlements(tx, orgId, settlementMonth),
+        // Betalda avräkningar som skiljer sig från dagens uträkning (nattliga jobbet).
+        queryPaidDrift(tx, orgId),
       ]);
       const { prices, agreements, settings } = await baseP;
       const placements = effectivePlacements(master.placements, orders.orders);
@@ -848,6 +859,8 @@ export async function loadTodoStateFor(
         reportDrafts: drafts,
         unpaidSettlements,
         missingSettlements,
+        olderMissingSettlements,
+        paidDrift,
         agreementGaps: gaps,
         contracts,
         alerts,

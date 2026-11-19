@@ -122,6 +122,8 @@ const RPCS = [
   // Flera lager: byt namn på ett eget lager (ägare, admin).
   "rename_warehouse",
   "reopen_period",
+  // Månadsstängning från appen: öppna med anledning (ägare).
+  "reopen_period_with_reason",
   "sales_data_until",
   // Mystery packs: spara innehållet (ägare, admin).
   "save_mystery_recipe",
@@ -668,6 +670,7 @@ describe("anon", () => {
       register_refill_once: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       rename_warehouse: sql`gen_random_uuid(), gen_random_uuid(), 'x'`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
+      reopen_period_with_reason: sql`gen_random_uuid(), '2025-01-01'::date, 'Rödteam'`,
       sales_data_until: sql`gen_random_uuid()`,
       save_mystery_recipe: sql`gen_random_uuid(), gen_random_uuid(), 14, '[]'::jsonb`,
       save_stock_count: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), '[]'::jsonb`,

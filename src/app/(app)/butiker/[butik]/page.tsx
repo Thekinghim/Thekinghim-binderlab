@@ -20,6 +20,7 @@ import { ReportDetailsToggle } from "../_components/report-details-toggle";
 import { StoreRevenueChart } from "../_components/charts";
 import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/detail-tables";
 import { StoreKpis } from "../_components/kpis";
+import { ClosedMonthsBanner } from "../../_manad/closed-note";
 import { StoreActions } from "../_components/store-dialogs";
 import { Sub } from "../_components/sub";
 import { pickTab, ViewTabs } from "../../automater/_components/view-tabs";
@@ -386,6 +387,7 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
           }
           className="lg:col-span-7"
         >
+          <ClosedMonthsBanner className="mb-3" />
           {data.agreements.length > 0 ? (
             <AgreementsTable
               agreements={data.agreements}

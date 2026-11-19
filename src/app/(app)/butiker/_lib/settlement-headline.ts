@@ -1,3 +1,5 @@
+import { krText } from "@/reports/text";
+
 /**
  * Rubriken på Butiker → Utbetalning när inget går att betala just nu. "Allt är betalt."
  * får bara stå när ingen avräkning saknas eller är spärrad: en butik vars avräkning inte
@@ -41,4 +43,56 @@ export function noAgreementLine(g: {
   return g.whole
     ? `${g.storeName}: inget avtal – får 0\u00a0kr.`
     : `${g.storeName}: inget avtal ${g.days === 1 ? "1\u00a0dag" : `${g.days}\u00a0dagar`} – 0\u00a0% de dagarna.`;
+}
+
+const MONTH_NAMES = [
+  "januari",
+  "februari",
+  "mars",
+  "april",
+  "maj",
+  "juni",
+  "juli",
+  "augusti",
+  "september",
+  "oktober",
+  "november",
+  "december",
+];
+const monthLabel = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+
+/**
+ * Raderna i rutan "Saknas" på Utbetalning, äldst månad först: "Sega gubben: september 2026
+ * saknar avräkning. Den skulle redan ha varit betald." eller "3 butiker saknar avräkning
+ * för oktober 2026." Äldre månader (före `current`) står med, så att en butik som inte
+ * kunde räknas i tid inte faller bort.
+ */
+export function missingLines(
+  missing: readonly { readonly storeName: string; readonly month: string }[],
+  current: string,
+): string[] {
+  const byMonth = new Map<string, string[]>();
+  for (const m of missing) {
+    const list = byMonth.get(m.month);
+    if (list) list.push(m.storeName);
+    else byMonth.set(m.month, [m.storeName]);
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, names]) => {
+      const old = month !== current;
+      return names.length === 1
+        ? `${names[0]}: ${monthLabel(month)} saknar avräkning.${old ? " Den skulle redan ha varit betald." : ""}`
+        : `${names.length} butiker saknar avräkning för ${monthLabel(month)}.${old ? " De skulle redan ha varit betalda." : ""}`;
+    });
+}
+
+/**
+ * Belopp i öre som kronor med öre när beloppet inte är jämna kronor: 4 552 → "45,52 kr",
+ * 150 000 → "1 500 kr". För betalningar och rättelser, där ett avrundat belopp kan få två
+ * olika belopp att se lika ut (rapporten 8 072,18 kr mot dagens uträkning 8 072,40 kr) eller
+ * en rättelse att se annorlunda ut än raden den kommer från (46 kr mot 45,52 kr).
+ */
+export function exactKr(ore: number): string {
+  return krText(ore);
 }

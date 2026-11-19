@@ -303,7 +303,8 @@ beforeAll(async () => {
     await db().execute(sql`
       insert into public.alert_subscriptions (organization_id, user_id, channels, min_severity, active)
       values (${orgId}::uuid, ${u.id}::uuid, array['push'], 'info', true)
-      on conflict do nothing`);
+      on conflict (organization_id, user_id) do update
+        set channels = array['push'], min_severity = 'info', active = true`);
   }
 }, 240_000);
 

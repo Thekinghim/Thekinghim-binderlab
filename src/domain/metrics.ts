@@ -5,7 +5,7 @@
  * Funktionerna som tar `orders` filtrerar inte på period; skicka in de order som ska räknas.
  */
 
-import { assertOrders, assertSettings, vatOfGross } from "./economics";
+import { assertOrders, assertSettings, cardFeeBpOn, vatOfGross } from "./economics";
 import { buildLedger } from "./ledger";
 import { applyBp, checkSafe, mulDivRound, ratioBp, roundHalfUp, BP_SCALE } from "./money";
 import { summarizeLedger, type ProfitabilityResult } from "./profitability";
@@ -46,11 +46,12 @@ export function revenue(orders: readonly OrderLine[], settings: Settings): numbe
 /** Kortavgifter: Σ round(belopp inkl. moms × kortavgift / 10 000), per order. */
 export function cardFees(orders: readonly OrderLine[], settings: Settings): number {
   assertSettings(settings);
-  if (settings.cardFeeBp === 0) return 0;
+  if (settings.cardFeeBp === 0 && !settings.cardFeeRates?.length) return 0;
   assertOrders(orders);
   let sum = 0;
   for (const o of orders) {
-    sum += applyBp(o.amountOre, settings.cardFeeBp);
+    const bp = cardFeeBpOn(settings, o.businessDate);
+    if (bp !== 0) sum += applyBp(o.amountOre, bp);
   }
   return checkSafe(sum, "Kortavgifterna");
 }

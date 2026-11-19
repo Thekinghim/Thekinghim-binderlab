@@ -1,6 +1,6 @@
 # Binderlab: så räknas siffrorna
 
-Version av beräkningsreglerna: **1.3.0** (`CALC_VERSION` i `src/domain/profitability.ts`, sparas med varje rapport).
+Version av beräkningsreglerna: **1.4.0** (`CALC_VERSION` i `src/domain/profitability.ts`, sparas med varje rapport).
 
 Det här dokumentet beskriver hur panelen och rapporterna räknar fram intäkt, inköp, avgifter, VMB-moms, butiksersättning och vinst. Det är skrivet så att en bokhållare ska kunna räkna efter för hand. Alla exempel nedan finns som automatiska tester i `src/domain/*.test.ts` och kontrolleras vid varje ändring.
 
@@ -39,6 +39,10 @@ Med dagens inställningar (moms 0, kortavgift 0) blir netto = betalt belopp och 
 
 **Vilken butik?** Automatens placering avgör: den butik automaten stod i på orderns datum. Flyttar en automat mitt i perioden räknas order före flytten på den gamla butiken och dess avtal, order efter flytten på den nya. Order från en automat som inte var placerad någonstans den dagen (eller som inte är kopplad till någon automat) får ingen provision och ingen hyra, och visas på egna rader (se avsnitt 5).
 
+**En regel för placeringar, överallt.** En automats **första** placering gäller också dagarna före den, tillbaka till automatens första försäljning. Automaten läggs ofta upp och placeras den dag den kopplas till Binderlab, medan försäljningen som importeras går längre tillbaka. Den försäljningen gjordes i butiken där automaten först ställdes, och butiken ska ha sin andel på den. Samma regel gäller på Hem, Lönsamhet, Butiker och Order, och i butiksrapporten, avräkningen, bokföringen och i valet av vilka butiker som ska ha en avräkning (`queryEffectivePlacements` i `src/server/data/core/queries.ts`, `effectivePlacements` och `placedInStore` för panelen). Före version 1.4.0 räknade bara panelen så: rapporten, avräkningen och bokföringen gav butiken ingenting för dagarna före placeringen. Senare placeringar (flyttar) gäller från sitt datum som förut. Testet `test/db/placering-en-regel.test.ts` visar att butikens andel är densamma på panelen, i butiksrapporten, i avräkningen och i bokföringen för en automat med försäljning före sin första placering.
+
+**Kortavgiften gäller från ett datum.** Satsen sparas med startdatum (`organization_settings.card_fee_history`): en order får satsen som gällde orderns dag, och en ändring gäller från sitt datum och framåt. Försäljning före datumet räknas som förut. Förvalt startdatum är första dagen som inte är låst: dagen efter den senaste månad som är stängd, har en betald avräkning eller har skickad bokföring (inget låst = all försäljning). Före 1.4.0 fanns en enda sats för alla datum, så en ändring räknade om all historik. En ändring som skulle ge någon dag i en stängd månad en annan sats nekas av databasen (BL004). Momssatsen är fortfarande en sats för alla datum.
+
 ## 3. Inköpspriser
 
 Varje titel har inköpspriser per order (= per pack) med ett **giltig från**-datum. För en order gäller **det senaste priset med giltig från ≤ orderns datum**. Finns inget sådant pris saknar ordern inköpspris.
@@ -47,7 +51,7 @@ Det betyder att:
 
 - en prisändring gäller från och med sitt datum; order på själva ändringsdagen får det nya priset,
 - gamla perioder räknas alltid med de priser som gällde då, även om priset har ändrats senare,
-- ett pris som läggs in i efterhand med ett tidigt giltig från-datum slår igenom direkt på alla order från det datumet, även i gamla perioder (stängda månader skyddas av databasen, inte av beräkningen),
+- ett pris som läggs in i efterhand med ett tidigt giltig från-datum slår igenom direkt på alla order från det datumet, även i gamla perioder (stängda månader skyddas av databasen, inte av beräkningen; appen stänger månaden när dess sista avräkning betalas eller bokföringen markeras som skickad, se avsnitt 31),
 - prishistoriken visar varje pris med "giltig till" = dagen före nästa pris.
 
 **Exempel: prisändring mitt i perioden.** Titel A kostar 20,00 kr från 1 sep. och 25,00 kr från 16 okt. Automat 1 står i butik 1 hela oktober, avtal med provision 10 % och hyra 62,00 kr/månad, ingen moms och ingen kortavgift.
@@ -446,10 +450,10 @@ Beräkningarna kontrolleras automatiskt (`npm test`, `npm run test:domain:tz`):
 - **Tidszon:** samma beräkningar ger identiska resultat när servern går i UTC, Europe/Stockholm och Asia/Shanghai.
 - **Ordning:** resultatet beror inte på i vilken ordning orderna läses in.
 
-## 12. Det som inte ingår (i version 1.3.0)
+## 12. Det som inte ingår (i version 1.4.0)
 
 - Moms på hyra och provision (butikens faktura) räknas inte. Försäljningens moms: utan VMB som standard; med VMB när "VMB i bokföringen" är på (avsnitt 5 och Bokföringen); den ingående momsen på övriga kostnader hanteras i bokföringen.
-- Kortavgiften räknas på alla order oavsett betalsätt (den är 0 i dag). Vinstdelningen använder samma modellerade avgift, inte de verkliga avgifterna från utbetalningsfilerna.
+- Kortavgiften räknas på alla order oavsett betalsätt, med satsen som gällde orderns dag. Vinstdelningen använder samma modellerade avgift, inte de verkliga avgifterna från utbetalningsfilerna.
 - Svinn, lagerjusteringar och frakt ingår inte i inköpet; inköp = inköpspris × antal sålda pack.
 - Avskrivningar och investeringar ingår inte i vinsten i lönsamhetsvyerna, bara i enhetsekonomin.
 
@@ -457,6 +461,7 @@ Beräkningarna kontrolleras automatiskt (`npm test`, `npm run test:domain:tz`):
 
 | Version | Ändring                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.4.0   | En regel för placeringar: en automats första placering gäller från automatens första försäljning också i butiksrapporten, avräkningen och bokföringen (förut bara i panelen), se avsnitt 2. Kortavgiften gäller från ett datum i stället för alla datum. Bokföringsunderlagets SIE bokför återbetalningar. Siffrorna ändras bara för automater med försäljning före sin första placering och för organisationer som daterat en ändrad kortavgift.                                                                |
 | 1.3.0   | Allt räknas utan VMB som standard; knapp för att slå på. Vyknappen "Med VMB" (standard av): på drar VMB-momsen, samlad per kalendermånad med underskott som förs vidare inom perioden, som egen post från vår vinst i alla vyer, vattenfallet och nyckeltalen (avsnitt 5). Avtalets val "Dra av VMB-moms före delning" (standard av, även befintliga avtal). Bokföringens knapp "VMB i bokföringen" (standard av). En gemensam uträkning för Bokföringen, butiksavräkningen och vår vinst (`src/domain/vmb.ts`). |
 | 1.2.0   | Vinstdelning: avtal med underlaget `profit_after_costs` ger butiken en andel av vinsten efter VMB-moms, inköp och kortavgifter, per butik och månad (avsnitt 4). Förlusthantering `zero` (standard) eller `proportional`. Provision på försäljningen räknas som förut.                                                                                                                                                                                                                                           |
 | 1.1.0   | Hyran på order utan inköpspris dras från vinsten som ej fördelad hyra (tidigare låg den utanför vinsten, så att en saknad inköpspris kunde göra vinsten bättre). Totalen ändras bara när det finns order utan pris i butiker med hyra.                                                                                                                                                                                                                                                                           |
@@ -979,3 +984,35 @@ En produkt "tjänar för lite" när marginalen **före butikernas andel** är un
 "Höj till X kr" är det lägsta priset över dagens, i hela kronor som slutar på 5 eller 9, där marginalen når målet (inköp 220 kr och mål 25 % ger 295 kr). Titlar utan köp på 30 dagar eller utan inköpspris får inget råd. Lönsamhet visar listan och Att göra en enda punkt ("2 produkter tjänar för lite", `price-advice`); båda räknar på hela organisationen i dag, oavsett sidans period och filter. Det är bara ett råd: priset ändras i automatens system.
 
 Har automaterna olika pris säger raden var det låga priset finns och när det senast såldes där ("Säljs för 249 kr i BL-002 (senast 14 okt)"). En automat som inte har sålt titeln sedan priset höjdes har kvar sitt gamla pris i rådet tills den säljer igen eller köpet är äldre än 30 dagar; raden visar då vilken automat det gäller.
+
+## 31. Stängda månader, betalt mot dagens uträkning och äldre avräkningar
+
+### Månaden stängs av appen (`src/server/periods`)
+
+- En månad stängs när den är klar: när **sista avräkningen** för månaden markeras som betald (alla butiker som hade en automat har en avräkning, minst en är betald och ingen med ett belopp är obetald), eller när **bokföringsmånaden markeras som skickad**. Den innevarande månaden stängs aldrig.
+- I en stängd månad stoppar databasen (BL004) ändringar av inköpspriser, avtal, placeringar, lager, återbetalningar, fasta kostnader, testköp och kortavgift. Beskedet står på enkel svenska: "Oktober 2026 är stängd. Inköpspriset kan inte ändras där. Ägaren kan öppna månaden igen under Butiker → Utbetalning."
+- **Awish-synken och sena order fungerar som förut:** en order som kommer in till en stängd månad sparas och flaggas (`orders.late_in_closed_period`). Den ändrar månadens belopp med dagens underlag, och syns då som en skillnad mot det som betalades (nedan). Försäljningshändelser i lagret stoppas inte.
+- **Ångra** betald eller skickad öppnar månaden igen om appen stängde den och inget annat håller den stängd (betalda avräkningar eller skickad bokföring). Bara ägaren öppnar: för en admin ligger månaden kvar stängd.
+- **Öppna månaden igen** (Butiker → Utbetalning, bara ägaren) kräver en anledning, som sparas på stängningen (`period_closes.reopened_reason`) och i ändringsloggen. **Stäng månaden** (ägare och admin) stänger den igen efter rättelsen.
+
+### Betalt mot rapporten mot dagens uträkning (`src/server/settlements`)
+
+För en betald avräkning jämförs tre belopp:
+
+| Belopp           | Var det kommer ifrån                                                                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Betalt           | Avräkningens låsta belopp, eller rapportens belopp när ägaren betalade det (`paid_amount_ore`)                          |
+| Rapporten        | `compensation.totalOre` i den senast godkända butiksrapporten för samma butik och hela månaden                          |
+| Dagens uträkning | Månadens avräkning räknad nu med dagens priser, order, avtal och placeringar (samma uträkning som en obetald avräkning) |
+
+- **Skillnad = dagens uträkning − betalt − det som redan lagts som rättelse.** 0 = inget att göra.
+- Skillnaden visas på Butiker → Utbetalning, i Att göra ("Betald avräkning skiljer sig från dagens uträkning") och i den dagliga kontrollen (varning under Avräkningar). Att göra läser det belopp som det nattliga jobbet sparat (`live_amount_ore`); sidan Utbetalning räknar när den öppnas.
+- **Lägg på nästa avräkning** lägger skillnaden som en egen rad, "Rättelse för oktober 2026: Betalt 8 388,08 kr, rätt belopp 9 178,28 kr", på butikens närmast följande obetalda avräkning. Raden ingår i beloppet, står i avräkningens PDF och syns i butiksportalen. Inget läggs till av sig självt. Det betalda beloppet ändras aldrig. Rättelsen kan tas bort så länge avräkningen den ligger på är obetald.
+- **Markera som betald** när rapporten butiken fick säger ett annat belopp än dagens uträkning: appen frågar "Vilket belopp har du betalat?". Väljer ägaren rapportens belopp står skillnaden kvar och kan läggas på nästa avräkning.
+- Butikens andel i bokföringen räknas som förut ur försäljningen, inte ur avräkningarna, så en rättelse bokförs inte två gånger: den hör till månaden den rättar.
+
+**Exempel (Sega gubben, oktober 2026).** Betalt 8 388,08 kr. Godkänd rapport 8 072,18 kr. Inköpspriser för oktober rättades efter betalningen, och dagens uträkning ger 9 178,28 kr. Skillnad 9 178,28 − 8 388,08 = 790,20 kr till butiken, som läggs som en rad på novemberavräkningen.
+
+### Avräkningar för äldre månader
+
+Avräkningar skapas (jobbet och knappen på Utbetalning) för förra månaden **och för varje äldre avslutad månad där en butik sålde men saknar avräkning**, också när månaden är stängd (en månad kan stängas av att bokföringen skickas medan en butik saknar avräkning; butiken ska ha sina pengar ändå, och avräkningen ändrar inget i månaden). Bara månader från och med organisationens första avräkningsmånad räknas: det som såldes innan appen började avräkna har betalats utanför appen. De äldre månaderna står på Utbetalning och i Att göra. Förut skapades och listades bara förra månaden: en butik vars avräkning inte gick att räkna i tid (saknat inköpspris under vinstdelning) eller vars automat kopplades i efterhand föll bort när månaden bytte.

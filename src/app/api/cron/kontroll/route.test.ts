@@ -9,7 +9,12 @@ const run = vi.fn(async (_db: unknown) => ({
   ],
 }));
 vi.mock("@/server/self-check/job", () => ({ runScheduledSelfChecks: run }));
-vi.mock("@/db/client", () => ({ getServiceDb: () => ({}) }));
+vi.mock("@/db/client", () => ({
+  getServiceDb: () => ({}),
+  freshServiceDb: async () => ({}),
+}));
+const watch = vi.fn(async () => ({ raised: 0, resolved: 0 }));
+vi.mock("@/server/monitoring/watch", () => ({ syncWatchAlertsForAll: watch }));
 vi.mock("@/server/monitoring/cron-monitor", () => ({
   CRON_JOBS: { kontroll: { slug: "binderlab-kontroll" } },
   withCronMonitor: async (_job: unknown, fn: () => Promise<unknown>) => fn(),

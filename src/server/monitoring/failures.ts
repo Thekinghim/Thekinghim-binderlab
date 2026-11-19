@@ -281,9 +281,76 @@ export async function recordDraftsOutcome(
 // Schemalagda jobb
 // ---------------------------------------------------------------------------
 
-const JOB_LABEL: Record<string, string> = {
-  larm: "Larmjobbet",
-  rapporter: "Jobbet för månadsutkast",
+/** Utfallet för en organisation i jobbet som skapar och räknar om butikernas avräkningar. */
+export interface SettlementRunOutcome {
+  readonly organizationId: string;
+  readonly errors: readonly { readonly storeId: string; readonly message: string }[];
+}
+
+/**
+ * Avräkningsjobbet (i /api/cron/rapporter den 1:a och /api/cron/larm varje dygn): en
+ * organisation där någon butik inte gick att räkna, eller där hela körningen föll, får
+ * larmet 'job:avrakningar'. En körning utan fel stänger det. Förr skrevs felen bara i
+ * serverloggen, och ägaren fick veta först när butiken saknade sin avräkning. Kastar inte.
+ */
+export async function recordSettlementRuns(
+  deps: MonitoringDeps,
+  runs: readonly SettlementRunOutcome[],
+): Promise<{ failed: number }> {
+  let failed = 0;
+  for (const run of runs) {
+    const n = run.errors.length;
+    if (n > 0) failed += 1;
+    const first = run.errors[0]?.message ?? "";
+    // Hela körningen föll (ingen butik angiven) är kritiskt; enskilda butiker en varning.
+    const whole = run.errors.some((e) => e.storeId === "");
+    await recordJobOutcome(deps, {
+      organizationId: run.organizationId,
+      job: "avrakningar",
+      error:
+        n === 0
+          ? null
+          : new Error(
+              whole
+                ? first
+                : `${n} ${n === 1 ? "butik" : "butiker"} kunde inte räknas. ${errorText(first)}`,
+            ),
+      severity: whole ? "critical" : "warning",
+    });
+  }
+  return { failed };
+}
+
+/** Vad jobbet heter, vad som inte händer när det misslyckas och var det åtgärdas. */
+const JOB_INFO: Record<string, { label: string; consequence: string; link: string }> = {
+  larm: {
+    label: "Larmjobbet",
+    consequence: "Larm om automater, lager och importer uppdateras inte förrän jobbet lyckas.",
+    link: "/drift",
+  },
+  rapporter: {
+    label: "Jobbet för månadsutkast",
+    consequence: "Månadens rapportutkast skapas inte förrän jobbet lyckas.",
+    link: "/rapporter",
+  },
+  kontroll: {
+    label: "Den dagliga kontrollen",
+    consequence:
+      "Siffrorna har inte kontrollerats i dag. Kör kontrollen själv under Inställningar → Kontroll.",
+    link: "/installningar/kontroll",
+  },
+  avrakningar: {
+    label: "Jobbet för butikernas avräkningar",
+    consequence:
+      "Månadens avräkningar har inte skapats eller räknats om. Öppna Butiker → Utbetalning och skapa dem där.",
+    link: "/butiker?vy=utbetalning",
+  },
+  kampanjer: {
+    label: "Jobbet som startar kampanjer",
+    consequence:
+      "En kampanj som skulle ha startat har inte skickats till Awish. Öppna Kampanjer och starta den där.",
+    link: "/kampanjer",
+  },
 };
 
 export interface JobOutcomeInput {
@@ -292,6 +359,8 @@ export interface JobOutcomeInput {
   readonly job: string;
   /** Felet, eller null när jobbet lyckades. */
   readonly error: unknown;
+  /** Larmets allvar. Standard: kritiskt (jobbet gick inte alls). */
+  readonly severity?: "critical" | "warning";
 }
 
 /** Ett schemalagt jobb för en organisation: larm vid fel, stäng när det lyckas. */
@@ -309,8 +378,10 @@ export async function recordJobOutcome(
     );
     return { ...NOTHING, resolved };
   }
-  const label = JOB_LABEL[input.job] ?? `Jobbet ${input.job}`;
-  const reason = errorText(input.error);
+  const info = JOB_INFO[input.job];
+  const label = info?.label ?? `Jobbet ${input.job}`;
+  // Felet kan sluta med punkt: ingen dubbel punkt i larmets text.
+  const reason = errorText(input.error).replace(/[.!\s]+$/, "");
   const capture = deps.capture ?? captureToSentry;
   const sentryId = await safely(
     "Sentry (jobb)",
@@ -335,11 +406,11 @@ export async function recordJobOutcome(
         organizationId: input.organizationId,
         kind: "job_failed",
         key,
-        severity: "critical",
+        severity: input.severity ?? "critical",
         title: `${label} misslyckades`,
-        detail: `Det schemalagda jobbet kunde inte köras för organisationen. Fel: ${reason}. Larm om automater, lager och importer uppdateras inte förrän jobbet lyckas.`,
+        detail: `Det schemalagda jobbet kunde inte köras för organisationen. Fel: ${reason}. ${info?.consequence ?? "Det körs igen vid nästa tillfälle."}`,
         rule: "Larm när ett schemalagt jobb misslyckas. Stängs när jobbet lyckas.",
-        link: "/drift",
+        link: info?.link ?? "/drift",
         now: deps.now,
       }),
     null,

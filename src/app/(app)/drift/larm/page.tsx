@@ -12,6 +12,7 @@ import { requireRoute } from "@/server/data/core";
 import { withUserDb } from "@/server/session";
 import { loadWeeklyPref } from "@/server/weekly/prefs";
 
+import { channelReach, reachAside } from "../_lib/channel-reach";
 import { formatWhen, plural } from "../_lib/display";
 import { loadAlertSettings } from "../_lib/load";
 import { NoticesCard } from "./notices-card";
@@ -97,8 +98,8 @@ export default async function AlertSettingsPage() {
     {
       value: "email" as const,
       label: "E-post",
-      hint: !ch.email.configured
-        ? "Inte konfigurerad i den här miljön."
+      hint: !ch.email.canSend
+        ? "Inte påslagen. Binderlab kan inte skicka e-post än."
         : ch.email.kind === "outbox"
           ? `Lokalt läge till ${ctx.user.email}.`
           : `Till ${ctx.user.email}.`,
@@ -112,6 +113,13 @@ export default async function AlertSettingsPage() {
     },
   ];
   const activeKinds = sub.kinds === null ? allowed.length : sub.kinds.length;
+  // Kanalerna som faktiskt når personen: push kräver en påslagen enhet, e-post en leverantör.
+  const reach = channelReach({
+    channels: sub.channels,
+    devices: settings.devices.filter((d) => !d.disabledAt).length,
+    hasPhone: sub.phone !== null,
+    works: { email: ch.email.canSend, push: ch.push.configured, sms: ch.sms.configured },
+  });
   const devices: DeviceRow[] = settings.devices.map((d) => ({
     id: d.id,
     endpoint: d.endpoint,
@@ -144,12 +152,16 @@ export default async function AlertSettingsPage() {
               ? "Du får inga notiser om larm ännu."
               : !sub.active
                 ? "Notiserna är avstängda för dig."
-                : `Du får ${plural(activeKinds, "typ av larm", "typer av larm")}${sub.machineIds === null ? " för alla automater" : ` för ${plural(sub.machineIds.length, "automat", "automater")}`}.`
+                : reach.working.length === 0
+                  ? "Du får inga larm utanför appen just nu."
+                  : `Du får ${plural(activeKinds, "typ av larm", "typer av larm")}${sub.machineIds === null ? " för alla automater" : ` för ${plural(sub.machineIds.length, "automat", "automater")}`}.`
           }
           aside={
             !settings.saved
               ? "Slå på för att få veta när något händer."
-              : `Via ${sub.channels.map((c) => (c === "push" ? "push" : c === "email" ? "e-post" : "sms")).join(" och ")}${sub.quietStart ? `, tyst ${sub.quietStart}–${sub.quietEnd}` : ""}.`
+              : !sub.active
+                ? undefined
+                : reachAside(reach, sub.quietStart ? `${sub.quietStart}–${sub.quietEnd}` : null)
           }
         />
       </div>
@@ -232,6 +244,7 @@ export default async function AlertSettingsPage() {
                   <PushDevices
                     publicKey={ch.push.publicKey}
                     pushConfigured={ch.push.configured}
+                    emailWorks={ch.email.canSend}
                     devices={devices}
                   />
                 </section>

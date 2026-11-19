@@ -173,6 +173,10 @@ function TestPurchaseStatus({ detail, timeZone }: { detail: OrderDetail; timeZon
   );
 }
 
+/** Visas i stället för testköpsknappen när orderns månad är stängd. */
+export const MONTH_CLOSED_TEXT =
+  "Månaden är stängd. Testköp ändras inte där. Ägaren kan öppna månaden igen under Butiker → Utbetalning.";
+
 /**
  * Knappen för ägare och admin, längst ner i dialogen och i lugn stil: att markera en order
  * som testköp tar bort den ur all försäljning, så den kräver en bekräftelse. Ångra gör
@@ -364,7 +368,11 @@ export function OrderDetailView({
           ) : null}
         </Row>
       </Group>
-      {testPurchase ? (
+      {testPurchase && detail.monthClosed ? (
+        <p className="mt-6 border-t border-line pt-4 text-sm text-muted" data-month-closed>
+          {MONTH_CLOSED_TEXT}
+        </p>
+      ) : testPurchase ? (
         <TestPurchaseButton key={detail.id} detail={detail} testPurchase={testPurchase} />
       ) : null}
     </div>

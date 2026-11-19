@@ -112,26 +112,38 @@ export async function uploadPayoutFile(form: FormData): Promise<ActionResult<Pay
 }
 
 /**
- * "Ändra till 4,0 %": sätter kortavgiften till den som står i en sparad Nayax-rapport.
- * Satsen räknas på servern ur rapporten; ändringen görs av inställningarnas egen funktion
- * (samma kontroll av rollen, samma logg). Ägare och admin.
+ * "Ändra till 4,0 %": sätter kortavgiften till den som står i en sparad Nayax-rapport, från
+ * dagen `from` och framåt (null = all försäljning; utelämnad = första dagen som inte är
+ * låst). Försäljning före dagen behåller sin sats, och stängda månader ändras aldrig
+ * (databasen). Satsen räknas på servern ur rapporten; ändringen görs av inställningarnas
+ * egen funktion (samma kontroll av rollen, samma logg). Ägare och admin.
  */
 export async function applyStatementCardFee(
   raw: unknown,
-): Promise<ActionResult<{ cardFeeBp: number }>> {
+): Promise<ActionResult<{ cardFeeBp: number; from: string | null }>> {
   try {
     const viewer = await operator();
-    const { payoutId } = z.object({ payoutId: z.uuid() }).parse(raw);
+    const { payoutId, from } = z
+      .object({
+        payoutId: z.uuid(),
+        from: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Välj ett datum.")
+          .nullable()
+          .optional(),
+      })
+      .parse(raw);
     const { cardFeeBp, settings } = await statementCardFeeFor(viewer, payoutId);
     const result = await updateSettingsFor(viewer.user, {
       organizationId: viewer.organization.id,
       cardFeeBp,
+      ...(from === undefined ? {} : { cardFeeFrom: from }),
       vatRateBp: settings.vatRateBp,
       fiscalYearStartMonth: settings.fiscalYearStartMonth,
     });
     if (!result.ok) return { ok: false, error: result.error };
     revalidateAppData();
-    return { ok: true, data: { cardFeeBp } };
+    return { ok: true, data: { cardFeeBp, from: result.data?.cardFeeFrom ?? null } };
   } catch (error) {
     return failure(error);
   }

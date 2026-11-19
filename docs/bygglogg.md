@@ -354,3 +354,87 @@ En granskare läste steg 2 som revisorn och godtog två av fyra fall. Rättat:
   box, lång butiksadress).
 - Avvisat: inget. Inte gjort: butikens juridiska namn och org.nr (finns inte i appen), att räkna provisionen på
   beloppet utan VMB-moms (ändrar summor; avtalets ordalydelse är ägarens sak).
+
+## Pengar som inte kan driva (robusthet 1A)
+
+Efter granskningen av produktionen (Sega gubben, oktober: betalt 8 388,08 kr, godkända rapporter 8 072,18 och
+7 897,24 kr, dagens uträkning 9 178,28 kr). Sju punkter, en commit per punkt:
+
+- **Månaden stängs av appen.** `close_period`/`reopen_period` fanns men anropades aldrig. Nu stängs månaden när
+  sista avräkningen betalas eller bokföringen markeras som skickad (`src/server/periods`), ångra öppnar den, och
+  ägaren kan öppna med en anledning (`period_closes.reopened_reason`). Stängd månad visas på Utbetalning och där
+  priser, avtal, testköp och återbetalningar ändras. Alla sju vakterna prövas genom appens väg i
+  `test/db/manadsstangning.test.ts`. En sen order sparas och flaggas som förut.
+- **Kortavgiften gäller från ett datum** (`organization_settings.card_fee_history`). "Ändra till 4,0 %" frågar
+  först och säger från vilken dag. Ingen ny tabell: listan ligger på inställningsraden, så RLS, logg och export
+  är desamma. Äldre kod som bara skriver `card_fee_bp` tömmer listan (en sats för alla datum, som förut).
+- **Betalt mot rapporten mot dagens uträkning** på Utbetalning, med "Lägg på nästa avräkning" (en egen rad,
+  aldrig tyst), en fråga om vilket belopp som betalades när rapporten säger ett annat, en varning i den dagliga
+  kontrollen och punkten "Betald avräkning skiljer sig från dagens uträkning" i Att göra.
+- **Avräkningar för äldre månader** skapas och listas (förut bara förra månaden).
+- **En regel för placeringar:** första placeringen gäller från automatens första försäljning också i rapporten,
+  avräkningen och bokföringen. Beräkningsversion 1.4.0. `test/db/placering-en-regel.test.ts` är beviset.
+- **Signerat kontrakt:** ändrade villkor under Butiker varnar, kräver bekräftelse och märks på raden.
+- **Två bokföringsexporter:** underlagets SIE bokför nu återbetalningar som paketet, och båda filerna, LAS-MIG.txt
+  och sidorna säger vilken som ska importeras (paketet under Ekonomi → Bokföring).
+
+Vägval och det som är kvar:
+
+- Äldre månader räknas från organisationens **första avräkningsmånad**. Det som såldes innan appen började avräkna
+  har betalats utanför appen och dyker inte upp som obetalt.
+- Butiksportalens egna försäljningslistor (`portal_sales` med flera, SQL) läser placeringarna som de är sparade.
+  Avräkningen och rapporten som butiken ser där följer den nya regeln.
+- Jämförelsen mot rapporten gäller rapporter för **hela månaden**. En rapport med eget datum jämförs inte.
+- Skillnaden kan bara läggas på en avräkning som finns. Finns ingen obetald för butiken väntar punkten i Att göra
+  tills nästa skapas den 1:a.
+- Butiksportalen visar avräkningens belopp som betalt också när ägaren betalade rapportens belopp; skillnaden syns
+  för butiken först som rättelseraden på nästa avräkning.
+- Bokföringsunderlagets PDF och Excel har ingen egen rad för återbetalningar (bara SIE-filen bokför dem).
+- Momssatsen är fortfarande en sats för alla datum.
+- Vid driftsättningen stängs inga gamla månader i efterhand, och oktober för Sega gubben rättas inte av koden:
+  ägaren ser skillnaden på Utbetalning och lägger den på nästa avräkning.
+
+## Ägaren ska höra när något går sönder (robusthet 1B)
+
+Efter granskningen av produktionen: 0 larmprenumerationer, 0 telefoner och 0 utskick medan larmen räknade
+"aviserat 10 gånger"; den dagliga kontrollen hade aldrig körts enligt schemat; en synk som inte hämtade något
+sparades som lyckad. Sju punkter, en commit per punkt:
+
+- **Larmen når någon.** Ägare och admin får en prenumeration med medlemskapet (trigger och ifyllnad i
+  `20261220110000_larm_standardprenumeration.sql`), och larmjobbet använder samma standard för den som saknar rad.
+  Vakten (`src/analytics/watch`, `src/server/monitoring/watch.ts`) visar "Ingen får larm just nu" på Hem och Drift.
+  Under ett larm står utskick som gått fram, inte räknade aviseringar.
+- **Kontrollen körs, och det hörs när den inte gör det.** Fler tillfällen (varje timme 03:52–09:52 UTC) och en
+  andra schemaläggare (larmjobbet på Vercel Cron), en kontroll av databasanslutningen först i varje cron-route,
+  tidsgränser som alltid sparar en körning, svaren från pg_cron-anropen i `private.cron_calls`, och raden
+  "Kontrollen har inte körts sedan …". Orsaken står i `docs/operations.md` (Vakten): trolig, inte bevisad.
+- **Synken säger som det är.** En körning utan lästa order är ett fel; tre i rad eller 30 minuter larmar
+  kritiskt; Hem visar datans ålder per automat.
+- **E-post utan leverantör** sägs rakt ut (`mailCanSend`), och inget står som skickat med e-post.
+- **Order att hantera** (återbetald i Awish efter importen, betald men oläslig) blir punkter som står kvar
+  (`order_attention`, `src/server/awish/order-attention.ts`).
+- **Fyll på** säger vad Awish inte tog emot, och automaten väntar så att saldot inte sänks.
+- **Avräknings- och kampanjstegen** larmar (`job:avrakningar`, `job:kampanjer`).
+
+Vägval och det som är kvar:
+
+- Standardprenumerationen är **push och e-post**, samma som sidan alltid har visat. Bara e-post hade stängt av
+  felanmälans push för en ägare som har en telefon registrerad men ingen sparad rad (där betyder "rad utan push"
+  ett nej). Följden: en ägare med en telefon påslagen får också veckosammanfattningen, som följer Notiser i
+  mobilen, om hen inte har valt bort den.
+- Läsare och påfyllare får ingen rad av sig själv. Notiser säger "Du får inga notiser om larm ännu." tills de
+  sparar.
+- "Ingen får larm just nu" visas i produktionen direkt efter driftsättningen och står kvar tills en ägare har
+  slagit på notiser i telefonen (eller en e-postleverantör är inställd). Det är meningen.
+- Orsaken till att kontrollen inte kördes är en slutsats av det som gick att läsa (frågestatistiken), inte ett
+  avläst felsvar. Läs `private.cron_calls` morgonen efter driftsättningen.
+- Vakten larmar inte om bokföringsjobbet, AI-jobbet eller veckosammanfattningen (deras svar loggas i
+  `private.cron_calls`, men ingen rad eller larm läser dem än).
+- En återbetalning som görs senare än 24 timmar efter köpet syns inte: synken läser bara om det senaste dygnets
+  order. Fönstret är inte ändrat.
+- Fyll på spärrar inte Klar när antalet är fler än facket rymmer eller mystery-facket inte är tomt: beskedet
+  kommer efteråt. Raden på automaten ("Awish fick inte antalen …") har samma text som vid ett vanligt fel.
+- Regeln `import_failed` ("Ingen hämtning från Awish på …") finns kvar som varning bredvid vaktens kritiska larm:
+  två larm om samma sak när hämtningen står still i över en timme.
+- Inte sett i en webbläsare mot produktionen. Lokalt: Hem (1 280 och 390 px), Drift, Notiser, Att göra och det
+  förifyllda ärendet i Inkorg, med provdata.

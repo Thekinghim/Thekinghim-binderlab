@@ -10,6 +10,7 @@
  * Utan CRON_SECRET svarar routen 503 och gör ingenting.
  */
 
+import { freshServiceDb } from "@/db/client";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runBokforingForAll } from "@/server/bokforing/stored";
 import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
@@ -33,6 +34,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!cronAuthorized(request.headers.get("authorization"), secret)) {
     return json({ error: "Obehörig." }, 401);
   }
+  // En anslutning som dött medan funktionen låg fryst byts ut (se freshServiceDb).
+  await freshServiceDb();
   const renderPdf = pdfStatus().configured
     ? (html: string) => getPdfRenderer().renderHtml(html)
     : null;

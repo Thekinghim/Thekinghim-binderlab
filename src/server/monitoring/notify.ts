@@ -17,6 +17,8 @@ import { routeNotifications, type AlertNotification } from "@/analytics/alerts";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 
+import { ALERT_KINDS } from "@/server/alerts/subscriptions";
+
 import type { SystemAlertInput } from "./system-alerts";
 
 /**
@@ -41,7 +43,21 @@ export async function notifySystemAlert(
     const rows = (await loadSubscriptions(tx, input.organizationId)).filter(
       (r) => !options.roles || (r.role !== undefined && options.roles.includes(r.role)),
     );
-    const subs = allowedSubscriptions(rows).map((sub) => ({ ...sub, timeZone: org.timezone }));
+    // Systemlarm som inte går att välja under Notiser (misslyckat jobb, misslyckad rapport)
+    // går till ägare och admin även när de har valt enskilda typer: valet kan aldrig ha
+    // varit ett nej till dem, och det är larmen om att appen själv har slutat fungera.
+    const selectable = ALERT_KINDS.includes(input.kind);
+    const operators = new Set(
+      rows.filter((r) => r.role === "owner" || r.role === "admin").map((r) => r.userId),
+    );
+    const subs = allowedSubscriptions(rows).map((sub) => ({
+      ...sub,
+      kinds:
+        !selectable && sub.kinds !== "all" && operators.has(sub.userId)
+          ? [...sub.kinds, input.kind]
+          : sub.kinds,
+      timeZone: org.timezone,
+    }));
     const notification: AlertNotification = {
       incidentId: alertId,
       key: input.key,

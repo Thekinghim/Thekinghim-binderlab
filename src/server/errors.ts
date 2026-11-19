@@ -6,6 +6,8 @@
  * allmänt meddelande, så att interna detaljer aldrig visas.
  */
 
+import { closedMonthMessage } from "@/server/periods/model";
+
 export interface PgErrorInfo {
   code: string;
   message: string;
@@ -44,6 +46,8 @@ export function dbErrorMessage(error: unknown, fallback = "Något gick fel. För
     return fallback;
   }
   // BL132: teamlåset i Enkel vy (20261117000000_enkel_vy_teamlas.sql), också på svenska.
+  // BL004: stängd månad, på enkel svenska med var ägaren öppnar den.
+  if (pg.code === "BL004" && pg.message) return closedMonthMessage(pg.message);
   if ((/^BL0\d\d$/.test(pg.code) || pg.code === "BL132") && pg.message) {
     return pg.message;
   }

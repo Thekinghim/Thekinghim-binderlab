@@ -1309,6 +1309,32 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [c.idsA.store_settlements],
   },
+  // Skillnaden på en betald avräkning läggs på nästa, och rättelsen kan tas bort
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "carrySettlementDifference",
+    allowed: OP,
+    args: (c) => [c.idsA.store_settlements, 100],
+  },
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "removeSettlementCorrection",
+    allowed: OP,
+    args: (c) => [c.idsA.store_settlements, c.idsA.store_settlements],
+  },
+  // Stängda månader: bara ägaren öppnar, ägare och admin stänger
+  {
+    module: "@/app/(app)/_manad/actions",
+    name: "reopenMonth",
+    allowed: ["owner"],
+    args: () => ["2024-12", "Rödteam"],
+  },
+  {
+    module: "@/app/(app)/_manad/actions",
+    name: "closeMonth",
+    allowed: OP,
+    args: () => ["2025-01"],
+  },
   // Signering på plats: engångslänk till avtalets PDF (bara ägare och admin)
   {
     module: "@/app/(app)/avtal/actions",

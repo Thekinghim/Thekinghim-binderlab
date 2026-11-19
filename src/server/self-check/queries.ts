@@ -354,6 +354,49 @@ export async function queryUnpaidClosed(
   }));
 }
 
+export interface PaidSettlement {
+  readonly id: string;
+  readonly storeId: string;
+  readonly storeName: string;
+  readonly month: string;
+  /** Det som betalades (rapportens belopp när ägaren valde det). */
+  readonly paidOre: number;
+  readonly correctedOre: number;
+}
+
+/** Betalda avräkningar från och med månaden `since` ('ÅÅÅÅ-MM-DD'). */
+export async function queryPaidSince(
+  db: Db,
+  orgId: string,
+  since: string,
+): Promise<PaidSettlement[]> {
+  const list = await rows<{
+    id: string;
+    store_id: string;
+    store_name: string;
+    month: string;
+    paid_ore: number | string;
+    corrected_ore: number | string;
+  }>(
+    db,
+    sql`select s.id, s.store_id, st.name as store_name, to_char(s.month, 'YYYY-MM-DD') as month,
+               coalesce(s.paid_amount_ore, s.amount_ore) as paid_ore, s.corrected_ore
+        from public.store_settlements s
+        join public.stores st on st.organization_id = s.organization_id and st.id = s.store_id
+        where s.organization_id = ${orgId}::uuid and s.paid_on is not null
+          and s.month >= ${since}::date
+        order by s.month, st.name`,
+  );
+  return list.map((r) => ({
+    id: r.id,
+    storeId: r.store_id,
+    storeName: r.store_name,
+    month: r.month,
+    paidOre: Number(r.paid_ore),
+    correctedOre: Number(r.corrected_ore),
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // 6. Datahygien
 // ---------------------------------------------------------------------------

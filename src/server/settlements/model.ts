@@ -83,6 +83,131 @@ export function parseStatement(value: unknown): SettlementStatement | null {
   return parsed.success ? (parsed.data as SettlementStatement) : null;
 }
 
+// ---------------------------------------------------------------------------
+// Betalt mot rapporten mot dagens uträkning, och rättelser
+// ---------------------------------------------------------------------------
+
+/**
+ * En rättelse som ligger på en avräkning: skillnaden mellan det som betalades för en
+ * tidigare månad och vad den månaden blir med dagens underlag. Ägaren lägger dit den med
+ * ett klick; den står som en egen rad i uträkningen och ingår i beloppet.
+ */
+export interface SettlementCorrection {
+  /** Den betalda avräkningen som rättas. */
+  readonly sourceId: string;
+  readonly month: IsoMonth;
+  /** Skillnaden (plus = butiken ska ha mer). */
+  readonly amountOre: number;
+  readonly paidOre: number;
+  readonly liveOre: number;
+  /** ISO-tid. */
+  readonly at: string;
+  readonly by: string | null;
+}
+
+const correctionSchema = z.object({
+  sourceId: z.string().uuid(),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  amountOre: z.number().int(),
+  paidOre: z.number().int(),
+  liveOre: z.number().int(),
+  at: z.string(),
+  by: z.string().nullable(),
+});
+
+/** Läser sparade rättelser (store_settlements.corrections); ogiltiga rader hoppas över. */
+export function parseCorrections(value: unknown): SettlementCorrection[] {
+  if (!Array.isArray(value)) return [];
+  const out: SettlementCorrection[] = [];
+  for (const e of value) {
+    const parsed = correctionSchema.safeParse(e);
+    if (parsed.success) out.push(parsed.data as SettlementCorrection);
+  }
+  return out;
+}
+
+/** Rättelsen som en rad i uträkningen: "Rättelse för oktober 2026". */
+export function correctionStep(c: SettlementCorrection): SettlementStep {
+  return {
+    label: `Rättelse för ${monthText(c.month)}`,
+    calculation: `Betalt ${krText(c.paidOre)}, rätt belopp ${krText(c.liveOre)}`,
+    amountOre: c.amountOre,
+  };
+}
+
+/** Uträkningen med rättelserna som egna rader sist, och summan med dem. */
+export function withCorrections(
+  statement: SettlementStatement,
+  corrections: readonly SettlementCorrection[],
+): SettlementStatement {
+  if (corrections.length === 0) return statement;
+  return {
+    ...statement,
+    steps: [...statement.steps, ...corrections.map(correctionStep)],
+    totalOre: statement.totalOre + correctionsTotal(corrections),
+  };
+}
+
+export function correctionsTotal(corrections: readonly SettlementCorrection[]): number {
+  return corrections.reduce((n, c) => n + c.amountOre, 0);
+}
+
+/**
+ * Skillnaden som återstår för en betald avräkning: dagens uträkning − betalt − det som
+ * redan lagts som rättelse på en senare avräkning. 0 = inget att göra.
+ */
+export function paidDifference(row: {
+  paidOre: number;
+  liveOre: number;
+  correctedOre: number;
+}): number {
+  return row.liveOre - row.paidOre - row.correctedOre;
+}
+
+/** "+790,20 kr" / "−12,00 kr" (plus = butiken ska ha mer). */
+export function signedKr(ore: number): string {
+  return `${ore < 0 ? "−" : "+"}${krText(Math.abs(ore))}`;
+}
+
+/**
+ * Raden under en betald avräkning när beloppen skiljer sig, viktigast först:
+ * "Betalt 8 388,08 kr. Rapporten butiken fick: 8 072,18 kr. Dagens uträkning: 9 178,28 kr."
+ * null när allt stämmer.
+ */
+export function paidCompareLine(row: {
+  paidOre: number;
+  reportOre: number | null;
+  liveOre: number | null;
+  correctedOre: number;
+  /** Rättelser som ligger på avräkningen (ingår i betalt och i dagens uträkning). */
+  correctionsOre?: number;
+}): string | null {
+  const reportPay = row.reportOre === null ? null : row.reportOre + (row.correctionsOre ?? 0);
+  const reportDiffers = reportPay !== null && reportPay !== row.paidOre;
+  const liveDiffers = row.liveOre !== null && row.liveOre - row.correctedOre !== row.paidOre;
+  if (!reportDiffers && !liveDiffers) return null;
+  const parts = [`Betalt ${krText(row.paidOre)}.`];
+  if (row.reportOre !== null) parts.push(`Rapporten butiken fick: ${krText(row.reportOre)}.`);
+  if (row.liveOre !== null) parts.push(`Dagens uträkning: ${krText(row.liveOre)}.`);
+  return parts.join(" ");
+}
+
+/** "Butiken ska ha 790,20 kr till." / "Butiken har fått 12,00 kr för mycket." */
+export function paidDifferenceLine(differenceOre: number): string {
+  return differenceOre > 0
+    ? `Butiken ska ha ${krText(differenceOre)} till.`
+    : `Butiken har fått ${krText(-differenceOre)} för mycket.`;
+}
+
+/**
+ * Frågan när en avräkning markeras som betald och rapporten butiken fick säger ett annat
+ * belopp: "Rapporten butiken fick säger 8 072,18 kr. Dagens uträkning säger 8 388,08 kr.
+ * Vilket belopp har du betalat?"
+ */
+export function paidWhichQuestion(reportOre: number, liveOre: number): string {
+  return `Rapporten butiken fick säger ${krText(reportOre)}. Dagens uträkning säger ${krText(liveOre)}. Vilket belopp har du betalat?`;
+}
+
 export type SettlementState = "unpaid" | "owed" | "paid" | "nothing";
 
 /**

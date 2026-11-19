@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { noAgreementLine, settlementIdleHeadline } from "./settlement-headline";
+import {
+  exactKr,
+  missingLines,
+  noAgreementLine,
+  settlementIdleHeadline,
+} from "./settlement-headline";
 
 describe("settlementIdleHeadline (Utbetalning utan något att betala)", () => {
   const base = { blocked: 0, failed: 0, missing: 0, monthLabel: "oktober 2026" };
@@ -35,5 +40,40 @@ describe("noAgreementLine (butik utan avtal i avräkningsmånaden)", () => {
     expect(plain(noAgreementLine({ storeName: "Hörnan", days: 1, whole: false }))).toBe(
       "Hörnan: inget avtal 1 dag – 0 % de dagarna.",
     );
+  });
+});
+
+describe("missingLines (rutan Saknas, också äldre månader)", () => {
+  it("förra månaden som förut", () => {
+    expect(missingLines([{ storeName: "Sega gubben", month: "2026-10" }], "2026-10")).toEqual([
+      "Sega gubben: oktober 2026 saknar avräkning.",
+    ]);
+  });
+
+  it("en äldre månad står först och säger att den är försenad", () => {
+    expect(
+      missingLines(
+        [
+          { storeName: "A", month: "2026-10" },
+          { storeName: "B", month: "2026-10" },
+          { storeName: "Sega gubben", month: "2026-08" },
+        ],
+        "2026-10",
+      ),
+    ).toEqual([
+      "Sega gubben: augusti 2026 saknar avräkning. Den skulle redan ha varit betald.",
+      "2 butiker saknar avräkning för oktober 2026.",
+    ]);
+  });
+});
+
+describe("exactKr (betalningar och rättelser)", () => {
+  it("visar öre när beloppet inte är jämna kronor, så att rättelsen stämmer med raden", () => {
+    expect(exactKr(-4_552).replace(/ /g, " ")).toBe("−45,52 kr");
+    expect(exactKr(4_552).replace(/ /g, " ")).toBe("45,52 kr");
+    expect(exactKr(150_000).replace(/ /g, " ")).toBe("1 500 kr");
+  });
+  it("två belopp som skiljer sig med öre ser aldrig lika ut", () => {
+    expect(exactKr(807_218)).not.toBe(exactKr(807_240));
   });
 });

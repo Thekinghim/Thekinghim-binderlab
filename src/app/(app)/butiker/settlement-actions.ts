@@ -18,9 +18,14 @@ import {
   revalidateSettlementData,
 } from "@/server/data/core";
 import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
+import { monthLong } from "@/server/periods/model";
+import { undoOutcomeText } from "@/server/periods/service";
 import {
+  carryDifferenceFor,
   ensureSettlementsFor,
   markSettlementPaidFor,
+  PaidAmountQuestion,
+  removeCorrectionFor,
   recomputeSettlementFor,
   SettlementError,
   undoSettlementPaidFor,
@@ -54,34 +59,113 @@ async function operator() {
 /**
  * Markera som betald (datum ÅÅÅÅ-MM-DD). `expectedOre` är beloppet som ägaren såg: har det
  * ändrats sedan dess betalas inget, och hen får se det nya beloppet först.
+ *
+ * Säger rapporten butiken fick ett annat belopp betalas inget förrän ägaren valt vilket
+ * belopp som betalades (`paidChoice`): svaret har då `ask` med båda beloppen.
  */
 export async function markSettlementPaid(
   id: unknown,
   paidOn: unknown,
   expectedOre?: unknown,
-): Promise<SettlementActionResult<{ storeName: string; amountOre: number }>> {
+  paidChoice?: unknown,
+): Promise<
+  | SettlementActionResult<{
+      storeName: string;
+      amountOre: number;
+      /** Beloppet som betalades (rapportens när ägaren valde det). */
+      paidOre: number;
+      /** Dagens uträkning − betalt (0 = inget återstår). */
+      differenceOre: number;
+      /** "Oktober 2026 är stängd." när betalningen stängde månaden, annars null. */
+      closedText: string | null;
+    }>
+  | { ok: false; error: string; ask: { reportOre: number; liveOre: number } }
+> {
   try {
     const viewer = await operator();
-    const data = await markSettlementPaidFor(
+    const paid = await markSettlementPaidFor(
       viewer,
       idSchema.parse(id),
       dateSchema.parse(paidOn),
       expectedOre === undefined || expectedOre === null ? null : amountSchema.parse(expectedOre),
+      new Date(),
+      paidChoice === "live" || paidChoice === "report" ? paidChoice : null,
     );
     await revalidateSettlementData();
-    return { ok: true, data };
+    const name = monthLong(paid.month);
+    return {
+      ok: true,
+      data: {
+        storeName: paid.storeName,
+        amountOre: paid.amountOre,
+        paidOre: paid.paidOre,
+        differenceOre: paid.differenceOre,
+        closedText: paid.monthClosed
+          ? `${name.charAt(0).toUpperCase()}${name.slice(1)} är stängd. Inget ändras där nu.`
+          : null,
+      },
+    };
+  } catch (error) {
+    if (error instanceof PaidAmountQuestion) {
+      return {
+        ok: false,
+        error: error.message,
+        ask: { reportOre: error.reportOre, liveOre: error.liveOre },
+      };
+    }
+    return failure(error);
+  }
+}
+
+/**
+ * "Lägg på nästa avräkning": skillnaden på en betald avräkning blir en egen rad på butikens
+ * nästa obetalda. `expectedOre` är skillnaden ägaren såg.
+ */
+export async function carrySettlementDifference(
+  id: unknown,
+  expectedOre: unknown,
+): Promise<SettlementActionResult<{ storeName: string; amountOre: number; targetMonth: string }>> {
+  try {
+    const viewer = await operator();
+    const data = await carryDifferenceFor(
+      viewer,
+      idSchema.parse(id),
+      amountSchema.parse(expectedOre),
+    );
+    await revalidateSettlementData();
+    return { ok: true, data: { ...data, targetMonth: monthLong(data.targetMonth) } };
   } catch (error) {
     return failure(error);
   }
 }
 
-/** Ångra "betald". */
-export async function undoSettlementPaid(id: unknown): Promise<SettlementActionResult> {
+/** "Ta bort rättelsen" på en obetald avräkning. */
+export async function removeSettlementCorrection(
+  targetId: unknown,
+  sourceId: unknown,
+): Promise<SettlementActionResult> {
   try {
     const viewer = await operator();
-    await undoSettlementPaidFor(viewer, idSchema.parse(id));
+    await removeCorrectionFor(viewer, idSchema.parse(targetId), idSchema.parse(sourceId));
     await revalidateSettlementData();
     return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Ångra "betald". `periodText` säger vad som hände med månaden när den var stängd
+ * ("Oktober 2026 är öppen igen." eller "… är fortfarande stängd. Bara ägaren kan öppna den.").
+ */
+export async function undoSettlementPaid(
+  id: unknown,
+): Promise<SettlementActionResult<{ periodText: string | null }>> {
+  try {
+    const viewer = await operator();
+    const undo = await undoSettlementPaidFor(viewer, idSchema.parse(id));
+    await revalidateSettlementData();
+    return { ok: true, data: { periodText: undoOutcomeText(undo.period, undo.month) } };
   } catch (error) {
     return failure(error);
   }

@@ -7,6 +7,7 @@ const run = vi.fn(async (_deps: unknown) => ({
   ],
 }));
 vi.mock("@/server/bokforing/stored", () => ({ runBokforingForAll: run }));
+vi.mock("@/db/client", () => ({ freshServiceDb: async () => ({}) }));
 vi.mock("@/server/pdf/render", () => ({
   pdfStatus: () => ({ configured: false }),
   getPdfRenderer: () => ({ renderHtml: async () => new Uint8Array() }),

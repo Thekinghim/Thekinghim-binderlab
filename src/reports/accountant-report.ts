@@ -158,6 +158,12 @@ export interface AccountantReport {
   readonly unpricedTitles: readonly AccountantUnpricedTitle[];
   readonly reconciliation: Reconciliation;
   /**
+   * Återbetalningar till kunder i perioden, inkl. moms (alla butiker). SIE-filen bokför dem
+   * som en egen verifikation, så att försäljningen blir densamma som i månadspaketet under
+   * Ekonomi → Bokföring. Saknas i rapporter skapade före det = 0.
+   */
+  readonly refundsOre?: number;
+  /**
    * Order utan inköpspris i butiker med vinstdelning. > 0 betyder att butikernas andel är
    * räknad på en del av försäljningen och inte ska bokföras förrän priserna finns.
    * Saknas i rapporter från före beräkningsversion 1.2.0.
@@ -395,6 +401,9 @@ export function buildAccountantReport(sources: ReportSources, period: Period): A
       sources.settings.vatRateBp,
       profitSplitUnpricedOrders,
     ),
+    refundsOre: (sources.refunds ?? [])
+      .filter((r) => r.refundedOn >= period.start && r.refundedOn <= period.end)
+      .reduce((n, r) => n + r.amountOre, 0),
     totals,
     days,
     stores,

@@ -12,7 +12,7 @@
  * aldrig ur anropet. Utan CRON_SECRET svarar routen 503 och gör ingenting.
  */
 
-import { getServiceDb } from "@/db/client";
+import { freshServiceDb, getServiceDb } from "@/db/client";
 import { getServerEnv } from "@/lib/env";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runOfflineAlerts } from "@/server/awish/offline-alerts";
@@ -20,6 +20,7 @@ import { resolveAppBaseUrl } from "@/server/request-info";
 import { syncAllAwishSources } from "@/server/awish/sync";
 import { publishAllDueCampaigns } from "@/server/campaigns/service";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
+import { syncWatchAlertsForAll } from "@/server/monitoring/watch";
 import { invalidateUnpaidSettlements } from "@/server/settlements/cache";
 
 export const runtime = "nodejs";
@@ -62,11 +63,17 @@ export async function GET(request: Request): Promise<Response> {
   }
   const allFailed = (r: Awaited<ReturnType<typeof syncAllAwishSources>>) =>
     r.sources.length > 0 && r.sources.every((s) => !s.ok);
+  const db = await freshServiceDb();
   const result = await withCronMonitor(
     CRON_JOBS.awish,
-    () => syncAllAwishSources({ db: getServiceDb() }),
+    () => syncAllAwishSources({ db }),
     (r) => !allFailed(r),
   );
+  // Vakten, före utskicken nedan så att ett nytt larm går ut i samma körning: hämtningen
+  // som har stannat eller misslyckats flera gånger i rad, kontrollen eller larmjobbet som
+  // inte har kört, och när ingen nås av larmen. Det här jobbet går var femte minut och
+  // larmar därför om de jobb som bara går en gång per dygn. Ett fel här stoppar inget.
+  const watch = await syncWatchAlertsForAll(db);
   // Offlinelarmet: larmjobbet körs bara en gång om dagen, så organisationer med en automat
   // som är offline (eller ett öppet offlinelarm) utvärderas här direkt efter synken
   // (src/server/awish/offline-alerts.ts). Ett fel här stoppar inte synken.
@@ -107,6 +114,7 @@ export async function GET(request: Request): Promise<Response> {
         historyDone: s.historyDone,
       })),
       campaigns: campaigns ? { shown: campaigns.shown, failed: campaigns.failed } : null,
+      watch,
       offlineAlerts: offline
         ? {
             organizations: offline.organizations.length,

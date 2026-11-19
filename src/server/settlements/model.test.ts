@@ -5,6 +5,12 @@ import { buildStoreReport } from "@/reports/store-report";
 import { agreement, ord, sources } from "@/reports/testing/fixtures";
 
 import {
+  correctionStep,
+  paidCompareLine,
+  paidDifference,
+  paidDifferenceLine,
+  paidWhichQuestion,
+  parseCorrections,
   parseStatement,
   payoutDueDate,
   settlementFileName,
@@ -12,6 +18,7 @@ import {
   settlementMonthFor,
   settlementState,
   statementFromReport,
+  withCorrections,
 } from "./model";
 
 const plain = (s: string) => s.replace(/ /g, " ");
@@ -117,5 +124,64 @@ describe("settlementHtml", () => {
     expect(html).not.toContain("<img");
     expect(html).not.toMatch(/https?:\/\//);
     expect(plain(html)).toContain("Inget att betala ut");
+  });
+});
+
+describe("betalt mot rapporten mot dagens uträkning", () => {
+  // Sega gubben, oktober: betalt 8 388,08 kr, rapporten 8 072,18 kr, i dag 9 178,28 kr.
+  const sega = { paidOre: 838_808, reportOre: 807_218, liveOre: 917_828, correctedOre: 0 };
+
+  it("skillnaden är dagens uträkning minus betalt minus redan rättat", () => {
+    expect(paidDifference(sega)).toBe(79_020);
+    expect(paidDifference({ ...sega, correctedOre: 79_020 })).toBe(0);
+  });
+
+  it("raden säger alla tre beloppen, betalt först", () => {
+    expect(plain(paidCompareLine(sega)!)).toBe(
+      "Betalt 8 388,08 kr. Rapporten butiken fick: 8 072,18 kr. Dagens uträkning: 9 178,28 kr.",
+    );
+    expect(plain(paidDifferenceLine(79_020))).toBe("Butiken ska ha 790,20 kr till.");
+    expect(plain(paidDifferenceLine(-1_200))).toBe("Butiken har fått 12 kr för mycket.");
+  });
+
+  it("ingen rad när betalt, rapport och dagens uträkning är samma", () => {
+    expect(
+      paidCompareLine({ paidOre: 5_000, reportOre: 5_000, liveOre: 5_000, correctedOre: 0 }),
+    ).toBeNull();
+    expect(
+      paidCompareLine({ paidOre: 5_000, reportOre: null, liveOre: 5_000, correctedOre: 0 }),
+    ).toBeNull();
+    // En skillnad som redan ligger som rättelse räknas inte en gång till.
+    expect(
+      paidCompareLine({ paidOre: 5_000, reportOre: null, liveOre: 6_000, correctedOre: 1_000 }),
+    ).toBeNull();
+  });
+
+  it("frågan när rapporten säger ett annat belopp", () => {
+    expect(plain(paidWhichQuestion(807_218, 838_808))).toBe(
+      "Rapporten butiken fick säger 8 072,18 kr. Dagens uträkning säger 8 388,08 kr. Vilket belopp har du betalat?",
+    );
+  });
+
+  it("en rättelse blir en egen rad och ingår i summan", () => {
+    const c = {
+      sourceId: "11111111-1111-4111-8111-111111111111",
+      month: "2026-10" as const,
+      amountOre: 79_020,
+      paidOre: 838_808,
+      liveOre: 917_828,
+      at: "2026-11-19T10:00:00.000Z",
+      by: null,
+    };
+    const step = correctionStep(c);
+    expect(step.label).toBe("Rättelse för oktober 2026");
+    expect(plain(step.calculation)).toBe("Betalt 8 388,08 kr, rätt belopp 9 178,28 kr");
+    const statement = statementFromReport(report());
+    const corrected = withCorrections(statement, [c]);
+    expect(corrected.totalOre).toBe(statement.totalOre + 79_020);
+    expect(corrected.steps).toHaveLength(statement.steps.length + 1);
+    expect(parseStatement(corrected)).not.toBeNull();
+    expect(parseCorrections([c, { sourceId: "x" }, null])).toEqual([c]);
+    expect(withCorrections(statement, [])).toBe(statement);
   });
 });

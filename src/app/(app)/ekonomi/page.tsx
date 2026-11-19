@@ -281,6 +281,7 @@ export default async function EkonomiPage({
                   payoutIds={payoutIds}
                   statements={statements}
                   cardFeeBp={rec.cardFeeBp}
+                  cardFeeFrom={rec.cardFeeDefaultFrom}
                 />
               ) : askFirst ? null : (
                 // Mobil: uppladdningen står direkt under, så knappen hit behövs inte.
@@ -315,6 +316,7 @@ export default async function EkonomiPage({
                       <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
                         <PayoutUpload
                           today={ctx.today}
+                          cardFeeFrom={rec.cardFeeDefaultFrom}
                           shownPayoutIds={result ? rec.payouts.map((x) => x.id) : []}
                           columns={{
                             payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),

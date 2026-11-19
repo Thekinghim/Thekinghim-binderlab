@@ -48,10 +48,13 @@ function detectSupport(): Support {
 export function PushDevices({
   publicKey,
   pushConfigured,
+  emailWorks,
   devices,
 }: {
   publicKey: string | null;
   pushConfigured: boolean;
+  /** Binderlab kan skicka e-post härifrån (annars syns larmen bara i appen). */
+  emailWorks: boolean;
   devices: DeviceRow[];
 }) {
   const router = useRouter();
@@ -146,7 +149,11 @@ export function PushDevices({
           kind="not-configured"
           compact
           message="Push är inte konfigurerad i den här miljön."
-          detail="Larm går med e-post tills push är påslaget."
+          detail={
+            emailWorks
+              ? "Larm går med e-post tills push är påslaget."
+              : "Larmen syns bara här i appen tills push är påslaget."
+          }
           diagnostics={[
             { label: "Saknas", value: "VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT" },
           ]}

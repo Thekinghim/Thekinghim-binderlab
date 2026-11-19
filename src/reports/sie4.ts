@@ -18,6 +18,15 @@
  *      debet  provision (store_commission), debet hyra (rent), kredit skuld (store_payable)
  * 3. Inköpsvärde för sålda pack, daterad periodens sista dag (bara när kontot `cogs` finns):
  *      debet  varuinköp (cogs), kredit lager (inventory)
+ * 4. Återbetalningar till kunder i perioden, daterad periodens sista dag (när de är > 0):
+ *      debet  försäljning (sales)      belopp exkl. moms
+ *      debet  utgående moms (vat_out)  moms (bara när momsen > 0)
+ *      kredit avräkning (settlement)   belopp inkl. moms
+ *    Så blir försäljningen i filen = försäljning − återbetalningar, samma som i
+ *    månadspaketet under Ekonomi → Bokföring.
+ *
+ * Filen är ett UNDERLAG. Den som ska importeras i bokföringen är månadspaketet under
+ * Ekonomi → Bokföring. Det står i filens #PROSA (SIE_NOT_FOR_IMPORT).
  *
  * Belopp skrivs i kronor med punkt som decimaltecken och två decimaler ("4900.00",
  * "-4900.00"), uträknade med heltal från öre.
@@ -28,6 +37,7 @@ import {
   DomainError,
   assertIsoDate,
   assertPeriod,
+  vatOfGross,
   type IsoDate,
   type Period,
 } from "@/domain";
@@ -203,6 +213,17 @@ export function sie4Verifications(
     }
   }
 
+  const refundsOre = report.refundsOre ?? 0;
+  if (refundsOre > 0) {
+    const vat = vatOfGross(refundsOre, report.vatRateBp);
+    const rows: Sie4Transaction[] = [
+      { account: need("sales", "återbetalningar"), amountOre: refundsOre - vat },
+      { account: need("settlement", "återbetalningar"), amountOre: -refundsOre },
+    ];
+    if (vat !== 0) rows.push({ account: need("vat_out", "moms"), amountOre: vat });
+    add(end, `Återbetalningar till kunder ${periodText(report.period)}`, rows);
+  }
+
   if (accounts.has("cogs") && report.totals.costOre !== 0) {
     add(end, `Inköpsvärde sålda pack ${periodText(report.period)}`, [
       { account: need("cogs", "inköp"), amountOre: report.totals.costOre },
@@ -211,6 +232,14 @@ export function sie4Verifications(
   }
   return out;
 }
+
+/**
+ * Står överst i filen (#PROSA) och bredvid filen i appen: den här filen är ett underlag.
+ * Bokhållaren importerar månadspaketet under Ekonomi → Bokföring; importeras båda bokförs
+ * samma försäljning två gånger.
+ */
+export const SIE_NOT_FOR_IMPORT =
+  "Underlag, inte för import. Importera månadspaketet från Ekonomi - Bokföring i Binderlab. Importeras båda bokförs försäljningen två gånger.";
 
 /** SIE 4-filen som text (före kodning). Raderna avslutas med CR LF. */
 export function buildSie4Text(report: AccountantReport, options: Sie4Options): string {
@@ -227,6 +256,7 @@ export function buildSie4Text(report: AccountantReport, options: Sie4Options): s
     "#SIETYP 4",
     `#PROGRAM ${sieString("Binderlab")} ${sieString(CALC_VERSION)}`,
     `#GEN ${sieDate(options.generatedOn ?? report.period.end)}`,
+    `#PROSA ${sieString(SIE_NOT_FOR_IMPORT)}`,
     `#FNAMN ${sieString(options.company)}`,
   ];
   if (options.orgNumber) lines.push(`#ORGNR ${options.orgNumber.replace(/\s/g, "")}`);

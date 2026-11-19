@@ -233,7 +233,12 @@ describe("aviseringar för systemlarm", () => {
     await asUser(owner, (tx) =>
       tx
         .insert(s.alertSubscriptions)
-        .values({ organizationId: orgId, userId: owner.id, channels: ["email"] }),
+        .values({ organizationId: orgId, userId: owner.id, channels: ["email"] })
+        // Ägaren har redan raden (skapas med medlemskapet).
+        .onConflictDoUpdate({
+          target: [s.alertSubscriptions.organizationId, s.alertSubscriptions.userId],
+          set: { channels: ["email"], active: true },
+        }),
     );
     // Påfyllaren "prenumererar på allt" (skrivet förbi RLS, som annars bara tillåter
     // automat- och lagerlarm): systemlarmen ska ändå inte nå henne.

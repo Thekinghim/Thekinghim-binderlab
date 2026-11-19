@@ -186,6 +186,9 @@ export default async function SettingsPage() {
               vatRateBp={settings.vatRateBp}
               fiscalYearStartMonth={settings.fiscalYearStartMonth}
               vatLimitOre={settings.vatLimitOre}
+              cardFeeDefaultFrom={data.cardFeeDefaultFrom}
+              cardFeeRates={data.settings?.cardFeeRates ?? []}
+              today={ctx.today}
             />
           </div>
         </MobileFold>

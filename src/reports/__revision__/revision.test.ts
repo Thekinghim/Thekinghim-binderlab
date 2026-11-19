@@ -571,6 +571,8 @@ describe("Revision scenario 4: bokföringsrapport med moms, avgifter, luckor och
       "#SIETYP 4",
       `#PROGRAM "Binderlab" "${CALC_VERSION}"`,
       "#GEN 20261130",
+      // Underlaget säger själv att det inte ska importeras (paketet under Ekonomi importeras).
+      '#PROSA "Underlag, inte för import. Importera månadspaketet från Ekonomi - Bokföring i Binderlab. Importeras båda bokförs försäljningen två gånger."',
       '#FNAMN "Binderlab Göteborg AB"',
       "#ORGNR 559000-1234",
       "#RAR 0 20260101 20261231",

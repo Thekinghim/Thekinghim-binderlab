@@ -24,8 +24,8 @@ import {
 
 import { evidence, nameLookup } from "./common";
 import { urgencyOf, type TodoContext } from "./context";
-import { day, kr, monthName, plural } from "./text";
-import type { SettlementRef, TodoItem, TodoLevel } from "./types";
+import { day, kr, krAuto, monthName, plural } from "./text";
+import type { PaidDriftRef, SettlementRef, TodoItem, TodoLevel } from "./types";
 
 /** Dag i månaden efter avräkningsmånaden då butiken ska ha fått pengarna (samma som avtalet). */
 export const SETTLEMENT_DUE_DAY = 15;
@@ -164,4 +164,88 @@ export function missingSettlementTodos(ctx: TodoContext): TodoItem[] {
       link: settlementLink(month),
     },
   ];
+}
+
+/**
+ * En betald avräkning skiljer sig från dagens uträkning (ett inköpspris rättades efter
+ * betalningen, en order kom in sent, eller ägaren betalade rapportens belopp). En punkt per
+ * avräkning; den försvinner när skillnaden lagts på nästa avräkning (Utbetalning).
+ *
+ *   nivå        = 'now' när butiken ska ha mer, annars 'soon'
+ *   nyckel      = 'settlement-drift:<avräkning>', fingerprint = skillnaden
+ */
+export function paidDriftTodos(ctx: TodoContext): TodoItem[] {
+  const drift = (ctx.input.paidDrift ?? []).filter((d) => d.differenceOre !== 0);
+  if (drift.length === 0) return [];
+  const storeName = nameLookup(ctx.input.stores ?? []);
+  return [...drift]
+    .sort((a, b) => Math.abs(b.differenceOre) - Math.abs(a.differenceOre) || (a.id < b.id ? -1 : 1))
+    .map((d: PaidDriftRef): TodoItem => {
+      const month = monthOf(d.month);
+      const level: TodoLevel = d.differenceOre > 0 ? "now" : "soon";
+      const diff =
+        d.differenceOre > 0
+          ? `Butiken ska ha ${krAuto(d.differenceOre)} till.`
+          : `Butiken har fått ${krAuto(-d.differenceOre)} för mycket.`;
+      return {
+        key: `settlement-drift:${d.id}`,
+        fingerprint: String(d.differenceOre),
+        kind: "settlement-drift",
+        level,
+        urgency: urgencyOf(level, null),
+        atStakeOre: null,
+        daysLeft: null,
+        title: "Betald avräkning skiljer sig från dagens uträkning",
+        detail: `${storeName(d.storeId)}, ${monthName(month)}: betalt ${krAuto(d.paidOre)}, dagens uträkning ${krAuto(d.liveOre)}. ${diff} Lägg skillnaden på nästa avräkning.`,
+        evidence: evidence({
+          rule: "Det som betalades för en månad ska vara månadens belopp med dagens underlag. En skillnad rättas som en egen rad på nästa avräkning.",
+          period: monthPeriod(month),
+          dates: [],
+          storeIds: [d.storeId],
+          figures: [
+            { key: "paidOre", label: "Betalt", value: d.paidOre, unit: "ore" },
+            { key: "liveOre", label: "Dagens uträkning", value: d.liveOre, unit: "ore" },
+            { key: "differenceOre", label: "Skillnad", value: d.differenceOre, unit: "ore" },
+          ],
+        }),
+        link: settlementLink(month),
+      };
+    });
+}
+
+/**
+ * Äldre avslutade månader där en butik sålde men aldrig fick någon avräkning (den gick
+ * inte att räkna i tid, eller automaten kopplades i efterhand). En punkt per månad, som
+ * "Skapa oktober-avräkningarna": knappen på Utbetalning skapar dem.
+ */
+export function olderMissingSettlementTodos(ctx: TodoContext): TodoItem[] {
+  const storeName = nameLookup(ctx.input.stores ?? []);
+  const out: TodoItem[] = [];
+  for (const missing of ctx.input.olderMissingSettlements ?? []) {
+    if (missing.storeIds.length === 0) continue;
+    const { month } = missing;
+    const due = settlementDue(month);
+    const names = [...missing.storeIds].map(storeName).sort((a, b) => a.localeCompare(b, "sv"));
+    const n = names.length;
+    out.push({
+      key: `settlement-create:${month}`,
+      fingerprint: String(n),
+      kind: "settlement-create",
+      level: "now",
+      urgency: urgencyOf("now", null),
+      atStakeOre: null,
+      daysLeft: daysBetween(ctx.today, due),
+      title: `Skapa ${monthName(month)}-avräkning${n === 1 ? "en" : "arna"}`,
+      detail: `${names.join(", ")} sålde i ${monthName(month)} men har ingen avräkning. Skulle ha betalats ${day(due)}.`,
+      evidence: evidence({
+        rule: "Varje butik som sålde under en månad får en avräkning, också när månaden inte kunde räknas i tid.",
+        period: monthPeriod(month),
+        dates: [due],
+        storeIds: missing.storeIds,
+        figures: [{ key: "stores", label: "Butiker utan avräkning", value: n, unit: "count" }],
+      }),
+      link: settlementLink(month),
+    });
+  }
+  return out;
 }

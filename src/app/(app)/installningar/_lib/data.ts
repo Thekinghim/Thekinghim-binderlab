@@ -22,7 +22,13 @@ import {
 } from "@/analytics/self-check";
 import type { Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
-import { isIsoDate, type IsoDate } from "@/domain";
+import {
+  cardFeeHistoryJson,
+  isIsoDate,
+  parseCardFeeHistory,
+  setCardFeeFrom,
+  type IsoDate,
+} from "@/domain";
 import {
   AuthorizationError,
   requireRoleFor,
@@ -32,6 +38,7 @@ import {
 import type { ActionResult } from "@/server/auth/flows";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 import { normalizeVatNumber, type ReportVatMode } from "@/reports/store-basis";
+import { firstOpenDayTx } from "@/server/periods/service";
 import {
   readCompanyDetails,
   readReportBasisSettings,
@@ -59,6 +66,8 @@ export interface SettingsPageData {
   readonly role: MemberRole;
   /** null om organisationen ännu inte har någon rad (standardvärdena gäller då). */
   readonly settings: SettingsRow | null;
+  /** Förvalt startdatum för en ändrad kortavgift (första dagen som inte är låst). null = allt. */
+  readonly cardFeeDefaultFrom: IsoDate | null;
   readonly shares: OwnerShareRow[];
   readonly accounts: LedgerAccountRow[];
   readonly events: SettingsAuditEvent[];
@@ -92,8 +101,8 @@ function json(value: unknown): Record<string, unknown> | null {
 async function querySettingsRow(tx: Tx, orgId: string): Promise<SettingsRow | null> {
   const r = Array.from(
     await tx.execute(
-      sql`select id, vat_rate_bp, card_fee_bp, fiscal_year_start_month, updated_at,
-                 vat_limit_ore, vat_ok_at
+      sql`select id, vat_rate_bp, card_fee_bp, card_fee_history, fiscal_year_start_month,
+                 updated_at, vat_limit_ore, vat_ok_at
           from public.organization_settings where organization_id = ${orgId}::uuid`,
     ),
   )[0] as Record<string, unknown> | undefined;
@@ -102,6 +111,7 @@ async function querySettingsRow(tx: Tx, orgId: string): Promise<SettingsRow | nu
         id: String(r.id),
         vatRateBp: Number(r.vat_rate_bp),
         cardFeeBp: Number(r.card_fee_bp),
+        cardFeeRates: parseCardFeeHistory(r.card_fee_history),
         fiscalYearStartMonth: Number(r.fiscal_year_start_month),
         updatedAt: iso(r.updated_at),
         vatLimitOre: Number(r.vat_limit_ore),
@@ -196,6 +206,7 @@ export async function loadSettingsPageFor(
     return {
       role,
       settings,
+      cardFeeDefaultFrom: await firstOpenDayTx(tx, organizationId),
       shares,
       accounts: (Array.from(accountResult) as Record<string, unknown>[]).map((r) => ({
         id: String(r.id),
@@ -235,6 +246,15 @@ async function authorize(
 const settingsInput = z.object({
   organizationId: z.uuid(),
   cardFeeBp: z.number().int().min(0).max(MAX_FEE_BP),
+  /**
+   * Första dagen den nya kortavgiften gäller (ÅÅÅÅ-MM-DD). null = alla datum. Utelämnad =
+   * första dagen som inte är låst (firstOpenDayTx). Används bara när kortavgiften ändras.
+   */
+  cardFeeFrom: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
   vatRateBp: z.number().int().min(0).max(MAX_VAT_BP),
   fiscalYearStartMonth: z.number().int().min(1).max(12),
   /** Momsgränsen vi varnar vid, i öre. Utelämnad = oförändrad. */
@@ -245,11 +265,15 @@ export type SettingsInput = z.input<typeof settingsInput>;
 
 /**
  * Sparar kortavgift, momssats, räkenskapsårets första månad och momsgränsen. Ägare och admin.
+ *
+ * En ändrad kortavgift gäller från `cardFeeFrom` och framåt (dagarna före behåller sin
+ * sats). Svaret säger från vilken dag (`cardFeeFrom`, null = alla datum). En ändring som
+ * skulle nå in i en stängd månad nekas av databasen (BL004).
  */
 export async function updateSettingsFor(
   user: SessionUser | null,
   raw: SettingsInput,
-): Promise<ActionResult<{ changed: boolean }>> {
+): Promise<ActionResult<{ changed: boolean; cardFeeFrom?: IsoDate | null }>> {
   const parsed = settingsInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: SETTINGS_MESSAGES.invalid };
   const input = parsed.data;
@@ -272,10 +296,43 @@ export async function updateSettingsFor(
       ) {
         return { ok: true, data: { changed: false } };
       }
+      const feeChanged = !current || current.cardFeeBp !== input.cardFeeBp;
+      let cardFeeFrom: IsoDate | null | undefined;
+      let history = current ? cardFeeHistoryJson(current.cardFeeRates) : [];
+      if (current && feeChanged) {
+        const today = String(
+          (
+            Array.from(
+              await tx.execute(
+                sql`select ((now() at time zone o.timezone)::date)::text as today
+                    from public.organizations o where o.id = ${input.organizationId}::uuid`,
+              ),
+            )[0] as { today: string }
+          ).today,
+        ) as IsoDate;
+        cardFeeFrom =
+          input.cardFeeFrom === undefined
+            ? await firstOpenDayTx(tx, input.organizationId)
+            : (input.cardFeeFrom as IsoDate | null);
+        if (cardFeeFrom !== null && !isIsoDate(cardFeeFrom)) {
+          return { ok: false, error: SETTINGS_MESSAGES.invalid };
+        }
+        if (cardFeeFrom !== null && cardFeeFrom > today) {
+          return { ok: false, error: "Kortavgiften kan inte börja gälla i framtiden." };
+        }
+        const rates = setCardFeeFrom(
+          { cardFeeBp: current.cardFeeBp, cardFeeRates: current.cardFeeRates },
+          cardFeeFrom,
+          input.cardFeeBp,
+        );
+        // En enda rad = en sats för alla datum: sparas som tom lista.
+        history = rates.length <= 1 ? [] : cardFeeHistoryJson(rates);
+      }
       if (current) {
         await tx.execute(
           sql`update public.organization_settings
               set card_fee_bp = ${input.cardFeeBp}, vat_rate_bp = ${input.vatRateBp},
+                  card_fee_history = ${JSON.stringify(history)}::jsonb,
                   fiscal_year_start_month = ${input.fiscalYearStartMonth},
                   vat_limit_ore = ${input.vatLimitOre ?? current.vatLimitOre}
               where organization_id = ${input.organizationId}::uuid`,
@@ -289,6 +346,7 @@ export async function updateSettingsFor(
                       ${input.vatLimitOre ?? DEFAULT_VAT_LIMIT_ORE})`,
         );
       }
+      if (cardFeeFrom !== undefined) return { ok: true, data: { changed: true, cardFeeFrom } };
       return { ok: true, data: { changed: true } };
     });
   } catch (error) {

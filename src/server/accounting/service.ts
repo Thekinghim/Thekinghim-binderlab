@@ -73,11 +73,12 @@ import {
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
 import { queryPeriodRefunds } from "@/server/data/core/queries";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
+import { firstOpenDayTx } from "@/server/periods/service";
 import {
   queryAgreements,
   queryMachines,
   queryOrders,
-  queryPlacements,
+  queryEffectivePlacements,
   queryPrices,
   querySettings,
   queryStores,
@@ -182,7 +183,7 @@ async function economicsSources(
   const [prices, agreements, placements, settings, refunds] = await Promise.all([
     queryPrices(tx, orgId),
     queryAgreements(tx, orgId),
-    queryPlacements(tx, orgId),
+    queryEffectivePlacements(tx, orgId),
     querySettings(tx, orgId),
     queryPeriodRefunds(tx, orgId, ALL_TIME),
   ]);
@@ -223,6 +224,8 @@ export interface ReconciliationView {
   readonly reviews: ReviewRecord[];
   readonly providerTimeZone: string | null;
   readonly cardFeeBp: number;
+  /** Förvalt startdatum för en ändrad kortavgift: första dagen som inte är låst (null = allt). */
+  readonly cardFeeDefaultFrom: IsoDate | null;
   readonly source: ReturnType<typeof payoutSourceStatus>;
   /** Order utan titel i perioden: de saknas i avstämningen (ska inte förekomma). */
   readonly ordersWithoutTitle: number;
@@ -354,9 +357,10 @@ export async function loadReconciliationFor(
 ): Promise<ReconciliationView> {
   const orgId = viewer.organization.id;
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {
-    const [rec, imports] = await Promise.all([
+    const [rec, imports, cardFeeDefaultFrom] = await Promise.all([
       reconcileIn(tx, orgId, period, viewer.organization.timezone),
       queryPayoutImports(tx, orgId),
+      firstOpenDayTx(tx, orgId),
     ]);
     return {
       period,
@@ -367,6 +371,7 @@ export async function loadReconciliationFor(
       reviews: rec.reviews,
       providerTimeZone: rec.providerTimeZone,
       cardFeeBp: rec.settings.cardFeeBp,
+      cardFeeDefaultFrom,
       source: payoutSourceStatus(),
       ordersWithoutTitle: rec.withoutTitle,
     };
@@ -1260,7 +1265,7 @@ async function buildBookkeeping(
     queryLedgerAccounts(tx, orgId),
     queryStores(tx, orgId),
     queryTitles(tx, orgId),
-    queryPlacements(tx, orgId),
+    queryEffectivePlacements(tx, orgId),
   ]);
   const fiscalYear = fiscalYearOf(month, sources.settings.fiscalYearStartMonth);
   const yearToDate = { start: fiscalYear.start, end: period.end };
@@ -1741,7 +1746,7 @@ export async function loadFixedCostsFor(
       economicsSources(tx, orgId),
       queryOrders(tx, orgId, period, NO_SCOPE),
       queryFixedCosts(tx, orgId),
-      queryPlacements(tx, orgId),
+      queryEffectivePlacements(tx, orgId),
     ]);
     const machines = await queryMachines(tx, orgId, placements, today);
     try {
@@ -2169,7 +2174,7 @@ export async function monthReportsIn(
     economicsSources(tx, orgId),
     queryStores(tx, orgId),
     queryTitles(tx, orgId),
-    queryPlacements(tx, orgId),
+    queryEffectivePlacements(tx, orgId),
     // Mottaget antal (högst beställt) × pris, per mottagningsdag. Även för en order med status
     // 'received' räknas bara det som faktiskt kom.
     tx.execute(sql`

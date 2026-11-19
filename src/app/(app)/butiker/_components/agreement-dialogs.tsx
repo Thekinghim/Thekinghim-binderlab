@@ -156,6 +156,9 @@ export function EditAgreementButton({
               ? { vmbBeforeSplit: data.get("vmbBeforeSplit") === "on" }
               : {}),
             confirmHistory: needsConfirm,
+            // Samma "Spara ändå" bekräftar också ändrade villkor i ett signerat kontrakt
+            // (varningen står i dialogen).
+            confirmSigned: needsConfirm,
           });
           if (!result.ok) {
             if (result.needsConfirm) setNeedsConfirm(true);

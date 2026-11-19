@@ -8,13 +8,38 @@ import type { WebPushResult } from "./web-service";
 /** Kort status om Awish-push, för Fyll på. */
 export interface AwishPushStatus {
   state: "off" | "sent" | "partial" | "error";
-  /** Vilket besked (för översättning i Fyll på): skickat, redan rätt, inte kopplad, fel. */
-  kind?: "sent" | "alreadyRight" | "notLinked" | "partial" | "error";
+  /**
+   * Vilket besked (för översättning i Fyll på): skickat, redan rätt, inte kopplad, fel,
+   * eller notSent = Awish tog inte emot allt (se `notSent`).
+   */
+  kind?: "sent" | "alreadyRight" | "notLinked" | "partial" | "notSent" | "error";
   /** Antal fack som skickades (kind "sent"). */
   slots?: number;
   message: string;
   /** Automater vars sändning inte gick fram (de väntar och försöks igen). */
   failedMachineIds?: string[];
+  /** Pack som Awish inte tog emot, per automat och titel (kind "notSent"). */
+  notSent?: NotSentLine[];
+}
+
+/** En rad i beskedet om vad Awish inte tog emot. */
+export interface NotSentLine {
+  readonly machine: string;
+  readonly titleName: string;
+  readonly left: number;
+  readonly reason: "capacity" | "mystery_not_empty";
+}
+
+/** "4 Mystery pack fick inte plats i BL-002" / "… skickades inte till BL-002: mystery-facket är inte tomt". */
+export function notSentText(l: NotSentLine): string {
+  return l.reason === "mystery_not_empty"
+    ? `${l.left} ${l.titleName} skickades inte till ${l.machine}: mystery-facket är inte tomt`
+    : `${l.left} ${l.titleName} fick inte plats i ${l.machine}`;
+}
+
+/** Hela beskedet på svenska. */
+export function notSentMessage(lines: readonly NotSentLine[]): string {
+  return `Sparat i Binderlab. Awish tog inte emot allt: ${lines.map(notSentText).join("; ")}. Räkna om facket i Awish, eller ångra de packen här.`;
 }
 
 /**
@@ -32,7 +57,10 @@ export function summariseAwishPush(
     // Push avstängd eller ingen inloggning: inget att visa i appen.
     return undefined;
   }
-  const failed = pushed.machines.filter((m) => m.status === "error").map((m) => m.machineId);
+  // Väntar gör både de som fick fel och de där Awish inte tog emot allt.
+  const failed = pushed.machines
+    .filter((m) => m.status === "error" || (m.notSent?.length ?? 0) > 0)
+    .map((m) => m.machineId);
   const own = about ? pushed.machines.filter((m) => about.includes(m.machineId)) : pushed.machines;
   const errors = own.filter((m) => m.status === "error");
   const noMachine = own.filter((m) => m.status === "no_awish_machine");
@@ -45,6 +73,25 @@ export function summariseAwishPush(
       // Felet kan sluta med punkt ("Försök igen om en stund."): ingen dubbel punkt. Samma
       // råd som rutan på automaten ("Appen försöker igen själv"), inte ett annat.
       message: `Sparat i Binderlab. Till Awish gick det inte: ${(errors[0]?.error ?? "okänt fel").trim().replace(/[.!\s]+$/, "")}. Appen försöker igen själv.`,
+      failedMachineIds: failed,
+    };
+  }
+  // Awish tog inte emot allt: säg vad, i stället för "Sparat och skickat".
+  const notSent: NotSentLine[] = own.flatMap((m) =>
+    (m.notSent ?? []).map((n) => ({
+      machine: m.machineCode?.trim() || "automaten",
+      titleName: n.titleName,
+      left: n.left,
+      reason: n.reason,
+    })),
+  );
+  if (notSent.length > 0) {
+    return {
+      state: "partial",
+      kind: "notSent",
+      slots,
+      message: notSentMessage(notSent),
+      notSent,
       failedMachineIds: failed,
     };
   }

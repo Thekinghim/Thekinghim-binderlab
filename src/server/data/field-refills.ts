@@ -10,6 +10,7 @@
  * i funktionen (ägare, admin, påfyllare); allt skrivs som användaren med RLS.
  */
 
+import { closedMonthMessage } from "@/server/periods/model";
 import "server-only";
 
 import { sql } from "drizzle-orm";
@@ -49,7 +50,8 @@ function pgMessage(error: unknown): string | null {
   };
   const code = e?.code ?? e?.cause?.code;
   const message = e?.cause?.message ?? e?.message;
-  if (code === "22023" || code === "42501" || code === "BL004" || code === "BL020") {
+  if (code === "BL004") return message ? closedMonthMessage(message) : null;
+  if (code === "22023" || code === "42501" || code === "BL020") {
     return message ?? null;
   }
   return null;

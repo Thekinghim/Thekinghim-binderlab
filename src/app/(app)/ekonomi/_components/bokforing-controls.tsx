@@ -111,7 +111,11 @@ export function SentToggle({ month, sent }: { month: string; sent: boolean }) {
           );
           if (res.ok) {
             router.refresh();
-            toast({ title: sent ? "Markeringen ångrad" : "Markerad som skickad", tone: "ok" });
+            toast({
+              title: sent ? "Markeringen ångrad" : "Markerad som skickad",
+              description: res.data.periodText ?? undefined,
+              tone: "ok",
+            });
           } else {
             toast({ title: "Inte ändrad", description: res.error, tone: "critical" });
           }

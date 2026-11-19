@@ -38,6 +38,28 @@ export function effectivePlacements(
   });
 }
 
+/**
+ * Samma regel med automaternas första försäljningsdag given (queryFirstSaleByMachine):
+ * en automats första placering gäller från automatens första försäljning. Det är
+ * placeringarna som avräkningen, butiksrapporten och bokföringen räknar med
+ * (queryEffectivePlacements i ./queries.ts), så att de ger butiken samma andel som panelen.
+ */
+export function placementsFromFirstSale<
+  T extends { readonly machineId: string; readonly from: IsoDate },
+>(placements: readonly T[], firstSale: ReadonlyMap<string, IsoDate>): T[] {
+  const first = new Map<string, T>();
+  for (const p of placements) {
+    const seen = first.get(p.machineId);
+    if (seen === undefined || p.from < seen.from) first.set(p.machineId, p);
+  }
+  return placements.map((p) => {
+    const sale = firstSale.get(p.machineId);
+    return first.get(p.machineId) === p && sale !== undefined && sale < p.from
+      ? { ...p, from: sale }
+      : p;
+  });
+}
+
 /** Första möjliga dag: en placering från den gäller alla tidigare dagar. */
 export const EARLIEST_DATE: IsoDate = "0001-01-01";
 

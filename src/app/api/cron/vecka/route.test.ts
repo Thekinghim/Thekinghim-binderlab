@@ -18,7 +18,10 @@ const run = vi.fn(async (_db: unknown) => ({
   ] as Record<string, unknown>[],
 }));
 vi.mock("@/server/weekly/job", () => ({ runWeeklySummaries: run }));
-vi.mock("@/db/client", () => ({ getServiceDb: () => ({}) }));
+vi.mock("@/db/client", () => ({
+  getServiceDb: () => ({}),
+  freshServiceDb: async () => ({}),
+}));
 vi.mock("@/server/monitoring/cron-monitor", () => ({
   CRON_JOBS: { vecka: { slug: "binderlab-vecka" } },
   withCronMonitor: async (_job: unknown, fn: () => Promise<unknown>) => fn(),

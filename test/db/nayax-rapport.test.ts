@@ -345,7 +345,8 @@ describe("kortavgiften", () => {
       vatRateBp: settings.vatRateBp,
       fiscalYearStartMonth: settings.fiscalYearStartMonth,
     });
-    expect(changed).toEqual({ ok: true, data: { changed: true } });
+    // Kortavgiften gäller från ett datum (här: inget är låst, alltså all försäljning).
+    expect(changed).toMatchObject({ ok: true, data: { changed: true } });
   });
 
   it("med 4,0 % stämmer utbetalningen på öret", async () => {

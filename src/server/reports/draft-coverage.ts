@@ -13,7 +13,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { getServiceDb, type Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { monthEnd, monthStart, type IsoMonth } from "@/domain";
-import { queryPlacements } from "@/server/data/core/queries";
+import { queryEffectivePlacements } from "@/server/data/core/queries";
 import { safely, type MonitoringDeps } from "@/server/monitoring/failures";
 import { resolveSystemAlert } from "@/server/monitoring/system-alerts";
 
@@ -32,7 +32,7 @@ export async function wantedDraftsTx(
   month: IsoMonth,
 ): Promise<WantedDraft[]> {
   const period = { start: monthStart(month), end: monthEnd(month) };
-  const placements = await queryPlacements(tx, orgId);
+  const placements = await queryEffectivePlacements(tx, orgId);
   return [
     ...storesPlacedIn(placements, period).map((storeId) => ({ type: "butik" as const, storeId })),
     { type: "bokforing", storeId: null },

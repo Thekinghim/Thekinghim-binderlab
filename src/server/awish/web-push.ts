@@ -19,7 +19,10 @@
  *  - Mystery packs (`mystery`): ett mystery-fack fylls bara på när det är tomt (oddsen gäller
  *    per omgång). Packen läggs bara i fack med 0 pack i Awish; ett fack som har pack kvar
  *    rörs inte. Finns inget tomt fack hålls påfyllningen tillbaka och titeln rapporteras i
- *    `mysteryHeldBack` (dagliga kontrollen varnar då i stället för att larma).
+ *    `mysteryHeldBack`.
+ *  - Det som inte fick plats rapporteras alltid (`notSent`): pack som facken inte rymmer,
+ *    eller mystery packs utan tomt fack. Anroparen säger det till den som fyllde på och låter
+ *    automaten vänta, så att packen inte försvinner ur saldot vid nästa läsning av facken.
  */
 
 import { comparableText } from "@/import/adapter";
@@ -45,12 +48,26 @@ export interface AwishProductUpdate {
   readonly titleName: string;
 }
 
+/** Pack som Binderlab har i automaten men som Awish inte tog emot. */
+export interface NotSent {
+  readonly titleName: string;
+  /** Antal pack som inte skickades. */
+  readonly left: number;
+  /**
+   * capacity = facken rymmer inte fler enligt Awish; mystery_not_empty = inget tomt
+   * mystery-fack (ett mystery-fack fylls bara när det är tomt).
+   */
+  readonly reason: "capacity" | "mystery_not_empty";
+}
+
 export interface PushPlan {
   readonly updates: AwishProductUpdate[];
   /** Titlar i Binderlab som inte har något fack i Awish. */
   readonly titlesWithoutSlot: string[];
   /** Mystery packs vars påfyllning inte skickades: inget tomt fack i Awish. */
   readonly mysteryHeldBack: string[];
+  /** Allt som inte fick plats i Awish, per titel. Tom = Awish har samma antal som Binderlab. */
+  readonly notSent: NotSent[];
 }
 
 function key(name: string): string {
@@ -82,6 +99,7 @@ export function planAwishPush(
   const updates: AwishProductUpdate[] = [];
   const titlesWithoutSlot: string[] = [];
   const mysteryHeldBack: string[] = [];
+  const notSent: NotSent[] = [];
 
   for (const want of wantByTitle) {
     const k = key(want.titleName);
@@ -122,7 +140,14 @@ export function planAwishPush(
           titleName: want.titleName,
         });
       }
-      if (toAdd > 0) mysteryHeldBack.push(want.titleName);
+      if (toAdd > 0) {
+        mysteryHeldBack.push(want.titleName);
+        notSent.push({
+          titleName: want.titleName,
+          left: toAdd,
+          reason: empty.length === 0 ? "mystery_not_empty" : "capacity",
+        });
+      }
       continue;
     }
 
@@ -148,7 +173,9 @@ export function planAwishPush(
         titleName: want.titleName,
       });
     }
+    // Facken rymmer inte allt (kapaciteten i Awish är lägre än det som lades i).
+    if (toAdd > 0) notSent.push({ titleName: want.titleName, left: toAdd, reason: "capacity" });
   }
 
-  return { updates, titlesWithoutSlot, mysteryHeldBack };
+  return { updates, titlesWithoutSlot, mysteryHeldBack, notSent };
 }

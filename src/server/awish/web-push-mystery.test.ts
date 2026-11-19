@@ -60,4 +60,40 @@ describe("planAwishPush: mystery packs", () => {
     );
     expect(plan.updates.map((u) => u.currentInventory)).toEqual([14]);
   });
+
+  it("säger hur många pack som inte fick plats, och varför", () => {
+    // Omgången är 14 men facket rymmer 10: fyra pack tar Awish inte emot.
+    const small = planAwishPush(
+      [{ titleName: "Mystery Pack Plus", quantity: 14, mystery: true }],
+      [slot({ id: 1, currentInventory: 0, capacity: 10 })],
+    );
+    expect(small.updates.map((u) => [u.productId, u.currentInventory])).toEqual([[1, 10]]);
+    expect(small.notSent).toEqual([
+      { titleName: "Mystery Pack Plus", left: 4, reason: "capacity" },
+    ]);
+    // Facket har tre kvar: inget skickas, och alla 14 står som inte skickade.
+    const notEmpty = planAwishPush(
+      [{ titleName: "Mystery Pack Plus", quantity: 17, mystery: true }],
+      [slot({ id: 1, currentInventory: 3, capacity: 20 })],
+    );
+    expect(notEmpty.updates).toEqual([]);
+    expect(notEmpty.notSent).toEqual([
+      { titleName: "Mystery Pack Plus", left: 14, reason: "mystery_not_empty" },
+    ]);
+  });
+
+  it("en vanlig titel som inte ryms rapporteras också (förr försvann resten tyst)", () => {
+    const plan = planAwishPush(
+      [{ titleName: "Surging Sparks", quantity: 12 }],
+      [slot({ id: 1, goodName: "Surging Sparks", currentInventory: 3, capacity: 8 })],
+    );
+    expect(plan.updates.map((u) => [u.productId, u.currentInventory])).toEqual([[1, 8]]);
+    expect(plan.notSent).toEqual([{ titleName: "Surging Sparks", left: 4, reason: "capacity" }]);
+    // Ryms allt: inget att säga.
+    const fits = planAwishPush(
+      [{ titleName: "Surging Sparks", quantity: 8 }],
+      [slot({ id: 1, goodName: "Surging Sparks", currentInventory: 3, capacity: 8 })],
+    );
+    expect(fits.notSent).toEqual([]);
+  });
 });

@@ -26,6 +26,10 @@ const FILES: Record<ArchiveRow["type"], { kind: string; label: string }[]> = {
   delagare: [{ kind: "pdf", label: "PDF" }],
 };
 
+/** Bokföringsunderlagets SIE är ett underlag: bokhållaren importerar månadspaketet. */
+export const UNDERLAG_TEXT =
+  "SIE-filen här är ett underlag, inte för import. Bokhållaren importerar månadspaketet under";
+
 const DELIVERY_STATUS = {
   queued: { tag: "neutral", label: "Köad" },
   sent: { tag: "ok", label: "Skickad" },
@@ -241,6 +245,14 @@ export function ReviewPanel({
             </a>
           ))}
         </div>
+        {report.type === "bokforing" ? (
+          <p className="text-sm text-muted sm:col-span-2" data-which-sie>
+            {UNDERLAG_TEXT}{" "}
+            <a href="/ekonomi?vy=bokforing" className="text-fg underline underline-offset-4">
+              Ekonomi → Bokföring
+            </a>
+          </p>
+        ) : null}
       </dl>
 
       <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">

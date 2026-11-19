@@ -5,6 +5,7 @@ import { decodeCp437, encodeCp437 } from "./cp437";
 import {
   buildSie4Text,
   exportSie4,
+  SIE_NOT_FOR_IMPORT,
   sie4Verifications,
   sieAmount,
   sieString,
@@ -100,12 +101,13 @@ describe("SIE 4-filen", () => {
   const lines = text.split("\r\n");
 
   it("huvud i rätt ordning och format", () => {
-    expect(lines.slice(0, 9)).toEqual([
+    expect(lines.slice(0, 10)).toEqual([
       "#FLAGGA 0",
       "#FORMAT PC8",
       "#SIETYP 4",
       expect.stringMatching(/^#PROGRAM "Binderlab" "\d+\.\d+\.\d+"$/),
       "#GEN 20261130",
+      `#PROSA "${SIE_NOT_FOR_IMPORT}"`,
       '#FNAMN "Binderlab Å Ä Ö AB"',
       "#ORGNR 559999-0000",
       "#RAR 0 20260101 20261231",
@@ -228,5 +230,75 @@ describe("CP437-kodning", () => {
     expect(buf.includes(Buffer.from("Försäljning", "utf8"))).toBe(false);
     expect(buf.every((b) => b !== 0xc3)).toBe(true); // ingen UTF-8
     expect(decodeCp437(buf)).toBe(buildSie4Text(report(), OPTIONS));
+  });
+});
+
+describe("återbetalningar och vilken fil som importeras", () => {
+  const withRefund = () =>
+    buildAccountantReport(
+      sources({
+        orders: [
+          ord("2026-11-01", { externalId: "1" }),
+          ord("2026-11-03", { externalId: "2", amountOre: 19_900 }),
+        ],
+        placements: [placement("m-1", "s-1", "2025-01-01", null)],
+        prices: [price("t-a", 2000, "2025-01-01")],
+        agreements: [agreement("s-1", "2025-01-01", null, { commissionBp: 1000 })],
+        // 199 kr tillbaka till en kund den 5:e, och en i december som inte hör hit.
+        refunds: [
+          { machineId: "m-1", refundedOn: "2026-11-05", amountOre: 19_900 },
+          { machineId: "m-1", refundedOn: "2026-12-02", amountOre: 4_900 },
+        ],
+      }),
+      NOV,
+    );
+
+  it("rapporten har periodens återbetalningar", () => {
+    expect(withRefund().refundsOre).toBe(19_900);
+    expect(report().refundsOre).toBe(0);
+  });
+
+  it("SIE-filen bokför återbetalningen, så försäljningen = försäljning − återbetalningar", () => {
+    const r = withRefund();
+    const vers = sie4Verifications(r, OPTIONS);
+    const refund = vers.find((v) => v.text.startsWith("Återbetalningar till kunder"))!;
+    expect(refund.date).toBe("2026-11-30");
+    expect(refund.transactions).toEqual([
+      { account: "3001", amountOre: 19_900 },
+      { account: "1580", amountOre: -19_900 },
+    ]);
+    // Kontot för försäljning över hela filen: kredit försäljning, debet återbetalning.
+    const sales = vers
+      .flatMap((v) => v.transactions)
+      .filter((x) => x.account === "3001")
+      .reduce((n, x) => n + x.amountOre, 0);
+    // Samma tal som månadspaketet bokför (netSales: försäljning − återbetalningar).
+    expect(-sales).toBe(r.totals.grossOre - 19_900);
+  });
+
+  it("med moms delas återbetalningen på försäljning och utgående moms", () => {
+    const r = { ...withRefund(), vatRateBp: 2500 };
+    const refund = sie4Verifications(r, OPTIONS).find((v) =>
+      v.text.startsWith("Återbetalningar till kunder"),
+    )!;
+    // 199,00 kr inkl. 25 % moms: 39,80 kr moms, 159,20 kr försäljning.
+    expect(refund.transactions).toEqual([
+      { account: "3001", amountOre: 15_920 },
+      { account: "1580", amountOre: -19_900 },
+      { account: "2611", amountOre: 3_980 },
+    ]);
+  });
+
+  it("utan återbetalningar är filen som förut (ingen ny verifikation)", () => {
+    expect(
+      sie4Verifications(report(), OPTIONS).some((v) => v.text.startsWith("Återbetalningar")),
+    ).toBe(false);
+  });
+
+  it("filen säger överst att den är ett underlag och inte ska importeras", () => {
+    const text = decodeCp437(exportSie4(withRefund(), OPTIONS));
+    expect(text).toContain(
+      '#PROSA "Underlag, inte för import. Importera månadspaketet från Ekonomi - Bokföring i Binderlab. Importeras båda bokförs försäljningen två gånger."',
+    );
   });
 });

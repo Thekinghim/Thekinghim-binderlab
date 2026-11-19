@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { computeTodos } from "./index";
-import { missingSettlementTodos, settlementDue, settlementTodos } from "./settlements";
+import {
+  missingSettlementTodos,
+  olderMissingSettlementTodos,
+  paidDriftTodos,
+  settlementDue,
+  settlementTodos,
+} from "./settlements";
 import { createTodoContext } from "./context";
 import type { TodoInput } from "./types";
 
@@ -152,5 +158,96 @@ describe("missingSettlementTodos (månaden är slut, avräkningarna saknas)", ()
       at("2026-11-03"),
     );
     expect(all.some((t) => t.kind === "settlement-create")).toBe(true);
+  });
+});
+
+describe("paidDriftTodos (betald avräkning skiljer sig från dagens uträkning)", () => {
+  const plain = (s: string) => s.replace(/\u00a0|\u202f/g, " ");
+
+  it("en punkt per avräkning, med betalt, dagens uträkning och skillnaden", () => {
+    const ctx = createTodoContext(
+      {
+        ...base,
+        paidDrift: [
+          {
+            id: "x",
+            storeId: "s1",
+            month: "2026-10-01",
+            paidOre: 838_808,
+            liveOre: 917_828,
+            differenceOre: 79_020,
+          },
+        ],
+      },
+      at("2026-11-19"),
+    );
+    const [t] = paidDriftTodos(ctx);
+    expect(t!.title).toBe("Betald avräkning skiljer sig från dagens uträkning");
+    expect(plain(t!.detail)).toBe(
+      "Kafé Ett, oktober: betalt 8 388,08 kr, dagens uträkning 9 178,28 kr. Butiken ska ha 790,20 kr till. Lägg skillnaden på nästa avräkning.",
+    );
+    expect(t).toMatchObject({
+      key: "settlement-drift:x",
+      kind: "settlement-drift",
+      level: "now",
+      link: "/butiker?vy=utbetalning&manad=2026-10",
+    });
+    // Punkten finns i hela listan.
+    expect(
+      computeTodos(ctx.input, at("2026-11-19")).some((x) => x.kind === "settlement-drift"),
+    ).toBe(true);
+  });
+
+  it("för mycket betalt är en egen text, och ingen skillnad ger ingen punkt", () => {
+    const ctx = createTodoContext(
+      {
+        ...base,
+        paidDrift: [
+          {
+            id: "y",
+            storeId: "s2",
+            month: "2026-10-01",
+            paidOre: 10_000,
+            liveOre: 8_800,
+            differenceOre: -1_200,
+          },
+          {
+            id: "z",
+            storeId: "s2",
+            month: "2026-09-01",
+            paidOre: 10_000,
+            liveOre: 10_000,
+            differenceOre: 0,
+          },
+        ],
+      },
+      at("2026-11-19"),
+    );
+    const todos = paidDriftTodos(ctx);
+    expect(todos).toHaveLength(1);
+    expect(plain(todos[0]!.detail)).toContain("Butiken har fått 12 kr för mycket.");
+    expect(todos[0]!.level).toBe("soon");
+  });
+});
+
+describe("olderMissingSettlementTodos (äldre månader utan avräkning)", () => {
+  it("en punkt per äldre månad där en butik sålde", () => {
+    const ctx = createTodoContext(
+      {
+        ...base,
+        olderMissingSettlements: [
+          { month: "2026-08", storeIds: ["s1"] },
+          { month: "2026-09", storeIds: ["s1", "s2"] },
+        ],
+      },
+      at("2026-11-19"),
+    );
+    const todos = olderMissingSettlementTodos(ctx);
+    expect(todos.map((t) => [t.key, t.title])).toEqual([
+      ["settlement-create:2026-08", "Skapa augusti-avräkningen"],
+      ["settlement-create:2026-09", "Skapa september-avräkningarna"],
+    ]);
+    expect(todos[0]!.detail).toContain("Kafé Ett sålde i augusti men har ingen avräkning.");
+    expect(todos[0]!.level).toBe("now");
   });
 });

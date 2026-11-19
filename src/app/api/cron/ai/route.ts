@@ -12,7 +12,7 @@
  * Utan CRON_SECRET svarar routen 503 och gör ingenting.
  */
 
-import { getServiceDb } from "@/db/client";
+import { freshServiceDb, getServiceDb } from "@/db/client";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runAdvisorForAll } from "@/server/assistant/advisor/service";
 import { runBriefsForAll } from "@/server/assistant/brief/service";
@@ -33,6 +33,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!cronAuthorized(request.headers.get("authorization"), secret)) {
     return json({ error: "Obehörig." }, 401);
   }
+  // En anslutning som dött medan funktionen låg fryst byts ut (se freshServiceDb).
+  await freshServiceDb();
   const result = await runAdvisorForAll({ db: getServiceDb() });
   const briefs = await runBriefsForAll({ db: getServiceDb() }).catch((error: unknown) => {
     console.error("[morgonbrief] cron misslyckades:", error);

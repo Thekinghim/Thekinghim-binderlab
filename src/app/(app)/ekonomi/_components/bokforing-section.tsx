@@ -25,6 +25,10 @@ import {
   type MonthStatus,
 } from "@/server/bokforing/service";
 
+/** Vilken av appens två bokföringsfiler som bokhållaren importerar (samma i LAS-MIG.txt). */
+export const IMPORT_THIS_TEXT =
+  "Det här paketet är det bokhållaren ska importera. SIE-filen under Rapporter → Bokföringsunderlag är bara ett underlag: importera inte båda.";
+
 import { bookkeepingTitle } from "../_lib/headline";
 import { capitalize, isoToDate, kr, monthText, plural } from "../_lib/view";
 import { OpenMoreOnHash } from "./open-more";
@@ -114,6 +118,10 @@ export async function BokforingSection({
               : undefined
         }
       />
+      {/* Appen har två SIE-filer: den här är den som importeras. */}
+      <p className="text-sm text-muted" data-which-sie>
+        {IMPORT_THIS_TEXT}
+      </p>
 
       {/* Mobil: tre månader (alltid den att skicka härnäst), resten bakom "Alla N månader". */}
       <MobileTopList

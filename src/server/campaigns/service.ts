@@ -23,6 +23,7 @@ import { businessDateOf } from "@/import/zoned";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
+import { recordJobOutcome } from "@/server/monitoring/failures";
 
 import { AwishApiError, type AwishMarketingApi } from "../awish/grpc-client";
 import {
@@ -488,15 +489,62 @@ export async function publishAllDueCampaigns(deps: {
   let shown = 0;
   let failed = 0;
   for (const o of orgs) {
+    // En kampanj som inte startade ska höras (larmet job:kampanjer), inte bara loggas.
+    let problem: Error | null = null;
     try {
       const r = await publishDue(deps.db, o.organization_id, { connect: deps.connect, now });
       shown += r.shown;
       failed += r.failed;
+      if (r.failed > 0) {
+        problem = new Error(
+          `Kampanjen startade inte i ${r.failed} ${r.failed === 1 ? "automat" : "automater"}.`,
+        );
+      }
     } catch (error) {
       console.error("[kampanjer] schemalagd kampanj kunde inte skickas", shortError(error));
+      problem = new Error(shortError(error));
+    }
+    if (problem) {
+      await recordJobOutcome(
+        { db: deps.db, now },
+        {
+          organizationId: o.organization_id,
+          job: "kampanjer",
+          error: problem,
+          severity: "warning",
+        },
+      );
     }
   }
+  await resolveCampaignAlerts(deps.db, now);
   return { organizations: orgs.length, shown, failed };
+}
+
+/**
+ * Stänger larmet job:kampanjer i organisationer där ingen pågående kampanj längre har en
+ * automat som misslyckades (ägaren har försökt igen under Kampanjer, eller stängt av
+ * kampanjen). Kastar inte.
+ */
+export async function resolveCampaignAlerts(db: Db, now: Date = new Date()): Promise<number> {
+  try {
+    const rows = await query<{ id: string }>(
+      db,
+      sql`update public.alerts a
+          set status = 'closed', closed_at = ${tsParam(now)}
+          where a.status = 'open' and a.alert_group = 'system' and a.incident_key = 'job:kampanjer'
+            and not exists (
+              select 1 from public.campaign_machines cm
+              join public.campaigns c
+                on c.organization_id = cm.organization_id and c.id = cm.campaign_id
+              where cm.organization_id = a.organization_id and cm.status = 'failed'
+                and c.stopped_at is null and c.ends_at > ${tsParam(now)})
+          returning a.id`,
+    );
+    return rows.length;
+  } catch (error) {
+    console.error("[kampanjer] larmet kunde inte stängas", shortError(error));
+    return 0;
+  }
 }
 
 // ---------------------------------------------------------------------------

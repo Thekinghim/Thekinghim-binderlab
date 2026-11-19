@@ -11,6 +11,7 @@
 import "server-only";
 
 import type { AlertDelivery } from "@/analytics/alerts";
+import { MAIL_OFF_TEXT, mailCanSend } from "@/server/mail/can-send";
 import { getMailer, mailerStatus, type MailerStatus } from "@/server/mail/report-mailer";
 
 import { alertEmail, pushPayloads, smsText, type PushContext } from "./content";
@@ -27,12 +28,17 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
 
 export interface ChannelStatus {
   readonly push: PushStatus;
-  readonly email: MailerStatus;
+  /** `canSend`: appen kan skicka riktiga mejl härifrån (@/server/mail/can-send). */
+  readonly email: MailerStatus & { readonly canSend: boolean };
   readonly sms: SmsStatus;
 }
 
 export async function channelStatus(): Promise<ChannelStatus> {
-  return { push: await pushStatus(), email: mailerStatus(), sms: smsStatus() };
+  return {
+    push: await pushStatus(),
+    email: { ...mailerStatus(), canSend: mailCanSend() },
+    sms: smsStatus(),
+  };
 }
 
 /** En push-enhet med id (för att kunna stänga av den när push-tjänsten svarar 404/410). */
@@ -143,7 +149,10 @@ export async function dispatchDelivery(
   }
 
   if (recipient.channels.includes("email")) {
-    if (!recipient.email) {
+    if (!mailCanSend()) {
+      // Ingen e-postleverantör: inget försök, och aldrig "skickat". Syns under Notiser.
+      results.push({ channel: "email", status: "skipped", detail: MAIL_OFF_TEXT });
+    } else if (!recipient.email) {
       results.push({ channel: "email", status: "skipped", detail: "E-postadress saknas" });
     } else {
       try {

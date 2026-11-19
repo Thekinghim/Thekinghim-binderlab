@@ -45,7 +45,12 @@ import { recordJobOutcome } from "@/server/monitoring/failures";
 
 import { alertColumns, healthOf, knownUntil, loadHealthData, loadImportData } from "./inputs";
 import { incidentChanged, incidentToColumns, isRowId, rowToIncident, type AlertRow } from "./store";
-import { rowToSubscription, FIELD_KINDS, type SubscriptionRow } from "./subscriptions";
+import {
+  FIELD_KINDS,
+  operatorDefaultSubscription,
+  rowToSubscription,
+  type SubscriptionRow,
+} from "./subscriptions";
 
 /** Dagar bakåt som stängda incidenter läses (engångslarm och fladder jämförs mot dem). */
 const HISTORY_DAYS = 10;
@@ -91,8 +96,28 @@ export async function loadIncidents(tx: Tx, orgId: string, now: Date): Promise<A
   return rows.map(rowToIncident).filter((i): i is AlertIncident => i !== null);
 }
 
-/** Prenumerationerna i organisationen, med rollens begränsning (påfyllaren: bara automater och lager). */
+/**
+ * Prenumerationerna i organisationen, med rollens begränsning (påfyllaren: bara automater och
+ * lager). En ägare eller admin utan sparad rad får standarden (push, e-post): ingen ska stå utan
+ * larm för att raden saknas. Den som har stängt av sina larm har en rad (active = false) och
+ * får inget.
+ */
 export async function loadSubscriptions(tx: Tx, orgId: string): Promise<SubscriptionRow[]> {
+  const stored = await loadStoredSubscriptions(tx, orgId);
+  const missing = Array.from(
+    await tx.execute(
+      sql`select m.user_id::text as user_id, m.role::text as role
+          from public.memberships m
+          where m.organization_id = ${orgId}::uuid and m.role in ('owner', 'admin')
+            and not exists (select 1 from public.alert_subscriptions a
+                             where a.organization_id = m.organization_id
+                               and a.user_id = m.user_id)`,
+    ),
+  ) as { user_id: string; role: string }[];
+  return [...stored, ...missing.map((m) => operatorDefaultSubscription(m.user_id, m.role))];
+}
+
+async function loadStoredSubscriptions(tx: Tx, orgId: string): Promise<SubscriptionRow[]> {
   const rows = await tx
     .select({
       userId: s.alertSubscriptions.userId,

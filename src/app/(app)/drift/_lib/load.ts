@@ -7,7 +7,7 @@
 
 import "server-only";
 
-import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
 import type { AlertIncident } from "@/analytics/alerts";
 import {
@@ -58,6 +58,33 @@ export interface AlertRunInfo {
 /** Ett larm som det visas: incidenten plus vem som kvitterat. */
 export interface AlertView extends AlertIncident {
   readonly acknowledgedByName: string | null;
+  /**
+   * Utskick om larmet som har gått fram till någon (push, e-post eller sms skickat).
+   * null = får inte läsas av den inloggade (bara ägare och admin ser andras utskick).
+   */
+  readonly delivered: number | null;
+}
+
+/** Utskick som gått fram, per larm. RLS: ägare och admin ser alla, övriga bara sina egna. */
+async function deliveredCounts(
+  tx: Tx,
+  orgId: string,
+  alertIds: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (alertIds.length === 0) return out;
+  const rows = Array.from(
+    await tx.execute(
+      sql`select a.id::text as id, count(*)::int as n
+          from public.alert_deliveries d
+          cross join lateral unnest(d.alert_ids) as a(id)
+          where d.organization_id = ${orgId}::uuid and d.status in ('sent', 'partial')
+            and a.id in (select jsonb_array_elements_text(${JSON.stringify(alertIds)}::jsonb)::uuid)
+          group by a.id`,
+    ),
+  ) as { id: string; n: number }[];
+  for (const r of rows) out.set(r.id, Number(r.n));
+  return out;
 }
 
 export interface DriftOverview {
@@ -87,6 +114,8 @@ async function loadAlerts(
   orgId: string,
   now: Date,
   machineId?: string,
+  /** Ägare och admin: räkna utskicken som gått fram (andra får inte läsa dem). */
+  operator = false,
 ): Promise<{ open: AlertView[]; recent: AlertView[] }> {
   const since = new Date(now.getTime() - 7 * 86_400_000);
   const rows = (await tx
@@ -106,9 +135,17 @@ async function loadAlerts(
   const who = await names(tx, orgId, [
     ...new Set(incidents.map((i) => i.acknowledgedBy).filter((x): x is string => !!x)),
   ]);
+  const delivered = operator
+    ? await deliveredCounts(
+        tx,
+        orgId,
+        incidents.map((i) => i.id),
+      )
+    : null;
   const view = (i: AlertIncident): AlertView => ({
     ...i,
     acknowledgedByName: i.acknowledgedBy ? (who.get(i.acknowledgedBy) ?? "Okänd användare") : null,
+    delivered: delivered ? (delivered.get(i.id) ?? 0) : null,
   });
   const rank = { critical: 0, warning: 1, info: 2 } as const;
   const open = incidents
@@ -181,7 +218,7 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
     const orgId = ctx.organization.id;
     const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
     const health = healthOf(data, ctx.timeZone, now);
-    const alerts = await loadAlerts(tx, orgId, now);
+    const alerts = await loadAlerts(tx, orgId, now, undefined, ctx.canSeeEconomy);
     const lastRun = ctx.canSeeEconomy ? await loadLastRun(tx, orgId) : null;
     const stockRows = await queryStock(tx, orgId);
     const warehouse = ownStockTotals(stockRows);
@@ -406,7 +443,13 @@ export async function loadMachineTimeline(
         order: "desc",
       },
     );
-    const alerts = await loadAlerts(tx, orgId, new Date(now.getTime()), machineId);
+    const alerts = await loadAlerts(
+      tx,
+      orgId,
+      new Date(now.getTime()),
+      machineId,
+      ctx.canSeeEconomy,
+    );
     const capacities = (await querySlotCapacities(tx, orgId, now)).filter(
       (c) => c.machineId === machineId,
     );

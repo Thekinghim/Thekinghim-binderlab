@@ -9,6 +9,7 @@ import { formatCsvNumber, formatDate } from "@/lib/format";
 import { isoDateToShellDate, requireRoute } from "@/server/data/core";
 
 import { formatWhen } from "../../drift/_lib/display";
+import { ClosedMonthsBanner } from "../../_manad/closed-note";
 import { IncidentForm } from "../_components/incident-form";
 import { loadIncident } from "../_lib/load";
 import {
@@ -117,6 +118,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
         defaultOpen={i.status !== "resolved"}
         className="max-md:-mt-4"
       >
+        <ClosedMonthsBanner className="mb-4" />
         <IncidentForm
           initial={{
             id: i.id,

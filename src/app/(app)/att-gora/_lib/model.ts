@@ -355,6 +355,7 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
   alert: ["larm", "larm"],
   settlement: ["utbetalning till butik", "utbetalningar till butiker"],
   "settlement-create": ["avräkning att skapa", "avräkningar att skapa"],
+  "settlement-drift": ["betald avräkning att rätta", "betalda avräkningar att rätta"],
   agreement: ["butik utan avtal", "butiker utan avtal"],
   "missing-price": ["titel utan inköpspris", "titlar utan inköpspris"],
   "mystery-cost": ["mystery pack med fel pris", "mystery packs med fel pris"],
@@ -374,6 +375,7 @@ const KIND_LABEL: Record<TodoKind, string> = {
   alert: "Larm",
   settlement: "Utbetalning",
   "settlement-create": "Utbetalning",
+  "settlement-drift": "Utbetalning",
   agreement: "Avtal",
   "missing-price": "Inköpspris",
   "mystery-cost": "Mystery pack",
@@ -392,6 +394,7 @@ const KIND_ORDER: readonly TodoKind[] = [
   "report-due",
   "settlement",
   "settlement-create",
+  "settlement-drift",
   "agreement",
   "contract",
   "missing-price",
@@ -731,7 +734,14 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         ? { kind: "link", label: a.label, href: item.link }
         : null;
     case "open-alert":
-      return canOpen(input.role, item.link.startsWith("/datakallor") ? "datakallor" : "drift")
+      return canOpen(
+        input.role,
+        item.link.startsWith("/datakallor")
+          ? "datakallor"
+          : item.link.startsWith("/inkorg")
+            ? "inkorg"
+            : "drift",
+      )
         ? { kind: "link", label: a.label, href: item.link }
         : null;
     case "open-machine":
@@ -1010,6 +1020,7 @@ const KIND_BY_PREFIX: Record<string, TodoKind> = {
   alert: "alert",
   settlement: "settlement",
   "settlement-create": "settlement-create",
+  "settlement-drift": "settlement-drift",
   agreement: "agreement",
   "missing-price": "missing-price",
   "mystery-cost": "mystery-cost",

@@ -66,6 +66,7 @@ import {
   type AwishStockSummary,
 } from "./stock";
 import { machinesJustLow, type SlotBalance } from "./stock-drop";
+import { raiseOrderAttention, resolveOrderAttention, type OrderAttention } from "./order-attention";
 
 type Row = Record<string, unknown>;
 
@@ -116,6 +117,11 @@ export interface AwishSyncState {
   leaseUntil: string | null;
   lastRun: AwishLastRun | null;
   lastSuccessAt: string | null;
+  /**
+   * Misslyckade körningar i rad (0 efter en lyckad). Vakten larmar kritiskt vid tre i rad
+   * eller 30 minuter utan lyckad hämtning (@/analytics/watch). Saknas i äldre lägen.
+   */
+  failures?: number;
   refundReported: string[];
   /**
    * Beloppsformatet som setts i källan: "decimal" när minst ett belopp med
@@ -200,6 +206,9 @@ export function parseState(text: unknown): AwishSyncState {
     leaseUntil: typeof value.leaseUntil === "string" ? value.leaseUntil : null,
     lastRun: lastRun as AwishLastRun | null,
     lastSuccessAt: typeof value.lastSuccessAt === "string" ? value.lastSuccessAt : null,
+    ...(Number.isInteger(value.failures) && Number(value.failures) > 0
+      ? { failures: Number(value.failures) }
+      : {}),
     refundReported: Array.isArray(value.refundReported)
       ? value.refundReported.filter((x): x is string => typeof x === "string")
       : [],
@@ -448,6 +457,10 @@ function integerPaidAmount(orders: readonly AwishGrpcOrder[]): AwishGrpcOrder | 
 }
 
 /** Fel som stoppar en körning med ett eget meddelande (läget sparas inte). */
+/** Felet när Orders inte svarade inom tidsgränsen och ingen sida lästes. */
+export const NO_ORDERS_IN_TIME =
+  "Awish svarade inte i tid när orderna skulle hämtas. Inga order hämtades.";
+
 class AwishSyncStop extends Error {
   constructor(message: string) {
     super(message);
@@ -573,6 +586,7 @@ export async function syncAwishSource(
       leaseUntil: null,
       lastRun,
       lastSuccessAt: result.ok ? at.toISOString() : before.lastSuccessAt,
+      ...(result.ok ? {} : { failures: (before.failures ?? 0) + 1 }),
       refundReported: refundReported.slice(-MAX_REFUND_REPORTED),
       amountFormat: extra.amountFormat ?? before.amountFormat,
       // Alla automater lästa: nästa läsning om STOCK_SYNC_INTERVAL_MS. Annars fortsätter
@@ -701,6 +715,12 @@ export async function syncAwishSource(
     });
     pages = collected.pages;
     fetched = collected.orders.length;
+    // Ingen sida med order lästes (anropet tog slut på tid): det är ett fel, inte en lyckad
+    // hämtning av noll order. Annars flyttas "senast hämtat" fram och allt ser färskt ut
+    // medan försäljningen står still. Automaternas anslutning är redan sparad ovan.
+    if (collected.pages === 0 && collected.budgetExhausted) {
+      throw new AwishSyncStop(NO_ORDERS_IN_TIME);
+    }
 
     // Beloppsformatet: så länge inget belopp med decimalpunkt har setts i källan
     // stoppas körningen på ett betalt heltalsbelopp (kan vara öre, se AwishSyncState).
@@ -726,6 +746,14 @@ export async function syncAwishSource(
       actorUserId: input.actorUserId ?? null,
       trigger,
       pages,
+    });
+
+    // Order att hantera för hand (återbetald efter importen, betald men oläslig): ett larm
+    // per order som står kvar i Att göra tills den är hanterad. De hanterade stängs.
+    await raiseOrderAttention(deps.db, source, outcome.attention, now());
+    await resolveOrderAttention(deps.db, source.organization_id, {
+      sourceId: source.id,
+      now: now(),
     });
 
     // Automater som importen just skapade får sitt läge nu.
@@ -1062,6 +1090,8 @@ interface ImportOutcome {
   summary: ImportSummary | null;
   otherSourceDuplicates: number;
   refundReported: string[];
+  /** Order som ägaren måste ta hand om (./order-attention.ts): sedda i den här körningen. */
+  attention: OrderAttention;
 }
 
 /** Tolkar och importerar orderna i en transaktion (samma lås som filimporten). */
@@ -1121,6 +1151,9 @@ async function importOrders(
     );
     const reported = new Set(input.refundReported);
     const newlyReported: string[] = [];
+    // Varje importerad order som Awish säger är återbetald, i varje körning (inte bara
+    // första gången den loggas): larmet om den ska finnas tills den är hanterad.
+    const refundedSeen: string[] = [];
     let storedDuplicates = 0;
     let skippedUnpaid = 0;
     const batch: AwishGrpcOrder[] = [];
@@ -1132,9 +1165,13 @@ async function importOrders(
         // annars loggas som "ej betald" i varje import; de räknas bara.
         if (paid) batch.push(o);
         else skippedUnpaid += 1;
-      } else if (statusKind(o.status) === "refund" && !reported.has(o.id)) {
-        batch.push(o);
-        newlyReported.push(o.id);
+      } else if (statusKind(o.status) === "refund") {
+        refundedSeen.push(o.id);
+        if (reported.has(o.id)) storedDuplicates += 1;
+        else {
+          batch.push(o);
+          newlyReported.push(o.id);
+        }
       } else {
         storedDuplicates += 1;
       }
@@ -1152,6 +1189,13 @@ async function importOrders(
       return true;
     });
     const parsed = { ...mapped, errors };
+    const attention: OrderAttention = {
+      refunded: refundedSeen,
+      // Alla betalda order som inte gick att tolka, också de som redan är loggade.
+      unreadable: mapped.errors
+        .filter((e) => e.isPaid !== false)
+        .map((e) => ({ externalId: e.externalId ?? null, message: e.message })),
+    };
 
     // Samma försäljning i en annan Awish-källa (t.ex. en uppladdad CSV med andra
     // ordernummer): samma betaltid (sekund) och belopp.
@@ -1167,7 +1211,7 @@ async function importOrders(
       parsed.errors.some((e) => e.isPaid !== false) ||
       newlyReported.length > 0;
     if (!worthImport) {
-      return { importId: null, summary: null, otherSourceDuplicates, refundReported };
+      return { importId: null, summary: null, otherSourceDuplicates, refundReported, attention };
     }
 
     const ctx = {
@@ -1208,7 +1252,7 @@ async function importOrders(
               status = 'succeeded', finished_at = clock_timestamp()
           where organization_id = ${org}::uuid and id = ${created.id}::uuid`,
     );
-    return { importId: created.id, summary: s, otherSourceDuplicates, refundReported };
+    return { importId: created.id, summary: s, otherSourceDuplicates, refundReported, attention };
   });
 }
 

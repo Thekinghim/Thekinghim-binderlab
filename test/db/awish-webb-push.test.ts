@@ -43,6 +43,8 @@ const { startFakeAwishWeb } = await import("../../src/server/awish/testing/fake-
 type FakeWeb = Awaited<ReturnType<typeof startFakeAwishWeb>>;
 const { createAwishWebClient } = await import("../../src/server/awish/web-client");
 const { pushMachinesToAwish } = await import("../../src/server/awish/web-service");
+const { summariseAwishPush } = await import("../../src/server/awish/push-status");
+const { pendingAwishPushes } = await import("../../src/server/varde/log");
 
 async function viewerFor(u: TestUser, orgId: string): Promise<Viewer> {
   const user = { userId: u.id, email: u.email };
@@ -267,5 +269,44 @@ describe("Awish webb-inloggning och push", () => {
     expect(planned).toContainEqual({ titleName: "30th Celebration", from: 2, to: 9 });
     expect(fake.state.calls.some((c) => c.operationName === "UpdateProduct")).toBe(false);
     expect(fake.state.products["1001"]?.find((p) => p.id === 11)?.currentInventory).toBe(2);
+  });
+
+  it("fler pack än facket rymmer: det sägs, och automaten väntar så att saldot inte sänks", async () => {
+    const viewer = await viewerFor(owner, orgId);
+    await saveAwishWebCredentialsFor(viewer, {
+      email: fake.state.email,
+      password: fake.state.password,
+    });
+    await setAwishWebPushFor(viewer, true);
+    // Binderlab efter påfyllning: 14 av 30th Celebration. Facket rymmer 10 enligt Awish.
+    await setLevel("30th Celebration", 14);
+    await setLevel("Mystery Pack", 5);
+    const result = await pushMachinesToAwish(orgId, [machineId], {
+      serviceDb: db(),
+      makeClient: makeWebClient,
+      clientOptions: webClientOptions(),
+    });
+    expect(result.machines[0]?.status).toBe("pushed");
+    expect(result.machines[0]?.notSent).toEqual([
+      { titleName: "30th Celebration", left: 4, reason: "capacity" },
+    ]);
+    expect(fake.state.products["1001"]?.find((p) => p.id === 11)?.currentInventory).toBe(10);
+    expect(summariseAwishPush(result, [machineId])?.message).toBe(
+      "Sparat i Binderlab. Awish tog inte emot allt: 4 30th Celebration fick inte plats i BL-001. Räkna om facket i Awish, eller ångra de packen här.",
+    );
+    // Automaten väntar på Awish (samma läge som en sändning som inte gick fram).
+    expect([...(await pendingAwishPushes(db(), orgId, [machineId])).keys()]).toEqual([machineId]);
+
+    // Någon rättar antalet i Awish (höjer kapaciteten och skriver 14): nästa försök rensar.
+    const slot = fake.state.products["1001"]!.find((p) => p.id === 11)!;
+    slot.capacity = 20;
+    slot.currentInventory = 14;
+    const again = await pushMachinesToAwish(orgId, [machineId], {
+      serviceDb: db(),
+      makeClient: makeWebClient,
+      clientOptions: webClientOptions(),
+    });
+    expect(again.machines[0]?.notSent).toBeUndefined();
+    expect([...(await pendingAwishPushes(db(), orgId, [machineId])).keys()]).toEqual([]);
   });
 });

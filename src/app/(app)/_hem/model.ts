@@ -203,7 +203,11 @@ export interface HomePayout {
 }
 
 /** Punkterna som står som utbetalningsrad på Hem i stället för i listan. */
-export const HOME_PAYOUT_KINDS: ReadonlySet<string> = new Set(["settlement", "settlement-create"]);
+export const HOME_PAYOUT_KINDS: ReadonlySet<string> = new Set([
+  "settlement",
+  "settlement-create",
+  "settlement-drift",
+]);
 
 export interface HomeModel {
   readonly headline: HomeHeadline;

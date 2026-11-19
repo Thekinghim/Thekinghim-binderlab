@@ -94,6 +94,14 @@ function sieDate(date: string): string {
   return date.replace(/-/g, "");
 }
 
+/**
+ * Står överst i filen (#PROSA), i LAS-MIG.txt och på sidan: det här är filen bokhållaren
+ * importerar. SIE-filen från Rapporter → Bokföringsunderlag är ett underlag och importeras
+ * inte också (samma försäljning skulle bokföras två gånger).
+ */
+export const SIE_FOR_IMPORT =
+  "Importera den här filen i bokföringen. Importera inte också SIE-filen från Rapporter - Bokföringsunderlag: då bokförs försäljningen två gånger.";
+
 export interface SieFileInput {
   readonly company: string;
   readonly orgNumber: string | null;
@@ -123,6 +131,7 @@ export function buildSieText(input: SieFileInput): string {
     "#SIETYP 4",
     `#PROGRAM ${sieString(input.program ?? "Binderlab")} ${sieString("1")}`,
     `#GEN ${sieDate(input.generatedOn)}`,
+    `#PROSA ${sieString(SIE_FOR_IMPORT)}`,
     `#FNAMN ${sieString(input.company)}`,
   ];
   if (input.orgNumber) lines.push(`#ORGNR ${input.orgNumber}`);

@@ -69,7 +69,14 @@ Supabase pg_cron (*/5 * * * *) → private.awish_cron_tick() → pg_net GET {APP
   - Bara `PAY_SUCCESS` utan `is_free` importeras. Gratis-, test- och hämtkodsorder, obetalda och återbetalda räknas
     som ej betalda och hoppas över utan rad i importloggen (de läses om varje körning; antalet står i importens
     `mapping.skippedUnpaid`). En order som återbetalas efter importen blir en konflikt i importloggen en gång.
-    Ordern ändras inte; återbetalningen förs på ett ärende i Inkorg.
+    Ordern ändras inte; återbetalningen förs på ett ärende i Inkorg. För att det ska bli gjort blir ordern också
+    en punkt i Att göra och ett larm på Drift ("Order 880460 i BL-001 återbetalades i Awish", typen
+    `order_attention`, `src/server/awish/order-attention.ts`) som leder till ett nytt ärende med ordern och beloppet
+    ifyllt, och som står kvar tills återbetalningen är införd. En betald order som inte går att läsa (betaltid
+    saknas, okänt beloppsformat) blir på samma sätt "Order … från Awish kunde inte läsas" tills ordern finns i
+    försäljningen. Larmen skapas ur det synken ser i varje körning, inte ur listan över det som redan är loggat.
+    Gräns: bara de senaste 24 timmarnas order läses om, så en återbetalning som görs senare än ett dygn efter
+    köpet syns inte.
 - **Samma försäljning i en CSV-källa:** en betald order vars betaltid (sekunden) och belopp redan finns i en annan
   Awish-källa i organisationen räknas som dubblett och importeras inte (importens `mapping.otherSourceDuplicates`).
   Det gör att en tidigare uppladdad orderlista inte dubbleras, även om CSV:ns "Order No." inte är samma tal som
@@ -88,9 +95,17 @@ Supabase pg_cron (*/5 * * * *) → private.awish_cron_tick() → pg_net GET {APP
 - **Kontots slutdag (Merchant):** `Merchant.expired_at` läses högst en gång per dygn (i källans tidszon) och sparas i
   `data_sources.awish_expires_at`. 30 dagar före står "Awish-kontot går ut 18 apr. 2027 – förläng hos Awish" på Att
   göra, Hem, Drift och Datakällor (ägare och admin), 7 dagar före som brådskande (`src/server/awish/expiry.ts`).
-- **Larm:** `expectedInterval('awish_grpc') = 5` minuter. En tyst synk syns på Drift efter 30 minuter, men push,
-  e-post och sms skickas först vid nästa larmkörning (`/api/cron/larm`, en gång om dagen på Vercel Hobby). För snabb
-  avisering: Sentry Cron Monitor `binderlab-awish` (kräver `SENTRY_DSN`).
+- **En körning utan lästa order är ett fel.** Tar orderanropet slut på tid innan någon sida har lästs slutar
+  körningen med "Awish svarade inte i tid när orderna skulle hämtas. Inga order hämtades." och "senast hämtat"
+  flyttas inte fram. Förr sparades den som lyckad, så att allt såg färskt ut medan försäljningen stod still.
+  Automaternas anslutning sparas ändå (den läses före orderna). Läget räknar misslyckade körningar i rad
+  (`failures` i `data_sources.cursor`).
+- **Larm:** tre misslyckade körningar i rad, eller 30 minuter utan lyckad hämtning, ger det kritiska larmet
+  "Försäljningen har inte hämtats sedan …" (`watch:synk:<källa>`, se Vakten i `docs/operations.md`). Det skapas
+  av synkens egen körning var femte minut och skickas i samma körning, och av larmjobbet om synken inte körs
+  alls. Hem och Drift visar samma rad när sidan öppnas, och Hem visar datans ålder per automat. Regeln
+  `import_failed` ("Ingen hämtning från Awish på …", varning efter 60 minuter) finns kvar. Sentry Cron Monitor
+  `binderlab-awish` (kräver `SENTRY_DSN`) larmar den som har driften.
 
 ## Säkerhet
 

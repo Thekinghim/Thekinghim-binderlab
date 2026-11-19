@@ -7,12 +7,15 @@
  * och att en återbetalning inte ändras i en stängd månad (BL004).
  */
 
+import { closedMonthMessage } from "@/server/periods/model";
 import { revalidatePath } from "next/cache";
 import { alias } from "drizzle-orm/pg-core";
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
+import { getServiceDb } from "@/db/client";
 import * as s from "@/db/schema";
+import { resolveOrderAttention } from "@/server/awish/order-attention";
 import { OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
 import { withUserDb } from "@/server/session";
 
@@ -35,7 +38,8 @@ function dbMessage(error: unknown): string | null {
   };
   const code = e?.cause?.code ?? e?.code;
   const message = e?.cause?.message ?? e?.message;
-  if (code === "BL004" || code === "BL020" || code === "22023") return message ?? null;
+  if (code === "BL004") return message ? closedMonthMessage(message) : null;
+  if (code === "BL020" || code === "22023") return message ?? null;
   return null;
 }
 
@@ -139,7 +143,12 @@ export async function saveIncident(input: IncidentInput): Promise<SaveIncidentRe
       return row?.id ?? null;
     });
     if (!id) return { ok: false, errors: { form: "Ärendet finns inte." } };
+    // En återbetalning som Awish rapporterade och som nu är införd: punkten i Att göra
+    // stängs direkt (annars vid nästa synk). Organisationen kommer ur den kontrollerade
+    // sessionen; ett fel här stoppar inte sparandet.
+    await resolveOrderAttention(getServiceDb(), orgId);
     revalidatePath("/inkorg", "layout");
+    revalidatePath("/att-gora", "layout");
     revalidatePath("/drift", "layout");
     return { ok: true, id };
   } catch (error) {

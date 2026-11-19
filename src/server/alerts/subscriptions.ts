@@ -45,6 +45,7 @@ export const KIND_LABEL: Record<AlertKind, string> = {
   job_failed: "Misslyckat schemalagt jobb",
   machine_discovered: "Ny automat hittad",
   self_check: "Kontrollen hittade fel",
+  order_attention: "Order att hantera",
 };
 
 export const SEVERITY_LABEL: Record<AlertSeverity, string> = {
@@ -109,6 +110,16 @@ export function defaultSubscription(userId: string, role: string): SubscriptionR
     reminders: true,
     active: true,
   };
+}
+
+/**
+ * Det ägare och admin har från start (samma rad som databasen skapar med medlemskapet,
+ * 20261220110000_larm_standardprenumeration.sql): push och e-post till inloggningsadressen.
+ * Larmjobbet använder den också för en ägare eller admin som saknar rad, så att ingen står
+ * utan larm för att raden inte finns.
+ */
+export function operatorDefaultSubscription(userId: string, role: string): SubscriptionRow {
+  return { ...defaultSubscription(userId, role), role };
 }
 
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;

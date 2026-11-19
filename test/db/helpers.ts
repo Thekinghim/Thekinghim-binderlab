@@ -764,7 +764,11 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
     });
     // Drift: ägarens larminställningar, en push-enhet, ett skickat utskick, en körning av
     // larmjobbet och en påfyllning från fältet (skrivs i appen via RPC eller av jobbet).
-    await tx.insert(s.alertSubscriptions).values({ ...org, userId: owner.id, channels: ["email"] });
+    // Ägaren har redan raden (skapas med medlemskapet, 20261220110000).
+    await tx
+      .insert(s.alertSubscriptions)
+      .values({ ...org, userId: owner.id, channels: ["email"] })
+      .onConflictDoNothing();
     await tx.insert(s.pushSubscriptions).values({
       ...org,
       userId: owner.id,

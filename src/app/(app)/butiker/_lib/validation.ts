@@ -266,6 +266,8 @@ export const updateAgreementSchema = z
     validTo: keptDate("Sista dagen"),
     ...termsShape,
     confirmHistory: checkbox,
+    /** Bekräftat att villkoren i ett signerat kontrakt ändras. */
+    confirmSigned: checkbox,
   })
   .transform(withTerms);
 export type UpdateAgreementInput = z.infer<typeof updateAgreementSchema>;
@@ -553,3 +555,37 @@ export const contractTermsSchema = z
     };
   });
 export type ContractTermsInput = z.infer<typeof contractTermsSchema>;
+
+/**
+ * Varningen när villkoren i ett avtal som hör till ett signerat kontrakt ändras:
+ * "Avtalet hör till ett kontrakt som signerades 3 nov. Ändrar du villkoren stämmer de inte
+ * längre med det butiken skrev under. Lägg hellre in nya villkor från ett datum och skriv
+ * ett nytt kontrakt."
+ */
+export function signedTermsWarning(signedDay: string): string {
+  // "3 nov." har redan punkt: en till ska inte följa.
+  return `Avtalet hör till ett kontrakt som signerades ${signedDay.replace(/\.$/, "")}. Ändrar du villkoren stämmer de inte längre med det butiken skrev under. Lägg hellre in nya villkor från ett datum och skriv ett nytt kontrakt.`;
+}
+
+/** Har villkoren (inte sista dag eller anteckning) ändrats? */
+export function termsChanged(
+  before: {
+    commissionBp: number | null;
+    monthlyRentOre: number | null;
+    commissionBase: string;
+    vmbBeforeSplit: boolean;
+  },
+  after: {
+    commissionBp: number | null;
+    monthlyRentOre: number | null;
+    commissionBase: string;
+    vmbBeforeSplit?: boolean;
+  },
+): boolean {
+  return (
+    (before.commissionBp ?? null) !== (after.commissionBp ?? null) ||
+    (before.monthlyRentOre ?? null) !== (after.monthlyRentOre ?? null) ||
+    before.commissionBase !== after.commissionBase ||
+    (after.vmbBeforeSplit !== undefined && after.vmbBeforeSplit !== before.vmbBeforeSplit)
+  );
+}
