@@ -840,18 +840,25 @@ function buildCompensation(
   const steps: CompensationStep[] = [];
   const byStart = (x: CommissionSegment, y: CommissionSegment): number =>
     x.range.start < y.range.start ? -1 : x.range.start > y.range.start ? 1 : 0;
-  const splits: StoreProfitSplit[] = [];
+  // Vinstdelningen räknas per avtal och kalendermånad (liggaren). Avtalsperioder i följd i
+  // samma månad med samma villkor visas som EN period: summorna är delarnas summor, så
+  // andelen är exakt den som räknades per avtal.
+  const splitParts: { split: StoreProfitSplit; agreement: StoreAgreement }[] = [];
   for (const seg of [...segments.values()].sort(byStart)) {
-    if (isProfitSplit(seg.agreement)) {
-      const month = monthOf(seg.range.start);
-      const ms = profitSplits.find(
-        (x) => x.validFrom === seg.agreement!.validFrom && x.month === month,
-      );
-      const split = profitSplitRow(seg, ms ?? null, storeId);
-      splits.push(split);
-      steps.push(shareStep(split, storeId, period));
-      continue;
-    }
+    if (!isProfitSplit(seg.agreement)) continue;
+    const month = monthOf(seg.range.start);
+    const ms = profitSplits.find(
+      (x) => x.validFrom === seg.agreement!.validFrom && x.month === month,
+    );
+    splitParts.push({
+      split: profitSplitRow(seg, ms ?? null, storeId),
+      agreement: seg.agreement!,
+    });
+  }
+  const splits = mergeSplits(splitParts, storeId);
+  for (const split of splits) steps.push(shareStep(split, storeId, period));
+  for (const seg of [...segments.values()].sort(byStart)) {
+    if (isProfitSplit(seg.agreement)) continue;
     const bp = seg.agreement!.commissionBp ?? 0;
     if (bp === 0) {
       if (seg.orders === 0) continue;
@@ -1104,14 +1111,137 @@ function profitSplitRow(
   };
 }
 
+/** Villkoren som avgör ersättningen: samma text = samma villkor. */
+function termsKey(a: StoreAgreement): string {
+  return [
+    a.commissionBase ?? "net_excl_vat",
+    a.commissionBp ?? 0,
+    a.monthlyRentOre ?? 0,
+    isProfitSplit(a) ? (a.lossTreatment ?? "zero") : "",
+    isProfitSplit(a) ? a.vmbBeforeSplit === true : "",
+  ].join("|");
+}
+
+/** Butikens andel av en vinst med avtalets förlusthantering (som `profitSplit` i domänen). */
+function shareOf(profitOre: number, shareBp: number, loss: LossTreatment): number {
+  return profitOre < 0 && loss === "zero" ? 0 : applyBp(profitOre, shareBp);
+}
+
+/**
+ * Slår ihop vinstdelningar som följer på varandra i SAMMA kalendermånad och har samma
+ * villkor (avtalet förnyades utan ändring): en rad i uträkningen i stället för en per avtal.
+ *
+ * Ingenting räknas om. Den sammanslagna radens belopp är delarnas summor, så butikens andel
+ * är exakt summan av det som räknades per avtal (förlustgolvet och avrundningen gäller per
+ * avtal och månad, som i liggaren). Därför slås delar bara ihop när raden går att räkna
+ * efter: summan av andelarna är andelen av den summerade vinsten, så när som på
+ * öresavrundningen per del. Har en del gått med förlust och fått 0 kr medan en annan gått
+ * med vinst står de kvar var för sig, som förut. Aldrig över ett månadsskifte, aldrig med
+ * olika villkor och aldrig när en del inte är räknad (portalen).
+ */
+function mergeSplits(
+  parts: readonly { split: StoreProfitSplit; agreement: StoreAgreement }[],
+  storeId: string,
+): StoreProfitSplit[] {
+  const out: StoreProfitSplit[] = [];
+  let group: { split: StoreProfitSplit; agreement: StoreAgreement }[] = [];
+  const flush = (): void => {
+    if (group.length === 0) return;
+    const merged =
+      group.length > 1
+        ? mergedSplit(
+            group.map((g) => g.split),
+            storeId,
+          )
+        : null;
+    if (merged) out.push(merged);
+    else out.push(...group.map((g) => g.split));
+    group = [];
+  };
+  for (const part of parts) {
+    const last = group[group.length - 1];
+    const follows =
+      last !== undefined &&
+      addDays(last.split.range.end, 1) === part.split.range.start &&
+      monthOf(last.split.range.start) === monthOf(part.split.range.start) &&
+      termsKey(last.agreement) === termsKey(part.agreement);
+    if (!follows) flush();
+    group.push(part);
+  }
+  flush();
+  return out;
+}
+
+/** Delarna som en rad, eller null om raden inte skulle gå att räkna efter. */
+function mergedSplit(parts: readonly StoreProfitSplit[], storeId: string): StoreProfitSplit | null {
+  if (parts.some((x) => x.pending)) return null;
+  const first = parts[0]!;
+  const last = parts[parts.length - 1]!;
+  const sum = (pick: (x: StoreProfitSplit) => number): number =>
+    parts.reduce((n, x) => n + pick(x), 0);
+  const profitOre = sum((x) => x.profitOre);
+  const storeShareOre = sum((x) => x.storeShareOre);
+  const expected = shareOf(profitOre, first.shareBp, first.lossTreatment);
+  // Öresavrundningen sker per del: högst ett halvt öre var.
+  if (Math.abs(storeShareOre - expected) > parts.length - 1) return null;
+  const range: Period = { start: first.range.start, end: last.range.end };
+  const orders = sum((x) => x.orders);
+  const salesInclVatOre = sum((x) => x.salesInclVatOre);
+  const refundsOre = sum((x) => x.refundsOre ?? 0);
+  const vmbVatOre = sum((x) => x.vmbVatOre);
+  const purchasesOre = sum((x) => x.purchasesOre);
+  const cardFeesOre = sum((x) => x.cardFeesOre);
+  return {
+    validFrom: first.validFrom,
+    range,
+    orders,
+    shareBp: first.shareBp,
+    lossTreatment: first.lossTreatment,
+    vmbBeforeSplit: first.vmbBeforeSplit,
+    salesInclVatOre,
+    refundsOre,
+    vmbVatOre,
+    purchasesOre,
+    cardFeesOre,
+    profitOre,
+    storeShareOre,
+    operatorShareOre: profitOre - storeShareOre,
+    pending: false,
+    evidence: evidence({
+      rule: `${first.evidence.rule} Perioden är ${parts.length} avtalsperioder i följd med samma villkor (${parts
+        .map((x) => periodText(x.range))
+        .join(", ")}): andelen räknas per avtalsperiod och summeras.`,
+      scope: { period: range, storeId },
+      orderCount: orders,
+      figures: [
+        fig("Försäljning inkl. moms", salesInclVatOre, "ore"),
+        fig("Återbetalningar", refundsOre, "ore"),
+        fig("VMB-moms", vmbVatOre, "ore"),
+        fig("Inköp", purchasesOre, "ore"),
+        fig("Kortavgifter", cardFeesOre, "ore"),
+        fig("Vinst", profitOre, "ore"),
+        fig("Andel", first.shareBp, "bp"),
+        ...parts.map((x) => fig(`Butikens andel ${periodText(x.range)}`, x.storeShareOre, "ore")),
+        fig("Butikens andel", storeShareOre, "ore"),
+      ],
+    }),
+  };
+}
+
 /** Steget "Butikens andel 50 % av vinsten" i uträkningen. */
 function shareStep(split: StoreProfitSplit, storeId: string, period: Period): CompensationStep {
   const pct = pctText(split.shareBp, split.shareBp % 100 === 0 ? 0 : 1);
+  // En sammanslagen rad kan skilja ett öre från andelen av summan (avrundat per avtalsperiod).
+  const rounded =
+    !split.pending &&
+    split.storeShareOre !== shareOf(split.profitOre, split.shareBp, split.lossTreatment)
+      ? " (avrundat per avtalsperiod)"
+      : "";
   const calculation = split.pending
     ? "Räknas i månadsrapporten"
     : split.profitOre < 0 && split.storeShareOre === 0
       ? `Ingen vinst (${krText(split.profitOre, "always")}), andelen blir 0 kr`
-      : `${pct} av ${krText(split.profitOre, "always")} = ${krText(split.storeShareOre, "always")}`;
+      : `${pct} av ${krText(split.profitOre, "always")} = ${krText(split.storeShareOre, "always")}${rounded}`;
   return {
     kind: "share",
     label: `Er andel ${pct}${split.range.start === period.start && split.range.end === period.end ? "" : ` (${periodText(split.range)})`}`,
@@ -1165,22 +1295,33 @@ function modelText(agreements: readonly StoreAgreement[], period: Period): strin
     return listText(parts);
   };
   const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
-  if (agreements.length === 1) {
-    const a = agreements[0]!;
-    const range = intersectPeriods(period, { start: a.validFrom, end: a.validTo ?? period.end })!;
+  // Avtal i följd med samma villkor (avtalet förnyades utan ändring) är ett villkor: det
+  // första avtalets startdag och det sistas slutdag.
+  const groups: { first: StoreAgreement; last: StoreAgreement }[] = [];
+  for (const a of [...agreements].sort((x, y) => (x.validFrom < y.validFrom ? -1 : 1))) {
+    const g = groups[groups.length - 1];
+    if (
+      g &&
+      g.last.validTo !== null &&
+      addDays(g.last.validTo, 1) === a.validFrom &&
+      termsKey(g.last) === termsKey(a)
+    )
+      g.last = a;
+    else groups.push({ first: a, last: a });
+  }
+  const rangeOf = (g: { first: StoreAgreement; last: StoreAgreement }): Period =>
+    intersectPeriods(period, { start: g.first.validFrom, end: g.last.validTo ?? period.end })!;
+  if (groups.length === 1) {
+    const g = groups[0]!;
+    const range = rangeOf(g);
     const whole = range.start === period.start && range.end === period.end;
-    if (isProfitSplit(a)) return `${capital(terms(a))}, giltigt från ${dateText(a.validFrom)}.`;
-    return `${capital(terms(a))}${whole ? "" : ` (${periodText(range)})`}.`;
+    if (isProfitSplit(g.first))
+      return `${capital(terms(g.first))}, giltigt från ${dateText(g.first.validFrom)}.`;
+    return `${capital(terms(g.first))}${whole ? "" : ` (${periodText(range)})`}.`;
   }
   return (
-    agreements
-      .map((a) => {
-        const range = intersectPeriods(period, {
-          start: a.validFrom,
-          end: a.validTo ?? period.end,
-        })!;
-        return `${periodText(range)}: ${terms(a)}`;
-      })
+    groups
+      .map((g) => `${periodText(rangeOf(g))}: ${terms(g.first)}`)
       .map(capital)
       .join(". ") + "."
   );
