@@ -1,6 +1,6 @@
 /**
  * Indata för butiksägare (bolaget som äger butikerna): zod-scheman och texterna. Rena
- * funktioner, testas i owner-validation.test.ts. Databasen kontrollerar formaten en gång
+ * funktioner; tolkarna testas i @/lib/swedish-ids.test.ts, schemat i test/db/butiksagare.test.ts. Databasen kontrollerar formaten en gång
  * till (20261219000000_butiksagare.sql).
  */
 

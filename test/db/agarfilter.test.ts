@@ -336,3 +336,93 @@ describe("ägarfiltret är summan av ägarens butiker", () => {
     });
   });
 });
+
+/**
+ * Flyttar under perioden (körs sist: ändrar seedens placeringar och ägare). En automat flyttar
+ * från Spelbutiken (en annan ägare) till Gallerian mitt i perioden, och sedan byter Spelbutiken
+ * ägare. Varje dag räknas i exakt en butik, och varje butik hos exakt en ägare.
+ */
+describe("flyttar mellan ägare", () => {
+  const MOVE = "2026-10-21";
+  const KEYS = ["revenue", "orders", "packs", "profit", "beforeShare", "storeShare"] as const;
+  type Figures = Awaited<ReturnType<typeof figures>>;
+  const sumOf = (parts: Figures[], k: (typeof KEYS)[number]) =>
+    parts.reduce((n, x) => n + Number(x[k]), 0);
+
+  beforeAll(async () => {
+    const spel = storeIds.get("Spelbutiken Centrum (exempel)")!;
+    const machine = await one<{ machine_id: string }>(
+      db(),
+      sql`select machine_id from public.machine_placements
+           where organization_id = ${orgId}::uuid and store_id = ${spel}::uuid and valid_to is null
+           order by machine_id limit 1`,
+    );
+    await db().execute(sql`
+      update public.machine_placements set valid_to = (${MOVE}::date - 1)
+       where organization_id = ${orgId}::uuid and machine_id = ${machine.machine_id}::uuid
+         and valid_to is null`);
+    await db().execute(sql`
+      insert into public.machine_placements (organization_id, machine_id, store_id, valid_from)
+      values (${orgId}::uuid, ${machine.machine_id}::uuid,
+              ${storeIds.get("Gallerian Väst (exempel)")!}::uuid, ${MOVE}::date)`);
+  });
+
+  it("en automat som flyttar till en annan ägares butik räknas hos rätt ägare varje dag", async () => {
+    await asOwner(async () => {
+      for (const andel of [false, true]) {
+        view.andel = andel;
+        const all = await figures({ agare: ownerId });
+        const parts = await Promise.all(
+          OWNED.map((name) => figures({ butik: storeIds.get(name)! })),
+        );
+        for (const k of KEYS) expect([k, all[k]]).toEqual([k, sumOf(parts, k)]);
+        const other = await figures({ agare: singleOwnerId });
+        expect(other).toEqual(
+          await figures({ butik: storeIds.get("Spelbutiken Centrum (exempel)")! }),
+        );
+        const org = await figures({});
+        for (const k of ["revenue", "orders", "packs"] as const) {
+          expect([k, all[k] + other[k]]).toEqual([k, org[k]]);
+        }
+        expect(other.revenue).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  it("en butik som byter ägare följer med till den nya ägaren (vinstdelning ingår)", async () => {
+    const spel = storeIds.get("Spelbutiken Centrum (exempel)")!;
+    await db().execute(
+      sql`update public.stores set owner_id = ${ownerId}::uuid where id = ${spel}::uuid`,
+    );
+    await asOwner(async () => {
+      for (const andel of [false, true]) {
+        view.andel = andel;
+        const all = await figures({ agare: ownerId });
+        const parts = await Promise.all(
+          [...OWNED, "Spelbutiken Centrum (exempel)"].map((name) =>
+            figures({ butik: storeIds.get(name)! }),
+          ),
+        );
+        for (const k of KEYS) expect([k, all[k]]).toEqual([k, sumOf(parts, k)]);
+        const org = await figures({});
+        for (const k of ["revenue", "orders", "packs"] as const) {
+          expect([k, all[k]]).toEqual([k, org[k]]);
+        }
+        const old = await figures({ agare: singleOwnerId });
+        expect(old.revenue).toBe(0);
+        expect(old.packs).toBe(0);
+        expect(old.storeShare).toBe(0);
+      }
+      view.andel = false;
+      const pageAll = await pages({ agare: ownerId });
+      const pageParts = await Promise.all(
+        [...OWNED, "Spelbutiken Centrum (exempel)"].map((name) =>
+          pages({ butik: storeIds.get(name)! }),
+        ),
+      );
+      for (const key of Object.keys(pageAll)) {
+        expect([key, pageAll[key]]).toEqual([key, pageParts.reduce((n, x) => n + x[key]!, 0)]);
+      }
+    });
+  });
+});
