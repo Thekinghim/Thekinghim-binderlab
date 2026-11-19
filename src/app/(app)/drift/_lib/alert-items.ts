@@ -28,7 +28,7 @@ export function toAlertItems(
     opened: formatWhen(a.openedAt, timeZone, now),
     lastSeen: formatWhen(a.lastSeenAt, timeZone, now),
     closed: a.closedAt ? formatWhen(a.closedAt, timeZone, now) : null,
-    notifyCount: a.notifyCount,
+    delivered: a.delivered,
     occurrences: a.occurrences,
     acknowledged: a.acknowledgedAt
       ? `${a.acknowledgedByName ?? "Någon"} tar det, sedan ${formatWhen(a.acknowledgedAt, timeZone, now)}`

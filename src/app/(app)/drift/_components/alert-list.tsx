@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { useToast } from "@/components/ui/toast";
 
 import { acknowledgeAlert } from "../actions";
+import { seenText } from "../_lib/seen-text";
 
 /** Ett larm som det visas (serialiserbart). */
 export interface AlertItem {
@@ -25,7 +26,8 @@ export interface AlertItem {
   readonly opened: string;
   readonly lastSeen: string;
   readonly closed: string | null;
-  readonly notifyCount: number;
+  /** Utskick om larmet som gått fram till någon. null = visas inte (inte ägare/admin). */
+  readonly delivered: number | null;
   readonly occurrences: number;
   readonly acknowledged: string | null;
   readonly open: boolean;
@@ -122,9 +124,7 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
                       ))}
                     </dl>
                   ) : null}
-                  <p className="text-sm text-subtle">
-                    {`Sett ${a.occurrences} ${a.occurrences === 1 ? "gång" : "gånger"}, aviserat ${a.notifyCount} ${a.notifyCount === 1 ? "gång" : "gånger"}, senast sett ${a.lastSeen}.`}
-                  </p>
+                  <p className="text-sm text-subtle">{seenText(a)}</p>
                   <Link
                     href={a.link}
                     className="w-fit rounded-xs text-fg underline-offset-2 hover:underline max-md:flex max-md:min-h-11 max-md:items-center"

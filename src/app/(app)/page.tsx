@@ -36,6 +36,7 @@ import { RankingLine } from "./_hem/ranking-line";
 import { ShrinkageLine } from "./_hem/shrinkage-line";
 import { MorningBrief } from "./_hem/morning-brief";
 import { SelfCheckLine } from "./_hem/self-check-line";
+import { WatchLines } from "./_vakt/watch-lines";
 import { PayoutLines } from "./_hem/payout-line";
 import { VardeCard } from "./_hem/varde-card";
 import { HomeRow } from "./_hem/home-row";
@@ -165,6 +166,11 @@ async function HemContent({
           </div>
         </HemHero>
       </div>
+
+      {/* Vakten: ingen får larm, kontrollen eller hämtningen har stannat (ägare och admin). */}
+      <Suspense fallback={null}>
+        <WatchLines className={`rise mt-6 max-md:mt-4 ${ORDER.hero}`} />
+      </Suspense>
 
       {/* Daglig kontroll: bara när senaste kontrollen hittade fel (ägare och admin). */}
       {canSeeValue && !scope ? (

@@ -274,7 +274,8 @@ export async function deliverDue(
         userId: row.userId,
         email: await userEmail(db, row.userId),
         phone: sub?.phone ?? null,
-        channels: (sub?.channels ?? ["email"]) as Channel[],
+        // Utan sparad rad (en ägare eller admin): standarden, som larmjobbet köade med.
+        channels: (sub?.channels ?? ["push", "email"]) as Channel[],
         pushDevices: devices,
       };
       const timeZone = org?.timezone ?? "Europe/Stockholm";

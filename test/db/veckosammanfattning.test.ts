@@ -515,6 +515,8 @@ describe("veckosammanfattningen: vem och när", () => {
     const f = await freshOrg("Knappen");
     const ctx = { orgId: f.orgId, userId: f.owner.id, role: "owner" };
     await addDevice(f.orgId, f.owner);
+    // Ägaren har Notiser i mobilen av (raden som skapas med medlemskapet har push: av här).
+    await asUser(f.owner, (tx) => saveNoticeChange(tx, ctx, { on: false }));
     // Inte vald och inga notiser i mobilen: av.
     expect((await run(f.orgId)).sent).toEqual([]);
     expect(await summaryRows(f.orgId)).toEqual([]);

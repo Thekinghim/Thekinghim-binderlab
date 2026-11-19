@@ -105,7 +105,12 @@ beforeAll(async () => {
   await asUser(owner, (tx) =>
     tx
       .insert(s.alertSubscriptions)
-      .values({ organizationId: orgId, userId: owner.id, channels: ["push"] }),
+      .values({ organizationId: orgId, userId: owner.id, channels: ["push"] })
+      // Ägaren har redan raden (skapas med medlemskapet): här får den kanalen push.
+      .onConflictDoUpdate({
+        target: [s.alertSubscriptions.organizationId, s.alertSubscriptions.userId],
+        set: { channels: ["push"], active: true },
+      }),
   );
 });
 afterAll(async () => {
