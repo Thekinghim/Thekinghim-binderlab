@@ -35,6 +35,7 @@ import type { SelfCheckTrigger } from "@/db/schema";
 import { addDays, addMonths, monthOf, monthStart, type IsoMonth } from "@/domain";
 import { withUserDbFor, type OrganizationMembership } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
+import { recordJobOutcome } from "@/server/monitoring/failures";
 import { errorText } from "@/server/monitoring/system-alerts";
 import { liveFor } from "@/server/settlements/live";
 
@@ -63,10 +64,48 @@ export interface SelfCheckRunResult {
   readonly error?: string;
 }
 
+/** En kontroll som inte är klar efter så här länge blir "kunde inte köras". */
+export const CHECK_TIMEOUT_MS = 60_000;
+/**
+ * Hela körningen för en organisation. Går tiden ut sparas körningen som ett fel: en
+ * kontroll som hänger ska synas som "kunde inte köras", inte försvinna när funktionen
+ * dödas (300 s) utan att något har sparats.
+ */
+export const RUN_TIMEOUT_MS = 150_000;
+
 export interface SelfCheckDeps {
   /** Systemrollens databas. Standard: getServiceDb(). */
   readonly db?: Db;
   readonly now?: Date;
+  /** Tidsgränser (tester). */
+  readonly checkTimeoutMs?: number;
+  readonly runTimeoutMs?: number;
+  /** Själva kontrollerna (tester). Standard: runChecks. */
+  readonly checks?: (
+    db: Db,
+    viewer: Viewer,
+    now: Date,
+    options?: { readonly checkTimeoutMs?: number },
+  ) => Promise<CheckResult[]>;
+}
+
+/** `promise`, eller ett fel med `message` när tiden går ut. Väntar inte på det som hänger. */
+export async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  // Det som hänger får inte bli ett ohanterat fel om det till slut kastar.
+  promise.catch(() => {});
+  try {
+    return await Promise.race([promise, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function seconds(ms: number): string {
+  return `${Math.round(ms / 1000)} sekunder`;
 }
 
 interface OrgRow {
@@ -123,11 +162,15 @@ export async function checkViewerFor(db: Db, orgId: string): Promise<Viewer | nu
   return { user: { userId: row.user_id, email: row.email }, organization };
 }
 
-async function timed(id: SelfCheckId, fn: () => Promise<CheckResult>): Promise<CheckResult> {
+async function timed(
+  id: SelfCheckId,
+  fn: () => Promise<CheckResult>,
+  timeoutMs: number = CHECK_TIMEOUT_MS,
+): Promise<CheckResult> {
   const start = Date.now();
   let result: CheckResult;
   try {
-    result = await fn();
+    result = await withTimeout(fn(), timeoutMs, `Blev inte klar på ${seconds(timeoutMs)}.`);
   } catch (error) {
     console.error(`[self-check] ${id}`, error instanceof Error ? error.message : error);
     result = crashed(id, errorText(error, 200));
@@ -140,7 +183,14 @@ function monthLabel(month: string): string {
 }
 
 /** De sju kontrollerna för organisationen. Läser bara. */
-export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<CheckResult[]> {
+export async function runChecks(
+  db: Db,
+  viewer: Viewer,
+  now: Date,
+  options: { readonly checkTimeoutMs?: number } = {},
+): Promise<CheckResult[]> {
+  const limit = options.checkTimeoutMs ?? CHECK_TIMEOUT_MS;
+  const check = (id: SelfCheckId, fn: () => Promise<CheckResult>) => timed(id, fn, limit);
   const orgId = viewer.organization.id;
   const tz = viewer.organization.timezone;
   const today = businessToday(now, tz);
@@ -154,7 +204,7 @@ export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<Chec
     .catch(() => unpricedTitlesFor(viewer, from30, today, now));
 
   const results = await Promise.all([
-    timed("samma_vinst", async () => {
+    check("samma_vinst", async () => {
       const first = profitConsistency((await profitP).periods);
       if (first.status !== "fail") return first;
       // Sidorna läses i flera transaktioner: en order som synkas (var femte minut) mellan
@@ -162,17 +212,17 @@ export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<Chec
       // likadant varje gång, så det läses en gång till och bara det som består är fel.
       return profitConsistency((await gatherProfit(viewer, now)).periods);
     }),
-    timed("awish_appen", async () =>
+    check("awish_appen", async () =>
       awishStockCheck({ machines: await queryAwishReads(db, orgId), now }),
     ),
-    timed("pafyllning_awish", async () => {
+    check("pafyllning_awish", async () => {
       const data = await queryRefillPushes(db, orgId, now);
       return refillPushCheck({ ...data, now });
     }),
-    timed("synk", async () =>
+    check("synk", async () =>
       syncFreshnessCheck({ sources: await querySyncSources(db, orgId, tz, now), now }),
     ),
-    timed("avrakningar", async () => {
+    check("avrakningar", async () => {
       const [unpaid, paid] = await Promise.all([
         queryUnpaidClosed(db, orgId, thisMonthStart),
         // Betalda de senaste tolv månaderna: betalt mot dagens uträkning.
@@ -212,7 +262,7 @@ export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<Chec
       });
       return settlementCheck(rows, paidRows);
     }),
-    timed("datahygien", async () => {
+    check("datahygien", async () => {
       const [base, unpricedTitles, agreementGaps] = await Promise.all([
         queryHygiene(db, orgId, from30),
         unpricedP,
@@ -222,7 +272,7 @@ export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<Chec
       return hygieneCheck({ ...base, unpricedTitles, agreementGaps });
     }),
     // Bara varningar: kortavgift 0 % trots kortköp, moms 0 % nära momsgränsen.
-    timed("installningar", async () => settingsCheck(await querySettingsFacts(db, orgId, today))),
+    check("installningar", async () => settingsCheck(await querySettingsFacts(db, orgId, today))),
   ]);
   return results;
 }
@@ -251,7 +301,12 @@ export async function runSelfCheck(
   try {
     const viewer = input.viewer ?? (await checkViewerFor(db, orgId));
     if (!viewer) throw new Error("Organisationen saknar ägare och admin.");
-    checks = await runChecks(db, viewer, now);
+    const runLimit = deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
+    checks = await withTimeout(
+      (deps.checks ?? runChecks)(db, viewer, now, { checkTimeoutMs: deps.checkTimeoutMs }),
+      runLimit,
+      `Kontrollen blev inte klar på ${seconds(runLimit)}.`,
+    );
   } catch (e) {
     error = errorText(e, 500);
   }
@@ -275,6 +330,14 @@ export async function runSelfCheck(
   const alerts = error
     ? null
     : await syncSelfCheckAlerts(db, orgId, checks, { now, notify: !org.is_demo });
+  // En schemalagd körning som inte gick att köra ska höras (job:kontroll); en körning som
+  // gick stänger larmet. "Kör kontrollen nu" visar sitt fel direkt för den som tryckte.
+  if (!org.is_demo && (input.trigger === "schedule" || !error)) {
+    await recordJobOutcome(
+      { db, now },
+      { organizationId: orgId, job: "kontroll", error: error ? new Error(error) : null },
+    );
+  }
 
   return {
     id: row?.id ?? null,

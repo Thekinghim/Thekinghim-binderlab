@@ -4,17 +4,23 @@
  * Kontrollerar varje organisations egna siffror en gång per dag (src/server/self-check):
  * samma vinst på alla sidor, Awish = appen, påfyllningar som nådde Awish, synken,
  * avräkningarna och datahygienen. Läser bara; sparar resultatet och larmar ägare och
- * admin när en kontroll inte går igenom. Schemaläggs av pg_cron i Supabase 03:37 och
- * 04:37 UTC (20261114000000_daglig_kontroll.sql, private.kontroll_cron_tick); routen kör
- * varje organisation första gången efter 05:00 lokal tid, så en andra körning samma dag
- * gör ingenting.
+ * admin när en kontroll inte går igenom. Schemaläggs av pg_cron i Supabase varje timme
+ * 03:52–09:52 UTC (20261220110100_cron_svar_och_fler_tillfallen.sql,
+ * private.kontroll_cron_tick); routen kör varje organisation första gången efter 05:00
+ * lokal tid, så de senare tillfällena gör ingenting när kontrollen har kört och är nya
+ * försök när den inte har det. Larmjobbet (/api/cron/larm, Vercel Cron) kör den också, så
+ * att kontrollen inte hänger på en enda schemaläggare.
+ *
+ * Anslutningen till databasen kontrolleras först (freshServiceDb): en anslutning som dött
+ * medan funktionen låg fryst byts ut i stället för att körningen hänger tills den dödas.
  *
  * Utan CRON_SECRET svarar routen 503 och gör ingenting.
  */
 
-import { getServiceDb } from "@/db/client";
+import { freshServiceDb } from "@/db/client";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
+import { syncWatchAlertsForAll } from "@/server/monitoring/watch";
 import { runScheduledSelfChecks } from "@/server/self-check/job";
 
 export const runtime = "nodejs";
@@ -36,9 +42,10 @@ export async function GET(request: Request): Promise<Response> {
   if (!cronAuthorized(request.headers.get("authorization"), secret)) {
     return json({ error: "Obehörig." }, 401);
   }
-  const result = await withCronMonitor(CRON_JOBS.kontroll, () =>
-    runScheduledSelfChecks(getServiceDb()),
-  );
+  const db = await freshServiceDb();
+  const result = await withCronMonitor(CRON_JOBS.kontroll, () => runScheduledSelfChecks(db));
+  // Vakten: stänger "Kontrollen har inte körts" när den nu har kört (och larmar om det andra).
+  await syncWatchAlertsForAll(db);
   const ran = result.organizations.filter((o) => o.status !== "skipped");
   const errors = ran.filter((o) => o.status === "error").length;
   return json(

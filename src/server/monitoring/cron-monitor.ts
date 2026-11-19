@@ -47,10 +47,11 @@ export const CRON_JOBS = {
     checkinMarginMinutes: 30,
     maxRuntimeMinutes: 15,
   },
-  // Daglig kontroll: pg_cron 03:37 och 04:37 UTC (20261114000000_daglig_kontroll.sql).
+  // Daglig kontroll: pg_cron varje timme 03:52–09:52 UTC
+  // (20261220110100_cron_svar_och_fler_tillfallen.sql).
   kontroll: {
     slug: "binderlab-kontroll",
-    schedule: "37 3,4 * * *",
+    schedule: "52 3-9 * * *",
     checkinMarginMinutes: 30,
     maxRuntimeMinutes: 5,
   },

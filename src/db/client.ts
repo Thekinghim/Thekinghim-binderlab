@@ -55,11 +55,23 @@ function isTransactionPooler(url: string): boolean {
   }
 }
 
+/**
+ * Sekunder som en ledig anslutning hålls öppen. På Vercel fryses funktionen mellan anrop:
+ * en anslutning som legat kvar sedan förra anropet kan vara död utan att processen vet
+ * det, och nästa fråga på den blir hängande tills funktionen dödas. En ledig anslutning
+ * stängs därför efter en kort stund (nästa fråga öppnar en ny).
+ */
+const IDLE_TIMEOUT_S = 20;
+/** Sekunder att vänta på en ny anslutning innan det blir ett fel i stället för en väntan. */
+const CONNECT_TIMEOUT_S = 10;
+
 function createDb(url: string): Db {
   const client = postgres(url, {
     max: Number.parseInt(process.env.DATABASE_POOL_MAX ?? "10", 10) || 10,
     prepare: !isTransactionPooler(url),
     onnotice: () => {},
+    idle_timeout: Number.parseInt(process.env.DATABASE_IDLE_TIMEOUT ?? "", 10) || IDLE_TIMEOUT_S,
+    connect_timeout: CONNECT_TIMEOUT_S,
     connection: { application_name: "binderlab", TimeZone: "UTC" },
   });
   return drizzle(client, { schema });
@@ -82,6 +94,70 @@ export function getServiceDb(): Db {
   const db = createDb(url);
   globalForDb.__binderlabDb = { url, db };
   return db;
+}
+
+/** Så länge får frågan "lever anslutningen?" ta innan anslutningen byts ut. */
+export const DB_PING_TIMEOUT_MS = 5_000;
+
+export interface FreshDbDeps<T> {
+  /** Den delade anslutningen (skapas om den saknas). */
+  readonly get: () => T;
+  /** Släpper den delade anslutningen utan att vänta på frågor som hänger. */
+  readonly drop: () => void;
+  /** En enkel fråga. Ska kasta eller aldrig bli klar när anslutningen är död. */
+  readonly ping: (db: T) => Promise<unknown>;
+  readonly timeoutMs?: number;
+}
+
+async function answers<T>(deps: FreshDbDeps<T>, db: T): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), deps.timeoutMs ?? DB_PING_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([
+      deps.ping(db).then(
+        () => true as const,
+        () => false as const,
+      ),
+      late,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * En anslutning som bevisligen svarar. Svarar den delade inte inom tidsgränsen (död efter
+ * att funktionen legat fryst) släpps den och en ny öppnas. Kastar om inte heller den svarar:
+ * då är databasen onåbar, och det ska bli ett fel på sekunder i stället för att jobbet
+ * hänger tills det dödas utan spår.
+ */
+export async function freshDbWith<T>(deps: FreshDbDeps<T>): Promise<T> {
+  const first = deps.get();
+  if (await answers(deps, first)) return first;
+  deps.drop();
+  const second = deps.get();
+  if (await answers(deps, second)) return second;
+  throw new Error("Databasen svarar inte.");
+}
+
+/**
+ * Systemrollens anslutning för ett schemalagt jobb, kontrollerad först (se freshDbWith).
+ * Varje cron-route börjar här. Också getServiceDb() och withRls() får den nya anslutningen
+ * efter ett byte, eftersom den delade pekar om.
+ */
+export function freshServiceDb(): Promise<Db> {
+  return freshDbWith<Db>({
+    get: getServiceDb,
+    drop: () => {
+      const cached = globalForDb.__binderlabDb;
+      globalForDb.__binderlabDb = undefined;
+      // Väntar inte: en fråga som hänger på en död anslutning blir aldrig klar.
+      void cached?.db.$client.end({ timeout: 0 }).catch(() => {});
+    },
+    ping: (db) => db.execute(sql`select 1`),
+  });
 }
 
 /** Stänger den delade anslutningen (för skript och tester). */

@@ -11,7 +11,7 @@
  * Utan CRON_SECRET svarar routen 503 och gör ingenting.
  */
 
-import { getServiceDb } from "@/db/client";
+import { freshServiceDb } from "@/db/client";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
 import { runWeeklySummaries } from "@/server/weekly/job";
@@ -32,7 +32,9 @@ export async function GET(request: Request): Promise<Response> {
   if (!cronAuthorized(request.headers.get("authorization"), secret)) {
     return json({ error: "Obehörig." }, 401);
   }
-  const result = await withCronMonitor(CRON_JOBS.vecka, () => runWeeklySummaries(getServiceDb()));
+  // En anslutning som dött medan funktionen låg fryst byts ut (se freshServiceDb).
+  const db = await freshServiceDb();
+  const result = await withCronMonitor(CRON_JOBS.vecka, () => runWeeklySummaries(db));
   const ran = result.organizations.filter((o) => o.status === "ran");
   const sum = (key: "sent" | "failed" | "errors") => ran.reduce((n, o) => n + (o[key] ?? 0), 0);
   const errors = sum("errors");

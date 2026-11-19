@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/db/client", () => ({ getServiceDb: () => ({}) }));
+vi.mock("@/db/client", () => ({
+  getServiceDb: () => ({}),
+  freshServiceDb: async () => ({}),
+}));
+const watch = vi.fn(async () => ({ raised: 0, resolved: 0 }));
+vi.mock("@/server/monitoring/watch", () => ({ syncWatchAlertsForAll: watch }));
 const sync = vi.fn(async () => ({
   sources: [
     {
@@ -81,8 +86,11 @@ describe("/api/cron/awish", () => {
         },
       ],
       campaigns: { shown: 2, failed: 0 },
+      watch: { raised: 0, resolved: 0 },
       offlineAlerts: { organizations: 1, sent: 1 },
     });
+    // Vakten körs i varje tick: den larmar om jobben som bara går en gång per dygn.
+    expect(watch).toHaveBeenCalledTimes(1);
     // Offlinelarmet utvärderas direkt efter synken för de synkade organisationerna.
     expect(offline).toHaveBeenCalledTimes(1);
     expect(offline.mock.calls[0]?.[1]).toEqual(["org-1"]);

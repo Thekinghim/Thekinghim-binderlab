@@ -116,11 +116,33 @@ function olderThan(iso: string | null, now: Date, ms: number): boolean {
   return !Number.isFinite(t) || now.getTime() - t > ms;
 }
 
+/** Vad schemat (pg_cron) fick till svar när det senast anropade jobbet. */
+export interface CronAnswer {
+  readonly calledAt: string;
+  /** null = inget svar har kommit. */
+  readonly statusCode: number | null;
+  readonly timedOut: boolean;
+}
+
+/** "Schemat anropade den …, men …": varför jobbet inte kördes, så långt det går att se. */
+export function cronAnswerText(a: CronAnswer | null | undefined, when: WhenText): string {
+  if (!a) return "";
+  const at = when(a.calledAt);
+  if (a.timedOut) return ` Schemat anropade den ${at}, men fick inget svar i tid.`;
+  if (a.statusCode === null) return ` Schemat anropade den ${at}, men fick inget svar.`;
+  if (a.statusCode >= 200 && a.statusCode < 300) {
+    return ` Schemat anropade den ${at} och fick svar, men ingen körning sparades.`;
+  }
+  return ` Schemat anropade den ${at}, men fick fel ${a.statusCode} till svar.`;
+}
+
 export interface SelfCheckFacts {
   /** Senaste schemalagda körningen (inte "Kör kontrollen nu"). */
   readonly lastScheduledAt: string | null;
   /** När organisationen skapades: en ny organisation har inget att sakna än. */
   readonly organizationCreatedAt: string;
+  /** Senaste anropet från schemat och svaret (private.cron_calls), om det finns. */
+  readonly lastCall?: CronAnswer | null;
 }
 
 /** "Kontrollen har inte körts sedan …", eller null när den har kört i tid. */
@@ -134,8 +156,7 @@ export function selfCheckLine(f: SelfCheckFacts, now: Date, when: WhenText): Wat
     title: f.lastScheduledAt
       ? `Kontrollen har inte körts sedan ${when(f.lastScheduledAt)}`
       : "Kontrollen har aldrig körts av sig själv",
-    detail:
-      "Den ska köras varje morgon och jämföra siffrorna på alla sidor. Kör den själv nu, och säg till den som sköter driften.",
+    detail: `Den ska köras varje morgon och jämföra siffrorna på alla sidor.${cronAnswerText(f.lastCall, when)} Kör den själv nu, och säg till den som sköter driften.`,
     href: "/installningar/kontroll",
     action: "Kör kontrollen nu",
   };

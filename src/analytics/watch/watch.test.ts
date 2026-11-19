@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ageText,
   alertRunLine,
+  cronAnswerText,
   machineAges,
   machineAgeSummary,
   memberReached,
@@ -92,6 +93,24 @@ describe("kontrollen har inte körts", () => {
     );
     expect(line?.title).toBe("Kontrollen har aldrig körts av sig själv");
     expect(line?.href).toBe("/installningar/kontroll");
+  });
+
+  it("säger vad schemat fick till svar, när det går att se", () => {
+    const base = { lastScheduledAt: null, organizationCreatedAt: created };
+    const call = { calledAt: "2026-11-19T04:52:00Z", statusCode: 500, timedOut: false };
+    expect(selfCheckLine({ ...base, lastCall: call }, NOW, when)?.detail).toBe(
+      "Den ska köras varje morgon och jämföra siffrorna på alla sidor. Schemat anropade den <2026-11-19T04:52>, men fick fel 500 till svar. Kör den själv nu, och säg till den som sköter driften.",
+    );
+    expect(cronAnswerText({ ...call, statusCode: null }, when)).toBe(
+      " Schemat anropade den <2026-11-19T04:52>, men fick inget svar.",
+    );
+    expect(cronAnswerText({ ...call, statusCode: null, timedOut: true }, when)).toBe(
+      " Schemat anropade den <2026-11-19T04:52>, men fick inget svar i tid.",
+    );
+    expect(cronAnswerText({ ...call, statusCode: 200 }, when)).toBe(
+      " Schemat anropade den <2026-11-19T04:52> och fick svar, men ingen körning sparades.",
+    );
+    expect(cronAnswerText(null, when)).toBe("");
   });
 
   it("säger när den senast kördes", () => {

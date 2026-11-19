@@ -10,15 +10,18 @@
  * routen 503 och gör ingenting.
  */
 
-import { getServiceDb } from "@/db/client";
+import { freshServiceDb } from "@/db/client";
 import { getServerEnv } from "@/lib/env";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runAlertJob } from "@/server/alerts/job";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
+import { syncWatchAlertsForAll } from "@/server/monitoring/watch";
 import { resolveAppBaseUrl } from "@/server/request-info";
+import { runScheduledSelfChecks } from "@/server/self-check/job";
 import { createMonthlySettlements } from "@/server/settlements/service";
 
-export const maxDuration = 60;
+// 300 s: larmen först, sedan avräkningarna och sist dagens kontroll om den inte har kört.
+export const maxDuration = 300;
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
@@ -46,9 +49,10 @@ export async function GET(request: Request): Promise<Response> {
     const failed = r.organizations.filter((o) => o.status === "failed").length;
     return failed > 0 && failed === r.organizations.length;
   };
+  const db = await freshServiceDb();
   const result = await withCronMonitor(
     CRON_JOBS.larm,
-    () => runAlertJob(getServiceDb(), { baseUrl }),
+    () => runAlertJob(db, { baseUrl }),
     (r) => !allFailed(r),
   );
   // Butikernas avräkningar (src/server/settlements): förra månadens saknade skapas från den
@@ -56,7 +60,7 @@ export async function GET(request: Request): Promise<Response> {
   // Ett fel här påverkar inte larmen.
   let settlements: { created: number; refreshed: number; errors: number } | null = null;
   try {
-    const runs = await createMonthlySettlements(getServiceDb(), new Date(), {
+    const runs = await createMonthlySettlements(db, new Date(), {
       create: "not-first",
     });
     settlements = {
@@ -67,5 +71,17 @@ export async function GET(request: Request): Promise<Response> {
   } catch (error) {
     console.error("[cron/larm] avräkningar", error instanceof Error ? error.message : error);
   }
-  return json({ ...result, settlements }, allFailed(result) ? 500 : 200);
+  // Dagens kontroll, om den inte redan har kört (pg_cron anropar /api/cron/kontroll): två
+  // schemaläggare som inte beror på varandra. Sist, så att den aldrig kostar larmen tid.
+  let selfChecks: { ran: number; errors: number } | null = null;
+  try {
+    const checks = await runScheduledSelfChecks(db);
+    const ran = checks.organizations.filter((o) => o.status !== "skipped");
+    selfChecks = { ran: ran.length, errors: ran.filter((o) => o.status === "error").length };
+  } catch (error) {
+    console.error("[cron/larm] kontrollen", error instanceof Error ? error.message : error);
+  }
+  // Vakten: larmar när kontrollen eller hämtningen från Awish har stannat, eller ingen nås.
+  const watch = await syncWatchAlertsForAll(db);
+  return json({ ...result, settlements, selfChecks, watch }, allFailed(result) ? 500 : 200);
 }

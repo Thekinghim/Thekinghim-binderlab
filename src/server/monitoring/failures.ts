@@ -281,9 +281,36 @@ export async function recordDraftsOutcome(
 // Schemalagda jobb
 // ---------------------------------------------------------------------------
 
-const JOB_LABEL: Record<string, string> = {
-  larm: "Larmjobbet",
-  rapporter: "Jobbet för månadsutkast",
+/** Vad jobbet heter, vad som inte händer när det misslyckas och var det åtgärdas. */
+const JOB_INFO: Record<string, { label: string; consequence: string; link: string }> = {
+  larm: {
+    label: "Larmjobbet",
+    consequence: "Larm om automater, lager och importer uppdateras inte förrän jobbet lyckas.",
+    link: "/drift",
+  },
+  rapporter: {
+    label: "Jobbet för månadsutkast",
+    consequence: "Månadens rapportutkast skapas inte förrän jobbet lyckas.",
+    link: "/rapporter",
+  },
+  kontroll: {
+    label: "Den dagliga kontrollen",
+    consequence:
+      "Siffrorna har inte kontrollerats i dag. Kör kontrollen själv under Inställningar → Kontroll.",
+    link: "/installningar/kontroll",
+  },
+  avrakningar: {
+    label: "Jobbet för butikernas avräkningar",
+    consequence:
+      "Månadens avräkningar har inte skapats eller räknats om. Öppna Butiker → Utbetalning och skapa dem där.",
+    link: "/butiker?vy=utbetalning",
+  },
+  kampanjer: {
+    label: "Jobbet som startar kampanjer",
+    consequence:
+      "En kampanj som skulle ha startat har inte skickats till Awish. Öppna Kampanjer och starta den där.",
+    link: "/kampanjer",
+  },
 };
 
 export interface JobOutcomeInput {
@@ -309,7 +336,8 @@ export async function recordJobOutcome(
     );
     return { ...NOTHING, resolved };
   }
-  const label = JOB_LABEL[input.job] ?? `Jobbet ${input.job}`;
+  const info = JOB_INFO[input.job];
+  const label = info?.label ?? `Jobbet ${input.job}`;
   const reason = errorText(input.error);
   const capture = deps.capture ?? captureToSentry;
   const sentryId = await safely(
@@ -337,9 +365,9 @@ export async function recordJobOutcome(
         key,
         severity: "critical",
         title: `${label} misslyckades`,
-        detail: `Det schemalagda jobbet kunde inte köras för organisationen. Fel: ${reason}. Larm om automater, lager och importer uppdateras inte förrän jobbet lyckas.`,
+        detail: `Det schemalagda jobbet kunde inte köras för organisationen. Fel: ${reason}. ${info?.consequence ?? "Det körs igen vid nästa tillfälle."}`,
         rule: "Larm när ett schemalagt jobb misslyckas. Stängs när jobbet lyckas.",
-        link: "/drift",
+        link: info?.link ?? "/drift",
         now: deps.now,
       }),
     null,

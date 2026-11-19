@@ -24,6 +24,7 @@ import {
   machineAgeSummary,
   watchLines,
   type ChannelsWorking,
+  type CronAnswer,
   type MachineAge,
   type ReachMember,
   type SyncSourceFacts,
@@ -131,6 +132,39 @@ export async function loadSyncFacts(db: Db, orgId: string): Promise<SyncSourceFa
   });
 }
 
+/**
+ * Senaste anropet från pg_cron till jobbet och svaret (private.cron_calls). Bara anrop som
+ * är äldre än tolv minuter: ett anrop får ta fem minuter, och svaret läses vid nästa tick.
+ * null utan tabellen eller utan anrop (lokalt och i tester finns inget pg_cron).
+ */
+export async function loadCronAnswer(db: Db, job: string): Promise<CronAnswer | null> {
+  return safely(
+    "schemats svar",
+    async () => {
+      const [exists] = Array.from(
+        await db.execute(sql`select to_regclass('private.cron_calls') is not null as ok`),
+      ) as { ok: boolean }[];
+      if (!exists?.ok) return null;
+      const [row] = Array.from(
+        await db.execute(
+          sql`select called_at, status_code, coalesce(timed_out, false) as timed_out
+              from private.cron_calls
+              where job = ${job} and called_at < now() - interval '12 minutes'
+              order by called_at desc limit 1`,
+        ),
+      ) as { called_at: unknown; status_code: number | null; timed_out: boolean }[];
+      const calledAt = row ? iso(row.called_at) : null;
+      if (!row || !calledAt) return null;
+      return {
+        calledAt,
+        statusCode: row.status_code === null ? null : Number(row.status_code),
+        timedOut: Boolean(row.timed_out),
+      };
+    },
+    null,
+  );
+}
+
 /** Allt vakten behöver om organisationen. `null` = finns inte, är arkiverad eller en demo. */
 export async function loadWatchFacts(
   db: Db,
@@ -157,16 +191,21 @@ export async function loadWatchFacts(
   // En demo skickar aldrig något och körs inte av larmjobbet: där finns inget att vakta.
   if (!org || org.is_demo) return null;
   const createdAt = iso(org.created_at) ?? new Date(0).toISOString();
-  const [members, works, sync] = await Promise.all([
+  const [members, works, sync, lastCall] = await Promise.all([
     loadReachMembers(db, orgId),
     channelsWorking(env),
     loadSyncFacts(db, orgId),
+    loadCronAnswer(db, "kontroll"),
   ]);
   return {
     timeZone: org.timezone,
     facts: {
       reach: { members, works },
-      selfCheck: { lastScheduledAt: iso(org.check_at), organizationCreatedAt: createdAt },
+      selfCheck: {
+        lastScheduledAt: iso(org.check_at),
+        organizationCreatedAt: createdAt,
+        lastCall,
+      },
       sync,
       alertRun: { lastRunAt: iso(org.alert_at), organizationCreatedAt: createdAt },
     },
