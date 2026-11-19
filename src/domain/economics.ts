@@ -60,6 +60,34 @@ export function assertSettings(settings: Settings): void {
   }
   assertBp(settings.vatRateBp, "Momssatsen", MAX_VAT_RATE_BP);
   assertBp(settings.cardFeeBp, "Kortavgiften");
+  let prev: string | null = null;
+  for (const r of settings.cardFeeRates ?? []) {
+    assertBp(r.cardFeeBp, "Kortavgiften");
+    if (!ISO_DAY.test(r.validFrom) || (prev !== null && r.validFrom <= prev)) {
+      throw new DomainError("invalid_input", "Kortavgiftens datum är ogiltiga.");
+    }
+    prev = r.validFrom;
+  }
+}
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Kortavgiften (bp) som gäller en dag: sista raden i `cardFeeRates` med `validFrom` <=
+ * dagen. Före första raden gäller den första (grundsatsen). Utan lista: `cardFeeBp`.
+ */
+export function cardFeeBpOn(
+  settings: Pick<Settings, "cardFeeBp" | "cardFeeRates">,
+  day: IsoDate,
+): number {
+  const rates = settings.cardFeeRates;
+  if (!rates || rates.length === 0) return settings.cardFeeBp;
+  let bp = rates[0]!.cardFeeBp;
+  for (const r of rates) {
+    if (r.validFrom > day) break;
+    bp = r.cardFeeBp;
+  }
+  return bp;
 }
 
 /** Kontrollerar en order (giltigt datum, belopp som heltal ≥ 0). */
@@ -122,7 +150,8 @@ export function computeOrderEconomics(order: OrderLine, ctx: EconomicsContext): 
   const gross = order.amountOre;
   const vat = vatOfGross(gross, settings.vatRateBp);
   const net = gross - vat;
-  const cardFee = settings.cardFeeBp === 0 ? 0 : applyBp(gross, settings.cardFeeBp);
+  const feeBp = cardFeeBpOn(settings, order.businessDate);
+  const cardFee = feeBp === 0 ? 0 : applyBp(gross, feeBp);
   const price = ctx.prices.priceOn(order.titleId, order.businessDate);
   const storeId =
     order.machineId === null ? null : ctx.placements.storeOn(order.machineId, order.businessDate);

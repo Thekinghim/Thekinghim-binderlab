@@ -19,6 +19,7 @@ import { toSafeInteger } from "@/db/types";
 import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
 import {
   DEFAULT_TARGET_MARGIN_BP,
+  parseCardFeeHistory,
   type IsoDate,
   type MachineInvestment,
   type MysteryRecipeRef,
@@ -136,12 +137,22 @@ export async function querySettings(tx: Tx, orgId: string): Promise<OrgSettings>
     .select({
       vatRateBp: s.organizationSettings.vatRateBp,
       cardFeeBp: s.organizationSettings.cardFeeBp,
+      cardFeeHistory: s.organizationSettings.cardFeeHistory,
       fiscalYearStartMonth: s.organizationSettings.fiscalYearStartMonth,
     })
     .from(s.organizationSettings)
     .where(eq(s.organizationSettings.organizationId, orgId))
     .limit(1);
-  return rows[0] ?? DEFAULT_SETTINGS;
+  const row = rows[0];
+  if (!row) return DEFAULT_SETTINGS;
+  // Kortavgiften med startdatum: tom lista = en sats för alla datum (cardFeeBp).
+  const cardFeeRates = parseCardFeeHistory(row.cardFeeHistory);
+  return {
+    vatRateBp: row.vatRateBp,
+    cardFeeBp: row.cardFeeBp,
+    fiscalYearStartMonth: row.fiscalYearStartMonth,
+    ...(cardFeeRates.length > 0 ? { cardFeeRates } : {}),
+  };
 }
 
 /** Antal aktiva automater per organisation (för organisationsväxlaren). */

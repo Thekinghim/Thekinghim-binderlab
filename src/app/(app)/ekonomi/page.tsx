@@ -281,6 +281,7 @@ export default async function EkonomiPage({
                   payoutIds={payoutIds}
                   statements={statements}
                   cardFeeBp={rec.cardFeeBp}
+                  cardFeeFrom={rec.cardFeeDefaultFrom}
                 />
               ) : askFirst ? null : (
                 // Mobil: uppladdningen står direkt under, så knappen hit behövs inte.

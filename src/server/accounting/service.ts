@@ -73,6 +73,7 @@ import {
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
 import { queryPeriodRefunds } from "@/server/data/core/queries";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
+import { firstOpenDayTx } from "@/server/periods/service";
 import {
   queryAgreements,
   queryMachines,
@@ -223,6 +224,8 @@ export interface ReconciliationView {
   readonly reviews: ReviewRecord[];
   readonly providerTimeZone: string | null;
   readonly cardFeeBp: number;
+  /** Förvalt startdatum för en ändrad kortavgift: första dagen som inte är låst (null = allt). */
+  readonly cardFeeDefaultFrom: IsoDate | null;
   readonly source: ReturnType<typeof payoutSourceStatus>;
   /** Order utan titel i perioden: de saknas i avstämningen (ska inte förekomma). */
   readonly ordersWithoutTitle: number;
@@ -354,9 +357,10 @@ export async function loadReconciliationFor(
 ): Promise<ReconciliationView> {
   const orgId = viewer.organization.id;
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {
-    const [rec, imports] = await Promise.all([
+    const [rec, imports, cardFeeDefaultFrom] = await Promise.all([
       reconcileIn(tx, orgId, period, viewer.organization.timezone),
       queryPayoutImports(tx, orgId),
+      firstOpenDayTx(tx, orgId),
     ]);
     return {
       period,
@@ -367,6 +371,7 @@ export async function loadReconciliationFor(
       reviews: rec.reviews,
       providerTimeZone: rec.providerTimeZone,
       cardFeeBp: rec.settings.cardFeeBp,
+      cardFeeDefaultFrom,
       source: payoutSourceStatus(),
       ordersWithoutTitle: rec.withoutTitle,
     };

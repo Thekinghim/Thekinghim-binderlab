@@ -19,6 +19,7 @@ export type {
   Placement,
   ProfitabilityInput,
   PurchasePrice,
+  CardFeeRate,
   Settings,
   StoreAgreement,
 } from "./types";
@@ -90,6 +91,14 @@ export { agreementOn, AgreementIndex, PlacementIndex, storeOn } from "./placemen
 export { agreementGaps, type AgreementGap } from "./agreement-gaps";
 
 export {
+  CARD_FEE_BASE_FROM,
+  cardFeeHistoryJson,
+  parseCardFeeHistory,
+  setCardFeeFrom,
+} from "./card-fee";
+
+export {
+  cardFeeBpOn,
   createEconomicsContext,
   orderEconomics,
   vatOfGross,

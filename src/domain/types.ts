@@ -86,12 +86,27 @@ export interface Placement {
   readonly to: IsoDate | null;
 }
 
+/** Kortavgiften från och med en dag. */
+export interface CardFeeRate {
+  readonly validFrom: IsoDate;
+  readonly cardFeeBp: Bp;
+}
+
 /** Organisationens inställningar. */
 export interface Settings {
   /** Momssats i bp (0 i dag). Beloppen i orderna antas inkludera momsen. */
   readonly vatRateBp: Bp;
-  /** Kortavgift i bp på beloppet inklusive moms (0 i dag). */
+  /**
+   * Kortavgift i bp på beloppet inklusive moms: satsen som gäller i dag, och den enda
+   * satsen när `cardFeeRates` saknas eller är tom.
+   */
   readonly cardFeeBp: Bp;
+  /**
+   * Kortavgiften med startdatum, stigande. En order får satsen på den sista raden med
+   * `validFrom` <= orderns dag; före första raden gäller den första (grundsatsen). Saknas
+   * listan gäller `cardFeeBp` alla datum. Se `cardFeeBpOn` i economics.ts.
+   */
+  readonly cardFeeRates?: readonly CardFeeRate[];
   /**
    * Vinstmarginalbeskattning (VMB): vår vinst bär VMB-moms (ledger.ts). Gäller bara när
    * momssatsen är 0 (annars är momsen redan dragen från intäkten). Standard: av. Sätts av

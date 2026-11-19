@@ -20,18 +20,26 @@ import {
 } from "../_lib/data";
 import { SETTINGS_MESSAGES } from "../_lib/model";
 
-/** Sparar kortavgift, momssats och räkenskapsårets första månad. Ägare och admin. */
+/**
+ * Sparar kortavgift, momssats och räkenskapsårets första månad. Ägare och admin. En ändrad
+ * kortavgift gäller från `cardFeeFrom` (dagarna före behåller sin sats).
+ */
 export async function updateSettings(input: {
   cardFeeBp: number;
   vatRateBp: number;
   fiscalYearStartMonth: number;
   vatLimitOre?: number;
-}): Promise<ActionResult<{ changed: boolean }>> {
+  /** Första dagen en ändrad kortavgift gäller. null = all försäljning. Utelämnad = förvalet. */
+  cardFeeFrom?: string | null;
+}): Promise<ActionResult<{ changed: boolean; cardFeeFrom?: string | null }>> {
   const organization = await getActiveOrganization();
   if (!organization) return { ok: false, error: SETTINGS_MESSAGES.forbidden };
   const result = await updateSettingsFor(await getSessionUser(), {
     organizationId: organization.id,
     cardFeeBp: Number(input?.cardFeeBp),
+    ...(input?.cardFeeFrom === undefined
+      ? {}
+      : { cardFeeFrom: input.cardFeeFrom === null ? null : String(input.cardFeeFrom) }),
     vatRateBp: Number(input?.vatRateBp),
     fiscalYearStartMonth: Number(input?.fiscalYearStartMonth),
     ...(input?.vatLimitOre === undefined ? {} : { vatLimitOre: Number(input.vatLimitOre) }),

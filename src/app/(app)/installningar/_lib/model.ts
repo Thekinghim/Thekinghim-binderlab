@@ -3,7 +3,7 @@
  * ändringsloggen. Rena funktioner (testas i model.test.ts).
  */
 
-import type { IsoDate } from "@/domain";
+import type { CardFeeRate, IsoDate } from "@/domain";
 import { formatInt, formatMonth, formatPercent, formatSek } from "@/lib/format";
 
 /** Högsta kortavgift som tas emot (20 %): mer är ett skrivfel. */
@@ -23,6 +23,8 @@ export interface SettingsRow {
   readonly id: string;
   readonly vatRateBp: number;
   readonly cardFeeBp: number;
+  /** Kortavgiften med startdatum, stigande. Tom = en sats för alla datum. */
+  readonly cardFeeRates: readonly CardFeeRate[];
   readonly fiscalYearStartMonth: number;
   readonly updatedAt: string;
   /** Momsgränsen vi varnar vid, i öre. */
@@ -239,6 +241,7 @@ export function accountUse(key: string): string {
 const FIELD_LABEL: Record<AuditedTable, Record<string, string>> = {
   organization_settings: {
     card_fee_bp: "Kortavgift",
+    card_fee_history: "Kortavgift från datum",
     vat_rate_bp: "Momssats",
     fiscal_year_start_month: "Räkenskapsåret börjar",
     vat_limit_ore: "Momsgräns",
@@ -300,6 +303,18 @@ function fieldValue(
   if (field.endsWith("_bp")) return formatBp(Number(value));
   if (field === "vat_limit_ore") return formatSek(Number(value) / 100);
   if (field === "vat_ok_at") return "Ja";
+  if (field === "card_fee_history") {
+    // [{from, bp}] → "0 % · 4,0 % från 1 november 2026"; tom lista = samma sats alla datum.
+    const list = Array.isArray(value) ? (value as { from?: unknown; bp?: unknown }[]) : [];
+    if (list.length === 0) return "samma för alla datum";
+    return list
+      .map((e, i) =>
+        i === 0
+          ? formatBp(Number(e.bp))
+          : `${formatBp(Number(e.bp))} från ${longDay(String(e.from))}`,
+      )
+      .join(" · ");
+  }
   if (field === "fiscal_year_start_month") return monthLabel(Number(value));
   if (field === "valid_from") return formatDay(String(value).slice(0, 10));
   if (field === "member_user_id") return names[String(value)] ?? "Borttagen användare";
@@ -449,4 +464,72 @@ export function passwordFormErrors(
   if (f.confirm === "") errors.confirm = "Fyll i nytt lösenord igen.";
   else if (f.next !== "" && f.confirm !== f.next) errors.confirm = "Lösenorden är inte lika.";
   return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Kortavgiften gäller från ett datum
+// ---------------------------------------------------------------------------
+
+const MONTH_NAMES = [
+  "januari",
+  "februari",
+  "mars",
+  "april",
+  "maj",
+  "juni",
+  "juli",
+  "augusti",
+  "september",
+  "oktober",
+  "november",
+  "december",
+];
+
+/** "1 november 2026". */
+export function longDay(day: string): string {
+  return `${Number(day.slice(8, 10))} ${MONTH_NAMES[Number(day.slice(5, 7)) - 1] ?? ""} ${day.slice(0, 4)}`;
+}
+
+/**
+ * Frågan innan kortavgiften ändras: från vilken dag den gäller, och att stängda månader
+ * inte ändras. `from` = null betyder all försäljning (också bakåt).
+ */
+export function cardFeeConfirm(
+  newBp: number,
+  oldBp: number,
+  from: string | null,
+): { title: string; text: string; button: string } {
+  const title = `Ändra kortavgiften till ${formatBp(newBp)}?`;
+  const button = `Ja, ändra till ${formatBp(newBp)}`;
+  if (from === null) {
+    return {
+      title,
+      text: `Gäller all försäljning, också bakåt. Det räknar om vinsten och butikernas andel för alla månader som inte är stängda.`,
+      button,
+    };
+  }
+  return {
+    title,
+    text: `Gäller från ${longDay(from)}. Försäljning före det räknas som förut, med ${formatBp(oldBp)}. Stängda månader ändras inte.`,
+    button,
+  };
+}
+
+/** Beskedet efter ändringen: "Kortavgiften är 4,0 % från 1 november 2026." */
+export function cardFeeDone(newBp: number, from: string | null): string {
+  return from === null
+    ? `Kortavgiften är ${formatBp(newBp)} för all försäljning.`
+    : `Kortavgiften är ${formatBp(newBp)} från ${longDay(from)}.`;
+}
+
+/** Raderna under formuläret: "4,0 % från 1 november 2026" (nyast först). Tom utan datum. */
+export function cardFeeHistoryLines(rates: readonly CardFeeRate[]): string[] {
+  if (rates.length <= 1) return [];
+  return [...rates]
+    .reverse()
+    .map((r, i) =>
+      i === rates.length - 1
+        ? `${formatBp(r.cardFeeBp)} före det`
+        : `${formatBp(r.cardFeeBp)} från ${longDay(r.validFrom)}`,
+    );
 }

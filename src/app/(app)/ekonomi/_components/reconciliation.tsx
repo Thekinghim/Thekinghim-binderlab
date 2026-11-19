@@ -93,6 +93,7 @@ function NayaxFacts({
   today,
   payoutId,
   cardFeeBp,
+  cardFeeFrom,
 }: {
   statement: PayoutStatement;
   appSalesOre: number;
@@ -100,6 +101,8 @@ function NayaxFacts({
   /** Satt för den som får ändra kortavgiften. */
   payoutId: string | undefined;
   cardFeeBp: number;
+  /** Förvalt startdatum för en ändrad kortavgift (null = all försäljning). */
+  cardFeeFrom: string | null;
 }) {
   const match = salesMatchText(statement.reimbursedOre, appSalesOre);
   return (
@@ -122,6 +125,8 @@ function NayaxFacts({
           payoutId={payoutId}
           statementBp={cardFeeBpOf(statement)}
           settingBp={cardFeeBp}
+          defaultFrom={cardFeeFrom}
+          today={today}
         />
       ) : null}
     </div>
@@ -136,6 +141,7 @@ function PayoutBlock({
   payoutId,
   statement,
   cardFeeBp,
+  cardFeeFrom,
 }: {
   p: PayoutReconciliation;
   today: string;
@@ -144,6 +150,8 @@ function PayoutBlock({
   payoutId: string | undefined;
   statement: PayoutStatement | undefined;
   cardFeeBp: number;
+  /** Förvalt startdatum för en ändrad kortavgift (null = all försäljning). */
+  cardFeeFrom: string | null;
 }) {
   const s = STATUS[p.status];
   return (
@@ -192,6 +200,7 @@ function PayoutBlock({
           today={today}
           payoutId={canEdit ? payoutId : undefined}
           cardFeeBp={cardFeeBp}
+          cardFeeFrom={cardFeeFrom}
         />
       ) : null}
       <p className="text-sm text-muted">{p.summary}</p>
@@ -216,6 +225,7 @@ export function ReconciliationList({
   payoutIds,
   statements,
   cardFeeBp,
+  cardFeeFrom,
 }: {
   result: ReconciliationResult;
   /** I dag ('ÅÅÅÅ-MM-DD'): en utbetalningsdag efter i dag skrivs "Utbetalas". */
@@ -228,6 +238,8 @@ export function ReconciliationList({
   statements: Readonly<Record<string, PayoutStatement>>;
   /** Kortavgiften som appen räknar med (inställningen), i baspunkter. */
   cardFeeBp: number;
+  /** Förvalt startdatum för en ändrad kortavgift (null = all försäljning). */
+  cardFeeFrom: string | null;
 }) {
   return (
     <div className="flex flex-col">
@@ -241,6 +253,7 @@ export function ReconciliationList({
           payoutId={p.key === p.reference ? payoutIds[p.reference] : undefined}
           statement={p.key === p.reference ? statements[p.reference] : undefined}
           cardFeeBp={cardFeeBp}
+          cardFeeFrom={cardFeeFrom}
         />
       ))}
       {result.uncovered.length > 0 ? (

@@ -381,7 +381,11 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
       from: p.from,
       to: p.to,
     })),
-    settings: { vatRateBp: settings.vatRateBp, cardFeeBp: settings.cardFeeBp },
+    settings: {
+      vatRateBp: settings.vatRateBp,
+      cardFeeBp: settings.cardFeeBp,
+      ...(settings.cardFeeRates ? { cardFeeRates: settings.cardFeeRates } : {}),
+    },
     stores: stores.map((x) => ({ id: x.id, name: x.name })),
     machines: machines.map((m) => ({ id: m.id, name: m.name, code: m.code })),
     titles: [
