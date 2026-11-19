@@ -178,16 +178,21 @@ describe("rapporten utan företagsuppgifter", () => {
     draft = await create(f.a.storeId);
     const basis = await basisOf(owner, draft);
     expect(basis).toEqual({
+      rev: 2,
       payer: {
         name: owner.organization.name,
         legal: false,
         orgNumber: null,
         address: null,
         vatNumber: null,
+        brand: null,
       },
+      agreementForm: null,
       contract: null,
       vatMode: "added",
       vatRateBp: 2500,
+      vmb: false,
+      payments: [],
     });
     expect((await archiveRow(draft)).basisGaps).toEqual(["företagsnamn", "organisationsnummer"]);
     // Rapporter (granskningen) får samma uppgift.
@@ -229,6 +234,7 @@ describe("rapporten utan företagsuppgifter", () => {
     expect(await stored(f.a.orgId)).toEqual({
       vatNumber: "SE559000123401",
       reportVatMode: "added",
+      reportVmb: false,
     });
 
     const stale = await staleDraftFor(owner, draft);
@@ -262,7 +268,17 @@ describe("rapporten med företagsuppgifter", () => {
     );
     const id = await create(f.a.storeId);
     const basis = await basisOf(owner, id);
-    expect(basis).toEqual({ payer: PAYER, contract: null, vatMode: "added", vatRateBp: 2500 });
+    expect(basis).toEqual({
+      rev: 2,
+      // Organisationen heter något annat än bolaget: namnet står bredvid det juridiska.
+      payer: { ...PAYER, brand: owner.organization.name },
+      agreementForm: null,
+      contract: null,
+      vatMode: "added",
+      vatRateBp: 2500,
+      vmb: false,
+      payments: [],
+    });
     expect((await archiveRow(id)).basisGaps).toEqual([]);
     expect(basisText(basis!, "ICA Testbutik", 3_360).join("\n")).not.toMatch(/Enligt|avtal/i);
   });
@@ -311,7 +327,7 @@ describe("rapporten med företagsuppgifter", () => {
       month: MONTH,
       storeId: f.a.storeId,
     });
-    expect(preview.type === "butik" && preview.report.basis?.payer).toEqual(PAYER);
+    expect(preview.type === "butik" && preview.report.basis?.payer).toMatchObject(PAYER);
   });
 
   it("en godkänd rapport ändras inte när inställningarna ändras", async () => {
@@ -330,7 +346,7 @@ describe("rapporten med företagsuppgifter", () => {
     // En ny rapport följer de nya inställningarna.
     const next = await create(f.a.storeId);
     const basis = await basisOf(owner, next);
-    expect(basis?.payer).toEqual({ ...PAYER, name: "Binderlab Nya AB", vatNumber: null });
+    expect(basis?.payer).toMatchObject({ ...PAYER, name: "Binderlab Nya AB", vatNumber: null });
     expect(basis?.vatMode).toBe("none");
   });
 
@@ -338,15 +354,21 @@ describe("rapporten med företagsuppgifter", () => {
     const portal = await asUser(f.storeA1, (tx) => queryPortalReport(tx, f.a.storeId, approved));
     const report = portal.report as { basis?: StoreBasis };
     expect(report.basis).toEqual(await basisOf(owner, approved));
-    // Bara bolagets identitet, avtalets namn och datum och momsvalet.
+    // Bara bolagets identitet, avtalet (form, namn och datum), momsvalen och butikens egna
+    // utbetalningar.
     expect(Object.keys(report.basis!).sort()).toEqual([
+      "agreementForm",
       "contract",
       "payer",
+      "payments",
+      "rev",
       "vatMode",
       "vatRateBp",
+      "vmb",
     ]);
     expect(Object.keys(report.basis!.payer).sort()).toEqual([
       "address",
+      "brand",
       "legal",
       "name",
       "orgNumber",

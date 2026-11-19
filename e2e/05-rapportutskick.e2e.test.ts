@@ -8,6 +8,13 @@
  * där momsregistreringsnumret föreslås från organisationsnumret. Sedan står vårt bolag,
  * momsen och beloppet att fakturera i förhandsvisningen, PDF:en och mejlet.
  *
+ * Revisorns frågor: Rapporter varnar när rapporten inte säger vilket avtal som gäller och
+ * länkar till butiken, där ägaren väljer "Muntligt avtal". Under Inställningar slås "Vi
+ * säljer med vinstmarginalbeskattning (VMB)" på. Sedan står det muntliga avtalet med
+ * villkoren, VMB-texten, det juridiska namnet med namnet verksamheten kallas, vem som äger
+ * automaten och totalraden i förhandsvisningen, PDF:en och mejlet, och ingenstans att ingen
+ * moms tas ut.
+ *
  * Rapporten är den korta (standard): uträkningen och summor på en A4-sida, utan titlar,
  * snittköp och service, i förhandsvisningen, PDF:en och mejlet. Med butikens val "Visa
  * detaljer i rapporten" visar förhandsvisningen titlarna och service igen, medan den
@@ -24,6 +31,8 @@ import path from "node:path";
 
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+
+import { vmbStatement } from "@/reports/store-basis";
 
 import {
   expectNoPageErrors,
@@ -167,7 +176,11 @@ describe("rapportutskick", () => {
     const org = e2e().organizationId;
     await sql`update public.organization_settings
               set company_name = null, org_number = null, company_address = null,
-                  vat_number = null, report_vat_mode = 'added'
+                  vat_number = null, report_vat_mode = 'added', report_vmb = false
+              where organization_id = ${org}`;
+    // Butikerna börjar utan vald avtalsform och med den korta rapporten (också efter en
+    // körning som avbröts mitt i).
+    await sql`update public.stores set agreement_form = null, report_details = false
               where organization_id = ${org}`;
     await sql`update public.bookkeeping_settings set org_number = null
               where organization_id = ${org}`;
@@ -204,6 +217,62 @@ describe("rapportutskick", () => {
     await page.getByText("Rapporten har ändrats sedan utkastet skapades.").waitFor();
   });
 
+  it("revisorns frågor: Rapporter varnar utan avtalsform, ägaren väljer Muntligt avtal och slår på VMB", async () => {
+    await page.goto("/rapporter");
+    const builder = await chooseStoreReport();
+    await builder.getByRole("button", { name: /^Skapa (utkast|ny version)$/ }).click();
+    // Den nya versionen visas (det förra utkastet saknade företagsuppgifterna).
+    await until(
+      async () => (await page.getByText(/^Rapporten saknar /).count()) === 0,
+      "den nya versionen, med företagsuppgifterna",
+    );
+    // Företagsuppgifterna finns nu, men butiken har varken vald avtalsform eller kontrakt.
+    const warning = page.getByText("Rapporten säger inte vilket avtal som gäller.");
+    await warning.waitFor();
+    await warning.scrollIntoViewIfNeeded();
+    await screenshot(page, "05-rapport-saknar-avtalsform");
+    // Godkännandet är inte låst, men varningen länkar till butiken.
+    await page.getByRole("button", { name: "Godkänn för utskick" }).waitFor();
+    await page.getByRole("link", { name: "Välj avtalsform →" }).click();
+    await page.waitForURL(/\/butiker\/[0-9a-f-]{36}\?vy=kontakt#avtalsform$/);
+    const form = page.getByLabel("Avtalsform i rapporten");
+    await form.waitFor();
+    expect(await form.inputValue()).toBe("");
+    await page.getByText("Rapporten säger inte vilket avtal som gäller. Välj ett.").waitFor();
+    await form.selectOption({ label: "Muntligt avtal" });
+    await page.getByText("Klart! Muntligt avtal.").waitFor();
+    await page
+      .getByText("Rapporten säger att avtalet är muntligt och skriver villkoren.")
+      .waitFor();
+    await screenshot(page, "05-butik-avtalsform");
+    // Valet står kvar när sidan laddas om.
+    await page.reload();
+    expect(await page.getByLabel("Avtalsform i rapporten").inputValue()).toBe("oral");
+
+    // Inställningar → Företaget: bolaget säljer med vinstmarginalbeskattning.
+    await page.goto("/installningar#foretaget");
+    const company = page.getByRole("form", { name: "Företaget" });
+    const vmb = company.getByRole("switch", {
+      name: "Vi säljer med vinstmarginalbeskattning (VMB)",
+    });
+    expect(await vmb.getAttribute("aria-checked")).toBe("false");
+    await company
+      .getByText("Av: butiksrapporten säger bara att vi är säljare av varorna.")
+      .waitFor();
+    await vmb.click();
+    expect(await vmb.getAttribute("aria-checked")).toBe("true");
+    await screenshot(page, "05-installningar-vmb");
+    await company.getByRole("button", { name: "Spara" }).click();
+    await page.getByText("Företagsuppgifterna sparade").first().waitFor();
+    await page.reload();
+    expect(
+      await page
+        .getByRole("form", { name: "Företaget" })
+        .getByRole("switch", { name: "Vi säljer med vinstmarginalbeskattning (VMB)" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
   it("skapar, godkänner och skickar butiksrapporten", async () => {
     await page.goto("/rapporter");
     const builder = await chooseStoreReport();
@@ -231,6 +300,23 @@ describe("rapportutskick", () => {
     await preview.getByText("Att fakturera").waitFor();
     await preview.getByText("Moms 25 %").waitFor();
     expect(await page.getByText(/^Rapporten saknar /).count()).toBe(0);
+    // Revisorns frågor: det juridiska namnet och namnet verksamheten kallas, vem som äger
+    // automaten, det muntliga avtalet med villkoren, VMB och totalraden.
+    await preview.getByText("(verksamheten kallas Binderlab)").waitFor();
+    await preview.getByText(/Äger och driver automate(n|rna)\./).waitFor();
+    await preview
+      .getByText(
+        /Muntligt avtal mellan Binderlab E2E AB och Gallerian Väst \(exempel\): hyra 1\s500\skr per månad\./,
+      )
+      .waitFor();
+    await preview
+      .getByText(
+        /enligt reglerna om vinstmarginalbeskattning \(VMB\)\. Den momsen berör inte butiken\./,
+      )
+      .waitFor();
+    await preview.getByText("Er ersättning totalt, exklusive moms").waitFor();
+    expect(await preview.getByText(/ingen moms tas ut/i).count()).toBe(0);
+    expect(await page.getByText("Rapporten säger inte vilket avtal som gäller.").count()).toBe(0);
     await screenshot(page, "05-rapport-utkast");
     await approve.click();
     await page.getByText("Rapporten är godkänd").first().waitFor({ timeout: 120_000 });
@@ -279,9 +365,16 @@ describe("rapportutskick", () => {
         "Ersättning exkl. moms",
         "Moms 25 %",
         "Att fakturera",
-        "är säljare av varorna i automaten.",
+        "Binderlab E2E AB (verksamheten kallas Binderlab)",
+        "Äger och driver automate",
+        "Muntligt avtal mellan Binderlab E2E AB och Gallerian Väst (exempel): hyra 1 500 kr per månad.",
+        vmbStatement(COMPANY.name),
       ])
         expect(b, word).toContain(word);
+      // Inget påstående om att ingen moms tas ut, och skatteregelns namn står bara i den fasta
+      // texten: utan den finns varken "vinst" eller "marginal" i mejlet (butiken har hyra).
+      expect(b).not.toMatch(/ingen moms/i);
+      expect(b.split(vmbStatement(COMPANY.name)).join(" ")).not.toMatch(/vinst|marginal/i);
     }
     for (const word of ["Flest köp", "Påfyllningar", "Snittköp", "Drift och service"]) {
       expect(html, word).not.toContain(word);

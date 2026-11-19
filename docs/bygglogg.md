@@ -273,3 +273,52 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   inte i appen: mottagaren är butikens namn.
 - Tester: `src/reports/store-basis.test.ts`, `store-report.test.tsx`, `snapshot.test.ts`,
   `test/db/rapport-underlag.test.ts`, e2e 05 (varningen, Inställningar, förhandsvisningen, mejlet) och e2e 10.
+
+## 19 nov. – butiksrapporten som revisorn ska kunna godkänna
+
+- Anledningen: revisorn frågade också "Är det ett svenskt företag som har/äger Pokemon maskinen? Finns det något
+  avtal upprättat mellan er och företaget som reglerar ersättningen?" Ägaren skrev för hand den rapport revisorn
+  borde ha fått. Appen gör nu den själv. Fakta från ägaren: bolaget säljer varorna under VMB, avtalet med butiken
+  är muntligt (kontraktsraden som står som undertecknad är inte verklig), det juridiska namnet är ett annat än
+  "Binderlab", och butiken hade fått ersättningen exklusive moms innan någon faktura fanns.
+- **Underlaget har en utgåva** (`report.basis.rev = 2`, `BASIS_REV`). Allt nytt gäller rapporter sparade med den;
+  en rapport från före ändringen (utgåva 1 eller inget underlag) visas som den visades då (eget fall i e2e 10).
+- **VMB** (`organization_settings.report_vmb`, standard av, Inställningar → Företaget). Första steget tog bort
+  meningen för att appen inte kunde veta; nu säger ägaren det genom valet. Kontrollen att inget som når butiken
+  innehåller "vinst" eller "marginal" är lika sträng som förut: `withoutVmbStatement` tar bara bort hela den fasta
+  texten för rapportens bolag, och bara när valet är på. Ordet någon annanstans stoppas (testat).
+- **Ingen motsägelse om moms.** Fotnoten sa "exklusive moms (ingen moms tas ut)" och mejlet "Ingen moms" bredvid
+  "Moms 25 %". Nu sägs vad siffran är (`salesNote`, `salesVatLabel`): "inklusive moms" bara med vinstdelning (där
+  försäljningen är definierad inklusive moms, berakningar.md avsnitt 4) och momssats 0 %; med provision eller hyra
+  och momssats 0 % sägs ingenting om moms, så att fotnoten inte säger emot uträkningens "exkl. moms".
+  Butiksportalens sidfot påstår inte längre "exkl. moms".
+- **Avtalsform per butik** (`stores.agreement_form`: `written`, `oral` eller null). Muntligt går före en
+  kontraktsrad som står som undertecknad (`contract` sparas då som null). Villkoren i klartext sparas i
+  uträkningen (`compensation.termsText`). Utan rad om avtalet varnar granskningen (`ArchiveRow.agreementMissing`).
+- **Avtalsperioder i följd med samma villkor** i samma kalendermånad slås ihop i uträkningen (`mergeSplits`).
+  Ingenting räknas om: radens belopp är delarnas summor, så andelen är exakt liggarens (per avtal och månad).
+  Raden slås bara ihop när den går att räkna efter: har en avtalsperiod gått med förlust (0 kr) och nästa med
+  vinst står de kvar var för sig. Ett öres skillnad mot andelen av summan skrivs ut ("avrundat per
+  avtalsperiod"). Avtalstexten står en gång. Testat mot liggaren på ägarens fall (14–31 okt., 1–2 nov., 3–14 nov.
+  blir oktober och november): `src/reports/store-report-merge.test.ts`.
+- **Totalrad**: "Er ersättning totalt, exklusive moms" (`totalLabel`), också med bara vinstdelning.
+- **Redan betalt** (`report.basis.payments`): betalda avräkningar för rapportens månader, lästa ur
+  `store_settlements` (betaldag och belopp; `paid_amount_ore` används när kolumnen finns). Modulen för avräkningar
+  är orörd. Visas bara när det går ihop (betalt ≤ beloppet att betala).
+- **Juridiskt namn** (`payer.brand`, `brandOf`) och raden "Äger och driver automaten."
+- **Migreringar**: `20261218000000_rapport_vmb.sql` och `20261218000100_avtalsform.sql`, bara tillägg (en kolumn
+  med standardvärde, en valfri kolumn). Läsningen i rapporten går också innan kolumnerna finns (`to_jsonb`).
+- **En sida.** Underlaget blev högre (två rader för betalningen, VMB-texten, raden om automaten, totalraden). I
+  utgåva 2 står raden om underlag per titel först i fotnoten, avståndet mellan blocken är 3,5 mm också utan
+  vinstdelning, och två perioder med vinstdelning står som kolumner bredvid varandra i stället för tio rader
+  under varandra. Mätt i webbläsaren (e2e 10, ledigt på arket): ägarens fall 3,7 mm, provision och hyra 3,3 mm,
+  vinstdelning med hyra och tre automater 6,2 mm, med hälsning på tre rader 4,5 mm, bara hyra 12,1 mm. Alla ett
+  ark. Marginalen är liten: en längre adress eller ett längre företagsnamn kan ge en rad till.
+- **Vid driftsättningen blir alla utkast av butiksrapporter gamla igen** (underlaget har fler uppgifter).
+- Inte avgjort: med provision står "exkl. moms" i uträkningen också när momssatsen är 0 % och bolaget säljer med
+  VMB (provisionen räknas då på det kunderna betalade). Det är avtalets ordalydelse och ändras inte här. En
+  betalning visas inte när den är större än rapportens belopp (en hel månads avräkning mot en rapport för en del
+  av månaden); då står blocket som förut.
+- Tester: `store-basis.test.ts`, `store-report-merge.test.ts`, `store-report.test.tsx`, `sections.test.tsx`,
+  `test/db/rapport-revisor.test.ts`, e2e 05 (varningen, avtalsformen, VMB-knappen, förhandsvisningen, mejlet) och
+  e2e 10 (ägarens fall, bara hyra med skriftligt avtal, första utgåvan).

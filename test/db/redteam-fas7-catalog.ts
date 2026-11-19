@@ -277,6 +277,13 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c, { details: true })],
   },
+  // Avtalets form i butiksrapporten (bara ägare och admin).
+  {
+    module: "@/app/(app)/butiker/actions",
+    name: "setStoreAgreementForm",
+    allowed: OP,
+    args: (c) => [sink(c, { form: "oral" })],
+  },
   {
     module: "@/app/(app)/butiker/actions",
     name: "createAgreement",

@@ -74,6 +74,40 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
       "Rapporten visar inte vilket bolag som betalar." tills den är skickad eller ersatt av en ny version.
     - Med vinstdelning står uppgifterna bredvid uträkningen, annars i ett eget block under den. Rapporten är
       fortfarande en sida i samma fall som förut.
+  - **Det revisorn frågade om** (utgåva 2 av underlaget, `report.basis.rev = 2`). Butikens revisor frågade vilket
+    bolag som äger automaten, vilket avtal som gäller och om svensk moms gäller.
+    - **Vem som betalar och äger automaten.** Betalaren är det juridiska företagsnamnet. Heter organisationen
+      något annat i appen står "Kortautomater i Norden AB (verksamheten kallas Binderlab)", en gång, och under det
+      "Äger och driver automaten." (flera automater: "automaterna").
+    - **Avtalets form per butik** (Butiker → butiken → Kontakt och rapport → **Avtalsform i rapporten**; ägare och
+      admin): "Skriftligt avtal", "Muntligt avtal" eller "Inte valt".
+      - Skriftligt avtal: raden från det undertecknade kontraktet, som förut.
+      - Muntligt avtal: "Muntligt avtal mellan [bolaget] och [butiken]: 50 % av vinsten efter kostnader." med
+        avtalets villkor i klartext. Går före ett kontrakt som står som undertecknat: rapporten påstår då inget
+        skriftligt avtal.
+      - Inte valt: det undertecknade kontraktet om det finns (fältet visar då "Skriftligt avtal"). Annars står
+        ingen rad om avtalet, och Rapporter varnar **"Rapporten säger inte vilket avtal som gäller."** med länken
+        "Välj avtalsform". Godkännandet låses inte.
+    - **Vi säljer med vinstmarginalbeskattning (VMB)** (Inställningar → Företaget; ägare och admin; standard av).
+      På: "[Bolaget] är säljare av varorna i automaten och redovisar momsen på den försäljningen enligt reglerna
+      om vinstmarginalbeskattning (VMB). Den momsen berör inte butiken. Butikens ersättning är betalning för en
+      tjänst och omfattas inte av VMB." Av: "[Bolaget] är säljare av varorna i automaten." Appen kan inte veta
+      hur bolaget redovisar sin moms; därför är det ett val. Valet ändrar ingen uträkning.
+    - **Försäljningen och momsen.** Rapporten påstår aldrig att ingen moms tas ut. Fotnoten säger vad
+      försäljningssiffran är: med vinstdelning "Försäljningen är kundernas köp i automater som stod i [butiken]
+      köpdagen, inklusive moms." (momssats 0 % i Inställningar: siffran är det kunderna betalade). Med provision
+      eller hyra och momssats 0 % står ingenting om moms. Med en momssats över 0 % står "exklusive moms", och
+      med vinstdelning också "I uträkningen räknas försäljningen inklusive moms."
+    - **Totalrad.** Uträkningen slutar med "Er ersättning totalt, exklusive moms" (med "Visa ingen momsrad": "Er
+      ersättning totalt").
+    - **Redan betalt.** Är butikens avräkning för rapportens månader markerad som betald (Butiker → Utbetalning)
+      visar fakturablocket "Redan betalt 16 nov. 2026" och "Kvar att betala", oftast momsen. Rapporten läser
+      bara avräkningen. Är mer betalt än rapportens belopp (avräkningen gäller hela månaden, rapporten en del av
+      den) visas blocket utan betalningen.
+    - **Eget datum över två månader med vinstdelning:** oktober och november står bredvid varandra i en tabell
+      (Post, 14–31 okt., 1–14 nov.). Förnyades avtalet mitt i en månad med samma villkor visas månaden som en
+      period (inte en rad per avtal); beloppen är exakt summan av det som räknades per avtal.
+    - Allt sparas i rapporten när den räknas. En rapport sparad före utgåva 2 visas som den visades då.
   - **Visa detaljer i rapporten** (Butiker → butiken → Kontakt och rapport; ägare och admin; standard av): på =
     den butikens rapport visar också titlarna och service (påfyllningsbesök, flest köp, snittköp), som förut. Sidan,
     PDF:en, mejlet, förhandsvisningen på Rapporter och butiksportalen följer samma val.
