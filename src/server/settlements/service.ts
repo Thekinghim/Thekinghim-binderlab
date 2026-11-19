@@ -37,6 +37,7 @@ import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { pgErrorOf } from "@/server/errors";
 import { krText } from "@/reports";
 import { storesPlacedIn } from "@/server/reports/sources";
+import { queryOlderMissingSettlements } from "./queries";
 import { closeMonthIfDoneTx, reopenAfterUndoTx, type UndoOutcome } from "@/server/periods/service";
 
 import {
@@ -47,11 +48,16 @@ import {
   type LiveSettlement,
 } from "./live";
 import {
+  correctionsTotal,
+  paidDifference,
+  paidWhichQuestion,
+  parseCorrections,
   parseStatement,
   settlementFileName,
   settlementHtml,
   settlementMonthFor,
   settlementState,
+  type SettlementCorrection,
   type SettlementState,
   type SettlementStatement,
 } from "./model";
@@ -60,6 +66,20 @@ export class SettlementError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SettlementError";
+  }
+}
+
+/**
+ * Rapporten butiken fick säger ett annat belopp än dagens uträkning: ägaren måste välja
+ * vilket som betalades innan avräkningen markeras som betald.
+ */
+export class PaidAmountQuestion extends SettlementError {
+  constructor(
+    readonly reportOre: number,
+    readonly liveOre: number,
+  ) {
+    super(paidWhichQuestion(reportOre, liveOre));
+    this.name = "PaidAmountQuestion";
   }
 }
 
@@ -185,6 +205,8 @@ async function createMissing(
   orgId: string,
   month: IsoMonth,
   now: Date,
+  /** Bara de här butikerna (äldre månader: de som sålde). Utelämnad = alla med automat. */
+  onlyStores?: readonly string[],
 ): Promise<SettlementRunResult> {
   const result: SettlementRunResult = {
     organizationId: orgId,
@@ -194,10 +216,11 @@ async function createMissing(
     errors: [],
   };
   await run(async (tx) => {
-    const [wanted, existing] = await Promise.all([
+    const [placed, existing] = await Promise.all([
       storesForMonth(tx, orgId, month),
       existingStores(tx, orgId, month),
     ]);
+    const wanted = onlyStores ? placed.filter((id) => onlyStores.includes(id)) : placed;
     const missing = wanted.filter((id) => !existing.has(id));
     result.skipped += wanted.length - missing.length;
     const live = await computeSettlementsTx(tx, {
@@ -218,6 +241,40 @@ async function createMissing(
     }
   });
   return result;
+}
+
+/**
+ * Skapar saknade avräkningar för äldre avslutade månader där en butik sålde (se
+ * queryOlderMissingSettlements): en körning per månad, äldst först. Stängda månader rörs
+ * inte. Ett fel i en butik (t.ex. saknat inköpspris) står i `errors` och stoppar inget.
+ */
+async function createOlderMissing(
+  run: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>,
+  orgId: string,
+  beforeMonth: IsoMonth,
+  now: Date,
+): Promise<SettlementRunResult[]> {
+  const older = await run((tx) => queryOlderMissingSettlements(tx, orgId, beforeMonth));
+  const out: SettlementRunResult[] = [];
+  for (const m of older) {
+    out.push(await createMissing(run, orgId, m.month, now, m.storeIds));
+  }
+  return out;
+}
+
+/** Slår ihop körningar (flera månader) till ett svar för månaden `month`. */
+function mergeRuns(
+  main: SettlementRunResult,
+  older: readonly SettlementRunResult[],
+): SettlementRunResult & { olderMonths: IsoMonth[] } {
+  const out = { ...main, errors: [...main.errors], olderMonths: [] as IsoMonth[] };
+  for (const r of older) {
+    out.created += r.created;
+    out.skipped += r.skipped;
+    out.errors.push(...r.errors);
+    if (r.created > 0) out.olderMonths.push(r.month);
+  }
+  return out;
 }
 
 /**
@@ -278,7 +335,7 @@ export async function createMonthlySettlements(
     readonly organizationIds?: readonly string[];
     readonly create?: "always" | "not-first";
   } = {},
-): Promise<(SettlementRunResult & { refreshed: number })[]> {
+): Promise<(SettlementRunResult & { refreshed: number; paidDiffering?: number })[]> {
   const orgs = (
     await db
       .select({ id: s.organizations.id, timezone: s.organizations.timezone })
@@ -286,17 +343,24 @@ export async function createMonthlySettlements(
       // Demos (Demo för kunder) får inga automatiska avräkningar.
       .where(and(isNull(s.organizations.archivedAt), eq(s.organizations.isDemo, false)))
   ).filter((o) => !options.organizationIds || options.organizationIds.includes(o.id));
-  const out: (SettlementRunResult & { refreshed: number })[] = [];
+  const out: (SettlementRunResult & { refreshed: number; paidDiffering?: number })[] = [];
   for (const org of orgs) {
     const today = businessToday(now, org.timezone);
     const month = settlementMonthFor(today);
     const skipCreate = options.create === "not-first" && today.endsWith("-01");
     try {
-      const run = skipCreate
+      const main = skipCreate
         ? { organizationId: org.id, month, created: 0, skipped: 0, errors: [] }
         : await createMissing((fn) => db.transaction(fn), org.id, month, now);
+      // Äldre månader som aldrig fick någon avräkning (kunde inte räknas i tid).
+      const run = mergeRuns(
+        main,
+        await createOlderMissing((fn) => db.transaction(fn), org.id, month, now),
+      );
       const refreshed = await db.transaction((tx) => refreshUnpaidTx(tx, org.id, now));
-      out.push({ ...run, refreshed });
+      // Betalda: dagens uträkning sparas bredvid det betalda beloppet (Att göra läser den).
+      const paidDiffering = await db.transaction((tx) => refreshPaidLiveTx(tx, org.id, today, now));
+      out.push({ ...run, refreshed, paidDiffering });
     } catch (error) {
       out.push({
         organizationId: org.id,
@@ -312,8 +376,8 @@ export async function createMonthlySettlements(
 }
 
 /**
- * "Skapa avräkningar" på Utbetalning: förra månadens saknade avräkningar, som användaren
- * (ägare och admin). Läsaren skapar inget. Felen (per butik) visas på sidan. Sidan i sig
+ * "Skapa avräkningar" på Utbetalning: förra månadens saknade avräkningar och saknade för
+ * äldre månader där en butik sålde (inte stängda), som användaren (ägare och admin). Läsaren skapar inget. Felen (per butik) visas på sidan. Sidan i sig
  * skapar aldrig något när den öppnas; det gör det schemalagda jobbet eller den här knappen.
  *
  * Saknar en butik avtal några dagar i månaden (den räknas då som 0 % de dagarna) skapas
@@ -324,7 +388,10 @@ export async function ensureSettlementsFor(
   viewer: Viewer,
   now: Date = new Date(),
   options: { readonly allowNoAgreement?: boolean } = {},
-): Promise<(SettlementRunResult & { noAgreement?: SettlementAgreementGap[] }) | null> {
+): Promise<
+  | (SettlementRunResult & { noAgreement?: SettlementAgreementGap[]; olderMonths?: IsoMonth[] })
+  | null
+> {
   const orgId = viewer.organization.id;
   const role = await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
   if (role === "viewer") return null;
@@ -332,9 +399,10 @@ export async function ensureSettlementsFor(
   const month = settlementMonthFor(today);
   if (!options.allowNoAgreement) {
     const gaps = await withUserDbFor(viewer.user, async (tx) => {
-      const [wanted, existing] = await Promise.all([
+      const [wanted, existing, older] = await Promise.all([
         storesForMonth(tx, orgId, month),
         existingStores(tx, orgId, month),
+        queryOlderMissingSettlements(tx, orgId, month),
       ]);
       const found = await monthAgreementGaps(
         tx,
@@ -342,6 +410,12 @@ export async function ensureSettlementsFor(
         month,
         wanted.filter((id) => !existing.has(id)),
       );
+      // Äldre månader: samma varning (utan avtal räknas butiken som 0 % de dagarna).
+      for (const m of older) {
+        for (const g of await monthAgreementGaps(tx, orgId, m.month, m.storeIds)) {
+          if (!found.some((x) => x.storeId === g.storeId)) found.push(g);
+        }
+      }
       if (found.length === 0) return [];
       const names = await storeNames(tx, orgId);
       return found.map((g) => ({ ...g, storeName: names.get(g.storeId) ?? "Okänd butik" }));
@@ -357,7 +431,9 @@ export async function ensureSettlementsFor(
       };
     }
   }
-  return createMissing((fn) => withUserDbFor(viewer.user, fn), orgId, month, now);
+  const run = <T>(fn: (tx: Tx) => Promise<T>) => withUserDbFor(viewer.user, fn);
+  const main = await createMissing(run, orgId, month, now);
+  return mergeRuns(main, await createOlderMissing(run, orgId, month, now));
 }
 
 async function storeNames(tx: Tx, orgId: string): Promise<Map<string, string>> {
@@ -393,6 +469,26 @@ export interface SettlementRow {
    * den inte markeras som betald.
    */
   readonly blocked: string | null;
+  /** Betald: beloppet som betalades (kan vara rapportens belopp). Obetald: samma som `amountOre`. */
+  readonly paidOre: number;
+  /**
+   * Beloppet i den senast godkända butiksrapporten för samma butik och hela månaden, eller
+   * null (ingen godkänd rapport för månaden).
+   */
+  readonly reportOre: number | null;
+  /** Betald: månadens belopp med dagens underlag. null = går inte att räkna, eller obetald. */
+  readonly liveOre: number | null;
+  /** Betald: skillnad som redan lagts som rättelse på en senare avräkning. */
+  readonly correctedOre: number;
+  /**
+   * Betald: dagens uträkning − betalt − redan rättat. 0 = inget att göra. Plus = butiken
+   * ska ha mer.
+   */
+  readonly differenceOre: number;
+  /** Rättelser som ligger på den här avräkningen (egna rader i uträkningen). */
+  readonly corrections: readonly SettlementCorrection[];
+  /** Betald med skillnad: butikens obetalda avräkning som skillnaden kan läggas på, eller null. */
+  readonly carryTarget: { readonly id: string; readonly month: IsoMonth } | null;
 }
 
 function rowOf(r: {
@@ -404,6 +500,9 @@ function rowOf(r: {
   paidOn: string | null;
   computedAt: Date;
   statement: unknown;
+  paidAmountOre: number | null;
+  correctedOre: number;
+  corrections: unknown;
 }): SettlementRow {
   return {
     id: r.id,
@@ -417,19 +516,71 @@ function rowOf(r: {
     statement: parseStatement(r.statement),
     storedAmountOre: r.amountOre,
     blocked: null,
+    paidOre: r.paidOn ? (r.paidAmountOre ?? r.amountOre) : r.amountOre,
+    reportOre: null,
+    liveOre: null,
+    correctedOre: r.correctedOre,
+    differenceOre: 0,
+    corrections: parseCorrections(r.corrections),
+    carryTarget: null,
   };
 }
 
-/** En obetald rad med beloppet räknat nu (betalda lämnas som de är). */
+/**
+ * Raden med beloppet räknat nu. Obetald: beloppet som gäller nu. Betald: det låsta
+ * beloppet står kvar, och dagens uträkning läggs bredvid (`liveOre`, `differenceOre`).
+ */
 function withLive(row: SettlementRow, live: LiveSettlement | undefined): SettlementRow {
-  if (row.paidOn || !live) return row;
+  if (!live) return row;
+  if (row.paidOn) {
+    if (!live.ok) return row;
+    const liveOre = live.computed.amountOre;
+    return {
+      ...row,
+      liveOre,
+      differenceOre: paidDifference({
+        paidOre: row.paidOre,
+        liveOre,
+        correctedOre: row.correctedOre,
+      }),
+    };
+  }
   if (!live.ok) return { ...row, blocked: live.message };
   return {
     ...row,
     amountOre: live.computed.amountOre,
+    paidOre: live.computed.amountOre,
     state: settlementState(live.computed.amountOre, null),
     statement: live.computed.statement,
   };
+}
+
+/**
+ * Beloppet i den senast godkända butiksrapporten per butik och hel månad, nyckel
+ * "butik|ÅÅÅÅ-MM". Rapporter för en annan period än hela månaden räknas inte (de går inte
+ * att jämföra med en månadsavräkning).
+ */
+export async function approvedReportAmounts(tx: Tx, orgId: string): Promise<Map<string, number>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      select distinct on (r.store_id, r.period_start)
+             r.store_id, to_char(r.period_start, 'YYYY-MM') as month,
+             r.data_snapshot #>> '{report,compensation,totalOre}' as total_ore
+      from public.reports r
+      join public.report_approvals a
+        on a.organization_id = r.organization_id and a.report_id = r.id
+      where r.organization_id = ${orgId}::uuid
+        and r.kind = 'store_statement' and r.store_id is not null
+        and r.period_start = date_trunc('month', r.period_start)::date
+        and r.period_end = (r.period_start + interval '1 month' - interval '1 day')::date
+      order by r.store_id, r.period_start, a.approved_at desc, r.generated_at desc`),
+  ) as { store_id: string; month: string; total_ore: string | null }[];
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const ore = Number(r.total_ore);
+    if (r.total_ore !== null && Number.isSafeInteger(ore)) out.set(`${r.store_id}|${r.month}`, ore);
+  }
+  return out;
 }
 
 /**
@@ -453,6 +604,9 @@ export async function querySettlements(
       paidOn: s.storeSettlements.paidOn,
       computedAt: s.storeSettlements.computedAt,
       statement: s.storeSettlements.statement,
+      paidAmountOre: s.storeSettlements.paidAmountOre,
+      correctedOre: s.storeSettlements.correctedOre,
+      corrections: s.storeSettlements.corrections,
     })
     .from(s.storeSettlements)
     .leftJoin(
@@ -470,13 +624,34 @@ export async function querySettlements(
     )
     .orderBy(desc(s.storeSettlements.month), s.stores.name);
   const out = rows.map(rowOf);
-  const live = await liveFor(
-    tx,
-    orgId,
-    out.filter((r) => !r.paidOn),
-    now,
-  );
-  return out.map((r) => withLive(r, live.get(r.id)));
+  // Obetalda räknas om för beloppet; betalda för jämförelsen "betalt mot dagens uträkning".
+  const [live, reports] = await Promise.all([
+    liveFor(tx, orgId, out, now),
+    approvedReportAmounts(tx, orgId),
+  ]);
+  const withAmounts = out.map((r) => ({
+    ...withLive(r, live.get(r.id)),
+    reportOre: reports.get(`${r.storeId}|${r.month}`) ?? null,
+  }));
+  // Skillnaden på en betald läggs på butikens närmast följande obetalda avräkning.
+  const unpaidByStore = new Map<string, SettlementRow[]>();
+  for (const r of withAmounts) {
+    if (r.paidOn) continue;
+    const list = unpaidByStore.get(r.storeId);
+    if (list) list.push(r);
+    else unpaidByStore.set(r.storeId, [r]);
+  }
+  return withAmounts.map((r) => {
+    if (!r.paidOn || r.differenceOre === 0) return r;
+    const target = carryTargetOf(r.month, unpaidByStore.get(r.storeId) ?? []);
+    return target ? { ...r, carryTarget: { id: target.id, month: target.month } } : r;
+  });
+}
+
+/** Den obetalda avräkning som en skillnad läggs på: närmast efter månaden, annars den äldsta. */
+function carryTargetOf<T extends { month: string }>(month: string, unpaid: readonly T[]): T | null {
+  const sorted = [...unpaid].sort((a, b) => a.month.localeCompare(b.month));
+  return sorted.find((u) => u.month.slice(0, 7) > month) ?? sorted[0] ?? null;
 }
 
 export interface StorePortalSummary {
@@ -490,10 +665,13 @@ export interface StorePortalSummary {
 export interface SettlementPage {
   readonly month: IsoMonth;
   readonly rows: SettlementRow[];
-  /** Butiker som hade en automat förra månaden men saknar avräkning (knappen Skapa). */
-  readonly missing: { storeId: string; storeName: string }[];
-  /** Butiker utan avräkning för månaden och varför (bara när de inte kunde räknas). */
-  readonly failed: { storeId: string; storeName: string; message: string }[];
+  /**
+   * Butiker utan avräkning (knappen Skapa): förra månaden (`month`) för dem som hade en
+   * automat, och äldre månader för dem som sålde då.
+   */
+  readonly missing: { storeId: string; storeName: string; month: IsoMonth }[];
+  /** Butiker utan avräkning och varför (bara när de inte kunde räknas), per månad. */
+  readonly failed: { storeId: string; storeName: string; message: string; month: IsoMonth }[];
   /**
    * Butiker som hade en automat förra månaden men inget avtal några dagar (räknas som 0 %
    * de dagarna), saknad avräkning eller inte. Sidan varnar och länkar till "Lägg in avtal".
@@ -542,11 +720,26 @@ export async function loadSettlementPageFor(
     });
     const missing: SettlementPage["missing"] = [];
     const failed: SettlementPage["failed"] = [];
+    // Äldre månader där en butik sålde men saknar avräkning (äldst först), sedan förra månaden.
+    for (const m of await queryOlderMissingSettlements(tx, orgId, month)) {
+      const olderLive = await computeSettlementsTx(tx, {
+        organizationId: orgId,
+        month: m.month,
+        storeIds: m.storeIds,
+        now,
+      });
+      for (const storeId of m.storeIds) {
+        const storeName = name.get(storeId) ?? "Okänd butik";
+        const l = olderLive.get(storeId)!;
+        if (l.ok) missing.push({ storeId, storeName, month: m.month });
+        else failed.push({ storeId, storeName, message: l.message, month: m.month });
+      }
+    }
     for (const storeId of missingIds) {
       const storeName = name.get(storeId) ?? "Okänd butik";
       const l = live.get(storeId)!;
-      if (l.ok) missing.push({ storeId, storeName });
-      else failed.push({ storeId, storeName, message: l.message });
+      if (l.ok) missing.push({ storeId, storeName, month });
+      else failed.push({ storeId, storeName, message: l.message, month });
     }
     let portal: StorePortalSummary[] | null = null;
     if (canEdit) {
@@ -600,7 +793,22 @@ export async function markSettlementPaidFor(
   paidOn: string,
   expectedOre: number | null = null,
   now: Date = new Date(),
-): Promise<{ storeName: string; amountOre: number; month: IsoMonth; monthClosed: boolean }> {
+  /**
+   * Vilket belopp som betalades när rapporten butiken fick säger ett annat än dagens
+   * uträkning: "live" (dagens uträkning) eller "report" (rapportens). Utan val kastas
+   * PaidAmountQuestion, så att ägaren får frågan.
+   */
+  paidChoice: "live" | "report" | null = null,
+): Promise<{
+  storeName: string;
+  amountOre: number;
+  month: IsoMonth;
+  monthClosed: boolean;
+  /** Beloppet som betalades (rapportens när ägaren valde det). */
+  paidOre: number;
+  /** Dagens uträkning − betalt: återstår att rätta på nästa avräkning (0 = inget). */
+  differenceOre: number;
+}> {
   const orgId = viewer.organization.id;
   await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
   const settlementId = requireId(id);
@@ -643,6 +851,19 @@ export async function markSettlementPaidFor(
         );
       }
       if (c.amountOre === 0) throw new SettlementError("Inget att betala för månaden.");
+      // Rapporten butiken fick för samma månad: säger den ett annat belopp frågar vi
+      // vilket som betalades. Inget betalas på ett belopp som ägaren inte har valt.
+      const reportOre =
+        (await approvedReportAmounts(tx, orgId)).get(`${row.storeId}|${row.month.slice(0, 7)}`) ??
+        null;
+      // Rättelser som ligger på avräkningen betalas med, vilket belopp ägaren än väljer.
+      const reportPayOre =
+        reportOre === null || reportOre === 0 ? null : reportOre + c.correctionsOre;
+      const reportDiffers = reportPayOre !== null && reportPayOre !== c.amountOre;
+      if (reportDiffers && paidChoice === null) {
+        throw new PaidAmountQuestion(reportPayOre!, c.amountOre);
+      }
+      const paidAmountOre = reportDiffers && paidChoice === "report" ? reportPayOre! : null;
       const where = and(
         eq(s.storeSettlements.organizationId, orgId),
         eq(s.storeSettlements.id, settlementId),
@@ -659,10 +880,14 @@ export async function markSettlementPaidFor(
           })
           .where(where);
       }
-      const rows = await tx.update(s.storeSettlements).set({ paidOn }).where(where).returning({
-        storeId: s.storeSettlements.storeId,
-        amountOre: s.storeSettlements.amountOre,
-      });
+      const rows = await tx
+        .update(s.storeSettlements)
+        .set({ paidOn, paidAmountOre, liveAmountOre: c.amountOre, liveCheckedAt: now })
+        .where(where)
+        .returning({
+          storeId: s.storeSettlements.storeId,
+          amountOre: s.storeSettlements.amountOre,
+        });
       const paid = rows[0];
       if (!paid) throw new SettlementError("Avräkningen är redan betald eller finns inte.");
       const [store] = await tx
@@ -676,7 +901,15 @@ export async function markSettlementPaidFor(
         trigger: "settlement_paid",
         today,
       });
-      return { storeName: store?.name ?? "butiken", amountOre: paid.amountOre, month, monthClosed };
+      const paidOre = paidAmountOre ?? paid.amountOre;
+      return {
+        storeName: store?.name ?? "butiken",
+        amountOre: paid.amountOre,
+        month,
+        monthClosed,
+        paidOre,
+        differenceOre: paid.amountOre - paidOre,
+      };
     });
   } catch (error) {
     if (error instanceof SettlementError) throw error;
@@ -722,6 +955,251 @@ export async function undoSettlementPaidFor(
     if (error instanceof SettlementError) throw error;
     settlementDbError(error);
   }
+}
+
+/** Sparar avräkningens belopp och uträkning räknade nu (med rättelserna på den). */
+async function storeLiveTx(
+  tx: Tx,
+  orgId: string,
+  row: { id: string; storeId: string; month: string },
+  now: Date,
+): Promise<number> {
+  const live = (await liveFor(tx, orgId, [row], now)).get(row.id)!;
+  if (!live.ok) throw new SettlementError(live.message);
+  const c = live.computed;
+  await tx
+    .update(s.storeSettlements)
+    .set({
+      amountOre: c.amountOre,
+      statement: c.statement as unknown as Record<string, unknown>,
+      calcVersion: c.calcVersion,
+      computedAt: now,
+    })
+    .where(
+      and(
+        eq(s.storeSettlements.organizationId, orgId),
+        eq(s.storeSettlements.id, row.id),
+        isNull(s.storeSettlements.paidOn),
+      ),
+    );
+  return c.amountOre;
+}
+
+/**
+ * "Lägg på nästa avräkning": skillnaden mellan det som betalades och dagens uträkning för
+ * en betald avräkning läggs som en egen rad ("Rättelse för oktober 2026") på butikens
+ * närmast följande obetalda avräkning. Aldrig av sig själv: bara när ägaren eller admin
+ * trycker. `expectedOre` är skillnaden hen såg; har den ändrats görs inget.
+ */
+export async function carryDifferenceFor(
+  viewer: Viewer,
+  id: string,
+  expectedOre: number,
+  now: Date = new Date(),
+): Promise<{ storeName: string; amountOre: number; targetMonth: IsoMonth }> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
+  const sourceId = requireId(id);
+  if (!Number.isSafeInteger(expectedOre)) throw new SettlementError("Ogiltigt belopp.");
+  try {
+    return await withUserDbFor(viewer.user, async (tx) => {
+      const settlements = await tx
+        .select({
+          id: s.storeSettlements.id,
+          storeId: s.storeSettlements.storeId,
+          month: s.storeSettlements.month,
+          amountOre: s.storeSettlements.amountOre,
+          paidOn: s.storeSettlements.paidOn,
+          paidAmountOre: s.storeSettlements.paidAmountOre,
+          correctedOre: s.storeSettlements.correctedOre,
+          corrections: s.storeSettlements.corrections,
+        })
+        .from(s.storeSettlements)
+        .where(eq(s.storeSettlements.organizationId, orgId))
+        .for("update");
+      const source = settlements.find((r) => r.id === sourceId);
+      if (!source || !source.paidOn) {
+        throw new SettlementError("Avräkningen är inte betald eller finns inte.");
+      }
+      const live = (await liveFor(tx, orgId, [source], now)).get(sourceId)!;
+      if (!live.ok) throw new SettlementError(`Kan inte räknas nu. ${live.message}`);
+      const paidOre = source.paidAmountOre ?? source.amountOre;
+      const liveOre = live.computed.amountOre;
+      const difference = paidDifference({ paidOre, liveOre, correctedOre: source.correctedOre });
+      if (difference === 0) throw new SettlementError("Det finns ingen skillnad att lägga till.");
+      if (difference !== expectedOre) {
+        throw new SettlementError(
+          `Skillnaden har ändrats till ${krText(Math.abs(difference))}. Kontrollera och försök igen.`,
+        );
+      }
+      const target = carryTargetOf(
+        source.month.slice(0, 7),
+        settlements.filter((r) => r.storeId === source.storeId && !r.paidOn),
+      );
+      if (!target) {
+        throw new SettlementError(
+          "Butiken har ingen obetald avräkning än. Nästa skapas den 1:a. Lägg till skillnaden då.",
+        );
+      }
+      const correction: SettlementCorrection = {
+        sourceId,
+        month: source.month.slice(0, 7) as IsoMonth,
+        amountOre: difference,
+        paidOre: paidOre + source.correctedOre,
+        liveOre,
+        at: now.toISOString(),
+        by: viewer.user.userId,
+      };
+      const corrections = [...parseCorrections(target.corrections), correction];
+      await tx
+        .update(s.storeSettlements)
+        .set({ corrections })
+        .where(
+          and(
+            eq(s.storeSettlements.organizationId, orgId),
+            eq(s.storeSettlements.id, target.id),
+            isNull(s.storeSettlements.paidOn),
+          ),
+        );
+      // Målets belopp och uträkning sparas med den nya raden (det butiken ser i portalen).
+      await storeLiveTx(tx, orgId, target, now);
+      await tx
+        .update(s.storeSettlements)
+        .set({
+          correctedOre: source.correctedOre + difference,
+          liveAmountOre: liveOre,
+          liveCheckedAt: now,
+        })
+        .where(
+          and(eq(s.storeSettlements.organizationId, orgId), eq(s.storeSettlements.id, sourceId)),
+        );
+      const [store] = await tx
+        .select({ name: s.stores.name })
+        .from(s.stores)
+        .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, source.storeId)));
+      return {
+        storeName: store?.name ?? "butiken",
+        amountOre: difference,
+        targetMonth: target.month.slice(0, 7) as IsoMonth,
+      };
+    });
+  } catch (error) {
+    if (error instanceof SettlementError) throw error;
+    settlementDbError(error);
+  }
+}
+
+/**
+ * "Ta bort rättelsen" på en obetald avräkning: raden försvinner, beloppet räknas om och
+ * skillnaden står åter som olöst på den betalda avräkningen. Ägare och admin.
+ */
+export async function removeCorrectionFor(
+  viewer: Viewer,
+  targetIdRaw: string,
+  sourceIdRaw: string,
+  now: Date = new Date(),
+): Promise<{ removedOre: number }> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
+  const targetId = requireId(targetIdRaw);
+  const sourceId = requireId(sourceIdRaw);
+  try {
+    return await withUserDbFor(viewer.user, async (tx) => {
+      const rows = await tx
+        .select({
+          id: s.storeSettlements.id,
+          storeId: s.storeSettlements.storeId,
+          month: s.storeSettlements.month,
+          paidOn: s.storeSettlements.paidOn,
+          correctedOre: s.storeSettlements.correctedOre,
+          corrections: s.storeSettlements.corrections,
+        })
+        .from(s.storeSettlements)
+        .where(
+          and(
+            eq(s.storeSettlements.organizationId, orgId),
+            or(eq(s.storeSettlements.id, targetId), eq(s.storeSettlements.id, sourceId)),
+          ),
+        )
+        .for("update");
+      const target = rows.find((r) => r.id === targetId);
+      const source = rows.find((r) => r.id === sourceId);
+      if (!target || !source) throw new SettlementError("Avräkningen finns inte.");
+      if (target.paidOn) throw new SettlementError("Avräkningen är betald och ändras inte.");
+      const all = parseCorrections(target.corrections);
+      const removed = all.filter((c) => c.sourceId === sourceId);
+      if (removed.length === 0) throw new SettlementError("Rättelsen finns inte.");
+      const removedOre = correctionsTotal(removed);
+      await tx
+        .update(s.storeSettlements)
+        .set({ corrections: all.filter((c) => c.sourceId !== sourceId) })
+        .where(
+          and(eq(s.storeSettlements.organizationId, orgId), eq(s.storeSettlements.id, targetId)),
+        );
+      await storeLiveTx(tx, orgId, target, now);
+      await tx
+        .update(s.storeSettlements)
+        .set({ correctedOre: source.correctedOre - removedOre })
+        .where(
+          and(eq(s.storeSettlements.organizationId, orgId), eq(s.storeSettlements.id, sourceId)),
+        );
+      return { removedOre };
+    });
+  } catch (error) {
+    if (error instanceof SettlementError) throw error;
+    settlementDbError(error);
+  }
+}
+
+/** Månader bakåt som betalda avräkningar räknas om för jämförelsen (nattliga jobbet). */
+export const PAID_CHECK_MONTHS = 12;
+
+/**
+ * Räknar månadens belopp med dagens underlag för organisationens betalda avräkningar (de
+ * senaste PAID_CHECK_MONTHS månaderna) och sparar det (live_amount_ore). Att göra läser
+ * det sparade: "Betald avräkning skiljer sig från dagens uträkning". Det betalda beloppet
+ * rörs aldrig. Ger antalet betalda avräkningar med en olöst skillnad.
+ */
+export async function refreshPaidLiveTx(
+  tx: Tx,
+  orgId: string,
+  today: IsoDate,
+  now: Date,
+): Promise<number> {
+  const since = `${addMonths(today.slice(0, 7) as IsoMonth, -PAID_CHECK_MONTHS)}-01`;
+  const paid = await tx
+    .select({
+      id: s.storeSettlements.id,
+      storeId: s.storeSettlements.storeId,
+      month: s.storeSettlements.month,
+      amountOre: s.storeSettlements.amountOre,
+      paidAmountOre: s.storeSettlements.paidAmountOre,
+      correctedOre: s.storeSettlements.correctedOre,
+      liveAmountOre: s.storeSettlements.liveAmountOre,
+    })
+    .from(s.storeSettlements)
+    .where(
+      and(
+        eq(s.storeSettlements.organizationId, orgId),
+        gte(s.storeSettlements.month, since),
+        sql`${s.storeSettlements.paidOn} is not null`,
+      ),
+    );
+  const live = await liveFor(tx, orgId, paid, now);
+  let differing = 0;
+  for (const r of paid) {
+    const l = live.get(r.id);
+    if (!l || !l.ok) continue;
+    const liveOre = l.computed.amountOre;
+    const paidOre = r.paidAmountOre ?? r.amountOre;
+    if (paidDifference({ paidOre, liveOre, correctedOre: r.correctedOre }) !== 0) differing += 1;
+    if (r.liveAmountOre === liveOre) continue;
+    await tx
+      .update(s.storeSettlements)
+      .set({ liveAmountOre: liveOre, liveCheckedAt: now })
+      .where(and(eq(s.storeSettlements.organizationId, orgId), eq(s.storeSettlements.id, r.id)));
+  }
+  return differing;
 }
 
 /** Räknar om en obetald avräkning med dagens underlag. Ger det nya beloppet. */

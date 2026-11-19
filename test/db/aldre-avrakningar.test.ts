@@ -1,0 +1,135 @@
+/**
+ * Avräkningar skapas också för äldre månader (testdatabasen, egen fixtur, "i dag" 19 nov.
+ * 2026). Förut skapades och listades bara förra månaden: en butik vars avräkning inte gick
+ * att räkna i tid föll bort för gott när månaden bytte.
+ *
+ *   september och oktober  båda butikerna sålde, inga avräkningar finns
+ *   augusti                Vinsten (vinstdelning) sålde en titel utan inköpspris
+ *   juli                   Provision sålde, men månaden är stängd
+ */
+
+import { sql } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
+}));
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+  revalidateTag: vi.fn(),
+  updateTag: vi.fn(),
+  unstable_noStore: vi.fn(),
+  unstable_cache: <T>(fn: T) => fn,
+}));
+
+import { withUserDbFor } from "@/server/access";
+import { queryOlderMissingSettlements } from "@/server/settlements/queries";
+import {
+  createMonthlySettlements,
+  ensureSettlementsFor,
+  loadSettlementPageFor,
+} from "@/server/settlements/service";
+
+import { asPostgres, asUser, db, one, rows } from "./helpers";
+import { seedMoneyFixture, type MoneyFixture } from "./pengar-fixture";
+
+const NOW = new Date("2026-11-19T10:00:00Z");
+
+let f: MoneyFixture;
+let unpricedTitle: string;
+
+const months = async () =>
+  (
+    await asPostgres((tx) =>
+      rows<{ month: string; n: number }>(
+        tx,
+        sql`select to_char(month, 'YYYY-MM') as month, count(*)::int as n
+            from public.store_settlements where organization_id = ${f.orgId}
+            group by 1 order by 1`,
+      ),
+    )
+  ).map((r) => `${r.month}:${r.n}`);
+
+beforeAll(async () => {
+  f = await seedMoneyFixture("Äldre avräkningar");
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+  await asPostgres(async (tx) => {
+    unpricedTitle = (
+      await one<{ id: string }>(
+        tx,
+        sql`insert into public.titles (organization_id, name) values (${f.orgId}, 'Utan pris')
+            returning id`,
+      )
+    ).id;
+    const order = (machine: string, title: string, day: string, key: string) =>
+      tx.execute(sql`insert into public.orders (organization_id, data_source_id, external_id,
+          raw_title, title_id, ordered_at, amount_ore, machine_id, source_hash)
+        values (${f.orgId}, ${f.sourceId}, ${key}, 'x', ${title}, ${`${day}T10:00:00Z`}, 10000,
+                ${machine}, ${`h-${key}-${f.orgId.slice(0, 8)}`})`);
+    await order(f.machines.m1, unpricedTitle, "2026-08-10", "aug-1");
+    await order(f.machines.m2, f.titleId, "2026-07-10", "jul-1");
+  });
+  await asUser(f.ownerUser, (tx) =>
+    tx.execute(sql`select public.close_period(${f.orgId}, '2026-07-01'::date)`),
+  );
+}, 120_000);
+
+afterAll(() => {
+  vi.useRealTimers();
+});
+
+describe("äldre månader utan avräkning", () => {
+  it("listas på Utbetalning, äldst först, och det som inte går att räkna står med sin månad", async () => {
+    const older = await withUserDbFor(f.owner.user, (tx) =>
+      queryOlderMissingSettlements(tx, f.orgId, "2026-10"),
+    );
+    // Juli är stängd och räknas inte. Augusti: bara Vinsten sålde.
+    expect(older).toEqual([
+      { month: "2026-08", storeIds: [f.stores.vinsten] },
+      { month: "2026-09", storeIds: [f.stores.provision, f.stores.vinsten].sort() },
+    ]);
+    const page = await loadSettlementPageFor(f.owner, NOW);
+    expect(page.month).toBe("2026-10");
+    expect(page.missing.map((m) => `${m.month} ${m.storeName}`).sort()).toEqual([
+      "2026-09 Provision",
+      "2026-09 Vinsten",
+      "2026-10 Provision",
+      "2026-10 Vinsten",
+    ]);
+    expect(page.failed.map((x) => `${x.month} ${x.storeName}`)).toEqual(["2026-08 Vinsten"]);
+  });
+
+  it("knappen skapar också de äldre; den som inte går att räkna står kvar som fel", async () => {
+    const run = await ensureSettlementsFor(f.owner, NOW);
+    expect(run).toMatchObject({ created: 4, olderMonths: ["2026-09"] });
+    expect(run!.errors).toHaveLength(1);
+    expect(await months()).toEqual(["2026-09:2", "2026-10:2"]);
+    const page = await loadSettlementPageFor(f.owner, NOW);
+    expect(page.missing).toEqual([]);
+    expect(page.failed.map((x) => `${x.month} ${x.storeName}`)).toEqual(["2026-08 Vinsten"]);
+  });
+
+  it("när priset läggs in skapar det schemalagda jobbet augusti, också månader senare", async () => {
+    await asPostgres((tx) =>
+      tx.execute(sql`insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from)
+                     values (${f.orgId}, ${unpricedTitle}, 4000, '2026-01-01')`),
+    );
+    const later = new Date("2027-02-03T10:00:00Z");
+    vi.setSystemTime(later);
+    const [run] = await createMonthlySettlements(db(), later, { organizationIds: [f.orgId] });
+    expect(run!.errors).toEqual([]);
+    expect(await months()).toContain("2026-08:1");
+    // Den stängda månaden (juli) får ingen avräkning.
+    expect((await months()).some((m) => m.startsWith("2026-07"))).toBe(false);
+    const aug = await asPostgres((tx) =>
+      one<{ amount_ore: string }>(
+        tx,
+        sql`select amount_ore from public.store_settlements
+            where organization_id = ${f.orgId} and month = '2026-08-01'`,
+      ),
+    );
+    // Augusti: 100 kr sålt, 40 kr inköp → 30 kr till butiken.
+    expect(Number(aug.amount_ore)).toBe(3_000);
+  });
+});

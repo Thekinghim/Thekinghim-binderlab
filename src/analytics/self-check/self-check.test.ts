@@ -419,6 +419,38 @@ describe("avräkningar", () => {
   it("inga obetalda: hoppas över", () => {
     expect(settlementCheck([]).status).toBe("skip");
   });
+
+  // Sega gubben, oktober: betalt 8 388,08 kr, dagens uträkning 9 178,28 kr.
+  const paid = {
+    storeName: "Sega gubben",
+    monthLabel: "oktober 2026",
+    paidOre: 838_808,
+    liveOre: 917_828,
+    correctedOre: 0,
+  };
+
+  it("betald avräkning skiljer sig från dagens uträkning: varning med båda beloppen", () => {
+    const r = settlementCheck([], [paid]);
+    expect(r.status).toBe("warn");
+    expect(r.findings[0]!.text.replace(/\u00a0|\u202f/g, " ")).toMatch(
+      /^Betald avräkning skiljer sig från dagens uträkning: Sega gubben, oktober 2026\. Betalt 8 388,08 kr, dagens uträkning 9 178,28 kr \(.*790,20 kr.*\)\. Lägg skillnaden på nästa avräkning/,
+    );
+  });
+
+  it("betald som stämmer, eller där skillnaden redan är lagd som rättelse: går igenom", () => {
+    expect(settlementCheck([], [{ ...paid, liveOre: 838_808 }]).status).toBe("pass");
+    expect(settlementCheck([], [{ ...paid, correctedOre: 79_020 }]).status).toBe("pass");
+  });
+
+  it("en rättelse på en obetald räknas inte som fel mot butikens andel", () => {
+    const withCorrection = {
+      ...row,
+      storedOre: 129_020,
+      live: { ok: true as const, amountOre: 129_020 },
+      correctionsOre: 79_020,
+    };
+    expect(settlementCheck([withCorrection]).status).toBe("pass");
+  });
 });
 
 // ---------------------------------------------------------------------------

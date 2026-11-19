@@ -42,3 +42,45 @@ export function noAgreementLine(g: {
     ? `${g.storeName}: inget avtal – får 0\u00a0kr.`
     : `${g.storeName}: inget avtal ${g.days === 1 ? "1\u00a0dag" : `${g.days}\u00a0dagar`} – 0\u00a0% de dagarna.`;
 }
+
+const MONTH_NAMES = [
+  "januari",
+  "februari",
+  "mars",
+  "april",
+  "maj",
+  "juni",
+  "juli",
+  "augusti",
+  "september",
+  "oktober",
+  "november",
+  "december",
+];
+const monthLabel = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+
+/**
+ * Raderna i rutan "Saknas" på Utbetalning, äldst månad först: "Sega gubben: september 2026
+ * saknar avräkning. Den skulle redan ha varit betald." eller "3 butiker saknar avräkning
+ * för oktober 2026." Äldre månader (före `current`) står med, så att en butik som inte
+ * kunde räknas i tid inte faller bort.
+ */
+export function missingLines(
+  missing: readonly { readonly storeName: string; readonly month: string }[],
+  current: string,
+): string[] {
+  const byMonth = new Map<string, string[]>();
+  for (const m of missing) {
+    const list = byMonth.get(m.month);
+    if (list) list.push(m.storeName);
+    else byMonth.set(m.month, [m.storeName]);
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, names]) => {
+      const old = month !== current;
+      return names.length === 1
+        ? `${names[0]}: ${monthLabel(month)} saknar avräkning.${old ? " Den skulle redan ha varit betald." : ""}`
+        : `${names.length} butiker saknar avräkning för ${monthLabel(month)}.${old ? " De skulle redan ha varit betalda." : ""}`;
+    });
+}

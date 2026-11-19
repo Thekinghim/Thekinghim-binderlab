@@ -147,6 +147,21 @@ export interface SettlementRef {
   readonly blocked?: boolean;
 }
 
+/**
+ * En betald avräkning där månadens belopp med dagens underlag skiljer sig från det som
+ * betalades, och skillnaden inte är lagd som rättelse på en senare avräkning.
+ */
+export interface PaidDriftRef {
+  readonly id: string;
+  readonly storeId: string;
+  /** Månadens första dag. */
+  readonly month: IsoDate;
+  readonly paidOre: number;
+  readonly liveOre: number;
+  /** Dagens uträkning − betalt − redan rättat. Plus = butiken ska ha mer. Aldrig 0. */
+  readonly differenceOre: number;
+}
+
 /** Allvar för ett larm (enum alert_severity). */
 export type AlertSeverityRef = "info" | "warning" | "critical";
 
@@ -239,6 +254,7 @@ export type TodoKind =
   | "alert"
   | "settlement"
   | "settlement-create"
+  | "settlement-drift"
   | "agreement"
   | "mystery-cost"
   | "price-advice"
@@ -338,6 +354,16 @@ export interface TodoInput extends EconomicsSources {
     readonly month: IsoMonth;
     readonly storeIds: readonly string[];
   };
+  /**
+   * Äldre avslutade månader (före `missingSettlements.month`) där en butik hade försäljning
+   * men saknar avräkning, och månaden inte är stängd. Saknas = inga.
+   */
+  readonly olderMissingSettlements?: readonly {
+    readonly month: IsoMonth;
+    readonly storeIds: readonly string[];
+  }[];
+  /** Betalda avräkningar som skiljer sig från dagens uträkning. Saknas = inga. */
+  readonly paidDrift?: readonly PaidDriftRef[];
   /**
    * Butiker med dagar då en automat stod där men inget avtal gällde (agreementGaps i
    * @/domain), från avräkningsmånadens början t.o.m. i dag. Butiken räknas som 0 % de

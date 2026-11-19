@@ -22,7 +22,12 @@ import type { WeekShare } from "../sellout";
 import { reportReviewTodos } from "./report-review";
 import { reportTodos } from "./reports";
 import { silentTitleTodos } from "./silent-title";
-import { missingSettlementTodos, settlementTodos } from "./settlements";
+import {
+  missingSettlementTodos,
+  olderMissingSettlementTodos,
+  paidDriftTodos,
+  settlementTodos,
+} from "./settlements";
 import { staleMachineTodos } from "./stale-machine";
 import { stockCountTodos } from "./stock-count";
 import { teamTodos } from "./team";
@@ -71,6 +76,8 @@ export function computeTodos(
     ...reportTodos(ctx),
     ...settlementTodos(ctx),
     ...missingSettlementTodos(ctx),
+    ...olderMissingSettlementTodos(ctx),
+    ...paidDriftTodos(ctx),
     ...deals.agreements,
     ...contractTodos(ctx),
     ...deals.contracts,

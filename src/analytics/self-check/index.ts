@@ -23,7 +23,12 @@ export {
   SYNC_WARN_MINUTES,
   type SyncSourceState,
 } from "./sync";
-export { settlementCheck, type SettlementRow } from "./settlements";
+export {
+  PAID_DRIFT_TITLE,
+  settlementCheck,
+  type PaidSettlementRow,
+  type SettlementRow,
+} from "./settlements";
 export { hygieneCheck, type HygieneInput } from "./hygiene";
 export {
   CARD_FEE_LINK,

@@ -163,5 +163,15 @@ export const storeSettlements = pgTable("store_settlements", {
   paidOn: day("paid_on"),
   paidBy: uuid("paid_by"),
   paidMarkedAt: ts("paid_marked_at"),
+  /**
+   * Betalt belopp när det inte är avräkningens (ägaren betalade rapportens belopp), dagens
+   * uträkning för en betald (nattliga jobbet), skillnad som redan lagts som rättelse på en
+   * senare avräkning, och rättelser som ligger på den här (20261220100200).
+   */
+  paidAmountOre: ore("paid_amount_ore"),
+  liveAmountOre: ore("live_amount_ore"),
+  liveCheckedAt: ts("live_checked_at"),
+  correctedOre: ore("corrected_ore").notNull().default(0),
+  corrections: jsonb("corrections").$type<unknown[]>().notNull().default([]),
   ...stamps(),
 });

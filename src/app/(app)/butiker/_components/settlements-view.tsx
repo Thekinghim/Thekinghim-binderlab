@@ -6,19 +6,28 @@ import { formatSek } from "@/lib/format";
 import type { Viewer } from "@/server/data/core/loaders";
 import { CLOSE_TRIGGER_TEXT } from "@/server/periods/model";
 import { loadPeriodOverviewFor } from "@/server/periods/service";
-import { payoutDueDate, STATE_LABEL } from "@/server/settlements/model";
+import {
+  correctionStep,
+  correctionsTotal,
+  paidCompareLine,
+  paidDifferenceLine,
+  payoutDueDate,
+  STATE_LABEL,
+} from "@/server/settlements/model";
 import { loadSettlementPageFor, type SettlementRow } from "@/server/settlements/service";
 
 import {
+  CarryDifferenceButton,
   CreateSettlementsButton,
   InviteStoreButton,
   MarkPaidButton,
   RecomputeButton,
+  RemoveCorrectionButton,
   UndoPaidButton,
 } from "./settlement-actions";
 import { CloseMonthButton, ReopenMonthButton } from "../../_manad/period-controls";
 import { MoneyCount } from "./money-count";
-import { noAgreementLine, settlementIdleHeadline } from "../_lib/settlement-headline";
+import { missingLines, noAgreementLine, settlementIdleHeadline } from "../_lib/settlement-headline";
 
 const kr = (ore: number) => formatSek(ore / 100);
 const rise = (i: number) => ({ "--i": i }) as CSSProperties;
@@ -93,10 +102,12 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
         <section className="rise flex flex-col gap-2" style={rise(1)} aria-label="Kan inte räknas">
           {page.failed.map((f) => (
             <p
-              key={f.storeId}
+              key={`${f.storeId}-${f.month}`}
               className="rounded-md border border-signal-line px-4 py-3 text-base text-fg"
             >
-              {f.storeName}: kan inte räknas. {f.message}{" "}
+              {f.storeName}
+              {f.month === page.month ? "" : `, ${monthLabel(f.month)}`}: kan inte räknas.{" "}
+              {f.message}{" "}
               <Link href="/inkopspriser" className="underline underline-offset-4">
                 Inköpspriser →
               </Link>
@@ -114,20 +125,28 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
           aria-label="Saknas"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-base text-fg">
-              {page.missing.length === 1
-                ? `${page.missing[0]!.storeName}: ${monthLabel(page.month)} saknar avräkning.`
-                : `${page.missing.length} butiker saknar avräkning för ${monthLabel(page.month)}.`}
-            </p>
+            <div className="flex flex-col gap-1 text-base text-fg">
+              {missingLines(page.missing, page.month).map((line) => (
+                <p key={line} data-missing-line>
+                  {line}
+                </p>
+              ))}
+            </div>
             {page.canEdit ? (
               <CreateSettlementsButton
                 count={page.missing.length}
-                monthLabel={MONTHS[Number(page.month.slice(5, 7)) - 1]!}
+                monthLabel={
+                  page.missing.every((m) => m.month === page.month)
+                    ? MONTHS[Number(page.month.slice(5, 7)) - 1]!
+                    : null
+                }
               />
             ) : null}
           </div>
           <NoAgreementLines
-            gaps={page.missing.flatMap((m) => noDeal.get(m.storeId) ?? [])}
+            gaps={page.missing.flatMap((m) =>
+              m.month === page.month ? (noDeal.get(m.storeId) ?? []) : [],
+            )}
             canEdit={page.canEdit}
           />
         </section>
@@ -200,6 +219,26 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                           Nytt belopp, var {kr(Math.abs(r.storedAmountOre))}
                         </span>
                       ) : null}
+                      <PaidCompare row={r} canEdit={page.canEdit} />
+                      {!r.paidOn
+                        ? r.corrections.map((c) => (
+                            <span
+                              key={c.sourceId}
+                              className="flex flex-wrap items-center gap-x-3 text-sm text-fg"
+                              data-correction
+                            >
+                              {correctionStep(c).label}: {c.amountOre < 0 ? "−" : "+"}
+                              {kr(Math.abs(c.amountOre))}
+                              {page.canEdit ? (
+                                <RemoveCorrectionButton
+                                  targetId={r.id}
+                                  sourceId={c.sourceId}
+                                  label={correctionStep(c).label}
+                                />
+                              ) : null}
+                            </span>
+                          ))
+                        : null}
                       {r.statement && r.statement.steps.length > 0 ? (
                         <details className="group text-sm">
                           <summary className="cursor-pointer list-none text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
@@ -218,7 +257,7 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="tnum text-lg text-fg">
-                        {r.blocked ? "–" : kr(Math.abs(r.amountOre))}
+                        {r.blocked ? "–" : kr(Math.abs(r.paidOn ? r.paidOre : r.amountOre))}
                       </span>
                       <StatusTag
                         status={
@@ -248,6 +287,11 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                             id={r.id}
                             storeName={r.storeName}
                             amountOre={r.amountOre}
+                            reportOre={
+                              r.reportOre === null || r.reportOre === 0
+                                ? null
+                                : r.reportOre + correctionsTotal(r.corrections)
+                            }
                             monthLabel={monthLabel(r.month)}
                             today={today}
                           />
@@ -328,5 +372,55 @@ function NoAgreementLines({
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Under en betald avräkning när beloppen skiljer sig: betalt, rapporten butiken fick och
+ * dagens uträkning, skillnaden och knappen som lägger den på nästa avräkning. Inget när
+ * allt stämmer.
+ */
+function PaidCompare({ row, canEdit }: { row: SettlementRow; canEdit: boolean }) {
+  if (!row.paidOn) return null;
+  const line = paidCompareLine({
+    paidOre: row.paidOre,
+    reportOre: row.reportOre,
+    liveOre: row.liveOre,
+    correctedOre: row.correctedOre,
+    correctionsOre: correctionsTotal(row.corrections),
+  });
+  if (!line && row.correctedOre === 0) return null;
+  return (
+    <div className="flex flex-col gap-1 text-sm" data-paid-compare={row.id}>
+      {line ? <span className="text-signal-fg">{line}</span> : null}
+      {row.correctedOre !== 0 ? (
+        <span className="text-muted">
+          Rättelse {row.correctedOre < 0 ? "−" : "+"}
+          {kr(Math.abs(row.correctedOre))} ligger på en senare avräkning.
+        </span>
+      ) : null}
+      {row.differenceOre !== 0 ? (
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-fg">
+          {paidDifferenceLine(row.differenceOre)}
+          {canEdit && row.carryTarget ? (
+            <CarryDifferenceButton
+              id={row.id}
+              storeName={row.storeName}
+              differenceOre={row.differenceOre}
+              monthLabel={monthLabel(row.month)}
+              targetMonthLabel={monthLabel(row.carryTarget.month)}
+            />
+          ) : (
+            <span className="text-muted">
+              Kan läggas på nästa avräkning när den finns (skapas den 1:a).
+            </span>
+          )}
+        </span>
+      ) : line && row.reportOre !== null && row.liveOre !== null ? (
+        <Link href="/rapporter" className="text-muted underline underline-offset-4">
+          Skapa en ny rapport till butiken →
+        </Link>
+      ) : null}
+    </div>
   );
 }

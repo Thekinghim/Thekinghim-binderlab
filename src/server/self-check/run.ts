@@ -26,12 +26,13 @@ import {
   type CheckResult,
   type RunStatus,
   type SelfCheckId,
+  type PaidSettlementRow,
   type SettlementRow,
 } from "@/analytics/self-check";
 import { monthName } from "@/analytics/todos/text";
 import { getServiceDb, type Db } from "@/db/client";
 import type { SelfCheckTrigger } from "@/db/schema";
-import { addDays, monthOf, monthStart, type IsoMonth } from "@/domain";
+import { addDays, addMonths, monthOf, monthStart, type IsoMonth } from "@/domain";
 import { withUserDbFor, type OrganizationMembership } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { errorText } from "@/server/monitoring/system-alerts";
@@ -46,6 +47,7 @@ import {
   queryRefillPushes,
   querySettingsFacts,
   querySyncSources,
+  queryPaidSince,
   queryUnpaidClosed,
 } from "./queries";
 
@@ -171,9 +173,25 @@ export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<Chec
       syncFreshnessCheck({ sources: await querySyncSources(db, orgId, tz, now), now }),
     ),
     timed("avrakningar", async () => {
-      const unpaid = await queryUnpaidClosed(db, orgId, thisMonthStart);
-      if (unpaid.length === 0) return settlementCheck([]);
-      const live = await withUserDbFor(viewer.user, (tx) => liveFor(tx, orgId, unpaid, now));
+      const [unpaid, paid] = await Promise.all([
+        queryUnpaidClosed(db, orgId, thisMonthStart),
+        // Betalda de senaste tolv månaderna: betalt mot dagens uträkning.
+        queryPaidSince(db, orgId, `${addMonths(thisMonthStart.slice(0, 7) as IsoMonth, -12)}-01`),
+      ]);
+      if (unpaid.length === 0 && paid.length === 0) return settlementCheck([]);
+      const live = await withUserDbFor(viewer.user, (tx) =>
+        liveFor(tx, orgId, [...unpaid, ...paid], now),
+      );
+      const paidRows: PaidSettlementRow[] = paid.map((p) => {
+        const l = live.get(p.id);
+        return {
+          storeName: p.storeName,
+          monthLabel: monthLabel(p.month),
+          paidOre: p.paidOre,
+          liveOre: l?.ok ? l.computed.amountOre : null,
+          correctedOre: p.correctedOre,
+        };
+      });
       const months = [...new Set(unpaid.map((u) => u.month.slice(0, 7) as IsoMonth))];
       const shares = new Map<string, Map<string, number>>();
       for (const m of months) shares.set(m, await monthStoreShares(viewer, m, now));
@@ -189,9 +207,10 @@ export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<Chec
               ? { ok: true, amountOre: l.computed.amountOre }
               : { ok: false, message: l.message },
           pageShareOre: shares.get(u.month.slice(0, 7))?.get(u.storeId) ?? 0,
+          correctionsOre: l?.ok ? l.computed.correctionsOre : 0,
         };
       });
-      return settlementCheck(rows);
+      return settlementCheck(rows, paidRows);
     }),
     timed("datahygien", async () => {
       const [base, unpricedTitles, agreementGaps] = await Promise.all([
