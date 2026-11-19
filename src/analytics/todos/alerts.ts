@@ -116,9 +116,13 @@ export function alertTodos(
             ? "Visa importerna"
             : a.kind === "order_attention"
               ? "Hantera ordern"
-              : ownLink(a)
-                ? "Öppna"
-                : "Öppna automaten",
+              : a.kind === "self_check"
+                ? "Öppna kontrollen"
+                : a.kind === "report_failed"
+                  ? "Öppna rapporterna"
+                  : ownLink(a) || !a.machineId
+                    ? "Öppna"
+                    : "Öppna automaten",
         params: { alertId: a.id },
       },
     });

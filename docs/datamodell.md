@@ -245,15 +245,15 @@ först, och bara `authenticated` får köra dem.
 
 Detaljerna står i avsnittet "Fas 8" nedan.
 
-| Tabell eller funktion             | Migrering                                                              | Innehåll                                                                                                                             | Roller                                                              |
-| --------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `alerts` (utökad)                 | `20261102122143_drift_larm_arenden.sql`, `…144500`, `…180000`          | Incidentens tillstånd, `alert_group` (`machine`, `stock`, `import`, `sales`, `system`), kvittering.                                  | läs Ä/A/L, P bara `machine` och `stock`; klienter får bara kvittera |
-| `incidents` (utökad)              | samma, `…144500_drift_review_fixes.sql`                                | Kundärenden med status, ansvarig (Ä/A), order, titel, återbetalning (`refunded_ore`, `refunded_on`).                                 | Ä/A                                                                 |
-| `alert_subscriptions`             | `20261102122143`                                                       | En per användare och organisation: typer, automater, allvar, kanaler, tysta timmar.                                                  | egna rader; P bara för `machine`/`stock`                            |
-| `push_subscriptions`              | samma, `…144500` (`private.push_endpoint_allowed`)                     | Web Push per enhet. Endpoint måste vara FCM, Mozilla, Apple eller Windows (SSRF-skydd).                                              | egna rader, Ä/A/L/P                                                 |
-| `alert_deliveries`                | `20261102122143`                                                       | Utskickskö och logg per användare och sändtid. Skrivs av larmjobbet.                                                                 | Ä/A alla; L/P bara egna                                             |
-| `alert_runs`                      | samma                                                                  | En rad per körning av larmjobbet och organisation (antal, status, `error`).                                                          | läs Ä/A/L                                                           |
-| `sales_data_until(org, at)` (RPC) | `…144500_drift_review_fixes.sql`, `…150500_drift_sales_last_order.sql` | Hur långt importerad försäljning räcker per automat (`data_until`, `synced_at`, `last_order_at`). Bara tidpunkter. Security invoker. | Ä/A/L/P och systemet                                                |
+| Tabell eller funktion             | Migrering                                                              | Innehåll                                                                                                                                                                     | Roller                                                              |
+| --------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `alerts` (utökad)                 | `20261102122143_drift_larm_arenden.sql`, `…144500`, `…180000`          | Incidentens tillstånd, `alert_group` (`machine`, `stock`, `import`, `sales`, `system`), kvittering.                                                                          | läs Ä/A/L, P bara `machine` och `stock`; klienter får bara kvittera |
+| `incidents` (utökad)              | samma, `…144500_drift_review_fixes.sql`                                | Kundärenden med status, ansvarig (Ä/A), order, titel, återbetalning (`refunded_ore`, `refunded_on`).                                                                         | Ä/A                                                                 |
+| `alert_subscriptions`             | `20261102122143`                                                       | En per användare och organisation: typer, automater, allvar, kanaler, tysta timmar. Ägare och admin får raden med medlemskapet (`20261220110000`, trigger på `memberships`). | egna rader; P bara för `machine`/`stock`                            |
+| `push_subscriptions`              | samma, `…144500` (`private.push_endpoint_allowed`)                     | Web Push per enhet. Endpoint måste vara FCM, Mozilla, Apple eller Windows (SSRF-skydd).                                                                                      | egna rader, Ä/A/L/P                                                 |
+| `alert_deliveries`                | `20261102122143`                                                       | Utskickskö och logg per användare och sändtid. Skrivs av larmjobbet.                                                                                                         | Ä/A alla; L/P bara egna                                             |
+| `alert_runs`                      | samma                                                                  | En rad per körning av larmjobbet och organisation (antal, status, `error`).                                                                                                  | läs Ä/A/L                                                           |
+| `sales_data_until(org, at)` (RPC) | `…144500_drift_review_fixes.sql`, `…150500_drift_sales_last_order.sql` | Hur långt importerad försäljning räcker per automat (`data_until`, `synced_at`, `last_order_at`). Bara tidpunkter. Security invoker.                                         | Ä/A/L/P och systemet                                                |
 
 ### Ekonomi och avtal
 
@@ -456,6 +456,13 @@ Migreringen `20261102122143_drift_larm_arenden.sql`. Drizzle: `alerts` och `inci
   `customer_contact`. Ändringar loggas i `audit_log`, och en återbetalning i en stängd månad
   kan inte läggas till, ändras eller flyttas till en annan automat eller titel (BL004).
   Påfyllaren och butiken ser inga ärenden.
+- **private.cron_calls** (`20261220110100`): anropen från pg_cron till appens schemalagda jobb och vad de
+  svarade (`job`, `called_at`, `answered_at`, `status_code`, `timed_out`, `error`), 30 dagar. Ligger i schemat
+  `private`: inga klientroller når den, servern läser den som systemroll (vakten). Fylls i av
+  `private.cron_call` och `private.cron_collect`.
+- **alerts.kind `order_attention`** (familjen `system`): en order som måste hanteras för hand, nyckel
+  `order_refund:<källa>:<order>` eller `order_error:<källa>:<order>`. Skrivs av Awish-synken, stängs när ordern är
+  hanterad. Vaktens larm har typen `job_failed` och nyckeln `watch:<rad>`.
 - **alert_subscriptions**: en per användare och organisation (`kinds` och `machine_ids`, null =
   alla; `min_severity`, `channels`, `phone`, tysta timmar `quiet_start`/`quiet_end` som
   'TT:MM', `delivery_windows`, `critical_during_quiet`, `notify_resolved`, `reminders`,

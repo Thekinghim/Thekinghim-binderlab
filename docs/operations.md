@@ -19,10 +19,10 @@ Inget behöver göras för hand. Det som körs av sig självt:
 
 | Jobb                  | Schema (UTC)    | Vad                                                                                                                                                                                                                                                                                                                 | Om det misslyckas                                                                                                 |
 | --------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `/api/cron/larm`      | `7 5 * * *`     | Maskinhälsa, lager, importer, avvikande dag; utskick                                                                                                                                                                                                                                                                | Larm `job:larm` + Sentry, se nedan                                                                                |
+| `/api/cron/larm`      | `7 5 * * *`     | Maskinhälsa, lager, importer, avvikande dag; utskick. Sedan avräkningarna, dagens kontroll om den inte redan har kört, och vakten (se "Vakten" nedan). Vercel Cron                                                                                                                                                  |
 | `/api/cron/rapporter` | `17 5 1 * *`    | Utkast för förra månadens rapporter (ingenting skickas)                                                                                                                                                                                                                                                             | Larm `report_drafts:<månad>` + Sentry                                                                             |
-| `/api/cron/bokforing` | `37 3 * * *`    | Förra månadens bokföringspaket sparas (pg_cron)                                                                                                                                                                                                                                                                     | Nedladdningen tar fram paketet direkt                                                                             |
-| `/api/cron/kontroll`  | `37 3,4 * * *`  | Daglig kontroll (pg_cron), en gång per org från 05:00 lokal tid: samma vinst överallt, Awish = appen, påfyllningar nådde Awish, synk, avräkningar, datahygien. Läser bara                                                                                                                                           | Larm `self_check:<kontroll>` per röd kontroll, stängs när den går igenom; Inställningar → Kontroll                |
+| `/api/cron/bokforing` | `37 3,5 * * *`  | Förra månadens bokföringspaket sparas (pg_cron). Två tillfällen: samma underlag ger inget nytt paket                                                                                                                                                                                                                |
+| `/api/cron/kontroll`  | `52 3-9 * * *`  | Daglig kontroll (pg_cron), en gång per org från 05:00 lokal tid: samma vinst överallt, Awish = appen, påfyllningar nådde Awish, synk, avräkningar, datahygien. Läser bara. De senare tillfällena är nya försök när den inte har kört                                                                                |
 | `/api/cron/vecka`     | `7 5,6,7 * * 1` | Veckosammanfattning (pg_cron), måndag från 07:00 lokal tid: en notis (push) per ägare/admin med knappen på och en telefon med notiser. Sålt och vinst förra veckan mot veckan innan (före butikernas andel), bästa produkten, antal i Att göra. En rad per person och vecka i `weekly_summaries`: aldrig två gånger | Notisen öppnar Veckan (`/veckan`), i Enkel vy Försäljning på engelska; knappen under Notiser och i Enkel vys meny |
 
 `/api/cron/bokforing` schemaläggs av pg_cron i Supabase (`binderlab-bokforing`, migreringen
@@ -118,27 +118,100 @@ Kapaciteten och de tomma facken kommer från Awish-läsningen (`stock_locations.
 femte minut). En automat utan Awish visar saldot men inget förslag. Räkna om (per titel) sparar en
 inventering i automaten och kräver uppkoppling.
 
+## Vakten: när appen själv har slutat fungera
+
+Larmen och den dagliga kontrollen körs av schemalagda jobb. När ett jobb inte körs säger det ingenting, och
+sidorna ser ut som vanligt med gårdagens tal. Vakten (`src/analytics/watch`, `src/server/monitoring/watch.ts`)
+räknar därför läget ur det som står i databasen, på två ställen som inte beror på varandra:
+
+- **På Hem och Drift, när sidan öppnas** (ägare och admin). Raden kommer fram även om inget jobb går.
+- **Som larm** (`job_failed`, nyckel `watch:<rad>`, kritiskt) från de jobb som går: Awish-synken var femte
+  minut och larmjobbet en gång per dygn. Ett jobb som har stannat larmas av ett annat. Larmet stängs när det
+  fungerar igen.
+
+| Rad på Hem och Drift                           | När                                                                                                  | Larmnyckel             |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------- |
+| "Ingen får larm just nu"                       | ingen ägare eller admin har en kanal som fungerar (push med en påslagen telefon, eller e-post)       | `watch:larm-nar-ingen` |
+| "Kontrollen har inte körts sedan …"            | ingen schemalagd kontroll på 26 timmar ("Kör kontrollen nu" räknas inte)                             | `watch:kontroll`       |
+| "Försäljningen har inte hämtats sedan …"       | tre misslyckade hämtningar i rad, eller 30 minuter utan lyckad hämtning, för en Awish API-källa      | `watch:synk:<källa>`   |
+| "Larmen har inte kontrollerats sedan …"        | ingen lyckad körning av larmjobbet på 26 timmar                                                      | `watch:larmjobb`       |
+| "Gammal data från Awish: BL-003 2 tim sedan …" | en automat har inte setts i en hämtning på över 30 minuter (bara Hem; annars en lugn rad med åldern) | ingen (raden på Hem)   |
+
+**Gör så här när en rad syns:**
+
+1. _Ingen får larm just nu_: öppna Drift → Notiser i telefonen och slå på notiser. E-post fungerar först när
+   en e-postleverantör är inställd (`MAIL_PROVIDER=resend`); utan den står det "E-post är inte påslagen".
+2. _Kontrollen har inte körts_: tryck "Kör kontrollen nu" (Inställningar → Kontroll). Raden säger vad schemat
+   fick till svar när det går att se ("… men fick fel 500 till svar"). Se "Schemats svar" nedan.
+3. _Försäljningen har inte hämtats_: Datakällor visar felet. "Awish svarade inte i tid" betyder att Awish är
+   långsamt eller nere; fel inloggning står som det. Körs hämtningen inte alls är det schemat (pg_cron) eller
+   `CRON_SECRET`.
+4. _Larmen har inte kontrollerats_: Vercel Cron kör inte `/api/cron/larm` (Vercel → Cron Jobs).
+
+**Schemats svar (`private.cron_calls`).** pg_cron visar "succeeded" så fort anropet är lagt i kö hos pg_net; det
+säger ingenting om vad appen svarade, och pg_net rensar svaren efter sex timmar. Varje anrop från pg_cron loggas
+därför med svaret (migreringen `20261220110100_cron_svar_och_fler_tillfallen.sql`), 30 dagar bakåt:
+
+```sql
+select job, called_at, answered_at, status_code, timed_out, left(error, 200) as fel
+from private.cron_calls
+where job = 'kontroll' order by called_at desc limit 10;
+```
+
+`status_code` 200 = routen svarade; 401/503 = `CRON_SECRET` stämmer inte eller saknas; `timed_out` = inget svar
+inom tidsgränsen (300 s, 60 s för synken); `answered_at` tom efter tio minuter = inget svar alls.
+
+**Varför kontrollen inte kördes (19 nov. 2026).** I produktionen hade den schemalagda kontrollen aldrig startat:
+frågan som listar organisationerna hade körts 8 gånger, men frågan som inleder en kontroll bara en gång (den
+som kördes för hand den 7 nov.). Anropet 03:37 UTC (då inget ska köras på vintern, klockan är 04:37) nådde alltså
+databasen; anropet 04:37 UTC, som ska köra kontrollen, gjorde det aldrig. Bokföringsjobbet hade samma mönster
+(7 körningar på 15 dagar), medan synken (var femte minut) och AI-jobbet gick varje gång. Routen, hemligheten och
+adressen är desamma, och kontrollen går igenom lokalt på några sekunder. Det som skiljer är att funktionen
+hade legat fryst en timme med en öppen anslutning till databasen: en sådan anslutning kan vara död utan att
+processen vet det, och en fråga på den blir hängande tills funktionen dödas efter 300 s, utan att något sparas.
+**Det är den troliga orsaken, inte en bevisad:** svaret från 04:37 var redan rensat när det undersöktes. Åtgärderna
+gäller oavsett: varje cron-route kontrollerar först att anslutningen svarar och byter ut en död
+(`freshServiceDb`), lediga anslutningar stängs efter 20 s, kontrollen anropas varje timme 03:52–09:52 UTC och
+dessutom av larmjobbet (Vercel Cron), en kontroll som hänger sparas som fel inom 150 s och larmar
+(`job:kontroll`), och svaren loggas så att orsaken går att läsa nästa gång. **Efter driftsättningen:** läs
+`private.cron_calls` för `kontroll` morgonen efter. Står det `timed_out` eller fel där är orsaken en annan än
+anslutningen, och raden säger vilken.
+
 ## Felövervakning och larm
 
 Fel som användaren inte ser själv, eller som händer när ingen är inloggad, ska både nå den som
 driver tjänsten (Sentry) och den som äger verksamheten (larm i appen). Koden finns i
 `src/server/monitoring`.
 
-| Händelse                                                                                 | Larm i appen (`alerts`)                                    | Sentry-händelse (taggar)                                                         | Stängs när                                                                             |
-| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Import misslyckas (uppladdning, inte fel i filen)                                        | `import_failed`, nyckel `import:<källa>`, kritiskt         | `area=import`, `kind=import_failed`, källans id                                  | nästa lyckade import från källan                                                       |
-| Rapportutskick: en mottagare fick inte mejlet                                            | `report_failed`, nyckel `report:<rapport>`, kritiskt       | `area=report`, `report_id`                                                       | rapporten, eller en nyare version av den (typ, månad, butik), skickats till alla valda |
-| Rapportutskick avbryts (PDF eller mejl)                                                  | samma som ovan                                             | samma, med felet                                                                 | samma                                                                                  |
-| Månadsutkasten (schemalagt) misslyckas                                                   | `report_failed`, nyckel `report_drafts:<ÅÅÅÅ-MM>`, varning | `area=report`, `job=rapporter`                                                   | jobbet går igenom, eller de saknade utkasten har skapats för hand under Rapporter      |
-| Jobbet för månadsutkast kraschar för en organisation                                     | `job_failed`, nyckel `job:rapporter`, kritiskt             | `area=job`, `job=rapporter`                                                      | nästa lyckade körning (de andra organisationerna körs ändå)                            |
-| Larmjobbet misslyckas för en organisation                                                | `job_failed`, nyckel `job:larm`, kritiskt                  | `area=job`, `job=larm`                                                           | nästa lyckade körning                                                                  |
-| Ett jobb körs inte alls (cron av, fel `CRON_SECRET`, Vercel nere) eller tar för lång tid | inget (appen kör ju inte)                                  | Sentry Cron Monitors: `binderlab-larm`, `binderlab-rapporter`, `binderlab-awish` | nästa lyckade incheckning                                                              |
+| Händelse                                                                                 | Larm i appen (`alerts`)                                                                           | Sentry-händelse (taggar)                                                         | Stängs när                                                                             |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Import misslyckas (uppladdning, inte fel i filen)                                        | `import_failed`, nyckel `import:<källa>`, kritiskt                                                | `area=import`, `kind=import_failed`, källans id                                  | nästa lyckade import från källan                                                       |
+| Rapportutskick: en mottagare fick inte mejlet                                            | `report_failed`, nyckel `report:<rapport>`, kritiskt                                              | `area=report`, `report_id`                                                       | rapporten, eller en nyare version av den (typ, månad, butik), skickats till alla valda |
+| Rapportutskick avbryts (PDF eller mejl)                                                  | samma som ovan                                                                                    | samma, med felet                                                                 | samma                                                                                  |
+| Månadsutkasten (schemalagt) misslyckas                                                   | `report_failed`, nyckel `report_drafts:<ÅÅÅÅ-MM>`, varning                                        | `area=report`, `job=rapporter`                                                   | jobbet går igenom, eller de saknade utkasten har skapats för hand under Rapporter      |
+| Jobbet för månadsutkast kraschar för en organisation                                     | `job_failed`, nyckel `job:rapporter`, kritiskt                                                    | `area=job`, `job=rapporter`                                                      | nästa lyckade körning (de andra organisationerna körs ändå)                            |
+| Larmjobbet misslyckas för en organisation                                                | `job_failed`, nyckel `job:larm`, kritiskt                                                         | `area=job`, `job=larm`                                                           | nästa lyckade körning                                                                  |
+| Den schemalagda kontrollen går inte att köra (fel, eller inte klar på 150 s)             | `job_failed`, nyckel `job:kontroll`, kritiskt                                                     | `area=job`, `job=kontroll`                                                       | nästa lyckade körning                                                                  |
+| En butik går inte att räkna när avräkningarna skapas eller räknas om                     | `job_failed`, nyckel `job:avrakningar`, varning (kritiskt när hela körningen föll)                | `area=job`, `job=avrakningar`                                                    | nästa körning utan fel                                                                 |
+| En schemalagd kampanj startar inte i en automat                                          | `job_failed`, nyckel `job:kampanjer`, varning                                                     | `area=job`, `job=kampanjer`                                                      | Försök igen under Kampanjer, eller kampanjen stängs av                                 |
+| Kontrollen, hämtningen eller larmjobbet har stannat, eller ingen nås av larm             | `job_failed`, nyckel `watch:<rad>`, kritiskt (se Vakten)                                          | ingen                                                                            | när det fungerar igen                                                                  |
+| En order återbetalas i Awish efter importen, eller en betald order går inte att läsa     | `order_attention`, nyckel `order_refund:<källa>:<order>` / `order_error:<källa>:<order>`, varning | ingen                                                                            | återbetalningen införd på ett ärende / ordern finns i försäljningen                    |
+| Ett jobb körs inte alls (cron av, fel `CRON_SECRET`, Vercel nere) eller tar för lång tid | inget (appen kör ju inte)                                                                         | Sentry Cron Monitors: `binderlab-larm`, `binderlab-rapporter`, `binderlab-awish` | nästa lyckade incheckning                                                              |
 
 - **Var det syns**: Drift → Larm (med underlag) och Att göra (okvitterade, kritiska och
   varningar). Ägare, admin och läsare ser larmen. Påfyllaren ser bara larm om automater och
   lager.
+- **Vem får larmen**: ägare och admin har en larmprenumeration från start (push och e-post, varningar och
+  kritiska, tyst 22–07 där kritiska släpps igenom). Raden skapas med medlemskapet
+  (`20261220110000_larm_standardprenumeration.sql`), och larmjobbet använder samma standard för en ägare eller
+  admin utan rad. Läsare och påfyllare får larm först när de sparar en prenumeration själva. Systemlarm som inte
+  går att välja under Notiser (misslyckat jobb, misslyckad rapport, order att hantera) går till ägare och admin
+  även när de har valt enskilda typer. Push går fram först när personen har slagit på notiser på en telefon, och
+  e-post först när en e-postleverantör är inställd: utan den hoppas kanalen över med "E-post är inte påslagen"
+  (`src/server/mail/can-send.ts`) och inget står som skickat. Under ett larm på Drift står hur många utskick som
+  har gått fram ("Inget utskick har gått fram till någon."), inte hur många aviseringar som räknats.
 - **Aviseringar**: ett nytt systemlarm läggs i utskickskön (`alert_deliveries`) till dem som
-  prenumererar under Drift → Larminställningar, med samma regler som övriga larm (typ, lägsta
+  prenumererar under Drift → Notiser, med samma regler som övriga larm (typ, lägsta
   allvar, tysta timmar; kritiska larm går igenom tysta timmar om prenumerationen tillåter
   det). Larmjobbet skickar kön en gång per dygn (05:07 UTC), även när utvärderingen
   för organisationen misslyckas; däremellan utvärderas larmen och kön skickas efter varje

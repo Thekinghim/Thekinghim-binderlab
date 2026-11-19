@@ -1,7 +1,8 @@
 /**
  * När det schemalagda jobbet kör dagens kontroll: från kl. 05 lokal tid, en gång per
- * kalenderdag i organisationens tidszon. pg_cron anropar 03:37 och 04:37 UTC; en av dem
- * är 05:37 svensk tid både sommar- och vintertid. Rent.
+ * kalenderdag i organisationens tidszon. pg_cron anropar varje timme 03:52–09:52 UTC, och
+ * larmjobbet (Vercel Cron) en gång till: första tillfället efter kl. 05 kör kontrollen, de
+ * övriga gör ingenting när den har kört och är nya försök när den inte har det. Rent.
  */
 
 import { businessDateAt, localParts } from "@/analytics/todos/time";

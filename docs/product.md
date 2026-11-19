@@ -34,6 +34,21 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
   med **Spara pris mot kund** (då på priset som gäller i dag). Ett nytt inköpspris från en leverans eller
   mystery-kalkylen tar över periodens pris mot kund. Läsare ser båda priserna, påfyllare och butikernas portal ser
   inget av dem.
+- **Ägaren får veta när något går sönder:** överst på Hem och Drift står en rad för varje sak som gör att
+  ägaren annars inte skulle märka ett fel: **"Ingen får larm just nu"** (ingen ägare eller admin har en kanal
+  som fungerar: slå på notiser i telefonen), **"Kontrollen har inte körts sedan …"**, **"Försäljningen har
+  inte hämtats sedan …"** (tre misslyckade hämtningar i rad eller 30 minuter utan lyckad hämtning) och
+  **"Larmen har inte kontrollerats sedan …"**. Raderna räknas när sidan öppnas, så de syns även när inget
+  schemalagt jobb går, och blir dessutom kritiska larm. Hem visar **datans ålder per automat** ("Data från
+  Awish: alla 4 automater, 3 min sedan." eller "Gammal data från Awish: BL-003 2 tim 10 min sedan. Övriga
+  3 min sedan."). Ägare och admin får larm från start (push och e-post); utan e-postleverantör står det
+  **"E-post är inte påslagen"** överallt där e-post erbjuds, och inget larm eller rapport står som skickat
+  med e-post (rapporter delas med **Dela**, som förut). Under ett larm står hur många utskick som har gått
+  fram. En order som **återbetalas i Awish efter importen**, eller en **betald order som inte går att läsa**,
+  blir en punkt i Att göra som står kvar tills den är hanterad ("Hantera ordern" öppnar ett nytt ärende i
+  Inkorg med ordern och beloppet ifyllt). **Fyll på** säger när Awish inte tog emot allt ("Awish tog inte
+  emot allt: 4 Mystery pack fick inte plats i BL-002. Räkna om facket i Awish, eller ångra de packen här."),
+  och fel i de schemalagda stegen för avräkningar och kampanjer blir larm.
 - **Pengar som inte kan driva:** en månad **stängs av sig själv** när dess sista avräkning är betald eller
   bokföringen är markerad som skickad. Därefter går priser, avtal, placeringar, lager, testköp, återbetalningar och
   kortavgift inte att ändra i månaden, och beskedet säger varför. Ägaren kan **öppna månaden igen** med en anledning

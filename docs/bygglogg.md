@@ -270,3 +270,48 @@ Vägval och det som är kvar:
 - Momssatsen är fortfarande en sats för alla datum.
 - Vid driftsättningen stängs inga gamla månader i efterhand, och oktober för Sega gubben rättas inte av koden:
   ägaren ser skillnaden på Utbetalning och lägger den på nästa avräkning.
+
+## Ägaren ska höra när något går sönder (robusthet 1B)
+
+Efter granskningen av produktionen: 0 larmprenumerationer, 0 telefoner och 0 utskick medan larmen räknade
+"aviserat 10 gånger"; den dagliga kontrollen hade aldrig körts enligt schemat; en synk som inte hämtade något
+sparades som lyckad. Sju punkter, en commit per punkt:
+
+- **Larmen når någon.** Ägare och admin får en prenumeration med medlemskapet (trigger och ifyllnad i
+  `20261220110000_larm_standardprenumeration.sql`), och larmjobbet använder samma standard för den som saknar rad.
+  Vakten (`src/analytics/watch`, `src/server/monitoring/watch.ts`) visar "Ingen får larm just nu" på Hem och Drift.
+  Under ett larm står utskick som gått fram, inte räknade aviseringar.
+- **Kontrollen körs, och det hörs när den inte gör det.** Fler tillfällen (varje timme 03:52–09:52 UTC) och en
+  andra schemaläggare (larmjobbet på Vercel Cron), en kontroll av databasanslutningen först i varje cron-route,
+  tidsgränser som alltid sparar en körning, svaren från pg_cron-anropen i `private.cron_calls`, och raden
+  "Kontrollen har inte körts sedan …". Orsaken står i `docs/operations.md` (Vakten): trolig, inte bevisad.
+- **Synken säger som det är.** En körning utan lästa order är ett fel; tre i rad eller 30 minuter larmar
+  kritiskt; Hem visar datans ålder per automat.
+- **E-post utan leverantör** sägs rakt ut (`mailCanSend`), och inget står som skickat med e-post.
+- **Order att hantera** (återbetald i Awish efter importen, betald men oläslig) blir punkter som står kvar
+  (`order_attention`, `src/server/awish/order-attention.ts`).
+- **Fyll på** säger vad Awish inte tog emot, och automaten väntar så att saldot inte sänks.
+- **Avräknings- och kampanjstegen** larmar (`job:avrakningar`, `job:kampanjer`).
+
+Vägval och det som är kvar:
+
+- Standardprenumerationen är **push och e-post**, samma som sidan alltid har visat. Bara e-post hade stängt av
+  felanmälans push för en ägare som har en telefon registrerad men ingen sparad rad (där betyder "rad utan push"
+  ett nej). Följden: en ägare med en telefon påslagen får också veckosammanfattningen, som följer Notiser i
+  mobilen, om hen inte har valt bort den.
+- Läsare och påfyllare får ingen rad av sig själv. Notiser säger "Du får inga notiser om larm ännu." tills de
+  sparar.
+- "Ingen får larm just nu" visas i produktionen direkt efter driftsättningen och står kvar tills en ägare har
+  slagit på notiser i telefonen (eller en e-postleverantör är inställd). Det är meningen.
+- Orsaken till att kontrollen inte kördes är en slutsats av det som gick att läsa (frågestatistiken), inte ett
+  avläst felsvar. Läs `private.cron_calls` morgonen efter driftsättningen.
+- Vakten larmar inte om bokföringsjobbet, AI-jobbet eller veckosammanfattningen (deras svar loggas i
+  `private.cron_calls`, men ingen rad eller larm läser dem än).
+- En återbetalning som görs senare än 24 timmar efter köpet syns inte: synken läser bara om det senaste dygnets
+  order. Fönstret är inte ändrat.
+- Fyll på spärrar inte Klar när antalet är fler än facket rymmer eller mystery-facket inte är tomt: beskedet
+  kommer efteråt. Raden på automaten ("Awish fick inte antalen …") har samma text som vid ett vanligt fel.
+- Regeln `import_failed` ("Ingen hämtning från Awish på …") finns kvar som varning bredvid vaktens kritiska larm:
+  två larm om samma sak när hämtningen står still i över en timme.
+- Inte sett i en webbläsare mot produktionen. Lokalt: Hem (1 280 och 390 px), Drift, Notiser, Att göra och det
+  förifyllda ärendet i Inkorg, med provdata.
