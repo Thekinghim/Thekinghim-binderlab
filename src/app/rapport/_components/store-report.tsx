@@ -44,6 +44,7 @@ import {
   invoiceTitle,
   isRev2,
   isWholeMonth,
+  ownerLine,
   periodText,
   pctText,
   salesNote,
@@ -341,7 +342,18 @@ export function StoreReportDocument({
   const basisFacts = basisData ? (
     <>
       <ReportFact label="Ersättningen betalas av">
-        <p className="font-medium">{basisData.payer.name}</p>
+        <p className="font-medium">
+          {basisData.payer.name}
+          {basisData.payer.brand ? (
+            <span className="font-normal text-muted">
+              {" "}
+              (verksamheten kallas {basisData.payer.brand})
+            </span>
+          ) : null}
+        </p>
+        {ownerLine(basisData, r.machines.length) ? (
+          <p className="text-muted">{ownerLine(basisData, r.machines.length)}</p>
+        ) : null}
         {/* Org.nr och momsreg.nr på samma rad när de får plats, annars på var sin. */}
         {basisData.payer.orgNumber || basisData.payer.vatNumber ? (
           <p className="tnum flex flex-wrap gap-x-[3mm] text-muted">

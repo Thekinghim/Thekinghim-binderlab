@@ -183,7 +183,7 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
   const agreement = basisData ? agreementLine(basisData, s.store.name, r.compensation) : null;
   const basis: StoreBasisBlock | undefined = basisData
     ? {
-        payer: payerLines(basisData),
+        payer: payerLines(basisData, r.machines.length),
         recipient: s.store.name,
         amounts: invoiceRows(basisData, r.compensation.totalOre).map((row) => ({
           label: row.label,

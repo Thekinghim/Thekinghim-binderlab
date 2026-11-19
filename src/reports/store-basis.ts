@@ -40,6 +40,37 @@ export interface BasisPayer {
   readonly address: string | null;
   /** Momsregistreringsnummer, bara om ett är sparat (gissas aldrig). */
   readonly vatNumber: string | null;
+  /**
+   * Namnet verksamheten kallas (organisationens namn i appen), när det skiljer sig från det
+   * juridiska namnet. null eller saknas = samma namn, eller inget juridiskt namn ifyllt.
+   */
+  readonly brand?: string | null;
+}
+
+/**
+ * Namnet verksamheten kallas, om det ska stå bredvid det juridiska namnet: bara när ett
+ * juridiskt namn är ifyllt och organisationens namn är ett annat (skiftläge och blanksteg
+ * räknas inte).
+ */
+export function brandOf(legalName: string | null, organizationName: string): string | null {
+  const norm = (v: string) => v.trim().replace(/\s+/g, " ").toLocaleLowerCase("sv-SE");
+  if (!legalName || organizationName.trim() === "") return null;
+  return norm(legalName) === norm(organizationName) ? null : organizationName.trim();
+}
+
+/** "Binderlab Sverige AB (verksamheten kallas Binderlab)", eller bara namnet. */
+export function payerName(basis: StoreBasis): string {
+  const p = basis.payer;
+  return p.brand ? `${p.name} (verksamheten kallas ${p.brand})` : p.name;
+}
+
+/**
+ * Raden under bolaget som betalar: butikens revisor frågade vem som äger automaten. Bara i
+ * rapporter från utgåva 2.
+ */
+export function ownerLine(basis: StoreBasis, machines = 1): string | null {
+  if (!isRev2(basis)) return null;
+  return machines > 1 ? "Äger och driver automaterna." : "Äger och driver automaten.";
 }
 
 /** Avtalet som ersättningen vilar på. */
@@ -157,11 +188,16 @@ export function basisGaps(basis: StoreBasis): string[] {
   return gaps;
 }
 
-/** Raderna under "Ersättningen betalas av": namn, org.nr, adress, momsreg.nr. */
-export function payerLines(basis: StoreBasis): string[] {
+/**
+ * Raderna under "Ersättningen betalas av": namn (med namnet verksamheten kallas), att bolaget
+ * äger och driver automaten, org.nr, adress, momsreg.nr. `machines`: butikens automater.
+ */
+export function payerLines(basis: StoreBasis, machines = 1): string[] {
   const p = basis.payer;
+  const owner = ownerLine(basis, machines);
   return [
-    p.name,
+    payerName(basis),
+    ...(owner ? [owner] : []),
     ...(p.orgNumber ? [`Org.nr ${p.orgNumber}`] : []),
     ...(p.address ? [p.address] : []),
     ...(p.vatNumber ? [`Momsreg.nr ${p.vatNumber}`] : []),
@@ -397,10 +433,11 @@ export function basisText(
   storeName: string,
   compensationOre: number,
   compensation: { readonly termsText?: string } = {},
+  machines = 1,
 ): string[] {
   const contract = agreementLine(basis, storeName, compensation);
   return [
-    `Ersättningen betalas av: ${payerLines(basis).join(", ")}`,
+    `Ersättningen betalas av: ${payerLines(basis, machines).join(", ")}`,
     `Mottagare: ${storeName}`,
     ...(contract ? [contract] : []),
     ...invoiceRows(basis, compensationOre).map(

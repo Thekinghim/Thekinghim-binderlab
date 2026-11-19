@@ -25,6 +25,7 @@ import {
 import {
   BASIS_REV,
   STORE_VAT_RATE_BP,
+  brandOf,
   contractForPeriod,
   type AgreementForm,
   type LedgerAccount,
@@ -343,6 +344,7 @@ export async function queryStoreBasis(
       orgNumber: clean(company.orgNumber),
       address: clean(company.companyAddress),
       vatNumber: settings.vatNumber,
+      brand: brandOf(legalName, organization.name),
     },
     agreementForm,
     // Ett muntligt avtal går före en kontraktsrad som står som undertecknad: rapporten

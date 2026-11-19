@@ -14,13 +14,16 @@ import {
   asStoreBasis,
   basisGaps,
   basisText,
+  brandOf,
   contractForPeriod,
   contractLine,
   invoiceRows,
   invoiceTitle,
   isRev2,
   normalizeVatNumber,
+  ownerLine,
   payerLines,
+  payerName,
   salesBasis,
   salesNote,
   salesVatLabel,
@@ -262,6 +265,54 @@ describe("Vi säljer med vinstmarginalbeskattning (VMB)", () => {
     // Utan valet tas ingenting bort, inte ens den fasta texten.
     expect(withoutVmbStatement(STATEMENT, BASIS)).toBe(STATEMENT);
     expect(withoutVmbStatement(STATEMENT, null)).toBe(STATEMENT);
+  });
+});
+
+describe("juridiskt namn och namnet verksamheten kallas", () => {
+  const rev2: StoreBasis = { ...BASIS, rev: 2 };
+
+  it("namnen skiljer sig: det juridiska namnet betalar, verksamhetens namn står en gång", () => {
+    expect(brandOf("Kortautomater i Norden AB", "Binderlab")).toBe("Binderlab");
+    const b: StoreBasis = {
+      ...rev2,
+      payer: { ...BASIS.payer, name: "Kortautomater i Norden AB", brand: "Binderlab" },
+    };
+    expect(payerName(b)).toBe("Kortautomater i Norden AB (verksamheten kallas Binderlab)");
+    expect(payerLines(b)).toEqual([
+      "Kortautomater i Norden AB (verksamheten kallas Binderlab)",
+      "Äger och driver automaten.",
+      "Org.nr 559000-1234",
+      "Storgatan 1, 111 22 Stockholm",
+      "Momsreg.nr SE559000123401",
+    ]);
+    // Meningarna om momsen och avtalet använder det juridiska namnet, utan parentesen.
+    const all = basisText(b, "Sega gubben", 749_300).join("\n");
+    expect(all.match(/verksamheten kallas/g)).toHaveLength(1);
+    expect(all).toContain("Ni fakturerar Kortautomater i Norden AB och lägger på svensk moms");
+  });
+
+  it("samma namn (skiftläge och blanksteg räknas inte) eller inget juridiskt namn: ingen parentes", () => {
+    expect(brandOf("Binderlab AB", "binderlab  ab ")).toBeNull();
+    expect(brandOf(null, "Binderlab")).toBeNull();
+    expect(brandOf("Binderlab AB", "")).toBeNull();
+    expect(payerName(rev2)).toBe("Binderlab AB");
+  });
+
+  it("Äger och driver automaten: en automat eller flera", () => {
+    expect(ownerLine(rev2)).toBe("Äger och driver automaten.");
+    expect(ownerLine(rev2, 1)).toBe("Äger och driver automaten.");
+    expect(ownerLine(rev2, 3)).toBe("Äger och driver automaterna.");
+    expect(payerLines(rev2, 2)[1]).toBe("Äger och driver automaterna.");
+  });
+
+  it("en rapport från före ändringen har raderna som förut", () => {
+    expect(ownerLine(BASIS)).toBeNull();
+    expect(payerLines(BASIS)).toEqual([
+      "Binderlab AB",
+      "Org.nr 559000-1234",
+      "Storgatan 1, 111 22 Stockholm",
+      "Momsreg.nr SE559000123401",
+    ]);
   });
 });
 

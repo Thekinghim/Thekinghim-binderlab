@@ -322,7 +322,7 @@ export function BasisSection({ report }: { report: StoreReport }) {
         <div className="flex min-w-0 flex-col gap-2">
           <dt className="label text-subtle">Ersättningen betalas av</dt>
           <dd className="flex flex-col gap-1">
-            {payerLines(basis).map((line, i) => (
+            {payerLines(basis, report.machines.length).map((line, i) => (
               <span key={line} className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}>
                 {line}
               </span>

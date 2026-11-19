@@ -399,6 +399,47 @@ describe("försäljningen och momsen säger inte emot varandra", () => {
   });
 });
 
+describe("juridiskt namn och namnet verksamheten kallas", () => {
+  const BRAND: StoreBasis = {
+    ...BASIS,
+    payer: { ...BASIS.payer, name: "Kortautomater i Norden AB", brand: "Binderlab" },
+  };
+  const snap = snapshot(false, BRAND);
+  const html = renderToStaticMarkup(<StoreReportDocument snapshot={snap} />);
+  const page = visibleText(html).replace(/\u00a0|\u202f/g, " ");
+
+  it("betalaren är det juridiska namnet, med verksamhetens namn en gång och vem som äger automaten", () => {
+    expect(page).toContain(
+      "Ersättningen betalas av Kortautomater i Norden AB (verksamheten kallas Binderlab) Äger och driver automaten. Org.nr 559000-1234",
+    );
+    expect(page.match(/verksamheten kallas/g)).toHaveLength(1);
+    expect(page).toContain("Ni fakturerar Kortautomater i Norden AB och lägger på svensk moms");
+    expect(html.match(/data-page=/g)?.length ?? 0).toBe(PAGES_SHORT);
+  });
+
+  it("mejlet har samma rader", () => {
+    const email = emailFor(snap);
+    for (const body of [email.html, email.text]) {
+      expect(body).toContain("Kortautomater i Norden AB (verksamheten kallas Binderlab)");
+      expect(body).toContain("Äger och driver automaten.");
+    }
+  });
+
+  it("samma namn: ingen parentes; en rapport från före ändringen: ingen rad om automaten", () => {
+    const same = visibleText(
+      renderToStaticMarkup(<StoreReportDocument snapshot={snapshot(false, BASIS)} />),
+    );
+    expect(same).not.toContain("verksamheten kallas");
+    expect(same).toContain("Äger och driver automaten.");
+    const { rev: _rev, ...old } = BASIS;
+    void _rev;
+    const before = visibleText(
+      renderToStaticMarkup(<StoreReportDocument snapshot={snapshot(false, old)} />),
+    );
+    expect(before).not.toContain("Äger och driver");
+  });
+});
+
 describe("redan betalt", () => {
   // 518,84 kr är betalt (ersättningen exklusive moms); kvar är momsen, 129,71 kr.
   const PAID: StoreBasis = { ...BASIS, payments: [{ paidOn: "2026-11-05", amountOre: 51_884 }] };
