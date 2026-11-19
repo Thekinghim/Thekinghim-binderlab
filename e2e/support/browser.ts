@@ -169,6 +169,13 @@ export interface PageOptions {
   readonly locale?: string;
 }
 
+/** Gömmer Nexts utvecklingsmärke (elementet nextjs-portal) när sidan har laddats. */
+const HIDE_DEV_BADGE = `window.addEventListener("DOMContentLoaded", () => {
+  const style = document.createElement("style");
+  style.textContent = "nextjs-portal{display:none!important}";
+  document.head.appendChild(style);
+});`;
+
 /** Ny sida i ett eget sammanhang (egna cookies), svensk tid och språk. */
 export async function openPage(
   browser: Browser,
@@ -204,6 +211,11 @@ export async function openPage(
   await context.addInitScript(
     `try { localStorage.setItem("binderlab-theme", ${JSON.stringify(options.theme ?? "dark")}); } catch {}`,
   );
+  // Nexts utvecklingsmärke ("1 Insight", nere till vänster) visas trots devIndicators: false
+  // när Next har något att säga om sin egen version, och täcker då första länken i
+  // mobilmenyn så att klicket aldrig når den. Det är inte en del av appen: göms i testerna.
+  // Fel i appen fångas ändå, som sidfel och konsolfel (nedan).
+  await context.addInitScript(HIDE_DEV_BADGE);
   const page = await context.newPage();
   // Dev-servern kompilerar sidor vid första besöket; det kan ta tid.
   page.setDefaultTimeout(Number(process.env.E2E_TIMEOUT_MS ?? 60_000));
