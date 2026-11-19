@@ -127,6 +127,16 @@ function awishText(t: Messages, status: AwishPushStatus): string {
       return t.fill.awishNotLinked;
     case "partial":
       return t.fill.awishPartial(status.message);
+    case "notSent":
+      return t.fill.awishNotSent(
+        (status.notSent ?? [])
+          .map((l) =>
+            l.reason === "mystery_not_empty"
+              ? t.fill.awishNotSentMystery(l.left, l.titleName, l.machine)
+              : t.fill.awishNotSentFull(l.left, l.titleName, l.machine),
+          )
+          .join("; "),
+      );
     default:
       return t.fill.awishError;
   }

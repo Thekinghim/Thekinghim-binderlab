@@ -64,4 +64,30 @@ describe("summariseAwishPush", () => {
     const out = summariseAwishPush(done(machine("a", "pushed", 1), machine("b", "error")));
     expect(out).toMatchObject({ state: "partial", failedMachineIds: ["b"] });
   });
+
+  it("Awish tog inte emot allt: beskedet säger vad, inte 'Sparat och skickat'", () => {
+    const partly: MachinePushResult = {
+      ...machine("a", "pushed", 1),
+      machineCode: "BL-002",
+      notSent: [{ titleName: "Mystery pack", left: 4, reason: "capacity" }],
+    };
+    const out = summariseAwishPush(done(partly), ["a"]);
+    expect(out).toMatchObject({ state: "partial", kind: "notSent" });
+    expect(out?.message).toBe(
+      "Sparat i Binderlab. Awish tog inte emot allt: 4 Mystery pack fick inte plats i BL-002. Räkna om facket i Awish, eller ångra de packen här.",
+    );
+    // Automaten väntar: raden på den ligger kvar i Fyll på.
+    expect(out?.failedMachineIds).toEqual(["a"]);
+  });
+
+  it("mystery-facket var inte tomt: inget skickades, och det sägs (förr: 'Awish hade redan rätt antal')", () => {
+    const held: MachinePushResult = {
+      ...machine("a", "nothing"),
+      machineCode: "BL-002",
+      notSent: [{ titleName: "Mystery pack", left: 14, reason: "mystery_not_empty" }],
+    };
+    expect(summariseAwishPush(done(held), ["a"])?.message).toBe(
+      "Sparat i Binderlab. Awish tog inte emot allt: 14 Mystery pack skickades inte till BL-002: mystery-facket är inte tomt. Räkna om facket i Awish, eller ångra de packen här.",
+    );
+  });
 });

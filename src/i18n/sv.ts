@@ -190,6 +190,13 @@ export const sv = {
     awishNotLinked: "Sparat i Binderlab. Automaten är inte kopplad till Awish ännu.",
     awishPartial: (error: string) =>
       `Sparat i Binderlab. Till Awish gick det inte: ${error.trim().replace(/[.!\s]+$/, "")}. Appen försöker igen själv.`,
+    /** Awish tog inte emot allt: `lines` säger vad ("4 Mystery pack fick inte plats i BL-002"). */
+    awishNotSent: (lines: string) =>
+      `Sparat i Binderlab. Awish tog inte emot allt: ${lines}. Räkna om facket i Awish, eller ångra de packen här.`,
+    awishNotSentFull: (left: number, title: string, machine: string) =>
+      `${left} ${title} fick inte plats i ${machine}`,
+    awishNotSentMystery: (left: number, title: string, machine: string) =>
+      `${left} ${title} skickades inte till ${machine}: mystery-facket är inte tomt`,
     awishError: "Kunde inte skicka till Awish just nu.",
     onlyRefillers: "Bara för dem som fyller på.",
     toApp: "Till Binderlab",

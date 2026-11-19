@@ -20,7 +20,7 @@ import {
   type AwishWebLogin,
   type AwishWebClientOptions,
 } from "./web-client";
-import { planAwishPush, type MachineTitleQuantity } from "./web-push";
+import { planAwishPush, type MachineTitleQuantity, type NotSent } from "./web-push";
 
 /** En rads resultat för en automat. */
 export interface MachinePushResult {
@@ -31,6 +31,11 @@ export interface MachinePushResult {
   slotsUpdated: number;
   /** Titlar i Binderlab som saknar fack i Awish (rapporteras, inte ett fel). */
   titlesWithoutSlot: string[];
+  /**
+   * Pack som Awish inte tog emot (facket rymmer inte fler, eller mystery-facket är inte
+   * tomt). Automaten räknas då som väntande, så att saldot inte sänks till Awishs antal.
+   */
+  notSent?: NotSent[];
   /** Provkörning: vad som skulle ändras (titel, fack, från → till). Tom vid riktig push. */
   planned?: Array<{ titleName: string; productId: number; from: number; to: number }>;
   /** Provkörning: antal fack Awish visade för automaten. */
@@ -267,6 +272,7 @@ export async function pushMachinesToAwish(
         status: plan.updates.length > 0 ? "pushed" : "nothing",
         slotsUpdated: plan.updates.length,
         titlesWithoutSlot: plan.titlesWithoutSlot,
+        ...(plan.notSent.length > 0 ? { notSent: plan.notSent } : {}),
       });
     } catch (error) {
       const message =
@@ -304,8 +310,15 @@ export async function pushMachinesToAwish(
   if (!deps.dryRun) {
     // Värde: räknas som sparad tid (automation_log). Stoppar aldrig pushen.
     await logAwishPushes(db, organizationId, machines);
-    // Utfallet per automat: de som inte gick fram väntar och försöks igen (Fyll på).
-    await logAwishPushOutcomes(db, organizationId, machines);
+    // Utfallet per automat: de som inte gick fram väntar och försöks igen (Fyll på). En
+    // automat där Awish inte tog emot allt väntar också: annars sänker nästa läsning av
+    // facken saldot till Awishs lägre antal, och packen finns då varken i vårt lager eller
+    // i automaten.
+    await logAwishPushOutcomes(
+      db,
+      organizationId,
+      machines.map((m) => ((m.notSent?.length ?? 0) > 0 ? { ...m, status: "error" } : m)),
+    );
   }
   return { status: "done", machines };
 }

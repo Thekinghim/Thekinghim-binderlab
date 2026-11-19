@@ -320,6 +320,11 @@ export const en: Messages = {
     awishAlreadyRight: "Saved. The machine already had the right count.",
     awishNotLinked: "Saved. The machine itself is not connected yet.",
     awishPartial: () => "Saved. The machine itself was not updated. The app tries again by itself.",
+    awishNotSent: (lines) =>
+      `Saved. The machine did not take everything: ${lines}. Tell your manager, or undo those packs here.`,
+    awishNotSentFull: (left, title, machine) => `${left} ${title} did not fit in ${machine}`,
+    awishNotSentMystery: (left, title, machine) =>
+      `${left} ${title} were not sent to ${machine}: the mystery slot is not empty`,
     awishError: "Could not update the machine right now.",
     onlyRefillers: "Only for those who refill.",
     toApp: "To Binderlab",
