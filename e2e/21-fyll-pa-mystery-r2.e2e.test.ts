@@ -56,6 +56,16 @@ const withFakeAwish = Number.isInteger(FAKE_PORT) && FAKE_PORT > 0;
 
 let browser: Browser;
 let sql: postgres.Sql;
+/** Veckodagen om `days` dagar räknat från i dag i Stockholm ("fredag", "Friday"). */
+function weekdayIn(days: number, locale: "sv-SE" | "en-GB"): string {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Stockholm" }).format(
+    new Date(),
+  );
+  const day = new Date(`${today}T12:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + days);
+  return new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(day);
+}
+
 const contexts: BrowserContext[] = [];
 const errors: Error[][] = [];
 let orgId: string;
@@ -420,18 +430,27 @@ describe("Fyll på: 'Packade du en omgång?'", () => {
     const page = await ownerPage();
     await visit(page, "/vart-lager/mystery");
     const text = await plain(card(page));
-    // 14 pack och 3 om dagen: tom om 5 dagar, alltså inom veckan.
-    expect(text).toMatch(
-      new RegExp(`Packa 1 omgång före \\S+dag\\. ${machineCode} är tom om ca 5 dagar\\.`),
-    );
+    // 14 pack och 3 om dagen: 4,7 dagars försäljning, alltså inom veckan. Slutdagen räknas
+    // med automatens veckoform (de senaste 28 dagarnas order, också seedens), som Att göra
+    // och besöksplanen. Formen beror på veckodagen och på vilka order som hunnit bli "i går",
+    // så svaret är 4 eller 5 dagar beroende på när testet körs. Dagen i "före …" ska alltid
+    // vara dagen facket blir tomt: i dag plus antalet dagar.
+    const said = new RegExp(
+      `Packa 1 omgång före (\\S+dag)\\. ${machineCode} är tom om ca (\\d+) dagar\\.`,
+    ).exec(text);
+    expect(said, text).not.toBeNull();
+    const days = Number(said![2]);
+    expect([4, 5]).toContain(days);
+    expect(said![1]).toBe(weekdayIn(days, "sv-SE"));
     expect(text).not.toMatch(/packa \d+ st/i);
     await shot(page, "r2-t1-mystery-packa-fore");
 
     // Delägaren ser samma sak på engelska.
     const partner = await partnerPage();
     await visit(partner, "/vart-lager/mystery");
-    expect(await plain(card(partner))).toMatch(
-      new RegExp(`Pack 1 batch before \\S+day\\. ${machineCode} is empty in about 5 days\\.`),
+    // Samma dag och samma antal dagar som på svenska.
+    expect(await plain(card(partner))).toContain(
+      `Pack 1 batch before ${weekdayIn(days, "en-GB")}. ${machineCode} is empty in about ${days} days.`,
     );
     await expectNoSideScroll(partner);
     await shot(partner, "r2-t1-mystery-packa-fore-en");
