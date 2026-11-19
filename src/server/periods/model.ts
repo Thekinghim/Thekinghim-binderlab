@@ -58,6 +58,10 @@ export const REOPEN_HINT = "Ägaren kan öppna månaden igen under Butiker → U
  */
 export function closedMonthMessage(dbMessage: string): string {
   const m = /^(.+?) påverkar en stängd månad \((\d{4}-\d{2})\)\.?$/.exec(dbMessage.trim());
+  // Testköp (set_test_purchase) säger bara "Månaden är stängd. Öppna den först …".
+  if (!m && /^Månaden är stängd\./.test(dbMessage.trim())) {
+    return `Månaden är stängd. Testköp kan inte ändras där. ${REOPEN_HINT}`;
+  }
   if (!m) return dbMessage;
   return `${cap(monthLong(m[2]!))} är stängd. ${m[1]} kan inte ändras där. ${REOPEN_HINT}`;
 }

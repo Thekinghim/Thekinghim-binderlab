@@ -26,6 +26,7 @@ vi.mock("next/cache", () => ({
 
 import * as s from "@/db/schema";
 import { dbErrorMessage } from "@/server/errors";
+import { closedMonthMessage } from "@/server/periods/model";
 import { markMonthSentFor, unmarkMonthSentFor } from "@/server/bokforing/service";
 import {
   closeMonthFor,
@@ -212,7 +213,13 @@ describe("i den stängda månaden stoppar databasen ändringar (BL004)", () => {
     } catch (error) {
       message = dbErrorMessage(error);
     }
-    expect(message).toMatch(/^Oktober 2026 är stängd\. .+ kan inte ändras där\. Ägaren kan öppna/);
+    expect(message).toBe(
+      "Månaden är stängd. Testköp kan inte ändras där. Ägaren kan öppna månaden igen under Butiker → Utbetalning.",
+    );
+    // Och databasens besked för pris, avtal, lager med mera: månaden vid namn.
+    expect(closedMonthMessage("Inköpspriset påverkar en stängd månad (2026-10).")).toBe(
+      "Oktober 2026 är stängd. Inköpspriset kan inte ändras där. Ägaren kan öppna månaden igen under Butiker → Utbetalning.",
+    );
   });
 
   it("en sen order sparas ändå och flaggas", async () => {
@@ -293,9 +300,10 @@ describe("Öppna månaden igen", () => {
     await reopenMonthFor(f.owner, "2026-10", "Fel inköpspris i oktober");
     expect(await closedMonths()).toEqual([]);
     const overview = await loadPeriodOverviewFor(f.owner);
-    expect(overview.reopened).toMatchObject([
-      { month: "2026-10", reason: "Fel inköpspris i oktober" },
-    ]);
+    expect(overview.reopened[0]).toMatchObject({
+      month: "2026-10",
+      reason: "Fel inköpspris i oktober",
+    });
     const price = await asUser(f.ownerUser, (tx) =>
       attempt(tx, (sp) =>
         sp.insert(s.purchasePrices).values({
@@ -309,7 +317,9 @@ describe("Öppna månaden igen", () => {
     expect(price.ok).toBe(true);
     await closeMonthFor(f.admin, "2026-10", NOW);
     expect(await closedMonths()).toEqual(["2026-10"]);
-    expect((await loadPeriodOverviewFor(f.owner)).reopened).toEqual([]);
+    expect(
+      (await loadPeriodOverviewFor(f.owner)).reopened.some((r) => r.month === "2026-10"),
+    ).toBe(false);
     await expect(reopenMonthFor(f.owner, "2026-08", "Test")).rejects.toThrow(PeriodError);
   });
 
