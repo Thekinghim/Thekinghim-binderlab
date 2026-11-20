@@ -69,44 +69,6 @@ const PASSWORD = "binderlab-dev-test";
 const tables = await publicTables();
 const views = await publicViews();
 
-/**
- * Kolumnerna som appens roll inte får läsa, per tabell (stores.owner_id och
- * stores.agreement_form). Raden läses då som ett objekt av de läsbara kolumnerna, så att
- * kontrollen fortfarande prövar tabellen i stället för att få behörighetsfel.
- */
-const hidden = new Map<string, string[]>();
-for (const r of await rows<{ t: string; c: string }>(
-  db(),
-  sql`select c.relname::text as t, a.attname::text as c
-        from pg_attribute a
-        join pg_class c on c.oid = a.attrelid
-        join pg_namespace n on n.oid = c.relnamespace
-       where n.nspname = 'public' and c.relkind = 'r' and a.attnum > 0 and not a.attisdropped
-         and not has_column_privilege('authenticated', c.oid, a.attnum, 'SELECT')
-         and has_table_privilege('authenticated', c.oid, 'INSERT')`,
-)) {
-  hidden.set(r.t, [...(hidden.get(r.t) ?? []), r.c]);
-}
-const tablesColumns = new Map<string, string[]>();
-for (const r of await rows<{ t: string; c: string }>(
-  db(),
-  sql`select table_name::text as t, column_name::text as c from information_schema.columns
-       where table_schema = 'public' order by table_name, ordinal_position`,
-)) {
-  tablesColumns.set(r.t, [...(tablesColumns.get(r.t) ?? []), r.c]);
-}
-const readable = (relation: string) => {
-  const cols = hidden.get(relation);
-  if (!cols) return sql`to_jsonb(t)`;
-  return sql`(select to_jsonb(x) from (select ${sql.join(
-    tablesColumns
-      .get(relation)!
-      .filter((c) => !cols.includes(c))
-      .map((c) => sql`t.${sql.identifier(c)}`),
-    sql`, `,
-  )}) x)`;
-};
-
 let real: RunSeedResult;
 let owner: TestUser;
 let partner: TestUser;
@@ -370,7 +332,7 @@ describe("demo för kunder: kunden ser aldrig den riktiga organisationen", () =>
     const pattern = markers.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
     const r = await peek<{ n: number }>(
       owner,
-      sql`select count(*)::int as n from public.stores t where ${readable("stores")}::text ~* ${pattern}`,
+      sql`select count(*)::int as n from public.stores t where to_jsonb(t)::text ~* ${pattern}`,
     );
     expect(r.rows[0]?.n ?? 0).toBeGreaterThan(0);
   });
@@ -381,7 +343,7 @@ describe("demo för kunder: kunden ser aldrig den riktiga organisationen", () =>
       const pattern = markers.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
       const r = await peek<{ n: number }>(
         customer,
-        sql`select count(*)::int as n from ${rel(relation)} t where ${readable(relation)}::text ~* ${pattern}`,
+        sql`select count(*)::int as n from ${rel(relation)} t where to_jsonb(t)::text ~* ${pattern}`,
       );
       // Tabeller som kunden inte får läsa alls ger behörighetsfel, vilket också är rätt.
       expect(r.ok ? r.rows[0]?.n : 0, relation).toBe(0);

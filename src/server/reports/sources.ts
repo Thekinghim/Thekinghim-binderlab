@@ -332,9 +332,8 @@ export async function queryStoreBasis(
   // Butikens val av avtalsform. Läses så att koden också fungerar innan kolumnen finns.
   const [storeRow] = Array.from(
     await tx.execute(
-      sql`select tm.agreement_form as form, st.address
+      sql`select to_jsonb(st) ->> 'agreement_form' as form, st.address
             from public.stores st
-            left join public.store_terms(${orgId}::uuid) tm on tm.store_id = st.id
            where st.organization_id = ${orgId}::uuid and st.id = ${storeId}::uuid`,
     ),
   ) as Array<{ form: string | null; address: string | null }>;
@@ -344,10 +343,10 @@ export async function queryStoreBasis(
     await tx.execute(
       sql`select so.legal_name, so.org_number, so.vat_number, so.street_address,
                  so.postal_code, so.city
-            from public.store_terms(${orgId}::uuid) tm
+            from public.stores st
             join public.store_owners so
-              on so.organization_id = ${orgId}::uuid and so.id = tm.owner_id
-           where tm.store_id = ${storeId}::uuid`,
+              on so.organization_id = st.organization_id and so.id = st.owner_id
+           where st.organization_id = ${orgId}::uuid and st.id = ${storeId}::uuid`,
     ),
   ) as Array<{
     legal_name: string;

@@ -138,8 +138,6 @@ const RPCS = [
   // Exportera all data (20261111020100_granskning_dataexport.sql): loggar exporten och
   // begränsar till 3 per timme och organisation (ägaren).
   "start_data_export",
-  // Butikens ägare och avtalsform (ägare, admin, läsare; påfyllare får inga rader).
-  "store_terms",
   // Flera lager: flytt mellan egna lager och ångra flytt (ägare, admin).
   "transfer_stock",
   "undo_field_refills",
@@ -682,7 +680,6 @@ describe("anon", () => {
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
       set_test_purchase: sql`gen_random_uuid(), gen_random_uuid(), true`,
       start_data_export: sql`gen_random_uuid()`,
-      store_terms: sql`gen_random_uuid()`,
       transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       undo_field_refills: sql`gen_random_uuid(), array[gen_random_uuid()]`,
       undo_mystery_packing: sql`gen_random_uuid(), gen_random_uuid()`,

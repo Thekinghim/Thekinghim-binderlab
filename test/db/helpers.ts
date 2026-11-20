@@ -356,7 +356,7 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
         email: "anna@example.se",
         ownerId: storeOwner!.id,
       })
-      .returning({ id: s.stores.id });
+      .returning();
     const [contract] = await tx
       .insert(s.contracts)
       .values({ ...org, storeId: store!.id, validFrom: "2025-01-01" })

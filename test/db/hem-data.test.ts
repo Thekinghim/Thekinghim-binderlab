@@ -76,7 +76,7 @@ async function seedHomeFixture(): Promise<HomeFixture> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "ICA Hem" })
-      .returning({ id: s.stores.id });
+      .returning();
     await tx
       .insert(s.storeAgreements)
       .values({ ...org, storeId: store!.id, validFrom: "2025-01-01", commissionBp: 2000 });

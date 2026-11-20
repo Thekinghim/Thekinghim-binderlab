@@ -21,9 +21,10 @@ import {
   type TodoItem,
   type TodoKind,
 } from "@/analytics/todos";
-import { sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
+import * as s from "@/db/schema";
 import type { MemberRole } from "@/db/schema";
 import {
   addDays,
@@ -446,13 +447,10 @@ function normalizeScope(args: ScopeArgs): DataScope {
 /** Ett ägarfilter med butikerna utlästa (ur butikernas owner_id, under RLS). */
 async function withOwnerStores(tx: Tx, orgId: string, scope: DataScope): Promise<DataScope> {
   if (!scope.ownerId || scope.storeIds !== undefined) return scope;
-  const rows = Array.from(
-    await tx.execute(
-      sql`select tm.store_id as id, tm.owner_id as "ownerId"
-            from public.store_terms(${orgId}::uuid) tm
-           where tm.owner_id = ${scope.ownerId}::uuid`,
-    ),
-  ) as Array<{ id: string; ownerId: string | null }>;
+  const rows = await tx
+    .select({ id: s.stores.id, ownerId: s.stores.ownerId })
+    .from(s.stores)
+    .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.ownerId, scope.ownerId)));
   return resolveOwnerScope(scope, rows);
 }
 

@@ -94,7 +94,7 @@ async function buildOrg(): Promise<MarketOrg> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Butik 1" })
-      .returning({ id: s.stores.id });
+      .returning();
     await tx
       .insert(s.storeAgreements)
       .values({ ...org, storeId: store!.id, validFrom: "2025-01-01", commissionBp: 1000 });

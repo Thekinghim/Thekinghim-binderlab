@@ -66,7 +66,7 @@ async function seed(): Promise<{
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Sega gubben", address: "Storgatan 1", city: "Lund" })
-      .returning({ id: s.stores.id });
+      .returning();
     const [machine] = await tx
       .insert(s.machines)
       .values({ ...org, code: "BL-003", name: "Automat 3", activeFrom: "2026-01-01" })

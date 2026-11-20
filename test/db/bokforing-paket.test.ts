@@ -106,7 +106,7 @@ async function seedOrg(): Promise<Org> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Butik Ett" })
-      .returning({ id: s.stores.id });
+      .returning();
     await tx
       .insert(s.storeAgreements)
       .values({ ...org, storeId: store!.id, validFrom: "2025-01-01", commissionBp: 1000 });

@@ -78,7 +78,7 @@ async function orgWithStore(label: string) {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Nordstan" })
-      .returning({ id: s.stores.id });
+      .returning();
     await tx.insert(s.storeAgreements).values({
       ...org,
       storeId: store!.id,

@@ -95,9 +95,7 @@ export async function loadStoresFor(viewer: Viewer): Promise<StoreDetail[]> {
         lat: s.stores.latitude,
         lng: s.stores.longitude,
         reportDetails: s.stores.reportDetails,
-        agreementForm: sql<
-          "written" | "oral" | null
-        >`(select tm.agreement_form from public.store_terms(${orgId}::uuid) tm where tm.store_id = ${s.stores.id})`,
+        agreementForm: s.stores.agreementForm,
       })
       .from(s.stores)
       .where(eq(s.stores.organizationId, orgId))

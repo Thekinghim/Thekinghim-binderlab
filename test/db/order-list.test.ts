@@ -89,7 +89,7 @@ async function seedOrderFixture(): Promise<OrderFixture> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "ICA Testbutik" })
-      .returning({ id: s.stores.id });
+      .returning();
     const [machine] = await tx
       .insert(s.machines)
       .values({ ...org, code: "BL-001", name: "Automat 1", activeFrom: "2025-01-01" })
@@ -210,7 +210,7 @@ beforeAll(async () => {
     const [st] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Åhléns City" })
-      .returning({ id: s.stores.id });
+      .returning();
     store2 = st!.id;
     const [m] = await tx
       .insert(s.machines)

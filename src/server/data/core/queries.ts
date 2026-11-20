@@ -411,12 +411,9 @@ export async function queryMasterData(
       (select coalesce(json_agg(json_build_object(
           'id', st.id, 'name', st.name, 'address', st.address, 'contactName', st.contact_name,
           'email', st.email, 'phone', st.phone, 'isExample', st.is_example,
-          'archived', st.archived_at is not null, 'ownerId', tm.owner_id
+          'archived', st.archived_at is not null, 'ownerId', st.owner_id
         ) order by st.name, st.id), '[]'::json)
-        from public.stores st
-        -- Ägaren läses genom store_terms: tom för påfyllare (de ser inga ägare).
-        left join public.store_terms(${orgId}::uuid) tm on tm.store_id = st.id
-        where st.organization_id = ${orgId}::uuid) as stores,
+        from public.stores st where st.organization_id = ${orgId}::uuid) as stores,
       (select coalesce(json_agg(json_build_object(
           'id', so.id, 'name', so.legal_name, 'archived', so.archived_at is not null
         ) order by so.legal_name, so.id), '[]'::json)

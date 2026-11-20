@@ -309,48 +309,6 @@ describe("RLS", () => {
     expect((await count(storeUser)).n).toBe(0);
   });
 
-  it("påfyllaren ser butikerna men inte deras ägare eller avtalsform", async () => {
-    const o = await newOwner({ orgNumber: "991234-5684", legalName: "Dold Ägare AB" });
-    await db().execute(
-      sql`update public.stores set owner_id = ${o}, agreement_form = 'oral'
-          where id in (${storeA}, ${storeB})`,
-    );
-    // Butikens namn och adress läser påfyllaren som förut.
-    const names = await asUser(refillerUser, (tx) =>
-      rows<{ id: string }>(
-        tx,
-        sql`select id, name, address from public.stores where organization_id = ${orgId}`,
-      ),
-    );
-    expect(names.map((r) => r.id)).toEqual(expect.arrayContaining([storeA, storeB]));
-    // Kolumnerna själva nekas, också i hela raden.
-    for (const q of [
-      sql`select owner_id from public.stores where organization_id = ${orgId}`,
-      sql`select agreement_form from public.stores where organization_id = ${orgId}`,
-      sql`select to_jsonb(st) from public.stores st where st.organization_id = ${orgId}`,
-      sql`select id from public.stores where owner_id = ${o}`,
-    ]) {
-      const r = await asUser(refillerUser, (tx) => attempt(tx, (sp) => sp.execute(q)));
-      expect(r.ok).toBe(false);
-    }
-    // store_terms ger inget till påfyllaren, butiksanvändaren eller en annan organisation.
-    const terms = (u: TestUser) =>
-      asUser(u, (tx) =>
-        rows<{ store_id: string; owner_id: string | null; agreement_form: string | null }>(
-          tx,
-          sql`select * from public.store_terms(${orgId}::uuid) where store_id = ${storeA}`,
-        ),
-      );
-    expect(await terms(refillerUser)).toEqual([]);
-    expect(await terms(outsiderUser)).toEqual([]);
-    expect(await terms(await inviteStoreUser(ownerUser, orgId, storeB))).toEqual([]);
-    for (const u of [ownerUser, adminUser, readerUser]) {
-      expect(await terms(u)).toEqual([{ store_id: storeA, owner_id: o, agreement_form: "oral" }]);
-    }
-    // Ägarens kort på Butiksägare visar butikerna (läst genom store_terms).
-    expect((await loadOwnersFor(owner)).find((x) => x.id === o)?.stores.length).toBe(2);
-  });
-
   it("läsare, påfyllare och andra kan inte skriva direkt", async () => {
     const target = await one<{ id: string }>(
       db(),

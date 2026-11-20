@@ -77,7 +77,7 @@ beforeAll(async () => {
         { ...org, name: "Nordstan" },
         { ...org, name: "Mobilia" },
       ])
-      .returning({ id: s.stores.id });
+      .returning();
     storeA = a!.id;
     storeB = b!.id;
     await tx.insert(s.storeAgreements).values([

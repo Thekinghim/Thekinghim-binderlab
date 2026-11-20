@@ -47,10 +47,7 @@ const deps = () => ({
 
 async function newStore(name: string): Promise<string> {
   return asUser(owner, async (tx) => {
-    const [st] = await tx
-      .insert(s.stores)
-      .values({ organizationId: orgId, name })
-      .returning({ id: s.stores.id });
+    const [st] = await tx.insert(s.stores).values({ organizationId: orgId, name }).returning();
     return st!.id;
   });
 }

@@ -81,7 +81,7 @@ async function seed(): Promise<Seed> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Testbutik" })
-      .returning({ id: s.stores.id });
+      .returning();
     const [machine] = await tx
       .insert(s.machines)
       .values({ ...org, code: "BL-001", name: "Automat 1", activeFrom: "2025-01-01" })

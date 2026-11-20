@@ -129,7 +129,7 @@ describe("Vårt lager och påfyllning enligt Awish", () => {
       const [store] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Sega gubben" })
-        .returning({ id: s.stores.id });
+        .returning();
       await tx.insert(s.machinePlacements).values({
         organizationId: orgId,
         machineId: machineA,

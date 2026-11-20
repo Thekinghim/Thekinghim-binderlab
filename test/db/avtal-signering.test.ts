@@ -139,7 +139,7 @@ async function newContract(v: Viewer = viewer, u: TestUser = owner): Promise<str
         organizationId: v.organization.id,
         name: `Butik ${storeCounter} ${uniqueSuffix()}`,
       })
-      .returning({ id: s.stores.id });
+      .returning();
     return st!.id;
   });
   const res = await createStoreContractFor(

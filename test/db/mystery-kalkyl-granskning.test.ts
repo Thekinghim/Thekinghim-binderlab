@@ -99,7 +99,7 @@ describe("Mystery-kalkylen och Prisråd: granskning", () => {
       const [store] = await tx
         .insert(s.stores)
         .values({ ...org, name: "ICA Granskning" })
-        .returning({ id: s.stores.id });
+        .returning();
       // Butiken får 20 % provision: den ska INTE synas i kalkylen eller prisrådet.
       await tx
         .insert(s.storeAgreements)

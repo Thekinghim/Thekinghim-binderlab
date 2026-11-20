@@ -81,7 +81,7 @@ async function seed(): Promise<Fixture> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Sega gubben" })
-      .returning({ id: s.stores.id });
+      .returning();
     const [machine] = await tx
       .insert(s.machines)
       .values({ ...org, code: "BL-001", name: "BL-001", activeFrom: "2025-02-01" })
