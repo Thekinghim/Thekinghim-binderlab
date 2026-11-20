@@ -43,9 +43,39 @@ export function formatWhen(iso: string | null, timeZone: string, now: Date = new
   return formatDateTime(wallClockIn(d, timeZone), { now: wallClockIn(now, timeZone) });
 }
 
-/** Anslutningen enligt Awish som den visas per automat: "Online" eller "Offline sedan 14:10". */
+/** Statusetiketten när strömmen är av enligt butikens tider: väntat, inget fel (grått). */
+export const POWER_OFF_TAG: { status: Status; label: string } = {
+  status: "neutral",
+  label: "Strömmen av",
+};
+
+/** Texten när strömmen är av enligt butikens tider (samma överallt). */
+export const POWER_OFF_TEXT = "Strömmen av (enligt butikens tider)";
+
+/**
+ * Statusetiketten för en automat: "Strömmen av" när strömmen är av enligt butikens tider
+ * och hälsan inte säger något annat (fel, tom), "Offline" när Awish säger det, annars
+ * hälsans etikett.
+ */
+export function healthTagFor(
+  status: HealthStatus,
+  connection: ConnectionLabel | null | undefined,
+): { status: Status; label: string } {
+  const tag = HEALTH_TAG[status];
+  if (connection?.state === "power_off" && (status === "ok" || status === "unknown")) {
+    return POWER_OFF_TAG;
+  }
+  return status === "offline" && connection?.state === "offline"
+    ? { status: tag.status, label: "Offline" }
+    : tag;
+}
+
+/**
+ * Anslutningen enligt Awish som den visas per automat: "Online", "Offline sedan 14:10" eller
+ * "Strömmen av (enligt butikens tider)".
+ */
 export interface ConnectionLabel {
-  readonly state: "online" | "offline";
+  readonly state: "online" | "offline" | "power_off";
   readonly text: string;
 }
 
@@ -59,6 +89,11 @@ export function connectionLabel(
   now: Date = new Date(),
 ): ConnectionLabel | null {
   if (view.state === "online") return { state: "online", text: "Online" };
+  if (view.state === "power_off") {
+    // "Strömmen av (enligt butikens tider), på 10:00".
+    const on = view.until ? localParts(Date.parse(view.until), timeZone).time : null;
+    return { state: "power_off", text: on ? `${POWER_OFF_TEXT}, på ${on}` : POWER_OFF_TEXT };
+  }
   if (view.state === "offline" && view.since) {
     // I dag bara klockslaget ("Offline sedan 14:10"), annars dag och tid.
     const since = localParts(Date.parse(view.since), timeZone);
@@ -88,6 +123,8 @@ export function driftHeadline(health: readonly MachineHealth[]): { title: string
   const ok = active.filter((h) => h.status === "ok").length;
   const problems = active.filter((h) => PROBLEM.has(h.status));
   const unknown = active.filter((h) => h.status === "unknown").length;
+  // Strömmen av enligt butikens tider: väntat (inget problem), men rubriken säger det.
+  const powerOff = active.filter((h) => h.powerOff && !PROBLEM.has(h.status)).length;
   if (problems.length === 0) {
     return {
       title:
@@ -97,9 +134,13 @@ export function driftHeadline(health: readonly MachineHealth[]): { title: string
             : `Alla ${formatInt(active.length)} automater är i drift.`
           : `${formatInt(ok)} av ${plural(active.length, "automat", "automater")} i drift.`,
       aside:
-        unknown > 0
-          ? `${plural(unknown, "automat", "automater")} för ny att bedöma.`
-          : "Alla säljer som vanligt.",
+        powerOff > 0
+          ? powerOff === 1
+            ? "En automat har strömmen av (enligt butikens tider)."
+            : `${plural(powerOff, "automat", "automater")} har strömmen av (enligt butikens tider).`
+          : unknown > 0
+            ? `${plural(unknown, "automat", "automater")} för ny att bedöma.`
+            : "Alla säljer som vanligt.",
     };
   }
   const first = problems[0]!;

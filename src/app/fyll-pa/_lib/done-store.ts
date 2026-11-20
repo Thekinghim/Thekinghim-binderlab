@@ -17,6 +17,11 @@ export interface Done {
   readonly left: string;
   readonly offline: boolean;
   readonly clientIds: readonly string[];
+  /**
+   * Påminn om att starta om automaten (butiken stänger av strömmen på natten och Awish fick
+   * nya antal): skärmen visar dem först efter omstart. Saknas = ingen påminnelse.
+   */
+  readonly restart?: boolean;
 }
 
 /** Så länge finns bekräftelsen kvar (Ångra gäller i 30 minuter). */

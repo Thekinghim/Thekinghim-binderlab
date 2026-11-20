@@ -861,3 +861,29 @@ export function withPacked(
   }
   return out;
 }
+
+/**
+ * Påminnelsen "Starta om automaten så visar skärmen de nya antalen." efter en påfyllning:
+ * Awish fick nya antal (minst ett fack skickades) för en automat i en butik som stänger av
+ * strömmen på natten. Skärmen på en sådan automat läser antalen när den startar, så den visar
+ * inte de nya förrän den startats om (automater med ström dygnet runt behöver det inte).
+ * Ingen påminnelse när inget skickades (Awish hade redan rätt antal, inte kopplad, fel) eller
+ * för automater vars sändning inte gick fram.
+ */
+export function needsRestartReminder(
+  awish:
+    | {
+        readonly state: string;
+        readonly slots?: number;
+        readonly failedMachineIds?: readonly string[];
+      }
+    | undefined,
+  machineIds: readonly string[],
+  restartAfterPush: readonly string[] | undefined,
+): boolean {
+  if (!awish || (awish.slots ?? 0) <= 0) return false;
+  if (awish.state !== "sent" && awish.state !== "partial") return false;
+  const restart = new Set(restartAfterPush ?? []);
+  const failed = new Set(awish.failedMachineIds ?? []);
+  return machineIds.some((id) => restart.has(id) && !failed.has(id));
+}

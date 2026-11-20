@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BOTTOM_NAV_PX,
+  canRefill,
   FAB_SIZE_PX,
   fabLayout,
   fabVisibleAfterScroll,
@@ -36,11 +37,36 @@ describe("flytande knappar", () => {
     expect(refiller.mainPaddingBottom).toBeGreaterThan((refiller.refillBottom ?? 0) + FAB_SIZE_PX);
   });
 
-  it("Fyll på-genvägen bara för påfyllaren och inte på fältsidorna", () => {
-    expect(showsRefillShortcut("refiller", "/att-gora")).toBe(true);
-    expect(showsRefillShortcut("refiller", "/drift/pafyllning")).toBe(false);
-    expect(showsRefillShortcut("refiller", "/drift/besok")).toBe(false);
-    expect(showsRefillShortcut("owner", "/att-gora")).toBe(false);
+  it("Fyll på-genvägen för alla som fyller på, inte på fältsidorna", () => {
+    for (const role of ["refiller", "owner", "admin"] as const) {
+      expect(showsRefillShortcut(role, "/att-gora")).toBe(true);
+      expect(showsRefillShortcut(role, "/")).toBe(true);
+      expect(showsRefillShortcut(role, "/drift/pafyllning")).toBe(false);
+      expect(showsRefillShortcut(role, "/drift/besok")).toBe(false);
+      expect(showsRefillShortcut(role, "/drift/besok/2026-11-20")).toBe(false);
+      expect(canRefill(role)).toBe(true);
+    }
+    // Läsaren fyller inte på (och butiken har inget appskal).
+    expect(showsRefillShortcut("viewer", "/")).toBe(false);
+    expect(showsRefillShortcut("store", "/")).toBe(false);
+    expect(canRefill("viewer")).toBe(false);
+  });
+
+  it("ägarens Fyll på tar AI-knappens plats och sidan får luft ovanför den", () => {
+    const refill = showsRefillShortcut("owner", "/automater");
+    const md = fabLayout({ refill, assistant: true });
+    expect(md.assistantBottom).toBeNull();
+    expect(md.refillBottom).toBe(BOTTOM_NAV_PX + 12);
+    expect(md.mainPaddingBottom).toBeGreaterThanOrEqual((md.refillBottom ?? 0) + FAB_SIZE_PX);
+    const phone = phoneFabLayout({ refill });
+    expect(phone.mainPaddingBottom).toBe(md.mainPaddingBottom);
+    // På fältsidorna ingen genväg: AI-knappen (md–lg) står kvar.
+    const field = fabLayout({
+      refill: showsRefillShortcut("owner", "/drift/pafyllning"),
+      assistant: true,
+    });
+    expect(field.refillBottom).toBeNull();
+    expect(field.assistantBottom).not.toBeNull();
   });
 
   it("AI-knappen glider undan nedåt och kommer tillbaka uppåt, överst och i slutet", () => {

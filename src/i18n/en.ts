@@ -246,6 +246,7 @@ export const en: Messages = {
     noneMine: "None of the machines are yours.",
     doneTitle: (n) => `Done! ${packs(n)} refilled`,
     doneOffline: "Saved on the phone. Sends when online.",
+    restartScreen: "Restart the machine so the screen shows the new counts.",
     leftAt: (n, place) => `${f.int(n)} left ${inPlace(place)}`,
     undone: (n) => `Undone · ${packs(n)}`,
     undoFailed: "Could not undo",

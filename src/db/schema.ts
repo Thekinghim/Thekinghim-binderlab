@@ -242,6 +242,12 @@ export const stores = pgTable("stores", {
   agreementForm: text("agreement_form").$type<"written" | "oral">(),
   /** Butikens ägare (store_owners, 20261219000000_butiksagare.sql). null = ingen. */
   ownerId: uuid("owner_id"),
+  /**
+   * Strömtiderna (20261222000000_butik_stromtider.sql): när strömmen till automaten går på
+   * och av varje dag, 'TT:MM' i organisationens tidszon. Båda eller ingen; null = alltid på.
+   */
+  powerOnTime: text("power_on_time"),
+  powerOffTime: text("power_off_time"),
   ...stamps(),
 });
 

@@ -284,6 +284,13 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c, { form: "oral" })],
   },
+  // Butikens strömtider (bara ägare och admin).
+  {
+    module: "@/app/(app)/butiker/actions",
+    name: "setStorePowerHours",
+    allowed: OP,
+    args: (c) => [sink(c, { hours: { on: "10:00", off: "21:00" } })],
+  },
   {
     module: "@/app/(app)/butiker/actions",
     name: "createAgreement",

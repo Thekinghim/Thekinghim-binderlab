@@ -33,7 +33,23 @@ export {
   type ConnectivityState,
   type ConnectivityView,
   type MachineConnectivity,
+  type PoweredConnectivity,
 } from "./connectivity";
+export {
+  explainingWindow,
+  formatPowerTime,
+  isPowerOffAt,
+  parsePowerTime,
+  POWER_ON_GRACE_MINUTES,
+  powerHoursOf,
+  powerHoursText,
+  powerOffWindowAt,
+  powerVerdict,
+  wallClockMs,
+  type PowerHours,
+  type PowerOffWindow,
+  type PowerVerdict,
+} from "./power";
 export { poissonCdf, poissonSf, poissonZero, probabilityToBp } from "./poisson";
 export {
   buildHourCalendar,

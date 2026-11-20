@@ -112,6 +112,7 @@ export const sv = {
     noneMine: "Inga automater är dina.",
     doneTitle: (n: number) => `Klart! ${packs(n)} ${n === 1 ? "påfyllt" : "påfyllda"}`,
     doneOffline: "Sparat i telefonen. Skickas med nät.",
+    restartScreen: "Starta om automaten så visar skärmen de nya antalen.",
     leftAt: (n: number, place: string) => `${f.int(n)} kvar ${inPlace(place)}`,
     undone: (n: number) => `Ångrat · ${packs(n)}`,
     undoFailed: "Kunde inte ångra",

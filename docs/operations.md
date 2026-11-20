@@ -233,7 +233,8 @@ driver tjänsten (Sentry) och den som äger verksamheten (larm i appen). Koden f
   det). Larmjobbet skickar kön en gång per dygn (05:07 UTC), även när utvärderingen
   för organisationen misslyckas; däremellan utvärderas larmen och kön skickas efter varje
   Awish-synk (var femte minut, pg_cron) för organisationer där det behövs, t.ex. när en automat
-  går offline (`src/server/awish/offline-alerts.ts`). Samma öppna larm aviseras inte igen. Påfyllaren får aldrig systemlarm
+  går offline (`src/server/awish/offline-alerts.ts`). Offline medan strömmen är av enligt butikens
+  strömtider (plus 30 minuter efter på-tiden) larmar inte, se berakningar.md avsnitt 15. Samma öppna larm aviseras inte igen. Påfyllaren får aldrig systemlarm
   (`src/server/monitoring/notify.ts`).
 - **När jobben inte körs alls**: larmen i appen förutsätter att appen kör. Därför checkar båda
   cron-routerna in hos Sentry Cron Monitors (`src/server/monitoring/cron-monitor.ts`) när

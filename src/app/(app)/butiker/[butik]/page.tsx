@@ -16,6 +16,7 @@ import { StorePortalAccess } from "@/app/portal/_components/store-portal-access"
 import { AddAgreementButton } from "../_components/agreement-dialogs";
 import { AddRecipientButton } from "../_components/recipient-dialogs";
 import { AgreementFormSelect } from "../_components/agreement-form-select";
+import { PowerHoursSetting } from "../_components/power-hours";
 import { ReportDetailsToggle } from "../_components/report-details-toggle";
 import { StoreRevenueChart } from "../_components/charts";
 import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/detail-tables";
@@ -607,6 +608,15 @@ function ContactSection({ data }: { data: StoreDetailData }) {
               </div>
             ))}
           </dl>
+          {/* Läsaren ser tiderna men kan inte ändra dem (bara ägare och admin). */}
+          <div className="mt-6">
+            <PowerHoursSetting
+              storeId={store.id}
+              storeName={store.name}
+              initial={store.powerHours ?? null}
+              canEdit={ctx.canEdit && !store.archived}
+            />
+          </div>
         </Sub>
         <Sub
           label="Rapportmottagare"

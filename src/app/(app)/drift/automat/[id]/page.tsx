@@ -16,7 +16,7 @@ import { requireRoute } from "@/server/data/core";
 
 import { AlertList } from "../../_components/alert-list";
 import { toAlertItems } from "../../_lib/alert-items";
-import { connectionLabel, firstSentence, HEALTH_TAG, plural } from "../../_lib/display";
+import { connectionLabel, firstSentence, healthTagFor, plural } from "../../_lib/display";
 import { loadMachineTimeline } from "../../_lib/load";
 
 export const metadata: Metadata = { title: "Tidslinje" };
@@ -70,12 +70,9 @@ export default async function MachineTimelinePage({
     ctx.timeZone,
     now,
   );
-  const healthTag = data.health ? HEALTH_TAG[data.health.status] : null;
-  // Awish säger offline: etiketten säger det rakt ut.
-  const tag =
-    healthTag && data.health?.status === "offline" && connection?.state === "offline"
-      ? { ...healthTag, label: "Offline" }
-      : healthTag;
+  // Awish säger offline: etiketten säger det rakt ut. Strömmen av enligt butikens tider:
+  // "Strömmen av" (väntat, inget fel).
+  const tag = data.health ? healthTagFor(data.health.status, connection) : null;
   const byDay = new Map<string, TimelineEntry[]>();
   for (const e of data.entries) {
     const list = byDay.get(e.date);

@@ -10,6 +10,7 @@ import {
   driftHeadline,
   figureText,
   firstSentence,
+  healthTagFor,
   sortAlerts,
   withoutRetiredAlerts,
 } from "./display";
@@ -149,5 +150,43 @@ describe("anslutningen enligt Awish", () => {
         ?.text,
     ).toMatch(/^Offline sedan 1\snov\. 14:10$/);
     expect(connectionLabel({ state: "unknown", since: null }, "Europe/Stockholm", now)).toBeNull();
+  });
+});
+
+describe("strömmen av enligt butikens tider", () => {
+  const TZ = "Europe/Stockholm";
+  const now = new Date("2026-11-21T02:00:00Z");
+
+  it("anslutningen säger strömmen av och när den går på", () => {
+    expect(
+      connectionLabel(
+        { state: "power_off", since: "2026-11-20T20:05:00Z", until: "2026-11-21T09:00:00Z" },
+        TZ,
+        now,
+      ),
+    ).toEqual({ state: "power_off", text: "Strömmen av (enligt butikens tider), på 10:00" });
+  });
+
+  it("etiketten är grå 'Strömmen av', men ett fel eller en tom automat syns", () => {
+    const power = { state: "power_off" as const, text: "x" };
+    expect(healthTagFor("ok", power)).toEqual({ status: "neutral", label: "Strömmen av" });
+    expect(healthTagFor("unknown", power).label).toBe("Strömmen av");
+    expect(healthTagFor("empty", power).label).toBe("Tom");
+    expect(healthTagFor("offline", { state: "offline", text: "x" }).label).toBe("Offline");
+    expect(healthTagFor("ok", { state: "online", text: "Online" }).label).toBe("I drift");
+  });
+
+  it("rubriken säger att strömmen är av, och räknar dem inte som problem", () => {
+    const off = {
+      ...h("ok", "BL-001"),
+      powerOff: { since: "2026-11-20T20:05:00Z", until: "2026-11-21T09:00:00Z" },
+    };
+    const r = driftHeadline([off, h("ok", "BL-002")]);
+    expect(r.title).toBe("Alla 2 automater är i drift.");
+    expect(r.aside).toBe("En automat har strömmen av (enligt butikens tider).");
+    // Ett riktigt avbrott syns fortfarande.
+    expect(driftHeadline([off, h("offline", "BL-002")]).title).toMatch(
+      /^1 av 2\s+automater i drift\.$/,
+    );
   });
 });

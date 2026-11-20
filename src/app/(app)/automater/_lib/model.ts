@@ -427,6 +427,16 @@ export function statusOf(args: {
   }
   if (h === null)
     return { status: "ok", label: "I drift", flagged: false, health: null, reason: null };
+  // Strömmen av enligt butikens tider (Drift visar samma): väntat, grått, ingen åtgärd.
+  if (health?.powerOff && (h === "ok" || h === "unknown")) {
+    return {
+      status: "neutral",
+      label: "Strömmen av",
+      flagged: false,
+      health: h,
+      reason: sentence(health.title),
+    };
+  }
   return { ...HEALTH_VIEW[h], health: h, reason: h === "ok" ? null : healthReason };
 }
 

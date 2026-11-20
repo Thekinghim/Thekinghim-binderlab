@@ -489,3 +489,19 @@ Vägval och det som är kvar:
   hela raden gav fel, och den gamla kodens dataexport hade gett fel under driftsättningen. Det påfyllaren ser (vilka
   butiker som har samma ägar-id, muntligt eller skriftligt avtal) är lite känsligt; `store_owners` och avtalens
   villkor skyddas fortfarande av RLS (`butiksagare.test.ts`).
+
+## 20 nov. – strömtider per butik och Fyll på för ägaren
+
+- **Strömtider per butik** (`stores.power_on_time`/`power_off_time`, `20261222000000_butik_stromtider.sql`, bara
+  tillägg). Per butik, inte per placering: det är butiken som styr strömmen. Ägare och admin ställer in dem under
+  Butiker → butiken → Kontakt och rapport; läsaren och påfyllaren läser dem (RLS som butikens övriga fält).
+- **Offlinelarmet** räknar med tiderna (`src/analytics/health/power.ts`, `connectivity.ts`): offline som börjar
+  medan strömmen är av larmar inte förrän 30 minuter efter på-tiden, och räknas då från på-tiden. Awish-cronens
+  urval (`orgsNeedingOfflineEvaluation`) prövar samma regel, så natten väcker inte larmjobbet var femte minut.
+  Maskinhälsan får `powerOff` och sidorna visar "Strömmen av".
+- **Fyll på** påminner om omstart efter en sändning till Awish för automater i butiker med strömtider (skärmen
+  läser antalen när den startar; automaten med ström dygnet runt behövde det aldrig).
+- **Fyll på för ägare och admin:** den runda knappen på mobilen (samma sidor som påfyllaren, `showsRefillShortcut`)
+  och raden "Fyll på" längst ner i sidomenyn på datorn. AI-knappen (md–lg) viker som för påfyllaren.
+- **Tester:** `power.test.ts` (sommartid, av efter midnatt, marginal), `test/db/strom-tider.test.ts` (larm natt och
+  dag, incident stängs, RLS, Fyll på), `fab.test.ts`, `display.test.ts`, Automaters `statusOf`, Fyll på-modellen.

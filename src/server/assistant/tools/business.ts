@@ -949,7 +949,9 @@ export const machineStatusTool = defineTool({
         const m = names.machine.get(h.machineId);
         return {
           automat: m ? `${m.name} (${m.code})` : h.machineId,
-          status: h.label,
+          // Strömmen av enligt butikens tider: väntat, inget fel (som på Drift).
+          status:
+            h.powerOff && (h.status === "ok" || h.status === "unknown") ? "Strömmen av" : h.label,
           sedan: h.since ? h.since.slice(0, 16).replace("T", " ") : null,
           rubrik: h.title,
           forklaring: h.detail,

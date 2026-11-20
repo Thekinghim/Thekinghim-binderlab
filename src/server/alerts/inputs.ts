@@ -23,13 +23,17 @@ import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { DataSourceRef, ImportRunRef } from "@/analytics/alerts";
 import {
   connectivitySignals,
+  connectivityView,
   machineHealth,
+  powerHoursOf,
   type HealthInput,
   type MachineConnectivity,
   type MachineHealth,
   type MachineSignal,
+  type PowerHours,
   type SalesCoverage,
 } from "@/analytics/health";
+import { clockTimeAt } from "@/analytics/todos/time";
 import type { AnalyticsOrder, StockLevelRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -83,6 +87,39 @@ export async function loadConnectivity(tx: Tx, orgId: string): Promise<MachineCo
     backOnlineAt: iso(r.back_online_at),
     lastOfflineFrom: iso(r.last_offline_from),
   }));
+}
+
+/**
+ * Strömtiderna per automat: butiken automaten står i i dag (aktuell placering) och dess
+ * stores.power_on_time/power_off_time, i organisationens tidszon. Bara automater i butiker
+ * med strömtider. Läses som användaren (RLS): alla roller som ser automaterna läser butiken.
+ */
+export async function loadMachinePower(
+  tx: Tx,
+  orgId: string,
+  today: IsoDate,
+): Promise<Map<string, PowerHours>> {
+  const res = await tx.execute(
+    sql`select mp.machine_id, st.power_on_time, st.power_off_time, o.timezone
+        from public.machine_placements mp
+        join public.stores st
+          on st.organization_id = mp.organization_id and st.id = mp.store_id
+        join public.organizations o on o.id = mp.organization_id
+        where mp.organization_id = ${orgId}::uuid
+          and mp.valid_from <= ${today}::date
+          and (mp.valid_to is null or mp.valid_to >= ${today}::date)
+          and st.power_on_time is not null and st.power_off_time is not null`,
+  );
+  const out = new Map<string, PowerHours>();
+  for (const r of Array.from(res) as Record<string, unknown>[]) {
+    const power = powerHoursOf(
+      r.power_on_time as string | null,
+      r.power_off_time as string | null,
+      typeof r.timezone === "string" ? r.timezone : undefined,
+    );
+    if (power) out.set(String(r.machine_id), power);
+  }
+  return out;
 }
 
 /** En rad ur public.sales_data_until. */
@@ -141,7 +178,36 @@ export function healthInputOf(data: HealthData, timeZone: string): HealthInput {
  * automat har samma status överallt.
  */
 export function healthOf(data: HealthData, timeZone: string, now: Date): MachineHealth[] {
-  return machineHealth(healthInputOf(data, timeZone), now);
+  const health = machineHealth(healthInputOf(data, timeZone), now);
+  const byMachine = new Map(data.connectivity.map((c) => [c.machineId, c]));
+  return health.map((h) => withPowerOff(h, byMachine.get(h.machineId), timeZone, now));
+}
+
+/** Statusarna där "Strömmen av" ersätter texten (inget fel som behöver synas i stället). */
+const POWER_OFF_TEXT: ReadonlySet<MachineHealth["status"]> = new Set(["ok", "unknown"]);
+
+/**
+ * Strömmen av enligt butikens tider: hälsan får `powerOff`, och "I drift"/"Okänt" får texten
+ * "Strömmen av (enligt butikens tider)". Ett fel, en tom automat eller ett riktigt avbrott
+ * behåller sin text (de ska synas).
+ */
+function withPowerOff(
+  h: MachineHealth,
+  c: MachineConnectivity | undefined,
+  timeZone: string,
+  now: Date,
+): MachineHealth {
+  if (h.status === "inactive") return h;
+  const view = connectivityView(c, now);
+  if (view.state !== "power_off" || !view.since || !view.until) return h;
+  const powerOff = { since: view.since, until: view.until };
+  if (!POWER_OFF_TEXT.has(h.status)) return { ...h, powerOff };
+  return {
+    ...h,
+    powerOff,
+    title: "Strömmen av (enligt butikens tider)",
+    detail: `Butiken stänger av strömmen till automaten. Den går på ${clockTimeAt(view.until, timeZone)}.`,
+  };
 }
 
 /**
@@ -169,7 +235,15 @@ export async function loadHealthData(
 ): Promise<HealthData> {
   const placements = await queryPlacements(tx, orgId);
   const coverage = await loadCoverage(tx, orgId, now);
-  const connectivity = await loadConnectivity(tx, orgId);
+  const [rawConnectivity, power] = await Promise.all([
+    loadConnectivity(tx, orgId),
+    loadMachinePower(tx, orgId, today),
+  ]);
+  // Butikens strömtider följer med läget, så att offline under strömavbrottet inte larmar.
+  const connectivity = rawConnectivity.map((c) => ({
+    ...c,
+    power: power.get(c.machineId) ?? null,
+  }));
   const [machines, titles, orders, stockRows] = await Promise.all([
     queryMachines(tx, orgId, placements, today),
     queryTitles(tx, orgId),

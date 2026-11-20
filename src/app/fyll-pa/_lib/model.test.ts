@@ -10,6 +10,7 @@ import {
   fillHeadline,
   fillMachines,
   fullFastNote,
+  needsRestartReminder,
   machineOrder,
   maxFill,
   needLabel,
@@ -766,5 +767,31 @@ describe("Ta med-listan (bringList)", () => {
       bring: 12,
       missing: 0,
     });
+  });
+});
+
+describe("påminnelsen om att starta om automaten", () => {
+  const sent = { state: "sent", kind: "sent", slots: 3, message: "" } as const;
+
+  it("efter en sändning till Awish för en automat i en butik med strömtider", () => {
+    expect(needsRestartReminder(sent, ["m1"], ["m1"])).toBe(true);
+  });
+
+  it("ingen för en automat med ström dygnet runt", () => {
+    expect(needsRestartReminder(sent, ["m2"], ["m1"])).toBe(false);
+    expect(needsRestartReminder(sent, ["m1"], undefined)).toBe(false);
+  });
+
+  it("ingen när inget skickades eller sändningen inte gick fram", () => {
+    expect(needsRestartReminder(undefined, ["m1"], ["m1"])).toBe(false);
+    expect(needsRestartReminder({ state: "sent", slots: 0 }, ["m1"], ["m1"])).toBe(false);
+    expect(needsRestartReminder({ state: "error", slots: 0 }, ["m1"], ["m1"])).toBe(false);
+    expect(
+      needsRestartReminder(
+        { state: "partial", slots: 2, failedMachineIds: ["m1"] },
+        ["m1"],
+        ["m1"],
+      ),
+    ).toBe(false);
   });
 });

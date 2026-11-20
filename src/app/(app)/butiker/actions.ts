@@ -25,6 +25,7 @@ import {
   deleteStoreRecipientFor,
   setStoreArchivedFor,
   setStoreAgreementFormFor,
+  setStorePowerHoursFor,
   setStoreReportDetailsFor,
   updateAgreementFor,
   updateStoreFor,
@@ -107,6 +108,17 @@ export async function setStoreAgreementForm(input: {
   form: "written" | "oral" | null;
 }): Promise<ActionResult> {
   return run((v) => setStoreAgreementFormFor(v, input));
+}
+
+/**
+ * Butikens strömtider: när strömmen till automaten går på och av varje dag. null = alltid på
+ * (ägare och admin).
+ */
+export async function setStorePowerHours(input: {
+  storeId: string;
+  hours: { on: string; off: string } | null;
+}): Promise<ActionResult> {
+  return run((v) => setStorePowerHoursFor(v, input));
 }
 
 /**

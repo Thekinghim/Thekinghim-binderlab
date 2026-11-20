@@ -170,6 +170,12 @@ export interface MachineHealth {
    * Tystnaden är då bedömd fram till den tidpunkten.
    */
   readonly dataUntil?: string | null;
+  /**
+   * Strömmen är av enligt butikens tider (Awish ser automaten offline, men det är väntat):
+   * sedan när automaten är offline och när strömmen går på igen (ISO 8601 UTC). Saknas när
+   * strömmen är på eller butiken inte har strömtider.
+   */
+  readonly powerOff?: { readonly since: string; readonly until: string } | null;
   readonly evidence: Evidence;
   readonly link: string;
 }

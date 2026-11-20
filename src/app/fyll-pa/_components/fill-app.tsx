@@ -54,6 +54,7 @@ import {
   splitRefill,
   toggleBring,
   withPacked,
+  needsRestartReminder,
   type FillAdjustment,
   type FillMachine,
   type FillRecipe,
@@ -274,27 +275,38 @@ export function FillApp({
 
   /** Beskedet om Awish efter att påfyllningar sparats (Klar, eller kön i bakgrunden). */
   const reportAwish = useCallback(
-    (awish: AwishPushStatus | undefined) => {
+    (awish: AwishPushStatus | undefined, machineIds: readonly string[] = []) => {
       if (!awish) return;
       if (awish.failedMachineIds?.length) notePush(awish.failedMachineIds, []);
+      // Butiken stänger av strömmen på natten: skärmen visar nya antal först efter omstart.
+      const restart = needsRestartReminder(awish, machineIds, data.restartAfterPush);
       if (awish.state !== "sent") {
         // Gick det inte hela vägen till Awish: säg till. Raden på automaten ligger kvar.
         toast({
           title: t.fill.sendToAwish,
-          description: awishText(t, awish),
+          description: restart
+            ? `${awishText(t, awish)} ${t.fill.restartScreen}`
+            : awishText(t, awish),
           tone: awish.state === "error" ? "critical" : "neutral",
         });
       } else {
-        toast({ title: awishText(t, awish), tone: "ok" });
+        toast({
+          title: awishText(t, awish),
+          ...(restart ? { description: t.fill.restartScreen } : {}),
+          tone: "ok",
+        });
       }
     },
-    [notePush, toast, t],
+    [notePush, toast, t, data.restartAfterPush],
   );
 
   const q = useRefillQueue(scope, {
     onBackgroundSaved: (items, awish) => {
       onQueueSaved(items);
-      reportAwish(awish);
+      reportAwish(
+        awish,
+        items.map((i) => i.machineId),
+      );
       router.refresh();
     },
   });
@@ -410,7 +422,10 @@ export function FillApp({
       const out = await syncQueue();
       if (out.saved.length > 0) {
         onQueueSaved(out.saved);
-        reportAwish(out.awish);
+        reportAwish(
+          out.awish,
+          out.saved.map((i) => i.machineId),
+        );
       }
     } catch {
       // Kön ligger kvar och skickas nästa gång.
@@ -591,10 +606,11 @@ export function FillApp({
               left: source ? t.fill.leftAt(Math.max(0, homeLeft), placeName(source)) : "",
               offline: out.offline,
               clientIds: items.map((i) => i.clientId).filter((id) => !rejectedIds.has(id)),
+              restart: needsRestartReminder(out.awish, [selected.id], data.restartAfterPush),
             });
           }
           if (out.saved.length > 0) rememberSaved(out.saved);
-          reportAwish(out.awish);
+          reportAwish(out.awish, [selected.id]);
           // Först tillbaka till listan (bekräftelsen syns direkt), sedan hämtas datan om för
           // den adressen.
           go(BASE);
@@ -995,41 +1011,54 @@ function DoneBanner({
     <section
       role="status"
       aria-live="polite"
-      className="rise flex items-center gap-3 rounded-md border border-up-line bg-surface p-4"
+      className="rise flex flex-col gap-3 rounded-md border border-up-line bg-surface p-4"
     >
-      <span
-        aria-hidden
-        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-up text-bg"
-      >
-        <Icon name="check" size={22} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-lg font-medium text-fg">{t.fill.doneTitle(done.packs)}</span>
-        <span className="text-sm text-muted">{done.offline ? t.fill.doneOffline : done.left}</span>
-      </span>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await onUndo();
-          } finally {
-            setBusy(false);
-          }
-        }}
-        className="min-h-11 shrink-0 rounded-md border border-line-strong bg-raised px-4 text-md font-medium text-fg active:bg-hover disabled:text-disabled"
-      >
-        {busy ? t.common.undoing : t.common.undo}
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label={t.common.close}
-        className="-mr-2 flex size-11 shrink-0 items-center justify-center text-subtle hover:text-fg"
-      >
-        <Icon name="close" size={18} />
-      </button>
+      <div className="flex items-center gap-3">
+        <span
+          aria-hidden
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-up text-bg"
+        >
+          <Icon name="check" size={22} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-lg font-medium text-fg">{t.fill.doneTitle(done.packs)}</span>
+          <span className="text-sm text-muted">
+            {done.offline ? t.fill.doneOffline : done.left}
+          </span>
+        </span>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onUndo();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="min-h-11 shrink-0 rounded-md border border-line-strong bg-raised px-4 text-md font-medium text-fg active:bg-hover disabled:text-disabled"
+        >
+          {busy ? t.common.undoing : t.common.undo}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t.common.close}
+          className="-mr-2 flex size-11 shrink-0 items-center justify-center text-subtle hover:text-fg"
+        >
+          <Icon name="close" size={18} />
+        </button>
+      </div>
+      {done.restart ? (
+        // Butiken stänger av strömmen på natten: skärmen läser antalen när den startar.
+        <p
+          data-restart-reminder
+          className="border-t border-line pt-3 text-md font-medium text-balance text-fg"
+        >
+          {t.fill.restartScreen}
+        </p>
+      ) : null}
     </section>
   );
 }

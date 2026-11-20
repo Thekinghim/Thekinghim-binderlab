@@ -44,6 +44,7 @@ import {
   recipientIdSchema,
   recipientSchema,
   agreementFormSchema,
+  powerHoursSchema,
   reportDetailsSchema,
   storeSchema,
   updateAgreementSchema,
@@ -96,14 +97,17 @@ export async function loadStoresFor(viewer: Viewer): Promise<StoreDetail[]> {
         lng: s.stores.longitude,
         reportDetails: s.stores.reportDetails,
         agreementForm: s.stores.agreementForm,
+        powerOnTime: s.stores.powerOnTime,
+        powerOffTime: s.stores.powerOffTime,
       })
       .from(s.stores)
       .where(eq(s.stores.organizationId, orgId))
       .orderBy(asc(s.stores.name));
-    return rows.map(({ archivedAt, lat, lng, ...r }) => ({
+    return rows.map(({ archivedAt, lat, lng, powerOnTime, powerOffTime, ...r }) => ({
       ...r,
       archived: archivedAt !== null,
       location: lat !== null && lng !== null ? { lat, lng } : null,
+      powerHours: powerOnTime && powerOffTime ? { on: powerOnTime, off: powerOffTime } : null,
     }));
   });
 }
@@ -466,6 +470,33 @@ export async function setStoreAgreementFormFor(
     });
   } catch (error) {
     return fail(error, "setStoreAgreementForm");
+  }
+}
+
+/**
+ * Butikens strömtider: när strömmen till automaten går på och av varje dag (lokal tid).
+ * null = strömmen är alltid på. Offline medan strömmen är av larmar inte, och Fyll på
+ * påminner om att starta om automaten efter en påfyllning. Bara ägare och admin.
+ */
+export async function setStorePowerHoursFor(viewer: Viewer, raw: unknown): Promise<ActionResult> {
+  const denied = await guard(viewer);
+  if (denied) return denied;
+  const parsed = powerHoursSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const { storeId, hours } = parsed.data;
+  const orgId = viewer.organization.id;
+  try {
+    return await withUserDbFor(viewer.user, async (tx): Promise<ActionResult> => {
+      const rows = await tx
+        .update(s.stores)
+        .set({ powerOnTime: hours?.on ?? null, powerOffTime: hours?.off ?? null })
+        .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, storeId)))
+        .returning({ id: s.stores.id });
+      if (rows.length === 0) return { ok: false, error: "Butiken finns inte." };
+      return { ok: true, data: undefined };
+    });
+  } catch (error) {
+    return fail(error, "setStorePowerHours");
   }
 }
 

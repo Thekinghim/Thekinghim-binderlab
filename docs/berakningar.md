@@ -529,6 +529,33 @@ Begränsning: en organisation med en enda automat i en CSV-källa kan inte skilj
 automat från en fil utan ny försäljning; där fångar datalarmet efter 36 timmar problemet.
 Testerna finns i `src/analytics/health/coverage.test.ts` och `test/db/drift-alerts.test.ts`.
 
+### Butikens strömtider (`src/analytics/health/power.ts`)
+
+Vissa butiker stänger av strömmen till automaten på natten. Awish ser då automaten som offline
+varje natt. Ägaren eller admin anger tiderna per butik (Butiker → butiken → Kontakt och rapport →
+"Strömmen till automaten"), t.ex. av 21:00 och på 10:00, lokal tid. Inga tider = strömmen är
+alltid på (som förut).
+
+- En offlineperiod som börjar medan strömmen är av enligt tiderna (räknat från 20 minuter före
+  av-tiden, så att en butik som stänger av lite tidigt också räknas) är **strömmen av** tills
+  strömmen gått på igen plus **30 minuter** (automaten startar och kopplar upp sig). Ingen
+  offlinehändelse, alltså inget larm, ingen notis och ingen extra körning av larmjobbet.
+- Är automaten inte tillbaka när marginalen är slut är det ett avbrott **från på-tiden**
+  ("offline sedan 10:00"), som larmar direkt.
+- Ett avbrott som börjar medan strömmen är på (t.ex. 15:00) larmar som förut och ligger kvar
+  på natten. Ett riktigt avbrott göms aldrig.
+- Ett öppet offlinelarm stängs när automaten inte längre räknas som offline, också när det är
+  för att tiderna sparats. En automat som kommer tillbaka inom marginalen ger inget larm.
+- Av-tid efter midnatt fungerar (av 01:00, på 07:00). Tiderna är väggtid: natten när sommartiden
+  börjar är avbrottet en timme kortare, när den slutar en timme längre.
+- Drift, Automater och automatens sida visar "Strömmen av" (grått) med "Strömmen av (enligt
+  butikens tider), på 10:00"; fel och tom automat visas som vanligt.
+- Fyll på påminner efter en påfyllning som skickats till Awish: "Starta om automaten så visar
+  skärmen de nya antalen." (skärmen läser antalen när den startar). Inte för butiker med ström
+  dygnet runt.
+
+Testerna finns i `src/analytics/health/power.test.ts` och `test/db/strom-tider.test.ts`.
+
 ## 16. Att göra (`src/analytics/todos`)
 
 Att göra räknas om vid varje sidvisning ur order, lager, priser, rapporter, avtal och larm.

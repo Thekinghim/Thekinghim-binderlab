@@ -128,6 +128,24 @@ export const agreementFormSchema = z.object({
   form: z.enum(["written", "oral"]).nullable(),
 });
 
+/** Klockslag "TT:MM" (24 h), som i larmens tysta timmar. */
+const clock = z
+  .string()
+  .trim()
+  .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, "Skriv tiden som TT:MM, t.ex. 21:00.");
+
+/**
+ * Butikens strömtider: när strömmen till automaten går på och av varje dag. null = strömmen
+ * är alltid på. Tiderna får inte vara samma (då är strömmen aldrig av).
+ */
+export const powerHoursSchema = z.object({
+  storeId: uuid,
+  hours: z
+    .object({ on: clock, off: clock })
+    .refine((h) => h.on !== h.off, { message: "Strömmen kan inte gå på och av samma tid." })
+    .nullable(),
+});
+
 // ---------------------------------------------------------------------------
 // Ersättning: provision i procent och hyra i kronor, som fälten visar dem
 // ---------------------------------------------------------------------------

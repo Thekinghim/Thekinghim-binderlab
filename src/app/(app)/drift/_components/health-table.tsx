@@ -12,7 +12,7 @@ import { StatusTag } from "@/components/ui/status-tag";
 
 import { cn } from "@/lib/cn";
 
-import { HEALTH_TAG, type ConnectionLabel } from "../_lib/display";
+import { healthTagFor, type ConnectionLabel } from "../_lib/display";
 
 /** En rad i tabellen (serialiserbar från servern). */
 export interface HealthRow {
@@ -34,25 +34,26 @@ export interface HealthRow {
   readonly connection: ConnectionLabel | null;
 }
 
-/** Statusetiketten: "Offline" när Awish säger det, annars hälsans etikett. */
+/** Statusetiketten: "Strömmen av", "Offline" när Awish säger det, annars hälsans etikett. */
 function statusTag(r: HealthRow) {
-  const tag = HEALTH_TAG[r.status];
-  return r.status === "offline" && r.connection?.state === "offline"
-    ? { status: tag.status, label: "Offline" }
-    : tag;
+  return healthTagFor(r.status, r.connection);
 }
 
-/** "● Online" / "● Offline sedan 14:10" under automatens namn. */
+/** "● Online" / "● Offline sedan 14:10" / "○ Strömmen av …" under automatens namn. */
 function Connection({ c }: { c: ConnectionLabel | null }) {
   if (!c) return null;
   const off = c.state === "offline";
+  const power = c.state === "power_off";
   return (
     <span
       className={cn("meta mt-0.5 flex items-center gap-1.5", off ? "text-signal-fg" : "text-muted")}
     >
       <span
         aria-hidden
-        className={cn("inline-block size-1.5 rounded-full", off ? "bg-signal" : "bg-fill-ok")}
+        className={cn(
+          "inline-block size-1.5 rounded-full",
+          off ? "bg-signal" : power ? "border border-line-strong" : "bg-fill-ok",
+        )}
       />
       {c.text}
     </span>

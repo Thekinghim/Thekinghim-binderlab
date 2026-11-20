@@ -223,6 +223,22 @@ describe("statusOf", () => {
   const refill = (level: "now" | "soon", title = "Fyll på Black Bolt i Automat 1") =>
     ({ level, title }) as unknown as TodoItem;
 
+  it("strömmen av enligt butikens tider: grå, ingen åtgärd", () => {
+    const off = {
+      ...health("ok"),
+      title: "Strömmen av (enligt butikens tider)",
+      powerOff: { since: "2026-11-01T20:05:00Z", until: "2026-11-02T09:00:00Z" },
+    } as MachineHealth;
+    expect(statusOf({ ...base, health: off, refill: [] })).toMatchObject({
+      status: "neutral",
+      label: "Strömmen av",
+      flagged: false,
+      reason: "Strömmen av (enligt butikens tider).",
+    });
+    // Fyll på nu går före.
+    expect(statusOf({ ...base, health: off, refill: [refill("now")] }).label).toBe("Fyll på nu");
+  });
+
   it("i drift utan signaler", () => {
     expect(statusOf({ ...base, health: health("ok"), refill: [] })).toMatchObject({
       status: "ok",

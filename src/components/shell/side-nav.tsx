@@ -17,6 +17,7 @@ import { formatDateTime } from "@/lib/format";
 import { Icon } from "@/components/ui/icon";
 import { StatusGlyph } from "@/components/ui/status-tag";
 import { Logo } from "./logo";
+import { canRefill } from "./fab";
 import {
   activeSectionId,
   homeHref,
@@ -652,6 +653,20 @@ export function Sidebar({ className, ...props }: SidebarProps) {
       </WithCarriedQuery>
 
       <div className="shrink-0 border-t border-line">
+        {canRefill(role) ? (
+          // Fyll på (sidan vid automaten) för den som fyller på: lugn rad, inte en knapp.
+          <Link
+            href="/fyll-pa"
+            prefetch={false}
+            className="group flex h-10 items-center gap-3 border-b border-line px-4 text-base text-muted transition-[color,padding] duration-200 hover:pl-5 hover:text-fg focus-visible:-outline-offset-2"
+          >
+            <Icon
+              name="plus"
+              className="shrink-0 transition-transform duration-200 group-hover:scale-110"
+            />
+            <span className="flex-1 truncate">Fyll på</span>
+          </Link>
+        ) : null}
         <SyncStatus
           syncedAt={props.syncedAt}
           syncState={props.syncState}

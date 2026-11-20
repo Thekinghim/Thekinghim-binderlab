@@ -35,6 +35,11 @@ export interface StoreDetail {
    * Saknas eller null = inte valt.
    */
   readonly agreementForm?: "written" | "oral" | null;
+  /**
+   * Strömtiderna (20261222000000_butik_stromtider): när strömmen till automaten går på och
+   * av varje dag ("TT:MM"). Saknas eller null = strömmen är alltid på.
+   */
+  readonly powerHours?: { readonly on: string; readonly off: string } | null;
 }
 
 /** Ett avtal (store_agreements) med färdiga texter. */

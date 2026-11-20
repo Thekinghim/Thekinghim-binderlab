@@ -17,10 +17,16 @@
  * offline först när perioden varat OFFLINE_ALERT_MINUTES, och bara när läget är färskt
  * (synken har läst automaten de senaste STALE_MINUTES). Larmet (machine_offline) kommer ur
  * maskinhälsan; incidenterna i @/analytics/alerts stänger det när automaten är tillbaka.
+ *
+ * Butikens strömtider (./power): har butiken strömmen av på natten räknas en offlineperiod
+ * som börjar då som "strömmen av" (state power_off) tills strömmen gått på igen plus en
+ * marginal. Ingen offlinehändelse, alltså inget larm. Är automaten inte tillbaka efter
+ * marginalen är det ett avbrott från på-tiden, som larmar som vanligt.
  */
 
 import { parseInstant } from "@/analytics/todos/time";
 
+import { powerVerdict, type PowerHours } from "./power";
 import type { MachineSignal } from "./types";
 
 /** Minuter offline innan automaten räknas som offline (och larmar). */
@@ -84,14 +90,23 @@ export function nextConnectivity(
 /** Läget för en Binderlab-automat (rad ur public.machine_connectivity). */
 export interface MachineConnectivity extends ConnectivityState {
   readonly machineId: string;
+  /** Strömtiderna i butiken automaten står i (stores.power_*), null = strömmen alltid på. */
+  readonly power?: PowerHours | null;
 }
 
-/** Vad sidorna visar: online, offline (sedan) eller okänt. */
+/** Ett läge med butikens strömtider (om de är kända). */
+export type PoweredConnectivity = ConnectivityState & { readonly power?: PowerHours | null };
+
+/** Vad sidorna visar: online, offline (sedan), strömmen av enligt butikens tider, eller okänt. */
 export interface ConnectivityView {
-  readonly state: "online" | "offline" | "unknown";
-  /** Offline: början på perioden (ISO 8601). */
+  readonly state: "online" | "offline" | "power_off" | "unknown";
+  /** Offline: början på avbrottet. Strömmen av: när automaten gick offline (ISO 8601). */
   readonly since: string | null;
+  /** Strömmen av: när strömmen går på igen enligt tiderna (ISO 8601). Annars saknas. */
+  readonly until?: string | null;
 }
+
+const POWER_RULE = { leadMinutes: OFFLINE_ALERT_MINUTES } as const;
 
 function fresh(c: ConnectivityState, nowMs: number): boolean {
   if (c.seenAt === null) return false;
@@ -102,23 +117,37 @@ function fresh(c: ConnectivityState, nowMs: number): boolean {
  * Offline enligt regeln: sedd online någon gång, senaste svaret offline och perioden har
  * varat minst OFFLINE_ALERT_MINUTES. Returnerar periodens början, annars null.
  */
-export function offlineSinceMs(c: ConnectivityState, now: Date | string | number): number | null {
+export function offlineSinceMs(c: PoweredConnectivity, now: Date | string | number): number | null {
   const nowMs = parseInstant(now);
   if (!fresh(c, nowMs) || c.onlineAt === null || c.online !== false || c.offlineSince === null) {
     return null;
   }
-  const since = parseInstant(c.offlineSince);
+  // Med strömtider: en period som började när strömmen var av räknas från på-tiden, och
+  // inte alls medan strömmen är av (plus marginalen).
+  const verdict = powerVerdict(c.power, parseInstant(c.offlineSince), nowMs, POWER_RULE);
+  if (verdict.kind === "power_off") return null;
+  const since = verdict.fromMs;
   return nowMs - since >= OFFLINE_ALERT_MINUTES * MINUTE_MS ? since : null;
 }
 
-/** Online/offline för sidorna (samma regel som larmet). */
+/** Online/offline/strömmen av för sidorna (samma regel som larmet). */
 export function connectivityView(
-  c: ConnectivityState | undefined,
+  c: PoweredConnectivity | undefined,
   now: Date | string | number,
 ): ConnectivityView {
   if (!c) return { state: "unknown", since: null };
   const nowMs = parseInstant(now);
   if (!fresh(c, nowMs) || c.onlineAt === null) return { state: "unknown", since: null };
+  if (c.online === false && c.offlineSince !== null) {
+    const verdict = powerVerdict(c.power, parseInstant(c.offlineSince), nowMs, POWER_RULE);
+    if (verdict.kind === "power_off") {
+      return {
+        state: "power_off",
+        since: c.offlineSince,
+        until: new Date(verdict.onMs).toISOString(),
+      };
+    }
+  }
   const since = offlineSinceMs(c, nowMs);
   if (since !== null) return { state: "offline", since: new Date(since).toISOString() };
   return { state: "online", since: null };
@@ -151,13 +180,16 @@ export function connectivitySignals(
     // den senaste perioden, så den paras aldrig med en äldre periods början.
     const periodFrom = c.offlineSince ?? c.lastOfflineFrom;
     if (periodFrom !== null && c.backOnlineAt !== null) {
-      const from = parseInstant(periodFrom);
       const to = parseInstant(c.backOnlineAt);
+      // Strömmen av enligt butikens tider och tillbaka inom marginalen: inget avbrott.
+      const verdict = powerVerdict(c.power, parseInstant(periodFrom), to, POWER_RULE);
+      const from = verdict.kind === "outage" ? verdict.fromMs : to;
+      const fromIso = new Date(from).toISOString();
       if (to - from >= OFFLINE_ALERT_MINUTES * MINUTE_MS && to <= nowMs) {
         out.push({
-          id: id("offline", periodFrom),
+          id: id("offline", fromIso),
           machineId: c.machineId,
-          at: periodFrom,
+          at: fromIso,
           kind: "offline",
           source,
         });

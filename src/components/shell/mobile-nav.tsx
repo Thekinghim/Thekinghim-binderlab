@@ -62,8 +62,8 @@ export function MobileNav(props: ShellNavProps) {
     setClicked(null);
   }
 
-  // Genvägen bara för påfyllaren (ägare och admin når Fyll på från Drift), och inte på
-  // fältsidorna som har en egen knapp nedtill.
+  // Genvägen för alla som fyller på (ägare, admin, påfyllare), och inte på fältsidorna som
+  // har en egen knapp nedtill.
   const showRefill = showsRefillShortcut(role, pathname);
 
   return (

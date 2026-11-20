@@ -9,7 +9,8 @@
  *
  * En organisation utvärderas bara när
  *   - en kopplad automat är offline enligt regeln (sedd online förut, offline minst
- *     OFFLINE_ALERT_MINUTES, läget färskt), eller
+ *     OFFLINE_ALERT_MINUTES, läget färskt, och inte bara medan strömmen är av enligt
+ *     butikens strömtider plus marginalen efter på-tiden, se @/analytics/health/power), eller
  *   - ett offlinelarm är öppet för en automat med Awish-läge (så att det stängs när
  *     automaten är tillbaka).
  * Annars görs ingenting extra; en vanlig dag kostar det en fråga.
@@ -25,7 +26,13 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 
-import { OFFLINE_ALERT_MINUTES, STALE_MINUTES } from "@/analytics/health/connectivity";
+import {
+  EMPTY_CONNECTIVITY,
+  OFFLINE_ALERT_MINUTES,
+  offlineSinceMs,
+  STALE_MINUTES,
+} from "@/analytics/health/connectivity";
+import { powerHoursOf } from "@/analytics/health/power";
 import type { Db } from "@/db/client";
 import { deliverDue, type DeliverySummary } from "@/server/alerts/deliver";
 import { evaluateOrganization, type EvaluationSummary } from "@/server/alerts/evaluate";
@@ -38,38 +45,87 @@ export async function orgsNeedingOfflineEvaluation(
 ): Promise<string[]> {
   const ids = [...new Set(orgIds.filter((id) => id !== ""))];
   if (ids.length === 0) return [];
-  const rows = Array.from(
+  const idList = JSON.stringify(ids);
+  // Automater som kan vara offline enligt regeln, med butikens strömtider (aktuell placering,
+  // dagens datum i organisationens tidszon). Strömtiderna prövas nedan med samma regel som
+  // maskinhälsan (offlineSinceMs): offline medan strömmen är av enligt tiderna väcker inte
+  // larmjobbet var femte minut hela natten.
+  const candidates = Array.from(
+    await db.execute(
+      sql`select sm.organization_id as org_id, sm.awish_online, sm.awish_seen_at,
+                 sm.awish_online_at, sm.awish_offline_since, sm.awish_back_online_at,
+                 p.power_on_time, p.power_off_time, o.timezone
+          from public.source_machines sm
+          join public.organizations o on o.id = sm.organization_id
+          join public.data_sources ds
+            on ds.organization_id = sm.organization_id and ds.id = sm.data_source_id
+          left join lateral (
+            select st.power_on_time, st.power_off_time
+            from public.machine_placements mp
+            join public.stores st
+              on st.organization_id = mp.organization_id and st.id = mp.store_id
+            where mp.organization_id = sm.organization_id and mp.machine_id = sm.machine_id
+              and mp.valid_from <= (${now.toISOString()}::timestamptz at time zone o.timezone)::date
+              and (mp.valid_to is null
+                   or mp.valid_to >= (${now.toISOString()}::timestamptz at time zone o.timezone)::date)
+            order by mp.valid_from desc
+            limit 1
+          ) p on true
+          where sm.organization_id in (select jsonb_array_elements_text(${idList}::jsonb)::uuid)
+            and o.archived_at is null
+            and sm.machine_id is not null
+            and ds.archived_at is null
+            and sm.awish_online = false and sm.awish_online_at is not null
+            and sm.awish_offline_since
+                  <= ${now.toISOString()}::timestamptz - make_interval(mins => ${OFFLINE_ALERT_MINUTES})
+            and sm.awish_seen_at
+                  >= ${now.toISOString()}::timestamptz - make_interval(mins => ${STALE_MINUTES})`,
+    ),
+  ) as Record<string, unknown>[];
+  const out = new Set<string>();
+  for (const r of candidates) {
+    const state = {
+      ...EMPTY_CONNECTIVITY,
+      online: false,
+      seenAt: isoOf(r.awish_seen_at),
+      onlineAt: isoOf(r.awish_online_at),
+      offlineSince: isoOf(r.awish_offline_since),
+      backOnlineAt: isoOf(r.awish_back_online_at),
+      power: powerHoursOf(
+        r.power_on_time as string | null,
+        r.power_off_time as string | null,
+        typeof r.timezone === "string" ? r.timezone : undefined,
+      ),
+    };
+    if (offlineSinceMs(state, now) !== null) out.add(String(r.org_id));
+  }
+  // Ett öppet offlinelarm för en automat med Awish-läge: utvärdera, så att det stängs när
+  // automaten är tillbaka (eller när strömmen är av enligt butikens tider).
+  const open = Array.from(
     await db.execute(
       sql`select o.id from public.organizations o
-          where o.id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid)
+          where o.id in (select jsonb_array_elements_text(${idList}::jsonb)::uuid)
             and o.archived_at is null
-            and (
-              exists (
-                select 1 from public.source_machines sm
-                join public.data_sources ds
-                  on ds.organization_id = sm.organization_id and ds.id = sm.data_source_id
-                where sm.organization_id = o.id and sm.machine_id is not null
-                  and ds.archived_at is null
-                  and sm.awish_online = false and sm.awish_online_at is not null
-                  and sm.awish_offline_since
-                        <= ${now.toISOString()}::timestamptz - make_interval(mins => ${OFFLINE_ALERT_MINUTES})
-                  and sm.awish_seen_at
-                        >= ${now.toISOString()}::timestamptz - make_interval(mins => ${STALE_MINUTES})
-              )
-              or exists (
-                select 1 from public.alerts a
-                where a.organization_id = o.id and a.kind = 'machine_offline'
-                  and a.status = 'open' and a.machine_id is not null
-                  and exists (
-                    select 1 from public.source_machines sm
-                    where sm.organization_id = o.id and sm.machine_id = a.machine_id
-                      and sm.awish_seen_at is not null
-                  )
-              )
+            and exists (
+              select 1 from public.alerts a
+              where a.organization_id = o.id and a.kind = 'machine_offline'
+                and a.status = 'open' and a.machine_id is not null
+                and exists (
+                  select 1 from public.source_machines sm
+                  where sm.organization_id = o.id and sm.machine_id = a.machine_id
+                    and sm.awish_seen_at is not null
+                )
             )`,
     ),
   ) as { id: string }[];
-  return rows.map((r) => r.id);
+  for (const r of open) out.add(String(r.id));
+  return ids.filter((id) => out.has(id));
+}
+
+function isoOf(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 }
 
 /** Organisationerna (av de givna) som finns och inte är arkiverade. */

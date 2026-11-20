@@ -1,5 +1,6 @@
 /**
- * De flytande knapparna på mobilen (under lg): "Fyll på" för påfyllaren och "Fråga AI".
+ * De flytande knapparna på mobilen (under lg): "Fyll på" för den som fyller på (ägare, admin,
+ * påfyllare) och "Fråga AI".
  * På telefonen (under md) finns ingen flytande AI-knapp: den skymde innehåll till höger, och
  * AI nås alltid från toppraden. Mellan md och lg står den kvar.
  * Rena regler, så att skalet (luften under sidan), bottenraden och AI-knappen räknar med
@@ -15,13 +16,22 @@ export const FAB_SIZE_PX = 44;
 /** Luft mellan bottenraden, knappen och innehållet. */
 export const FAB_GAP_PX = 12;
 
+/** Rollerna som fyller på (samma som Fyll på, FIELD_REFILL_ROLES): ägare, admin och påfyllare. */
+const REFILL_ROLES: ReadonlySet<Role> = new Set<Role>(["owner", "admin", "refiller"]);
+
+/** Sant för rollerna som når Fyll på (genvägen på mobilen och raden i sidomenyn). */
+export function canRefill(role: Role): boolean {
+  return REFILL_ROLES.has(role);
+}
+
 /**
- * Påfyllarens genväg "Fyll på" ovanför bottenraden. Ägare och admin når Fyll på från Drift;
- * fältsidorna (Påfyllning och Besök) har en egen knapp.
+ * Genvägen "Fyll på" ovanför bottenraden, för alla som fyller på (ägare, admin, påfyllare).
+ * Inte på fältsidorna (Påfyllning och Besök), som har en egen knapp nedtill. Läsaren fyller
+ * inte på och får ingen.
  */
 export function showsRefillShortcut(role: Role, pathname: string | null | undefined): boolean {
   const path = pathname ?? "";
-  return role === "refiller" && path !== "/drift/pafyllning" && !path.startsWith("/drift/besok");
+  return canRefill(role) && path !== "/drift/pafyllning" && !path.startsWith("/drift/besok");
 }
 
 export interface FabLayout {
@@ -35,7 +45,7 @@ export interface FabLayout {
 
 /**
  * Var knapparna står och hur mycket luft sidan behöver (px, plus säkerhetsmarginalen).
- * Med "Fyll på" visas ingen flytande AI-knapp: påfyllarens viktigaste knapp får platsen,
+ * Med "Fyll på" visas ingen flytande AI-knapp: den viktigaste knappen i fält får platsen,
  * och AI nås från toppraden.
  */
 export function fabLayout(options: { refill: boolean; assistant: boolean }): FabLayout {

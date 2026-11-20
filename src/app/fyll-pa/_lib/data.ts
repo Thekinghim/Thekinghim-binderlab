@@ -48,6 +48,12 @@ export interface FillData {
    * (automatens id → när felet uppstod, ISO). Raden "Awish fick inte antalen för BL-003".
    */
   readonly awishPending: Readonly<Record<string, string>>;
+  /**
+   * Automater i butiker som stänger av strömmen på natten (stores.power_*): skärmen visar
+   * nya antal först när automaten startats om, så Fyll på påminner om det efter en
+   * påfyllning som skickats till Awish. Saknas = ingen.
+   */
+  readonly restartAfterPush?: readonly string[];
 }
 
 /** Automaterna som väntar på Awish (public.awish_push_pending, som användaren). */
@@ -139,7 +145,12 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
         .from(s.machines)
         .where(and(eq(s.machines.organizationId, orgId), isNull(s.machines.archivedAt))),
       tx
-        .select({ machineId: s.machinePlacements.machineId, storeName: s.stores.name })
+        .select({
+          machineId: s.machinePlacements.machineId,
+          storeName: s.stores.name,
+          powerOn: s.stores.powerOnTime,
+          powerOff: s.stores.powerOffTime,
+        })
         .from(s.machinePlacements)
         .innerJoin(
           s.stores,
@@ -275,6 +286,9 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       hasOthers: list.some((m) => !m.mine),
       recipes,
       awishPending,
+      restartAfterPush: placements
+        .filter((p) => p.powerOn !== null && p.powerOff !== null)
+        .map((p) => p.machineId),
     };
   });
 }
