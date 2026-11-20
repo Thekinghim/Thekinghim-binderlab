@@ -180,7 +180,11 @@ const TEXT_OID = 25;
  */
 export function rlsSetup(client: Sql, jwt: string): SQL {
   const claims = client.typed(jwt, TEXT_OID);
-  return sql`select set_config('request.jwt.claims', ${claims}, true), set_config('role', 'authenticated', true)`;
+  // idle_in_transaction_session_timeout: en transaktion vars funktion frysts eller avbrutits
+  // (Vercel fryser funktionen när svaret är skickat) stängs av databasen efter 30 s i stället
+  // för att hålla en av poolens få anslutningar tills funktionen dödas. Annars tar
+  // anslutningarna slut och alla sidor hänger.
+  return sql`select set_config('request.jwt.claims', ${claims}, true), set_config('role', 'authenticated', true), set_config('idle_in_transaction_session_timeout', '30s', true)`;
 }
 
 /**
