@@ -142,7 +142,10 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
       nov.) räknas bara rapportens belopp för de dagarna av, och en mening säger resten: "Avräkningen för oktober
       2026 betalades 5 nov. 2026 med 6 180,75 kr och gällde hela månaden. Av den räknas 5 987,75 kr av här, för
       14–31 okt. 2026. Resten, 193,00 kr, gäller dagar utanför rapporten." Går delen inte att avgöra (provision
-      eller hyra) räknas inget av, och meningen säger det.
+      eller hyra) räknas inget av, och meningen säger det. En rättelse som lagts på en senare avräkning
+      (Utbetalning → "Lägg på nästa avräkning") räknas som betald för sin egen månad, inte för avräkningens:
+      "Redan betalt 3 dec. 2026 (rättelse för oktober 2026 på avräkningen för november 2026)". En negativ rättelse
+      står som "Avdraget …" med minusbelopp.
     - **Ingen ersättning:** "Inget att fakturera för 1–18 nov. 2026 (ingen vinst, andelen blir 0 kr)." i stället
       för ett tomt fakturablock, och raden "Er andel 50 % (ingen vinst, 0 kr)".
     - **Exklusive moms överallt:** rubriken "Er ersättning för …: 10 278,25 kr exkl. moms.", nyckeltalet "Er

@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  paymentsFromSettlements,
   AGREEMENT_FORM_LABEL,
   AGREEMENT_MISSING_LINE,
   AGREEMENT_MISSING_MESSAGE,
@@ -713,6 +714,112 @@ describe("betalningen gäller en avräkningsmånad", () => {
 
   it("en rapport från före ändringen: inga meningar om betalningar", () => {
     expect(paymentNotes({ ...paidOct(618_075), rev: undefined }, CASE)).toEqual([]);
+  });
+});
+
+describe("en rättelse betald på en senare avräkning", () => {
+  const rev2: StoreBasis = { ...BASIS, rev: 2 };
+  // Oktober betald 19 nov. med 60 kr; inköpspriset rättades så att oktober blev 70 kr. De
+  // 10 kr lades på novemberavräkningen (485 kr för november), som betalades med 495 kr.
+  const NOV = { paidOn: "2026-12-03", month: "2026-11", paidOre: 49_500 } as const;
+  const settlements = [
+    { paidOn: "2026-11-19", month: "2026-10", paidOre: 6_000, corrections: [] },
+    { ...NOV, corrections: [{ month: "2026-10", amountOre: 1_000 }] },
+  ] as const;
+  const month = (m: "2026-10" | "2026-11", shareOre: number) =>
+    rep(
+      shareOre,
+      {},
+      {
+        period: { start: `${m}-01`, end: m === "2026-10" ? `${m}-31` : `${m}-30` },
+        splits: [
+          {
+            start: `${m}-01`,
+            end: m === "2026-10" ? `${m}-31` : `${m}-30`,
+            shareOre,
+          },
+        ],
+      },
+    );
+
+  it("delas upp: avräkningens egen månad och rättelsen för sin månad", () => {
+    expect(paymentsFromSettlements(settlements, "2026-11", "2026-11")).toEqual([
+      { paidOn: "2026-12-03", amountOre: 48_500, month: "2026-11" },
+    ]);
+    expect(paymentsFromSettlements(settlements, "2026-10", "2026-10")).toEqual([
+      { paidOn: "2026-11-19", amountOre: 6_000, month: "2026-10" },
+      { paidOn: "2026-12-03", amountOre: 1_000, month: "2026-10", paidWithMonth: "2026-11" },
+    ]);
+  });
+
+  it("novemberrapporten räknar bara av novembers del", () => {
+    const b = { ...rev2, payments: paymentsFromSettlements(settlements, "2026-11", "2026-11") };
+    const rows = invoiceRows(b, month("2026-11", 48_500));
+    expect(rows.slice(3).map((r) => [r.label, r.amountOre])).toEqual([
+      ["Redan betalt 3 dec. 2026 (avräkning november 2026)", 48_500],
+      ["Kvar att betala", 12_125],
+    ]);
+    expect(paymentNotes(b, month("2026-11", 48_500))).toEqual([]);
+  });
+
+  it("oktoberrapporten räknar av rättelsen som betald för oktober", () => {
+    const b = { ...rev2, payments: paymentsFromSettlements(settlements, "2026-10", "2026-10") };
+    const rows = invoiceRows(b, month("2026-10", 7_000));
+    expect(rows.slice(3).map((r) => [r.label, r.amountOre])).toEqual([
+      ["Redan betalt 19 nov. 2026 (avräkning oktober 2026)", 6_000],
+      [
+        "Redan betalt 3 dec. 2026 (rättelse för oktober 2026 på avräkningen för november 2026)",
+        1_000,
+      ],
+      ["Kvar att betala", 1_750],
+    ]);
+    // Betalt för oktober (60 + 10 kr) är rapportens belopp: ingen mening om skillnad.
+    expect(paymentNotes(b, month("2026-10", 7_000))).toEqual([]);
+  });
+
+  it("en negativ rättelse dras av från månaden den gäller", () => {
+    const over = [
+      { paidOn: "2026-11-19", month: "2026-10", paidOre: 8_000, corrections: [] },
+      { ...NOV, paidOre: 46_500, corrections: [{ month: "2026-10", amountOre: -2_000 }] },
+    ] as const;
+    expect(paymentsFromSettlements(over, "2026-11", "2026-11")).toEqual([
+      { paidOn: "2026-12-03", amountOre: 48_500, month: "2026-11" },
+    ]);
+    const b = { ...rev2, payments: paymentsFromSettlements(over, "2026-10", "2026-10") };
+    const rows = invoiceRows(b, month("2026-10", 6_000));
+    expect(rows.slice(3).map((r) => [r.label, r.amountOre])).toEqual([
+      ["Redan betalt 19 nov. 2026 (avräkning oktober 2026)", 8_000],
+      ["Avdraget 3 dec. 2026 (rättelse för oktober 2026 på avräkningen för november 2026)", -2_000],
+      ["Kvar att betala", 1_500],
+    ]);
+  });
+
+  it("betalt med rättelse skiljer från rapportens belopp: det sägs en gång", () => {
+    const b = { ...rev2, payments: paymentsFromSettlements(settlements, "2026-10", "2026-10") };
+    expect(paymentNotes(b, month("2026-10", 7_500))).toEqual([
+      `För oktober 2026 är 70,00${NBSP}kr betalt, med rättelser. Rapportens belopp för oktober 2026 är 75,00${NBSP}kr.`,
+    ]);
+  });
+
+  it("del av månaden: avräkningen och rättelsen räknas av högst upp till rapportens dagar", () => {
+    const part = rep(
+      3_000,
+      {},
+      {
+        period: { start: "2026-10-01", end: "2026-10-14" },
+        splits: [{ start: "2026-10-01", end: "2026-10-14", shareOre: 3_000 }],
+      },
+    );
+    const small = [
+      { paidOn: "2026-11-19", month: "2026-10", paidOre: 2_500, corrections: [] },
+      { ...NOV, corrections: [{ month: "2026-10", amountOre: 1_000 }] },
+    ] as const;
+    const b = { ...rev2, payments: paymentsFromSettlements(small, "2026-10", "2026-10") };
+    expect(
+      invoiceRows(b, part)
+        .slice(3)
+        .map((r) => r.amountOre),
+    ).toEqual([2_500, 500, 750]);
   });
 });
 

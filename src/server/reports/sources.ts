@@ -27,6 +27,7 @@ import {
   STORE_VAT_RATE_BP,
   brandOf,
   contractForPeriod,
+  paymentsFromSettlements,
   type AgreementForm,
   type BasisRecipient,
   type LedgerAccount,
@@ -35,6 +36,7 @@ import {
   type StoreBasis,
 } from "@/reports";
 import { readCompanyDetails, readReportBasisSettings } from "@/server/contracts/operator";
+import { parseCorrections } from "@/server/settlements/model";
 import {
   COUNTED_ORDER,
   queryAgreements,
@@ -330,8 +332,9 @@ export async function queryStoreBasis(
   // Butikens val av avtalsform. Läses så att koden också fungerar innan kolumnen finns.
   const [storeRow] = Array.from(
     await tx.execute(
-      sql`select to_jsonb(st) ->> 'agreement_form' as form, st.address
+      sql`select tm.agreement_form as form, st.address
             from public.stores st
+            left join public.store_terms(${orgId}::uuid) tm on tm.store_id = st.id
            where st.organization_id = ${orgId}::uuid and st.id = ${storeId}::uuid`,
     ),
   ) as Array<{ form: string | null; address: string | null }>;
@@ -341,10 +344,10 @@ export async function queryStoreBasis(
     await tx.execute(
       sql`select so.legal_name, so.org_number, so.vat_number, so.street_address,
                  so.postal_code, so.city
-            from public.stores st
+            from public.store_terms(${orgId}::uuid) tm
             join public.store_owners so
-              on so.organization_id = st.organization_id and so.id = st.owner_id
-           where st.organization_id = ${orgId}::uuid and st.id = ${storeId}::uuid`,
+              on so.organization_id = ${orgId}::uuid and so.id = tm.owner_id
+           where tm.store_id = ${storeId}::uuid`,
     ),
   ) as Array<{
     legal_name: string;
@@ -357,28 +360,47 @@ export async function queryStoreBasis(
   const agreementForm: AgreementForm | null =
     storeRow?.form === "oral" || storeRow?.form === "written" ? storeRow.form : null;
   // Betalda avräkningar för rapportens månader (bara läsning: avräkningarna ändras aldrig
-  // härifrån). Beloppet som betalades, när det sparas skilt från avräkningens belopp.
+  // härifrån). Beloppet som betalades, när det sparas skilt från avräkningens belopp. Också
+  // senare avräkningar med en rättelse för en av rapportens månader: rättelsen räknas som
+  // betald för sin månad, inte för avräkningens (paymentsFromSettlements).
+  const firstMonth = period.start.slice(0, 7) as IsoMonth;
+  const lastMonth = period.end.slice(0, 7) as IsoMonth;
   const paidRows = Array.from(
     await tx.execute(
       sql`select ss.paid_on::text as paid_on, ss.month::text as month,
-                 coalesce((to_jsonb(ss) ->> 'paid_amount_ore')::bigint, ss.amount_ore) as amount_ore
+                 coalesce((to_jsonb(ss) ->> 'paid_amount_ore')::bigint, ss.amount_ore) as amount_ore,
+                 coalesce(to_jsonb(ss) -> 'corrections', '[]'::jsonb) as corrections
             from public.store_settlements ss
            where ss.organization_id = ${orgId}::uuid
              and ss.store_id = ${storeId}::uuid
              and ss.paid_on is not null
-             and ss.month between ${monthStart(period.start.slice(0, 7) as IsoMonth)}::date
-                              and ${period.end}::date
+             and (ss.month between ${monthStart(firstMonth)}::date and ${period.end}::date
+                  or exists (
+                    select 1
+                      from jsonb_array_elements(
+                             case jsonb_typeof(to_jsonb(ss) -> 'corrections')
+                               when 'array' then to_jsonb(ss) -> 'corrections'
+                               else '[]'::jsonb end) c
+                     where c ->> 'month' between ${firstMonth} and ${lastMonth}))
            order by ss.paid_on, ss.month`,
     ),
-  ) as Array<{ paid_on: string; month: string; amount_ore: string | number }>;
+  ) as Array<{
+    paid_on: string;
+    month: string;
+    amount_ore: string | number;
+    corrections: unknown;
+  }>;
   // Avräkningens månad: rapporten räknar bara av det som gäller dess dagar (store-basis).
-  const payments = paidRows
-    .map((r) => ({
+  const payments = paymentsFromSettlements(
+    paidRows.map((r) => ({
       paidOn: r.paid_on as IsoDate,
-      amountOre: Number(r.amount_ore),
       month: r.month.slice(0, 7) as IsoMonth,
-    }))
-    .filter((p) => Number.isSafeInteger(p.amountOre) && p.amountOre > 0);
+      paidOre: Number(r.amount_ore),
+      corrections: parseCorrections(r.corrections),
+    })),
+    firstMonth,
+    lastMonth,
+  );
   const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
   const legalName = clean(company.companyName);
   return {

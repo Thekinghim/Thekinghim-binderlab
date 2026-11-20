@@ -474,3 +474,13 @@ Vägval och det som är kvar:
   stämmer med de enskilda rapporterna, mottagare per ägare (`report_recipients` med `owner_id`), PDF och mejl,
   arkiv och godkännande som de andra typerna, och ett beslut om avräkningen ska göras per ägare (en betalning)
   eller per butik som i dag.
+
+## 19 nov. – samlat: rättelser och påfyllarens läsrätt efter granskningen
+
+- **Redan betalt med rättelser.** En rättelse som lagts på en senare avräkning ingick i den avräkningens betalda
+  belopp, och butiksrapporten räknade av hela beloppet för avräkningens månad. Nu delas den betalda avräkningen
+  upp (`paymentsFromSettlements` i `src/reports/store-basis.ts`): avräkningens egen månad får det betalda minus
+  rättelserna, och varje rättelse blir en egen betalning för sin månad (`paidWithMonth`). `queryStoreBasis` läser
+  också senare avräkningar med en rättelse för en av rapportens månader. Del av en månad: det som räknas av är
+  högst rapportens belopp för dagarna, räknat på allt som betalats för månaden. Test:
+  `test/db/rattelse-i-rapport.test.ts` och `store-basis.test.ts`.
