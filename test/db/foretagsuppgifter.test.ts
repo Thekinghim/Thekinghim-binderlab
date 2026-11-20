@@ -76,7 +76,7 @@ beforeAll(async () => {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Sega gubben" })
-      .returning();
+      .returning({ id: s.stores.id });
     await tx.insert(s.storeAgreements).values({
       ...org,
       storeId: store!.id,
@@ -243,7 +243,7 @@ describe("Skapa kontrakt: startdagen täcker försäljningen", () => {
       const [store] = await tx
         .insert(s.stores)
         .values({ ...org, name: "Kiosken" })
-        .returning();
+        .returning({ id: s.stores.id });
       await tx
         .insert(s.storeAgreements)
         .values({ ...org, storeId: store!.id, validFrom: "2026-10-14", commissionBp: 1_000 });

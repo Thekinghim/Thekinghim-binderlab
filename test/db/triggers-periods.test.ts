@@ -151,7 +151,7 @@ describe("månadsstängning (mars 2025 stängd)", () => {
       const [store] = await tx
         .insert(s.stores)
         .values({ organizationId: F.orgId, name: "Ny butik" })
-        .returning();
+        .returning({ id: s.stores.id });
       return attempt(tx, (sp) =>
         sp.insert(s.storeAgreements).values({
           organizationId: F.orgId,

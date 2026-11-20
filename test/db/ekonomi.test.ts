@@ -89,7 +89,7 @@ async function seedEconomyFixture(): Promise<Fixture> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Testbutik" })
-      .returning();
+      .returning({ id: s.stores.id });
     const [agreement] = await tx
       .insert(s.storeAgreements)
       .values({ ...org, storeId: store!.id, validFrom: "2025-01-01", commissionBp: 1000 })

@@ -208,7 +208,7 @@ describe("Varor i Awish: behörighet och påslag", () => {
       const [st] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Butik Nekad" })
-        .returning();
+        .returning({ id: s.stores.id });
       await tx
         .insert(s.memberships)
         .values({ organizationId: orgId, userId: store.id, role: "store", storeId: st!.id });

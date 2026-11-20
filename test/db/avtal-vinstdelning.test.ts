@@ -55,7 +55,7 @@ beforeAll(async () => {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "Sega gubben" })
-      .returning();
+      .returning({ id: s.stores.id });
     storeId = store!.id;
     const [m] = await tx
       .insert(s.machines)
@@ -134,7 +134,7 @@ describe("avtal med vinstdelning", () => {
       const [x] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: `Annan ${uniqueSuffix()}` })
-        .returning();
+        .returning({ id: s.stores.id });
       return x!.id;
     });
     const r = await createAgreementFor(

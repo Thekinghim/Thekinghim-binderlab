@@ -151,7 +151,7 @@ describe("slut i automat kommer direkt", () => {
       const [store] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Sega gubben" })
-        .returning();
+        .returning({ id: s.stores.id });
       await tx.insert(s.machinePlacements).values({
         organizationId: orgId,
         machineId,

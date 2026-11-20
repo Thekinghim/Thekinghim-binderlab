@@ -8,7 +8,7 @@
 
 import "server-only";
 
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import * as s from "@/db/schema";
 import type { IsoMonth } from "@/domain";
@@ -51,7 +51,11 @@ async function ownerStores(
       .where(
         and(
           eq(s.stores.organizationId, orgId),
-          eq(s.stores.ownerId, ownerId),
+          inArray(
+            s.stores.id,
+            sql`(select tm.store_id from public.store_terms(${orgId}::uuid) tm
+                  where tm.owner_id = ${ownerId}::uuid)`,
+          ),
           isNull(s.stores.archivedAt),
         ),
       )

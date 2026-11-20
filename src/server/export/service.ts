@@ -82,9 +82,16 @@ async function columnsByTable(tx: Tx): Promise<Map<string, Array<{ name: string;
   return map;
 }
 
+/**
+ * Butikens ägare och avtalsform får appen inte läsa ur stores direkt (påfyllare ser dem
+ * inte); de läses genom public.store_terms, som ger dem till ägare, admin och läsare.
+ */
+const STORE_TERMS = new Set(["owner_id", "agreement_form"]);
+
 /** Ett värde som text: tider i UTC (ISO 8601), sant/falskt som true/false, resten som i Postgres. */
-function projection(column: { name: string; type: string }): SQL {
+function projection(column: { name: string; type: string }, alias = "t"): SQL {
   const id = sql.identifier(column.name);
+  if (alias !== "t") return sql`${sql.identifier(alias)}.${id}::text as ${id}`;
   if (column.type === "boolean") {
     return sql`case when t.${id} then 'true' when not t.${id} then 'false' end as ${id}`;
   }
@@ -120,10 +127,19 @@ async function readTable(
     spec.table === "organizations"
       ? sql`t.id = ${organizationId}::uuid`
       : sql`t.organization_id = ${organizationId}::uuid`;
+  const terms = spec.table === "stores";
   const rows = await query<Row>(
     tx,
-    sql`select ${sql.join(columns.map(projection), sql`, `)}
+    sql`select ${sql.join(
+      columns.map((c) => projection(c, terms && STORE_TERMS.has(c.name) ? "x" : "t")),
+      sql`, `,
+    )}
         from ${sql.identifier("public")}.${sql.identifier(spec.table)} t
+        ${
+          terms
+            ? sql`left join public.store_terms(${organizationId}::uuid) x on x.store_id = t.id`
+            : sql``
+        }
         where ${where}
         ${
           order.length > 0

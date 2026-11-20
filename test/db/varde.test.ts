@@ -53,7 +53,7 @@ async function seed(name: string): Promise<Fixture> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: `${name} butik` })
-      .returning();
+      .returning({ id: s.stores.id });
     await tx
       .insert(s.storeAgreements)
       .values({ ...org, storeId: store!.id, validFrom: "2025-01-01", commissionBp: 1000 });

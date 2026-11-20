@@ -58,7 +58,7 @@ beforeAll(async () => {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "ICA Lund", address: "Storgatan 1", city: "Lund" })
-      .returning();
+      .returning({ id: s.stores.id });
     const [machine] = await tx
       .insert(s.machines)
       .values({ ...org, code: "BL-001", name: "Automat 1", activeFrom: "2025-01-01" })

@@ -14,6 +14,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import * as s from "@/db/schema";
+import { readableStoreColumns } from "@/db/store-columns";
 import { LocalFileStore } from "@/import/file-store";
 import { listOrganizationsFor, type SessionUser } from "@/server/access";
 import {
@@ -94,7 +95,7 @@ describe("Skapa avtal", () => {
       const [st] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Sega gubben", address: "Storgatan 1" })
-        .returning();
+        .returning({ id: s.stores.id });
       await tx.insert(s.storeAgreements).values({
         organizationId: orgId,
         storeId: st!.id,
@@ -151,7 +152,7 @@ describe("Skapa avtal", () => {
       const [st] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Samma dag" })
-        .returning();
+        .returning({ id: s.stores.id });
       await tx.insert(s.storeAgreements).values({
         organizationId: orgId,
         storeId: st!.id,
@@ -182,7 +183,7 @@ describe("Skapa avtal", () => {
       const [st] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Dubbelklick" })
-        .returning();
+        .returning({ id: s.stores.id });
       return st!.id;
     });
     const target = { target: `store:${storeId}`, validFrom: TODAY };
@@ -225,7 +226,7 @@ describe("Skapa avtal", () => {
     );
     expect(lead).toMatchObject({ storeId: res.storeId, stage: "agreement" });
     const [store] = await asUser(owner, (tx) =>
-      tx.select().from(s.stores).where(eq(s.stores.id, res.storeId)),
+      tx.select(readableStoreColumns).from(s.stores).where(eq(s.stores.id, res.storeId)),
     );
     expect(store).toMatchObject({ name: "Spelhörnan", city: "Umeå", email: "kim@example.se" });
   });
@@ -235,7 +236,7 @@ describe("Skapa avtal", () => {
       const [st] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Bakåt" })
-        .returning();
+        .returning({ id: s.stores.id });
       return st!.id;
     });
     const first = await createStoreContractFor(
@@ -258,7 +259,7 @@ describe("Skapa avtal", () => {
       const [st] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Utan PDF" })
-        .returning();
+        .returning({ id: s.stores.id });
       return st!.id;
     });
     const res = await createStoreContractFor(
@@ -286,7 +287,7 @@ describe("Skapa avtal", () => {
       const [st] = await tx
         .insert(s.stores)
         .values({ organizationId: orgId, name: "Läsarens" })
-        .returning();
+        .returning({ id: s.stores.id });
       return st!.id;
     });
     await expect(

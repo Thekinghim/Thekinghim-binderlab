@@ -65,7 +65,7 @@ async function seedLonsamhet(): Promise<Fixture> {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "ICA Testbutik" })
-      .returning();
+      .returning({ id: s.stores.id });
     await tx.insert(s.storeAgreements).values({
       ...org,
       storeId: store!.id,

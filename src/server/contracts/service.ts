@@ -29,6 +29,7 @@ import { and, asc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
+import { readableStoreColumns } from "@/db/store-columns";
 import { DEFAULT_PROFIT_SHARE_BP, type IsoDate } from "@/domain";
 import type { FileStore } from "@/import/file-store";
 import {
@@ -392,7 +393,7 @@ export async function createStoreContractFor(
     const storeId = await resolveStore(tx, orgId, input.target);
     // Låser butiken så att två samtidiga ändringar av villkoren köas.
     const [store] = await tx
-      .select()
+      .select(readableStoreColumns)
       .from(s.stores)
       .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, storeId)))
       .for("update");
@@ -595,7 +596,7 @@ export async function contractTemplateHtmlFor(viewer: Viewer, contractId: string
     if (!c || c.template === null) throw new ContractError("Avtalet är inte skapat från mallen.");
     const [[store], [terms], operator] = await Promise.all([
       tx
-        .select()
+        .select(readableStoreColumns)
         .from(s.stores)
         .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, c.storeId))),
       tx

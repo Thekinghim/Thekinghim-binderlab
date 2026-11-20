@@ -484,3 +484,12 @@ Vägval och det som är kvar:
   också senare avräkningar med en rättelse för en av rapportens månader. Del av en månad: det som räknas av är
   högst rapportens belopp för dagarna, räknat på allt som betalats för månaden. Test:
   `test/db/rattelse-i-rapport.test.ts` och `store-basis.test.ts`.
+- **Påfyllaren läste butikens ägare och avtalsform.** `stores.owner_id` och `stores.agreement_form` låg i
+  butikstabellen, som påfyllaren läser (namn och adress). Påfyllaren kunde se vilka butiker som har samma ägare
+  och vilka som bara har ett muntligt avtal. Nu är select på tabellen bytt mot select per kolumn utom de två
+  (`20261220120000_butik_agare_och_avtalsform_las.sql`), och appen läser dem genom `public.store_terms`, som bara
+  ger rader till ägare, admin och läsare (och nattjobben). Exporten läser dem samma väg. Tester:
+  `butiksagare.test.ts` (påfyllaren nekas kolumnerna och får inga rader), katalogtestet, och demotestet läser
+  butikens läsbara kolumner i stället för hela raden. Testerna som skapar butiker som användare hämtar bara id:t.
+  Under minuterna mellan migreringen och den nya koden misslyckas "Exportera all data" i den gamla koden (den läser
+  alla kolumner den har rätt till, och `owner_id` går att ändra men inte läsa).

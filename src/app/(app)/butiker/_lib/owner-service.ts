@@ -8,7 +8,7 @@
 
 import "server-only";
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -68,7 +68,9 @@ export async function loadOwnersFor(viewer: Viewer): Promise<OwnerView[]> {
         .select({
           id: s.stores.id,
           name: s.stores.name,
-          ownerId: s.stores.ownerId,
+          ownerId: sql<
+            string | null
+          >`(select tm.owner_id from public.store_terms(${orgId}::uuid) tm where tm.store_id = ${s.stores.id})`,
           archivedAt: s.stores.archivedAt,
         })
         .from(s.stores)
@@ -255,7 +257,11 @@ export async function setOwnerArchivedFor(viewer: Viewer, raw: unknown): Promise
           .where(
             and(
               eq(s.stores.organizationId, orgId),
-              eq(s.stores.ownerId, ownerId),
+              inArray(
+                s.stores.id,
+                sql`(select tm.store_id from public.store_terms(${orgId}::uuid) tm
+                      where tm.owner_id = ${ownerId}::uuid)`,
+              ),
               isNull(s.stores.archivedAt),
             ),
           )

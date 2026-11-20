@@ -198,7 +198,7 @@ beforeAll(async () => {
     const [store] = await tx
       .insert(s.stores)
       .values({ ...org, name: "ICA Lund" })
-      .returning();
+      .returning({ id: s.stores.id });
     const [contract] = await tx
       .insert(s.contracts)
       .values({ ...org, storeId: store!.id, validFrom: "2026-01-01" })

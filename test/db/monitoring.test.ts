@@ -262,7 +262,7 @@ describe("rapportutskick", () => {
       const [store] = await tx
         .insert(s.stores)
         .values({ ...org, name: "Nordstan" })
-        .returning();
+        .returning({ id: s.stores.id });
       await tx.insert(s.storeAgreements).values({
         ...org,
         storeId: store!.id,
