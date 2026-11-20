@@ -867,8 +867,10 @@ export function withPacked(
  * Awish fick nya antal (minst ett fack skickades) för en automat i en butik som stänger av
  * strömmen på natten. Skärmen på en sådan automat läser antalen när den startar, så den visar
  * inte de nya förrän den startats om (automater med ström dygnet runt behöver det inte).
- * Ingen påminnelse när inget skickades (Awish hade redan rätt antal, inte kopplad, fel) eller
- * för automater vars sändning inte gick fram.
+ * Ingen påminnelse när inget skickades (Awish hade redan rätt antal, inte kopplad, fel). Tog
+ * Awish emot en del av antalen på automaten får den påminnelsen (skärmen visar annars de
+ * gamla). Gäller också när sändningen gick fram senare ("Försök igen", eller appen själv).
+ * `machineIds`: automaterna beskedet gäller; null = alla i beskedet.
  */
 export function needsRestartReminder(
   awish:
@@ -876,14 +878,22 @@ export function needsRestartReminder(
         readonly state: string;
         readonly slots?: number;
         readonly failedMachineIds?: readonly string[];
+        readonly updatedMachineIds?: readonly string[];
       }
     | undefined,
-  machineIds: readonly string[],
+  machineIds: readonly string[] | null,
   restartAfterPush: readonly string[] | undefined,
 ): boolean {
-  if (!awish || (awish.slots ?? 0) <= 0) return false;
-  if (awish.state !== "sent" && awish.state !== "partial") return false;
+  if (!awish) return false;
   const restart = new Set(restartAfterPush ?? []);
+  const asked = machineIds === null ? null : new Set(machineIds);
+  const about = (id: string) => restart.has(id) && (asked === null || asked.has(id));
+  // Beskedet säger vilka automater Awish fick nya antal för (också om något annat på dem
+  // inte gick fram): påminn för dem.
+  if (awish.updatedMachineIds) return awish.updatedMachineIds.some(about);
+  // Äldre besked utan listan: bara när allt gick fram för automaten.
+  if ((awish.slots ?? 0) <= 0) return false;
+  if (awish.state !== "sent" && awish.state !== "partial") return false;
   const failed = new Set(awish.failedMachineIds ?? []);
-  return machineIds.some((id) => restart.has(id) && !failed.has(id));
+  return (machineIds ?? [...restart]).some((id) => about(id) && !failed.has(id));
 }

@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   connectivitySignals,
   connectivityView,
+  EMPTY_CONNECTIVITY,
+  nextConnectivity,
   offlineSinceMs,
+  type ConnectivityState,
   type MachineConnectivity,
 } from "./connectivity";
 import {
@@ -50,7 +53,7 @@ describe("strömtider: väggtid och sommartid", () => {
     );
   });
 
-  it("klockslag som inte finns (02:30 när sommartiden börjar) blir efter hoppet", () => {
+  it("klockslag som inte finns (02:30 när sommartiden börjar) blir 03:30", () => {
     expect(iso(wallClockMs("2026-03-29", 2 * 60 + 30, "Europe/Stockholm"))).toBe(
       "2026-03-29T01:30:00.000Z",
     );
@@ -208,5 +211,90 @@ describe("anslutningen med strömtider", () => {
     };
     expect(connectivityView(day, now).state).toBe("offline");
     expect(offlineSinceMs(day, now)).toBe(at("2026-11-21T12:10:00Z"));
+  });
+});
+
+describe("fladder och strömtider (kort blink på kvällen, sedan strömmen av)", () => {
+  /** Lokal tid i Stockholm (vintertid, +01:00) dag `day` i november 2026. */
+  const L = (day: number, hhmm: string) => `2026-11-${day}T${hhmm}:00+01:00`;
+
+  /** Synken var femte minut; online i [from, to) enligt `online`. */
+  function run(power: PowerHours | null, plan: [string, string, boolean][]) {
+    let c: ConnectivityState = EMPTY_CONNECTIVITY;
+    const offlineAt: string[] = [];
+    for (const [from, to, online] of plan) {
+      for (let t = Date.parse(from); t < Date.parse(to); t += 5 * 60_000) {
+        c = nextConnectivity(c, { isOnline: online, status: null }, t, power);
+        const since = offlineSinceMs({ ...c, power }, t);
+        if (since !== null) offlineAt.push(iso(t));
+      }
+    }
+    return { c, offlineAt };
+  }
+
+  const blink: [string, string, boolean][] = [
+    [L(20, "20:00"), L(20, "20:30"), true],
+    [L(20, "20:30"), L(20, "20:45"), false],
+    [L(20, "20:45"), L(20, "21:05"), true],
+    [L(20, "21:05"), L(21, "10:05"), false],
+    [L(21, "10:05"), L(21, "11:00"), true],
+  ];
+
+  it("med strömtider: aldrig offline, och natten blir en egen period", () => {
+    const { c, offlineAt } = run(NIGHT, blink);
+    expect(offlineAt).toEqual([]);
+    expect(c.lastOfflineFrom).toBe(iso(at(L(20, "21:05"))));
+  });
+
+  it("utan strömtider: samma fladder som förut (perioden från blinken 20:30)", () => {
+    const { offlineAt } = run(null, blink);
+    expect(offlineAt[0]).toBe(iso(at(L(20, "21:05"))));
+    const c = nextConnectivity(
+      nextConnectivity(
+        nextConnectivity(
+          { ...EMPTY_CONNECTIVITY, online: true, onlineAt: L(20, "20:00") },
+          { isOnline: false, status: null },
+          L(20, "20:30"),
+        ),
+        { isOnline: true, status: null },
+        L(20, "20:45"),
+      ),
+      { isOnline: false, status: null },
+      L(20, "21:05"),
+    );
+    expect(c.offlineSince).toBe(iso(at(L(20, "20:30"))));
+  });
+
+  it("inte tillbaka på morgonen: offline sedan 10:00, larmar efter marginalen", () => {
+    const { offlineAt } = run(NIGHT, [
+      ...blink.slice(0, 3),
+      [L(20, "21:05"), L(21, "11:00"), false],
+    ]);
+    expect(offlineAt[0]).toBe(iso(at(L(21, "10:30"))));
+    const c = run(NIGHT, [...blink.slice(0, 3), [L(20, "21:05"), L(21, "10:35"), false]]).c;
+    expect(offlineSinceMs({ ...c, power: NIGHT }, L(21, "10:30"))).toBe(at(L(21, "10:00")));
+  });
+
+  it("fladder mitt på dagen fortsätter samma period, också med strömtider", () => {
+    const { c, offlineAt } = run(NIGHT, [
+      [L(20, "13:00"), L(20, "14:00"), true],
+      [L(20, "14:00"), L(20, "14:10"), false],
+      [L(20, "14:10"), L(20, "14:20"), true],
+      [L(20, "14:20"), L(20, "14:40"), false],
+    ]);
+    expect(c.offlineSince).toBe(iso(at(L(20, "14:00"))));
+    expect(offlineAt[0]).toBe(iso(at(L(20, "14:20"))));
+  });
+
+  it("avbrott från eftermiddagen, tillbaka en stund 20:50, sedan strömmen av: inget larm på natten", () => {
+    const { offlineAt } = run(NIGHT, [
+      [L(20, "14:00"), L(20, "15:00"), true],
+      [L(20, "15:00"), L(20, "20:50"), false],
+      [L(20, "20:50"), L(20, "21:00"), true],
+      [L(20, "21:00"), L(21, "10:05"), false],
+    ]);
+    // Larmar på eftermiddagen (riktigt avbrott), men inte efter att automaten kom tillbaka.
+    expect(offlineAt[0]).toBe(iso(at(L(20, "15:20"))));
+    expect(offlineAt.at(-1)).toBe(iso(at(L(20, "20:45"))));
   });
 });

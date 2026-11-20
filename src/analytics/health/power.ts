@@ -20,7 +20,7 @@
  * Av-tid efter midnatt fungerar (på 07:00, av 01:00). Tiderna är väggtid: på dagar då
  * sommartiden börjar eller slutar gäller samma klockslag (ett avbrott blir då en timme
  * längre eller kortare). Ett klockslag som inte finns den dagen (02:30 när klockan hoppar
- * fram) räknas från första tidpunkten efter hoppet.
+ * fram) räknas en timme senare (03:30).
  */
 
 import type { IsoDate } from "@/domain";
@@ -100,7 +100,7 @@ function offsetAt(ms: number, timeZone: string): number {
 /**
  * Tidpunkten för väggtiden `minutes` efter midnatt på `date` i tidszonen. Finns klockslaget
  * två gånger (klockan ställs tillbaka) blir det det första; finns det inte (klockan hoppar
- * fram) blir det första tidpunkten efter hoppet.
+ * fram) blir det en timme senare (02:30 blir 03:30).
  */
 export function wallClockMs(date: IsoDate, minutes: number, timeZone: string): number {
   const wall = Date.parse(`${date}T00:00:00Z`) + minutes * MINUTE_MS;
@@ -113,7 +113,7 @@ export function wallClockMs(date: IsoDate, minutes: number, timeZone: string): n
     const p = localParts(c, timeZone);
     if (`${p.date}T${p.time}` === target) return c;
   }
-  // Klockslaget finns inte (hoppet fram): det som ligger efter hoppet.
+  // Klockslaget finns inte (hoppet fram): en timme senare, efter hoppet.
   return candidates[1]!;
 }
 

@@ -8,6 +8,7 @@
  *   inte larmjobbet, och statusen är "strömmen av"; tillbaka inom marginalen: inget alls,
  * - inte tillbaka efter marginalen: larmet "offline sedan 10:00", som stängs när automaten är
  *   tillbaka; offline mitt på dagen larmar som förut och larmet ligger kvar på natten,
+ * - en kort blink på kvällen strax före av-tiden gör inte natten till ett avbrott,
  * - ett offlinelarm från natten (innan tiderna fanns) stängs när tiderna sparas och kommer
  *   inte tillbaka på morgonen,
  * - Fyll på vet vilka automater som står i en butik med strömtider (påminnelsen om omstart).
@@ -31,6 +32,7 @@ import {
   saveAwishWebCredentialsFor,
   setAwishWebPushFor,
 } from "../../src/server/awish/manage";
+import { retryAwishPushFor } from "../../src/server/awish/push-retry";
 import { summariseAwishPush } from "../../src/server/awish/push-status";
 import { startFakeAwishWeb } from "../../src/server/awish/testing/fake-web-server";
 import { createAwishWebClient } from "../../src/server/awish/web-client";
@@ -178,6 +180,18 @@ async function deliveries(): Promise<number> {
     await one<{ n: number }>(
       db(),
       sql`select count(*)::int as n from public.alert_deliveries where organization_id = ${orgId}::uuid`,
+    )
+  ).n;
+}
+
+/** Utskick om offlinelarm (inte t.ex. "Ingen hämtning från Awish" när testets klocka hoppar). */
+async function offlineDeliveries(): Promise<number> {
+  return (
+    await one<{ n: number }>(
+      db(),
+      sql`select count(*)::int as n from public.alert_deliveries
+          where organization_id = ${orgId}::uuid
+            and items @> '[{"kind": "machine_offline"}]'::jsonb`,
     )
   ).n;
 }
@@ -350,6 +364,36 @@ describe("offline medan strömmen är av", () => {
     await evaluateOrganization(db(), orgId, L(21, "10:40"));
     expect((await offlineAlerts()).filter((a) => a.status === "open")).toEqual([]);
   });
+
+  it("kort blink på kvällen (20:30) och sedan strömmen av: inget larm på natten", async () => {
+    const before = await offlineDeliveries();
+    await syncEvery(21, "20:00", "20:20", true);
+    await syncAt(L(21, "20:25"), true);
+    // Blink: offline 20:30–20:35, tillbaka 20:45–20:55 (fladderfönstret hinner inte stänga).
+    await syncAt(L(21, "20:30"), false);
+    await syncAt(L(21, "20:35"), false);
+    await syncAt(L(21, "20:45"), true);
+    await syncAt(L(21, "20:55"), true);
+    // Strömmen av som vanligt.
+    for (let t = L(21, "21:05").getTime(); t <= L(21, "23:55").getTime(); t += 5 * 60_000) {
+      await syncAt(new Date(t), false);
+    }
+    expect(await orgsNeedingOfflineEvaluation(db(), [orgId], L(21, "23:55"))).toEqual([]);
+    await evaluateOrganization(db(), orgId, L(21, "23:55"));
+    expect((await offlineAlerts()).filter((a) => a.status === "open")).toEqual([]);
+    expect(await offlineDeliveries()).toBe(before);
+    const { health } = await healthAt(L(21, "23:55"));
+    const h1 = health.find((h) => h.machineId === m1)!;
+    expect(h1.status).not.toBe("offline");
+    expect(h1.powerOff?.until).toBe(L(22, "10:00").toISOString());
+
+    // Tillbaka inom marginalen på morgonen: inget larm alls.
+    await syncEvery(22, "09:30", "09:50", false);
+    await syncEvery(22, "10:10", "10:50", true);
+    await evaluateOrganization(db(), orgId, L(22, "10:50"));
+    expect((await offlineAlerts()).filter((a) => a.status === "open")).toEqual([]);
+    expect(await offlineDeliveries()).toBe(before);
+  });
 });
 
 describe("Fyll på", () => {
@@ -431,6 +475,19 @@ describe("Fyll på mot låtsas-Awish: påminnelsen efter en sändning", () => {
         clientOptions: { baseUrl: fakeWeb.baseUrl, now: () => now },
       };
       const data = await loadFillDataFor(await viewerFor(refiller, orgId), L(21, "12:00"));
+      // Första sändningen går inte fram (Awish svarar inte): ingen påminnelse än.
+      fakeWeb.state.failNext = 1_000;
+      const failed = summariseAwishPush(await pushMachinesToAwish(orgId, [m1], deps), [m1]);
+      fakeWeb.state.failNext = 0;
+      expect(failed).toMatchObject({ state: "partial", failedMachineIds: [m1] });
+      expect(needsRestartReminder(failed, [m1], data.restartAfterPush)).toBe(false);
+      // "Försök igen" (eller appen själv) får fram antalen: nu påminnelsen.
+      const retry = await retryAwishPushFor(await viewerFor(refiller, orgId), {}, deps);
+      expect(retry).toMatchObject({ cleared: true, awish: { kind: "sent", slots: 1 } });
+      expect(fakeWeb.state.products["11"]![0]!.currentInventory).toBe(8);
+      expect(needsRestartReminder(retry.awish, null, data.restartAfterPush)).toBe(true);
+      // Samma sak i beskedet efter Klar (bara automaten som fylldes på).
+      fakeWeb.state.products["11"]![0]!.currentInventory = 2;
       const night = summariseAwishPush(await pushMachinesToAwish(orgId, [m1], deps), [m1]);
       expect(night).toMatchObject({ state: "sent", kind: "sent", slots: 1 });
       expect(fakeWeb.state.products["11"]![0]!.currentInventory).toBe(8);

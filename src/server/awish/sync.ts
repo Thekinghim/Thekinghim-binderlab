@@ -36,6 +36,7 @@ import {
   nextConnectivity,
   type ConnectivityState,
 } from "@/analytics/health/connectivity";
+import { powerHoursOf, type PowerHours } from "@/analytics/health/power";
 import type { Db, Tx } from "@/db/client";
 import {
   assertSecretRefInNamespace,
@@ -959,6 +960,9 @@ type ConnectivityRow = {
   awish_offline_since: Date | string | null;
   awish_back_online_at: Date | string | null;
   awish_last_offline_from: Date | string | null;
+  power_on_time: string | null;
+  power_off_time: string | null;
+  timezone: string | null;
 };
 
 function isoOrNull(v: Date | string | null): string | null {
@@ -980,14 +984,37 @@ export async function saveConnectivity(
 ): Promise<Set<string>> {
   if (machines.length === 0) return new Set();
   const ids = [...new Set(machines.map((m) => m.id))];
+  // Med butikens strömtider (aktuell placering, dagens datum i organisationens tidszon):
+  // offline igen under strömavbrottet börjar en ny period (se nextConnectivity).
   const prevRows = await query<ConnectivityRow & Row>(
     db,
-    sql`select external_id, awish_online, awish_status, awish_seen_at, awish_online_at,
-               awish_offline_since, awish_back_online_at, awish_last_offline_from
-        from public.source_machines
-        where organization_id = ${source.organization_id}::uuid
-          and data_source_id = ${source.id}::uuid
-          and external_id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`,
+    sql`select sm.external_id, sm.awish_online, sm.awish_status, sm.awish_seen_at,
+               sm.awish_online_at, sm.awish_offline_since, sm.awish_back_online_at,
+               sm.awish_last_offline_from, p.power_on_time, p.power_off_time, o.timezone
+        from public.source_machines sm
+        join public.organizations o on o.id = sm.organization_id
+        left join lateral (
+          select st.power_on_time, st.power_off_time
+          from public.machine_placements mp
+          join public.stores st
+            on st.organization_id = mp.organization_id and st.id = mp.store_id
+          where sm.machine_id is not null
+            and mp.organization_id = sm.organization_id and mp.machine_id = sm.machine_id
+            and mp.valid_from <= (${at.toISOString()}::timestamptz at time zone o.timezone)::date
+            and (mp.valid_to is null
+                 or mp.valid_to >= (${at.toISOString()}::timestamptz at time zone o.timezone)::date)
+          order by mp.valid_from desc
+          limit 1
+        ) p on true
+        where sm.organization_id = ${source.organization_id}::uuid
+          and sm.data_source_id = ${source.id}::uuid
+          and sm.external_id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`,
+  );
+  const power = new Map<string, PowerHours | null>(
+    prevRows.map((r) => [
+      r.external_id,
+      powerHoursOf(r.power_on_time, r.power_off_time, r.timezone ?? undefined),
+    ]),
   );
   const prev = new Map<string, ConnectivityState>(
     prevRows.map((r) => [
@@ -1012,6 +1039,7 @@ export async function saveConnectivity(
       prev.get(m.id) ?? EMPTY_CONNECTIVITY,
       { isOnline: m.isOnline, status: m.status.trim().slice(0, 40) || null },
       at,
+      power.get(m.id),
     );
     payload.push({
       external_id: m.id,

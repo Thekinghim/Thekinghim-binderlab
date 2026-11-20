@@ -20,6 +20,11 @@ export interface AwishPushStatus {
   failedMachineIds?: string[];
   /** Pack som Awish inte tog emot, per automat och titel (kind "notSent"). */
   notSent?: NotSentLine[];
+  /**
+   * Automaterna (av dem beskedet gäller) där Awish fick nya antal i minst ett fack, också
+   * när något annat på automaten inte gick fram. Fyll på påminner om omstart för dem.
+   */
+  updatedMachineIds?: string[];
 }
 
 /** En rad i beskedet om vad Awish inte tog emot. */
@@ -65,7 +70,11 @@ export function summariseAwishPush(
   const errors = own.filter((m) => m.status === "error");
   const noMachine = own.filter((m) => m.status === "no_awish_machine");
   const slots = own.reduce((n, m) => n + m.slotsUpdated, 0);
-  const others = failed.length > 0 ? { failedMachineIds: failed } : {};
+  const updated = own.filter((m) => m.slotsUpdated > 0).map((m) => m.machineId);
+  const others = {
+    ...(failed.length > 0 ? { failedMachineIds: failed } : {}),
+    ...(updated.length > 0 ? { updatedMachineIds: updated } : {}),
+  };
   if (errors.length > 0) {
     return {
       state: "partial",
@@ -74,6 +83,7 @@ export function summariseAwishPush(
       // råd som rutan på automaten ("Appen försöker igen själv"), inte ett annat.
       message: `Sparat i Binderlab. Till Awish gick det inte: ${(errors[0]?.error ?? "okänt fel").trim().replace(/[.!\s]+$/, "")}. Appen försöker igen själv.`,
       failedMachineIds: failed,
+      ...(updated.length > 0 ? { updatedMachineIds: updated } : {}),
     };
   }
   // Awish tog inte emot allt: säg vad, i stället för "Sparat och skickat".
@@ -93,6 +103,7 @@ export function summariseAwishPush(
       message: notSentMessage(notSent),
       notSent,
       failedMachineIds: failed,
+      ...(updated.length > 0 ? { updatedMachineIds: updated } : {}),
     };
   }
   if (noMachine.length > 0 && slots === 0) {

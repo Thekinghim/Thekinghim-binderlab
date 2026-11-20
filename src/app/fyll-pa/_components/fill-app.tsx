@@ -345,11 +345,27 @@ export function FillApp({
           asked.filter((id) => still.has(id)),
           asked.filter((id) => !still.has(id)),
         );
+        // Awish fick antalen nu (också vid ett försök i bakgrunden): butiken stänger av
+        // strömmen på natten, så skärmen visar dem först efter en omstart.
+        const restart = needsRestartReminder(
+          res.data.awish,
+          machineId ? [machineId] : null,
+          data.restartAfterPush,
+        );
         if (res.data.cleared) {
           const slots = res.data.awish?.kind === "sent" ? (res.data.awish.slots ?? 0) : 0;
           toast({
             title: slots > 0 ? t.r2.t1.fill.retrySent(slots) : t.r2.t1.fill.retryNothing,
+            ...(restart ? { description: t.fill.restartScreen } : {}),
             tone: "ok",
+          });
+        } else if (restart) {
+          // En del gick fram (raden på automaten visar vad som väntar): påminn om omstarten.
+          const slots = res.data.awish?.slots ?? 0;
+          toast({
+            title: slots > 0 ? t.r2.t1.fill.retrySent(slots) : t.fill.sendToAwish,
+            description: t.fill.restartScreen,
+            tone: "neutral",
           });
         } else if (!quiet) {
           toast({
@@ -364,7 +380,7 @@ export function FillApp({
         setRetrying(null);
       }
     },
-    [notePush, router, toast, t],
+    [notePush, router, toast, t, data.restartAfterPush],
   );
   // Appen försöker igen själv: strax efter att sidan öppnats och sedan var femte minut,
   // så länge någon automat väntar och det finns nät.

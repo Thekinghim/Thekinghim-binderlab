@@ -794,4 +794,29 @@ describe("påminnelsen om att starta om automaten", () => {
       ),
     ).toBe(false);
   });
+  it("Awish fick en del av antalen på automaten: påminnelse ändå", () => {
+    const notSent = {
+      state: "partial",
+      kind: "notSent",
+      slots: 2,
+      failedMachineIds: ["m1"],
+      updatedMachineIds: ["m1"],
+    };
+    expect(needsRestartReminder(notSent, ["m1"], ["m1"])).toBe(true);
+    // Fel på automaten (inget fack gick fram): ingen.
+    expect(
+      needsRestartReminder({ state: "partial", failedMachineIds: ["m1"] }, ["m1"], ["m1"]),
+    ).toBe(false);
+  });
+
+  it("försök igen (alla som väntar): påminnelse när Awish fick antalen för en sådan automat", () => {
+    const retried = { state: "sent", kind: "sent", slots: 4, updatedMachineIds: ["m2", "m1"] };
+    expect(needsRestartReminder(retried, null, ["m1"])).toBe(true);
+    expect(needsRestartReminder(retried, null, ["m3"])).toBe(false);
+    expect(needsRestartReminder({ ...retried, updatedMachineIds: ["m2"] }, null, ["m1"])).toBe(
+      false,
+    );
+    // En automat i taget: bara den räknas.
+    expect(needsRestartReminder(retried, ["m2"], ["m1"])).toBe(false);
+  });
 });

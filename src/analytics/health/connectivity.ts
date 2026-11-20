@@ -11,7 +11,9 @@
  *   online  + offlineperiod                → back_online_at = nu (perioden pågår tills
  *                                             automaten varit online i FLAP_MINUTES)
  *   online  + back_online_at ≥ FLAP sedan  → perioden slutar (last_offline_from sparas)
- *   offline + back_online_at satt          → fladder: samma period fortsätter
+ *   offline + back_online_at satt          → fladder: samma period fortsätter, utom när
+ *                                             butikens strömtider förklarar det nya
+ *                                             avbrottet (se nedan): då en ny period
  *
  * connectivitySignals gör om läget till maskinhändelser (MachineSignal) för maskinhälsan:
  * offline först när perioden varat OFFLINE_ALERT_MINUTES, och bara när läget är färskt
@@ -22,11 +24,17 @@
  * som börjar då som "strömmen av" (state power_off) tills strömmen gått på igen plus en
  * marginal. Ingen offlinehändelse, alltså inget larm. Är automaten inte tillbaka efter
  * marginalen är det ett avbrott från på-tiden, som larmar som vanligt.
+ *
+ * Fladder och strömtider: en kort blink på kvällen (offline 20:30, tillbaka 20:45) och sedan
+ * strömmen av 21:00 hör inte till samma avbrott. Går automaten offline igen inom
+ * fladderfönstret medan butikens tider förklarar det (från OFFLINE_ALERT_MINUTES före
+ * av-tiden till marginalen efter på-tiden) börjar därför en ny period. Annars skulle hela
+ * natten räknas från blinken 20:30 och larma. Utan strömtider är fladdret som förut.
  */
 
 import { parseInstant } from "@/analytics/todos/time";
 
-import { powerVerdict, type PowerHours } from "./power";
+import { explainingWindow, powerVerdict, type PowerHours } from "./power";
 import type { MachineSignal } from "./types";
 
 /** Minuter offline innan automaten räknas som offline (och larmar). */
@@ -37,6 +45,9 @@ export const FLAP_MINUTES = 20;
 export const STALE_MINUTES = 60;
 
 const MINUTE_MS = 60_000;
+
+/** Strömtiderna förklarar en offlineperiod från OFFLINE_ALERT_MINUTES före av-tiden. */
+const POWER_RULE = { leadMinutes: OFFLINE_ALERT_MINUTES } as const;
 
 /** Läget för en automat, som det sparas (ISO 8601 eller null). */
 export interface ConnectivityState {
@@ -59,11 +70,15 @@ export const EMPTY_CONNECTIVITY: ConnectivityState = {
   lastOfflineFrom: null,
 };
 
-/** Nästa läge efter ett svar från leverantören. */
+/**
+ * Nästa läge efter ett svar från leverantören. `power`: strömtiderna i butiken automaten
+ * står i (null/utelämnat = strömmen alltid på).
+ */
 export function nextConnectivity(
   prev: ConnectivityState,
   observed: { readonly isOnline: boolean; readonly status: string | null },
   now: Date | string | number,
+  power?: PowerHours | null,
 ): ConnectivityState {
   const nowMs = parseInstant(now);
   const at = new Date(nowMs).toISOString();
@@ -83,6 +98,11 @@ export function nextConnectivity(
   }
   if (prev.onlineAt === null) return base;
   if (prev.offlineSince === null) return { ...base, offlineSince: at, backOnlineAt: null };
+  // Offline igen efter att ha varit tillbaka, medan strömmen är av enligt butikens tider: en
+  // ny period (den förra slutade när automaten kom tillbaka). Se kommentaren överst.
+  if (prev.backOnlineAt !== null && explainingWindow(power, nowMs, POWER_RULE) !== null) {
+    return { ...base, offlineSince: at, backOnlineAt: null, lastOfflineFrom: prev.offlineSince };
+  }
   // Fladder: tillbaka offline innan perioden hann sluta. Samma period fortsätter.
   return { ...base, backOnlineAt: null };
 }
@@ -105,8 +125,6 @@ export interface ConnectivityView {
   /** Strömmen av: när strömmen går på igen enligt tiderna (ISO 8601). Annars saknas. */
   readonly until?: string | null;
 }
-
-const POWER_RULE = { leadMinutes: OFFLINE_ALERT_MINUTES } as const;
 
 function fresh(c: ConnectivityState, nowMs: number): boolean {
   if (c.seenAt === null) return false;

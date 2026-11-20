@@ -505,3 +505,9 @@ Vägval och det som är kvar:
   och raden "Fyll på" längst ner i sidomenyn på datorn. AI-knappen (md–lg) viker som för påfyllaren.
 - **Tester:** `power.test.ts` (sommartid, av efter midnatt, marginal), `test/db/strom-tider.test.ts` (larm natt och
   dag, incident stängs, RLS, Fyll på), `fab.test.ts`, `display.test.ts`, Automaters `statusOf`, Fyll på-modellen.
+- **Granskningen rättade två fel:** (1) en kort blink på kvällen (offline 20:30, tillbaka 20:45) slogs ihop med
+  strömmen av 21:00 till en period från 20:30, som larmade hela natten. Nu börjar en ny period när automaten går
+  offline igen medan strömtiderna förklarar det (synken läser butikens tider, `nextConnectivity`). Fladder mitt
+  på dagen är som förut. (2) Påminnelsen om omstart kom inte när antalen gick fram först vid "Försök igen" (eller i
+  bakgrunden), eller bara till en del av facken. Beskedet från Awish säger nu vilka automater som fick nya antal
+  (`updatedMachineIds`).

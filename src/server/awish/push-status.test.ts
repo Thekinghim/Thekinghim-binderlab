@@ -90,4 +90,19 @@ describe("summariseAwishPush", () => {
       "Sparat i Binderlab. Awish tog inte emot allt: 14 Mystery pack skickades inte till BL-002: mystery-facket är inte tomt. Räkna om facket i Awish, eller ångra de packen här.",
     );
   });
+
+  it("automaterna där Awish fick nya antal (för påminnelsen om omstart)", () => {
+    const partial = {
+      ...machine("a", "pushed", 2),
+      notSent: [{ titleName: "Testtitel", left: 1, reason: "capacity" as const }],
+    };
+    const out = summariseAwishPush(done(partial, machine("b", "pushed", 1)), ["a"]);
+    expect(out).toMatchObject({ kind: "notSent", failedMachineIds: ["a"] });
+    expect(out?.updatedMachineIds).toEqual(["a"]);
+    const all = summariseAwishPush(done(machine("a", "nothing"), machine("b", "pushed", 3)));
+    expect(all?.updatedMachineIds).toEqual(["b"]);
+    expect(
+      summariseAwishPush(done(machine("a", "nothing")), ["a"])?.updatedMachineIds,
+    ).toBeUndefined();
+  });
 });

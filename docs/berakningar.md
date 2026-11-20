@@ -544,15 +544,24 @@ alltid på (som förut).
   ("offline sedan 10:00"), som larmar direkt.
 - Ett avbrott som börjar medan strömmen är på (t.ex. 15:00) larmar som förut och ligger kvar
   på natten. Ett riktigt avbrott göms aldrig.
+- Fladder: en offlineperiod slutar först när automaten varit online i 20 minuter. Går den
+  offline igen före dess fortsätter samma period, utom när strömtiderna förklarar det nya
+  avbrottet (20 minuter före av-tiden till marginalen efter på-tiden): då börjar en ny period.
+  En kort blink 20:30 och sedan strömmen av 21:00 larmar alltså inte hela natten.
 - Ett öppet offlinelarm stängs när automaten inte längre räknas som offline, också när det är
-  för att tiderna sparats. En automat som kommer tillbaka inom marginalen ger inget larm.
+  för att tiderna sparats (eller för att automaten kom tillbaka en stund före av-tiden). En
+  automat som kommer tillbaka inom marginalen ger inget larm.
+- Samma tider varje dag. Stänger butiken av mer än 20 minuter före den sparade av-tiden, eller
+  slår på strömmen mer än 30 minuter efter på-tiden, larmar det. Spara därför den tidigaste
+  av-tiden och den senaste på-tiden.
 - Av-tid efter midnatt fungerar (av 01:00, på 07:00). Tiderna är väggtid: natten när sommartiden
   börjar är avbrottet en timme kortare, när den slutar en timme längre.
 - Drift, Automater och automatens sida visar "Strömmen av" (grått) med "Strömmen av (enligt
   butikens tider), på 10:00"; fel och tom automat visas som vanligt.
 - Fyll på påminner efter en påfyllning som skickats till Awish: "Starta om automaten så visar
-  skärmen de nya antalen." (skärmen läser antalen när den startar). Inte för butiker med ström
-  dygnet runt.
+  skärmen de nya antalen." (skärmen läser antalen när den startar), också när antalen går fram
+  först vid "Försök igen" eller bara till en del av facken. Inte för butiker med ström dygnet
+  runt, eller när Awish redan hade rätt antal.
 
 Testerna finns i `src/analytics/health/power.test.ts` och `test/db/strom-tider.test.ts`.
 
