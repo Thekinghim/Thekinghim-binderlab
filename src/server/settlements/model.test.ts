@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { krText } from "@/reports";
 import { CONTRACT_PAYOUT_DAY } from "@/reports/contract-pdf";
 import { buildStoreReport } from "@/reports/store-report";
 import { agreement, ord, sources } from "@/reports/testing/fixtures";
@@ -110,6 +111,41 @@ describe("settlementHtml", () => {
       }),
     );
     expect(paid).toContain("Betald 5 november 2026");
+  });
+
+  it("drar av förskott på en obetald: Redan betalt i förskott och Kvar att betala", () => {
+    const adv = {
+      paymentId: "p-1",
+      storeId: "s-1",
+      paidOn: "2026-10-16",
+      month: "2026-10",
+      start: "2026-10-01",
+      end: "2026-10-14",
+      amountOre: 1_000,
+    } as const;
+    const base = {
+      organizationName: "Binderlab AB",
+      statement: st,
+      paidOn: null,
+      reference: "abcd1234",
+      advances: [adv],
+    };
+    const html = plain(settlementHtml({ ...base, amountOre: st.totalOre }));
+    expect(html).toContain("Redan betalt i förskott");
+    expect(html).toContain("1–14 oktober 2026, betalt 16 oktober 2026");
+    expect(html).toContain(
+      `Kvar att betala</td><td class="n">${plain(krText(st.totalOre - 1_000))}`,
+    );
+    expect(html).toContain(`<p class="amount">${plain(krText(st.totalOre - 1_000))}</p>`);
+    const over = plain(settlementHtml({ ...base, amountOre: 600 }));
+    expect(over).toContain(`<p class="amount">${plain(krText(0))}</p>`);
+    expect(over).toContain("För mycket betalt");
+    expect(over).toContain(`Butiken har fått ${plain(krText(400))} för mycket.`);
+    // Betald: förskottet ingår i det betalda, inget dras av.
+    const paid = plain(settlementHtml({ ...base, amountOre: st.totalOre, paidOn: "2026-11-05" }));
+    expect(paid).not.toContain("Kvar att betala");
+    expect(paid).toContain("Det ingår i det som betalades.");
+    expect(paid).toContain(`<p class="amount">${plain(krText(st.totalOre))}</p>`);
   });
 
   it("escapar namn och har inga skript eller externa resurser", () => {

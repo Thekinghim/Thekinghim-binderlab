@@ -39,7 +39,7 @@ import { krText } from "@/reports";
 import { storesPlacedIn } from "@/server/reports/sources";
 import { queryOlderMissingSettlements } from "./queries";
 import { queryAdvanceParts, settleCoveredTx, unpaidWithAdvancesTx } from "./advances-db";
-import { advanceLine, advancesFor, advanceTotal, type AdvancePart } from "./advance";
+import { advanceLine, advancesFor, advanceTotal, coverage, type AdvancePart } from "./advance";
 import { closeMonthIfDoneTx, reopenAfterUndoTx, type UndoOutcome } from "@/server/periods/service";
 
 import {
@@ -867,6 +867,8 @@ export async function markSettlementPaidFor(
   paidOre: number;
   /** Dagens uträkning − betalt: återstår att rätta på nästa avräkning (0 = inget). */
   differenceOre: number;
+  /** Förskotten täckte avräkningen: betald med betalningarna (betalt = förskotten). */
+  paidFromPayments: boolean;
 }> {
   const orgId = viewer.organization.id;
   await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
@@ -909,6 +911,41 @@ export async function markSettlementPaidFor(
           `Beloppet har ändrats till ${krText(c.amountOre)}. Kontrollera och försök igen.`,
         );
       }
+      const month = row.month.slice(0, 7) as IsoMonth;
+      const storeNameOf = async (storeId: string) =>
+        (
+          await tx
+            .select({ name: s.stores.name })
+            .from(s.stores)
+            .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, storeId)))
+        )[0]?.name ?? "butiken";
+      // Täcker förskotten för månaden hela avräkningen (beloppet kan ha sjunkit sedan
+      // betalningen registrerades) är den betald med betalningarna, som när de registrerades:
+      // betalt belopp = förskotten, och för mycket står kvar som skillnad (./advance.ts).
+      const advanceOre = advanceTotal(
+        advancesFor(await queryAdvanceParts(tx, orgId, row.storeId), row.storeId, month),
+      );
+      if (coverage(c.amountOre, advanceOre).covered) {
+        const settled = await settleCoveredTx(tx, orgId, [settlementId], now);
+        if (settled.length === 0) {
+          throw new SettlementError("Avräkningen är redan betald eller finns inte.");
+        }
+        const monthClosed = await closeMonthIfDoneTx(tx, {
+          organizationId: orgId,
+          month,
+          trigger: "settlement_paid",
+          today,
+        });
+        return {
+          storeName: await storeNameOf(row.storeId),
+          amountOre: c.amountOre,
+          month,
+          monthClosed,
+          paidOre: advanceOre,
+          differenceOre: c.amountOre - advanceOre,
+          paidFromPayments: true,
+        };
+      }
       if (c.amountOre === 0) throw new SettlementError("Inget att betala för månaden.");
       // Rapporten butiken fick för samma månad: säger den ett annat belopp frågar vi
       // vilket som betalades. Inget betalas på ett belopp som ägaren inte har valt.
@@ -949,11 +986,6 @@ export async function markSettlementPaidFor(
         });
       const paid = rows[0];
       if (!paid) throw new SettlementError("Avräkningen är redan betald eller finns inte.");
-      const [store] = await tx
-        .select({ name: s.stores.name })
-        .from(s.stores)
-        .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, paid.storeId)));
-      const month = row.month.slice(0, 7) as IsoMonth;
       const monthClosed = await closeMonthIfDoneTx(tx, {
         organizationId: orgId,
         month,
@@ -962,12 +994,13 @@ export async function markSettlementPaidFor(
       });
       const paidOre = paidAmountOre ?? paid.amountOre;
       return {
-        storeName: store?.name ?? "butiken",
+        storeName: await storeNameOf(paid.storeId),
         amountOre: paid.amountOre,
         month,
         monthClosed,
         paidOre,
         differenceOre: paid.amountOre - paidOre,
+        paidFromPayments: false,
       };
     });
   } catch (error) {
@@ -990,7 +1023,11 @@ export async function undoSettlementPaidFor(
   try {
     return await withUserDbFor(viewer.user, async (tx) => {
       const [current] = await tx
-        .select({ fromPayments: s.storeSettlements.paidFromPayments })
+        .select({
+          fromPayments: s.storeSettlements.paidFromPayments,
+          storeId: s.storeSettlements.storeId,
+          month: s.storeSettlements.month,
+        })
         .from(s.storeSettlements)
         .where(
           and(
@@ -998,7 +1035,16 @@ export async function undoSettlementPaidFor(
             eq(s.storeSettlements.id, settlementId),
           ),
         );
-      if (current?.fromPayments) {
+      // Betald med betalningarna ångras genom att ta bort betalningen. Finns ingen betalning
+      // för månaden längre (t.ex. borttagen direkt i databasen) går det att ångra här.
+      if (
+        current?.fromPayments &&
+        advancesFor(
+          await queryAdvanceParts(tx, orgId, current.storeId),
+          current.storeId,
+          current.month.slice(0, 7) as IsoMonth,
+        ).length > 0
+      ) {
         throw new SettlementError(
           "Avräkningen är betald med betalningarna. Ta bort betalningen under Betalningar för att ångra.",
         );
@@ -1146,6 +1192,9 @@ export async function carryDifferenceFor(
         .where(
           and(eq(s.storeSettlements.organizationId, orgId), eq(s.storeSettlements.id, sourceId)),
         );
+      // Täcker förskotten nu hela målet (en skillnad "för mycket" sänkte det) är det betalt
+      // med betalningarna, som i nattens jobb. Ingen månad stängs här.
+      await settleCoveredTx(tx, orgId, [target.id], now);
       const [store] = await tx
         .select({ name: s.stores.name })
         .from(s.stores)
@@ -1216,6 +1265,8 @@ export async function removeCorrectionFor(
         .where(
           and(eq(s.storeSettlements.organizationId, orgId), eq(s.storeSettlements.id, sourceId)),
         );
+      // Förskott som nu täcker hela avräkningen: betald med betalningarna (ingen månad stängs).
+      await settleCoveredTx(tx, orgId, [targetId], now);
       return { removedOre };
     });
   } catch (error) {
@@ -1322,6 +1373,8 @@ export async function recomputeSettlementFor(
             eq(s.storeSettlements.id, settlementId),
           ),
         );
+      // Förskott som nu täcker hela avräkningen: betald med betalningarna (ingen månad stängs).
+      await settleCoveredTx(tx, orgId, [settlementId], now);
       return { amountOre: c.amountOre, previousOre: row.amountOre };
     });
   } catch (error) {
@@ -1360,7 +1413,12 @@ export async function settlementDocumentFor(
     const live = row.paidOn
       ? undefined
       : (await liveFor(tx, orgId, [{ id: settlementId, ...row }], now)).get(settlementId);
-    return { row, live };
+    const advances = advancesFor(
+      await queryAdvanceParts(tx, orgId, row.storeId),
+      row.storeId,
+      row.month.slice(0, 7) as IsoMonth,
+    );
+    return { row, live, advances };
   });
   const statement = found ? parseStatement(found.row.statement) : null;
   if (!found || !statement) throw new SettlementError("Avräkningen finns inte.");
@@ -1373,6 +1431,7 @@ export async function settlementDocumentFor(
       paidOn: found.row.paidOn as IsoDate | null,
       reference: settlementId.slice(0, 8),
       blocked: live && !live.ok ? live.message : null,
+      advances: found.advances,
     }),
     fileName: settlementFileName(statement.storeName, statement.month),
   };

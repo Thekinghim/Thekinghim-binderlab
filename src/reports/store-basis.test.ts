@@ -968,6 +968,49 @@ describe("betalning för en egen period (förskott)", () => {
     expect(payments).toContainEqual({ paidOn: "2026-12-05", amountOre: 30_000, month: "2026-11" });
   });
 
+  it("betald med betalningarna och med en rättelse för oktober: rättelsen räknas en gång", () => {
+    // November: andel 30 kr + rättelse för oktober 30 kr = 60 kr, betald med en betalning på
+    // 60 kr för 1–30 nov. Av betalningen gick 30 kr till rättelsen för oktober.
+    const whole = { ...ADV, paidOn: "2026-11-19", end: "2026-11-30", amountOre: 6_000 } as const;
+    const paid = [
+      { paidOn: "2026-10-10", month: "2026-10", paidOre: 6_000, corrections: [] },
+      {
+        paidOn: "2026-11-19",
+        month: "2026-11",
+        paidOre: 6_000,
+        corrections: [{ month: "2026-10", amountOre: 3_000 }],
+      },
+    ] as const;
+    const both = paymentsFromSettlements(paid, "2026-10", "2026-11", [whole]);
+    expect(both.reduce((n, p) => n + p.amountOre, 0)).toBe(12_000);
+    const novOnly = paymentsFromSettlements(paid, "2026-11", "2026-11", [whole]);
+    expect(novOnly).toEqual([{ ...whole, amountOre: 3_000 }]);
+    const octOnly = paymentsFromSettlements(paid, "2026-10", "2026-10", [whole]);
+    expect(octOnly.reduce((n, p) => n + p.amountOre, 0)).toBe(9_000);
+  });
+
+  it("räknar ned den senaste betalningen först när förskotten betalade en rättelse", () => {
+    const a1 = { ...ADV, paidOn: "2026-11-05", end: "2026-11-14", amountOre: 4_000 } as const;
+    const a2 = {
+      ...ADV,
+      paidOn: "2026-11-20",
+      start: "2026-11-15",
+      end: "2026-11-30",
+      amountOre: 4_000,
+    } as const;
+    const paid = [
+      {
+        paidOn: "2026-11-20",
+        month: "2026-11",
+        paidOre: 8_000,
+        corrections: [{ month: "2026-10", amountOre: 5_000 }],
+      },
+    ];
+    expect(paymentsFromSettlements(paid, "2026-11", "2026-11", [a1, a2])).toEqual([
+      { ...a1, amountOre: 3_000 },
+    ]);
+  });
+
   it("novemberrapporten: Redan betalt för 1–14 nov. och Kvar att betala", () => {
     const b = { ...rev2, payments: paymentsFromSettlements([], "2026-11", "2026-11", [ADV]) };
     const rows = invoiceRows(b, nov(40_000));

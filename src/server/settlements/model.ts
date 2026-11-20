@@ -20,6 +20,8 @@ import { addMonths, monthOf, type IsoDate, type IsoMonth } from "@/domain";
 import { escapeHtml } from "@/reports/contract-pdf";
 import { dateText, krText, monthText, type StoreReport } from "@/reports";
 
+import { advanceLine, advanceTotal, type AdvancePart } from "./advance";
+
 export const STATEMENT_VERSION = 1;
 
 export interface SettlementStep {
@@ -259,6 +261,11 @@ export interface SettlementDocument {
   readonly reference: string;
   /** Varför en obetald inte kan räknas nu (beloppet är då inte klart). */
   readonly blocked?: string | null;
+  /**
+   * Betalningar i förskott för månaden (./advance.ts). En obetald visar dem som avdrag och
+   * "Kvar att betala"; en betald har dem med i det som betalades (en rad under tabellen).
+   */
+  readonly advances?: readonly AdvancePart[];
 }
 
 /** Avräkningen som fristående HTML (inga externa resurser) för utskrift som A4-PDF. */
@@ -275,6 +282,25 @@ export function settlementHtml(doc: SettlementDocument): string {
           ? "Förlust: butiken bär sin andel enligt avtalet"
           : "Inget att betala ut för månaden";
   const totalLabel = doc.amountOre < 0 ? "Butiken betalar" : "Att betala ut";
+  // Förskott: dras av på en obetald (inte när beloppet inte går att räkna).
+  const advances = (doc.advances ?? []).filter((a) => a.amountOre > 0);
+  const advanceOre = advanceTotal(advances);
+  const deduct = state !== "paid" && !doc.blocked && advanceOre > 0;
+  const leftOre = doc.amountOre - advanceOre;
+  const shownOre = deduct ? Math.max(0, leftOre) : Math.abs(doc.amountOre);
+  const shownStatus = deduct && leftOre <= 0 ? "Redan betalt i förskott" : status;
+  const advanceRows = deduct
+    ? `<tr><td><div>Redan betalt i förskott</div><div class="calc">${escapeHtml(
+        advances.map((a) => `${dayText(a.start, a.end)}, betalt ${dateText(a.paidOn)}`).join("; "),
+      )}</div></td><td class="n">−${escapeHtml(krText(advanceOre))}</td></tr>
+<tr class="total"><td>${leftOre < 0 ? "För mycket betalt" : "Kvar att betala"}</td><td class="n">${escapeHtml(krText(Math.abs(leftOre)))}</td></tr>`
+    : "";
+  const advanceFact =
+    !deduct && state === "paid" && advanceOre > 0
+      ? `<p class="facts">${escapeHtml(`${advanceLine(advances)}. Det ingår i det som betalades.`)}</p>`
+      : deduct && leftOre < 0
+        ? `<p class="facts">${escapeHtml(paidDifferenceLine(leftOre))}</p>`
+        : "";
   const rows = s.steps
     .map(
       (step) =>
@@ -308,14 +334,22 @@ export function settlementHtml(doc: SettlementDocument): string {
 <div class="eyebrow">Avräkning · ${escapeHtml(monthText(s.month))}</div>
 <h1>${escapeHtml(s.storeName)}</h1>
 <div class="ref">Från ${escapeHtml(doc.organizationName)} · ref. ${escapeHtml(doc.reference)}</div>
-<p class="amount">${escapeHtml(krText(Math.abs(doc.amountOre)))}</p>
-<p class="status">${escapeHtml(status)}</p>
+<p class="amount">${escapeHtml(krText(shownOre))}</p>
+<p class="status">${escapeHtml(shownStatus)}</p>
 <table>
 ${rows}
-<tr class="total"><td>${totalLabel}</td><td class="n">${escapeHtml(krText(Math.abs(doc.amountOre)))}</td></tr>
+<tr class="total"><td>${deduct ? "Avräkningen" : totalLabel}</td><td class="n">${escapeHtml(krText(Math.abs(doc.amountOre)))}</td></tr>
+${advanceRows}
 </table>
+${advanceFact}
 <p class="facts">Avtal: ${escapeHtml(s.modelText)}</p>
 <p class="facts">Försäljning inkl. moms: ${escapeHtml(krText(s.salesInclVatOre))} · ${escapeHtml(String(s.orders))} köp.</p>
 </body>
 </html>`;
+}
+
+/** "1–14 november 2026" / "14 oktober–14 november 2026" (en del ligger alltid i en månad). */
+function dayText(start: IsoDate, end: IsoDate): string {
+  if (start === end) return dateText(start);
+  return `${Number(start.slice(8, 10))}–${dateText(end)}`;
 }

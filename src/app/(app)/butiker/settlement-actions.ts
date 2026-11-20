@@ -84,6 +84,8 @@ export async function markSettlementPaid(
       differenceOre: number;
       /** "Oktober 2026 är stängd." när betalningen stängde månaden, annars null. */
       closedText: string | null;
+      /** Förskotten täckte avräkningen: betald med betalningarna. */
+      paidFromPayments: boolean;
     }>
   | { ok: false; error: string; ask: { reportOre: number; liveOre: number } }
 > {
@@ -106,6 +108,7 @@ export async function markSettlementPaid(
         amountOre: paid.amountOre,
         paidOre: paid.paidOre,
         differenceOre: paid.differenceOre,
+        paidFromPayments: paid.paidFromPayments,
         closedText: paid.monthClosed
           ? `${name.charAt(0).toUpperCase()}${name.slice(1)} är stängd. Inget ändras där nu.`
           : null,

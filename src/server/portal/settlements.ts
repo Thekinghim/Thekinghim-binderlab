@@ -173,7 +173,10 @@ export async function loadPortalSettlementDocument(
   settlementId: string,
 ): Promise<{ html: string; fileName: string } | null> {
   if (!UUID.test(settlementId)) return null;
-  const list = await withUserDbFor(ctx.user, (tx) => queryPortalSettlements(tx, ctx.store.storeId));
+  const { list, advances } = await withUserDbFor(ctx.user, async (tx) => ({
+    list: await queryPortalSettlements(tx, ctx.store.storeId),
+    advances: await queryPortalAdvances(tx, ctx.store.storeId),
+  }));
   const hit = list.find((x) => x.id === settlementId.toLowerCase());
   if (!hit || !hit.statement) return null;
   return {
@@ -183,6 +186,8 @@ export async function loadPortalSettlementDocument(
       amountOre: hit.amountOre,
       paidOn: hit.paidOn,
       reference: hit.id.slice(0, 8),
+      // Förskott för månaden: dras av på en obetald (samma som på sidan Pengar).
+      advances: advances.filter((a) => a.month === hit.month),
     }),
     fileName: settlementFileName(hit.statement.storeName, hit.month),
   };

@@ -53,8 +53,14 @@ export function MarkPaidButton({
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(today);
   const [error, setError] = useState<string | null>(null);
+  // Förskotten täcker hela avräkningen: den blir betald med betalningarna (ingen dag att
+  // välja och ingen fråga om rapportens belopp; för mycket står kvar som skillnad).
+  const covered = advanceOre > 0 && amountOre - advanceOre <= 0;
+  const overOre = covered ? advanceOre - amountOre : 0;
   const [ask, setAsk] = useState<{ reportOre: number; liveOre: number } | null>(
-    reportOre !== null && reportOre !== amountOre ? { reportOre, liveOre: amountOre } : null,
+    !covered && reportOre !== null && reportOre !== amountOre
+      ? { reportOre, liveOre: amountOre }
+      : null,
   );
   const [choice, setChoice] = useState<"live" | "report" | null>(null);
   const [pending, start] = useTransition();
@@ -77,6 +83,23 @@ export function MarkPaidButton({
       }
       setOpen(false);
       router.refresh();
+      if (res.data.paidFromPayments) {
+        // Ångras genom att ta bort betalningen under Betalningar.
+        toast({
+          title: `Klart! Avräkningen för ${storeName} är betald med betalningarna.`,
+          description:
+            [
+              res.data.differenceOre < 0
+                ? `Butiken har fått ${kr(-res.data.differenceOre)} för mycket. Skillnaden står kvar på Utbetalning.`
+                : null,
+              res.data.closedText,
+            ]
+              .filter(Boolean)
+              .join(" ") || undefined,
+          tone: "ok",
+        });
+        return;
+      }
       const paidOre = res.data.paidOre;
       const meta = [
         res.data.differenceOre !== 0
@@ -125,14 +148,18 @@ export function MarkPaidButton({
         onClose={() => (pending ? undefined : setOpen(false))}
         eyebrow="Avräkning"
         title={
-          amountOre < 0
-            ? `${kr(-amountOre)} från ${storeName}`
-            : `${kr(amountOre - advanceOre)} till ${storeName}`
+          covered
+            ? `${storeName} har redan fått betalt`
+            : amountOre < 0
+              ? `${kr(-amountOre)} från ${storeName}`
+              : `${kr(amountOre - advanceOre)} till ${storeName}`
         }
         description={
-          advanceOre > 0 && amountOre > 0
-            ? `${monthLabel}. Avräkningen ${kr(amountOre)}, redan betalt i förskott ${kr(advanceOre)}. Kvar att betala ${kr(amountOre - advanceOre)}.`
-            : monthLabel
+          covered
+            ? `${monthLabel}. Avräkningen ${kr(amountOre)}, redan betalt i förskott ${kr(advanceOre)}.`
+            : advanceOre > 0 && amountOre > 0
+              ? `${monthLabel}. Avräkningen ${kr(amountOre)}, redan betalt i förskott ${kr(advanceOre)}. Kvar att betala ${kr(amountOre - advanceOre)}.`
+              : monthLabel
         }
         size="sm"
         footer={
@@ -183,15 +210,32 @@ export function MarkPaidButton({
               ) : null}
             </fieldset>
           ) : null}
-          <Input
-            label="Betald den"
-            type="date"
-            value={date}
-            max={today}
-            onChange={(e) => setDate(e.target.value)}
-            error={error ?? undefined}
-            wrapperClassName="w-full"
-          />
+          {covered ? (
+            <div className="flex flex-col gap-2 text-base text-fg" data-covered>
+              <p>Avräkningen markeras som betald med betalningarna.</p>
+              {overOre > 0 ? (
+                <p className="text-signal-fg">
+                  Butiken har fått {kr(overOre)} för mycket. Skillnaden står kvar på Utbetalning,
+                  och du kan lägga den på nästa avräkning.
+                </p>
+              ) : null}
+              {error ? (
+                <p role="alert" className="text-sm text-signal-fg">
+                  {error}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <Input
+              label="Betald den"
+              type="date"
+              value={date}
+              max={today}
+              onChange={(e) => setDate(e.target.value)}
+              error={error ?? undefined}
+              wrapperClassName="w-full"
+            />
+          )}
         </div>
       </Modal>
     </>

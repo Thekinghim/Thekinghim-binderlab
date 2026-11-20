@@ -284,9 +284,11 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                         {r.blocked
                           ? "–"
                           : kr(
-                              Math.abs(
-                                r.paidOn ? r.paidOre : r.advanceOre > 0 ? r.leftOre : r.amountOre,
-                              ),
+                              r.paidOn
+                                ? Math.abs(r.paidOre)
+                                : r.advanceOre > 0
+                                  ? Math.max(0, r.leftOre)
+                                  : Math.abs(r.amountOre),
                             )}
                       </span>
                       <StatusTag
@@ -328,7 +330,9 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                           />
                         </>
                       ) : null}
-                      {page.canEdit && r.state === "paid" && !r.paidFromPayments ? (
+                      {page.canEdit &&
+                      r.state === "paid" &&
+                      (!r.paidFromPayments || r.advanceOre === 0) ? (
                         <UndoPaidButton id={r.id} storeName={r.storeName} />
                       ) : null}
                     </div>

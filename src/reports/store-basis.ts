@@ -244,7 +244,10 @@ export interface PaidSettlement {
  * Betalningar för en egen period (`advances`, delarna per månad i store_payments) blir egna
  * betalningar med sina dagar, också för en månad utan avräkning än. För en BETALD avräkning
  * ingår de redan i det som betalades: avräkningens egen betalning är då det betalda minus
- * förskotten, så att inget räknas två gånger.
+ * rättelserna minus förskotten, så att inget räknas två gånger. Blir det under 0 (en
+ * avräkning betald med betalningarna som också bar en rättelse för en tidigare månad: en del
+ * av förskottet betalade alltså rättelsen) räknas förskotten för månaden ned med det, senaste
+ * betalningen först. Rättelsen räknas för sin månad och inget räknas två gånger.
  */
 export function paymentsFromSettlements(
   settlements: readonly PaidSettlement[],
@@ -254,11 +257,47 @@ export function paymentsFromSettlements(
 ): BasisPayment[] {
   const inside = (m: IsoMonth) => m >= first && m <= last;
   const out: BasisPayment[] = [];
-  const validAdvances = advances.filter(
-    (a) => Number.isSafeInteger(a.amountOre) && a.amountOre > 0,
-  );
-  for (const a of validAdvances) {
-    if (!inside(a.month)) continue;
+  // Förskotten som kan räknas ned (ordningen behålls i svaret).
+  const adv = advances
+    .filter((a) => Number.isSafeInteger(a.amountOre) && a.amountOre > 0)
+    .map((a) => ({ ...a }));
+  const own: BasisPayment[] = [];
+  for (const ss of settlements) {
+    if (!Number.isSafeInteger(ss.paidOre)) continue;
+    const corrections = ss.corrections.filter(
+      (c) => Number.isSafeInteger(c.amountOre) && c.month !== ss.month,
+    );
+    const monthAdv = adv.filter((a) => a.month === ss.month);
+    const advanceOre = monthAdv.reduce((n, a) => n + a.amountOre, 0);
+    const ownOre = ss.paidOre - corrections.reduce((n, c) => n + c.amountOre, 0) - advanceOre;
+    if (ownOre < 0) {
+      // En del av förskotten betalade rättelserna: räkna ned dem, senaste betalningen först.
+      let over = -ownOre;
+      const newest = [...monthAdv].sort((a, b) =>
+        a.paidOn !== b.paidOn ? (a.paidOn < b.paidOn ? 1 : -1) : a.start < b.start ? 1 : -1,
+      );
+      for (const a of newest) {
+        if (over <= 0) break;
+        const take = Math.min(over, a.amountOre);
+        a.amountOre -= take;
+        over -= take;
+      }
+    }
+    if (inside(ss.month) && ownOre > 0) {
+      own.push({ paidOn: ss.paidOn, amountOre: ownOre, month: ss.month });
+    }
+    for (const c of corrections) {
+      if (!inside(c.month) || c.amountOre === 0) continue;
+      own.push({
+        paidOn: ss.paidOn,
+        amountOre: c.amountOre,
+        month: c.month,
+        paidWithMonth: ss.month,
+      });
+    }
+  }
+  for (const a of adv) {
+    if (!inside(a.month) || a.amountOre <= 0) continue;
     out.push({
       paidOn: a.paidOn,
       amountOre: a.amountOre,
@@ -267,29 +306,7 @@ export function paymentsFromSettlements(
       end: a.end,
     });
   }
-  for (const ss of settlements) {
-    if (!Number.isSafeInteger(ss.paidOre)) continue;
-    const corrections = ss.corrections.filter(
-      (c) => Number.isSafeInteger(c.amountOre) && c.month !== ss.month,
-    );
-    const advanceOre = validAdvances
-      .filter((a) => a.month === ss.month)
-      .reduce((n, a) => n + a.amountOre, 0);
-    const ownOre = ss.paidOre - corrections.reduce((n, c) => n + c.amountOre, 0) - advanceOre;
-    if (inside(ss.month) && ownOre > 0) {
-      out.push({ paidOn: ss.paidOn, amountOre: ownOre, month: ss.month });
-    }
-    for (const c of corrections) {
-      if (!inside(c.month) || c.amountOre === 0) continue;
-      out.push({
-        paidOn: ss.paidOn,
-        amountOre: c.amountOre,
-        month: c.month,
-        paidWithMonth: ss.month,
-      });
-    }
-  }
-  return out;
+  return [...out, ...own];
 }
 
 /** Avtalets form, butikens val (Butiker → Kontakt och rapport). */

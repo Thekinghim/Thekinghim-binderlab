@@ -50,8 +50,9 @@ export async function queryUnpaidSettlements(
     const advanceOre = advanceTotal(
       advancesFor(advances, r.storeId, r.month.slice(0, 7) as IsoMonth),
     );
-    if (l && !l.ok) out.push({ ...ref, amountOre: r.amountOre - advanceOre, blocked: true });
-    else {
+    if (l && !l.ok) {
+      out.push({ ...ref, amountOre: Math.max(0, r.amountOre - advanceOre), blocked: true });
+    } else {
       const amountOre = (l?.ok ? l.computed.amountOre : r.amountOre) - advanceOre;
       if (amountOre > 0) out.push({ ...ref, amountOre });
     }

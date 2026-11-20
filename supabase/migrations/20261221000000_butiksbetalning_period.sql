@@ -159,8 +159,8 @@ alter table public.store_settlements
 
 grant update (paid_from_payments) on table public.store_settlements to authenticated;
 
--- Samma vakt som 20261220100200, och paid_from_payments: låst på en betald avräkning och
--- nollas när den blir obetald.
+-- Samma vakt som 20261220100200, och paid_from_payments: sätts bara när butikens betalningar
+-- för månaden täcker beloppet, låst på en betald avräkning och nollas när den blir obetald.
 create or replace function private.store_settlements_guard() returns trigger
 language plpgsql
 set search_path = ''
@@ -194,6 +194,20 @@ begin
     if new.paid_on is not null
        and new.paid_on > ((now() at time zone 'Europe/Stockholm')::date + 1) then
       raise exception using errcode = '22023', message = 'Betaldatumet kan inte vara i framtiden.';
+    end if;
+    -- Betald med betalningarna bara när butikens betalningar för månaden täcker beloppet.
+    if new.paid_on is not null and new.paid_from_payments
+       and coalesce((
+         select sum((part ->> 'amountOre')::bigint)
+         from public.store_payments p
+         cross join lateral jsonb_array_elements(p.parts) part
+         where p.organization_id = new.organization_id
+           and p.store_id = new.store_id
+           and part ->> 'month' = to_char(new.month, 'YYYY-MM')
+       ), 0) < greatest(new.amount_ore, 1) then
+      raise exception using
+        errcode = 'BL081',
+        message = 'Avräkningen kan bara vara betald med betalningar som täcker den.';
     end if;
     if new.paid_on is null then
       -- En skillnad som redan ligger som rättelse på en senare avräkning skulle betalas två
