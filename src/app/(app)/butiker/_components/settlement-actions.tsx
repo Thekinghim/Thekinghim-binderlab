@@ -33,6 +33,7 @@ export function MarkPaidButton({
   id,
   storeName,
   amountOre,
+  advanceOre = 0,
   reportOre = null,
   monthLabel,
   today,
@@ -40,6 +41,8 @@ export function MarkPaidButton({
   id: string;
   storeName: string;
   amountOre: number;
+  /** Redan betalt i förskott för månaden (betalningar för en egen period). */
+  advanceOre?: number;
   /** Beloppet i den godkända rapporten för samma månad (med avräkningens rättelser), eller null. */
   reportOre?: number | null;
   monthLabel: string;
@@ -87,7 +90,7 @@ export function MarkPaidButton({
         title:
           paidOre < 0
             ? `Klart! ${kr(-paidOre)} från ${storeName} är betald.`
-            : `Klart! ${kr(paidOre)} till ${storeName} är betald.`,
+            : `Klart! ${kr(paidOre - advanceOre)} till ${storeName} är betald.`,
         description: meta || undefined,
         tone: "ok",
         action: {
@@ -124,9 +127,13 @@ export function MarkPaidButton({
         title={
           amountOre < 0
             ? `${kr(-amountOre)} från ${storeName}`
-            : `${kr(amountOre)} till ${storeName}`
+            : `${kr(amountOre - advanceOre)} till ${storeName}`
         }
-        description={monthLabel}
+        description={
+          advanceOre > 0 && amountOre > 0
+            ? `${monthLabel}. Avräkningen ${kr(amountOre)}, redan betalt i förskott ${kr(advanceOre)}. Kvar att betala ${kr(amountOre - advanceOre)}.`
+            : monthLabel
+        }
         size="sm"
         footer={
           <>

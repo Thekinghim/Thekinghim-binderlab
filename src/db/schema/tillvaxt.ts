@@ -6,6 +6,7 @@
 
 import {
   bigint,
+  boolean,
   customType,
   date,
   integer,
@@ -173,5 +174,25 @@ export const storeSettlements = pgTable("store_settlements", {
   liveCheckedAt: ts("live_checked_at"),
   correctedOre: ore("corrected_ore").notNull().default(0),
   corrections: jsonb("corrections").$type<unknown[]>().notNull().default([]),
+  /** Betald för att betalningarna (store_payments) täcker den (20261221000000). */
+  paidFromPayments: boolean("paid_from_payments").notNull().default(false),
+  ...stamps(),
+});
+
+/**
+ * Betalning till en butik för en egen period, uppdelad per kalendermånad
+ * (20261221000000_butiksbetalning_period.sql). Delarna räknas av servern
+ * (src/server/settlements/advance.ts) och ändras aldrig.
+ */
+export const storePayments = pgTable("store_payments", {
+  id: id(),
+  organizationId: orgId(),
+  storeId: uuid("store_id").notNull(),
+  paidOn: day("paid_on").notNull(),
+  amountOre: ore("amount_ore").notNull(),
+  periodStart: day("period_start").notNull(),
+  periodEnd: day("period_end").notNull(),
+  note: text("note"),
+  parts: jsonb("parts").$type<unknown[]>().notNull(),
   ...stamps(),
 });

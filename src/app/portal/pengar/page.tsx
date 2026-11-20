@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
+import { advanceLine, advancesFor, advanceTotal } from "@/server/settlements/advance";
 import { payoutDueDate, STATE_LABEL } from "@/server/settlements/model";
 import { requirePortalContext } from "@/server/portal/session";
 import { loadPortalMoney, type PortalContract } from "@/server/portal/settlements";
@@ -28,9 +29,13 @@ function contractStatus(c: PortalContract): string {
  */
 export default async function PortalMoneyPage() {
   const ctx = await requirePortalContext();
-  const { settlements, contracts } = await loadPortalMoney(ctx);
-  const unpaid = settlements.filter((s) => s.state === "unpaid");
-  const toCome = unpaid.reduce((n, s) => n + s.amountOre, 0);
+  const { settlements, contracts, advances } = await loadPortalMoney(ctx);
+  // Det som redan betalats i förskott för månaden (betalning för en egen period) dras av.
+  const advanceOf = (s: (typeof settlements)[number]) =>
+    advancesFor(advances, ctx.store.storeId, s.month);
+  const leftOf = (s: (typeof settlements)[number]) => s.amountOre - advanceTotal(advanceOf(s));
+  const unpaid = settlements.filter((s) => s.state === "unpaid" && leftOf(s) > 0);
+  const toCome = unpaid.reduce((n, s) => n + leftOf(s), 0);
   const latest = settlements[0];
 
   return (
@@ -80,6 +85,11 @@ export default async function PortalMoneyPage() {
                       ? `Senast ${dateText(payoutDueDate(s.month))}`
                       : (s.statement?.modelText ?? "")}
                 </span>
+                {s.state === "unpaid" && advanceLine(advanceOf(s)) ? (
+                  <span className="text-sm text-fg">
+                    {advanceLine(advanceOf(s))}. Kvar {kr(Math.max(0, leftOf(s)))}.
+                  </span>
+                ) : null}
               </div>
               <div className="flex items-center gap-4">
                 <span className="tnum text-lg text-fg">{kr(Math.abs(s.amountOre))}</span>

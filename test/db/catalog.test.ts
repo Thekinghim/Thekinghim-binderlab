@@ -115,6 +115,8 @@ const RPCS = [
   "portal_sales",
   // Butiksportalen: butikens månadsavräkningar.
   "portal_settlements",
+  // Butiksportalen: betalningarna för egna perioder (20261221000000_butiksbetalning_period.sql).
+  "portal_store_payments",
   "portal_stores",
   // Att göra (fas 3): påfyllning med uttag från centrallagret (ägare, admin, påfyllare).
   "register_refill",
@@ -259,6 +261,8 @@ describe("tabeller", () => {
         "store_agreements",
         // Månadsavräkning per butik (20261104233400_butik_avrakning.sql).
         "store_settlements",
+        // Betalningar till butikerna för egna perioder (20261221000000_butiksbetalning_period.sql).
+        "store_payments",
         // Butiksägare: bolaget som äger butikerna (20261219000000_butiksagare.sql).
         "store_owners",
         "stores",
@@ -668,6 +672,7 @@ describe("anon", () => {
       portal_sales: sql`gen_random_uuid(), '2025-01-01'::date, '2025-01-31'::date`,
       portal_settlements: sql`gen_random_uuid()`,
       portal_stores: sql``,
+      portal_store_payments: sql`gen_random_uuid()`,
       register_refill: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       register_refill_once: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       rename_warehouse: sql`gen_random_uuid(), gen_random_uuid(), 'x'`,

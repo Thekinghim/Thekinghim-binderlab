@@ -14,6 +14,7 @@ import type { Tx } from "@/db/client";
 import type { IsoDate, IsoMonth } from "@/domain";
 import { isValidStoragePath } from "@/import/file-store";
 import { systemContractStore } from "@/server/contracts/signing";
+import type { AdvancePart } from "@/server/settlements/advance";
 import {
   parseStatement,
   settlementFileName,
@@ -131,12 +132,38 @@ export async function queryPortalContractFile(
 export interface PortalMoneyData {
   readonly settlements: PortalSettlement[];
   readonly contracts: PortalContract[];
+  /** Betalningar för egna perioder (dras av på obetalda avräkningar). */
+  readonly advances: AdvancePart[];
 }
 
 export async function loadPortalMoney(ctx: PortalContext): Promise<PortalMoneyData> {
   return withUserDbFor(ctx.user, async (tx) => ({
     settlements: await queryPortalSettlements(tx, ctx.store.storeId),
     contracts: await queryPortalContracts(tx, ctx.store.storeId),
+    advances: await queryPortalAdvances(tx, ctx.store.storeId),
+  }));
+}
+
+/**
+ * Betalningar till butiken för egna perioder, per del och månad (portal_store_payments: bara
+ * den egna butiken, utan ägarens anteckning). På en obetald avräkning dras de av.
+ */
+export async function queryPortalAdvances(tx: Tx, storeId: string): Promise<AdvancePart[]> {
+  const rows = Array.from(
+    await tx.execute(
+      sql`select payment_id, paid_on::text as paid_on, to_char(month, 'YYYY-MM') as month,
+                 part_start::text as part_start, part_end::text as part_end, amount_ore
+          from public.portal_store_payments(${storeId}::uuid)`,
+    ),
+  ) as Row[];
+  return rows.map((r) => ({
+    paymentId: str(r.payment_id),
+    storeId,
+    paidOn: str(r.paid_on).slice(0, 10) as IsoDate,
+    month: str(r.month) as IsoMonth,
+    start: str(r.part_start).slice(0, 10) as IsoDate,
+    end: str(r.part_end).slice(0, 10) as IsoDate,
+    amountOre: Number(r.amount_ore),
   }));
 }
 

@@ -934,3 +934,62 @@ describe("inget att fakturera, mottagaren och platsen för automaten", () => {
     expect(notes.at(-1)).toBe("Binderlab AB är säljare av varorna i automaten.");
   });
 });
+
+describe("betalning för en egen period (förskott)", () => {
+  const rev2: StoreBasis = { ...BASIS, rev: 2 };
+  // 100 kr betalt 16 nov. för 1–14 nov. (en del av en betalning för 14 okt.–14 nov.).
+  const ADV = {
+    paidOn: "2026-11-16",
+    month: "2026-11",
+    start: "2026-11-01",
+    end: "2026-11-14",
+    amountOre: 10_000,
+  } as const;
+  const nov = (shareOre: number, start = "2026-11-01", end = "2026-11-30") =>
+    rep(shareOre, {}, { period: { start, end }, splits: [{ start, end, shareOre }] });
+
+  it("blir en egen betalning med sina dagar, också utan avräkning", () => {
+    expect(paymentsFromSettlements([], "2026-11", "2026-11", [ADV])).toEqual([
+      {
+        paidOn: "2026-11-16",
+        amountOre: 10_000,
+        month: "2026-11",
+        start: "2026-11-01",
+        end: "2026-11-14",
+      },
+    ]);
+    expect(paymentsFromSettlements([], "2026-10", "2026-10", [ADV])).toEqual([]);
+  });
+
+  it("på en betald avräkning ingår förskottet i det betalda: inget räknas två gånger", () => {
+    const paid = [{ paidOn: "2026-12-05", month: "2026-11", paidOre: 40_000, corrections: [] }];
+    const payments = paymentsFromSettlements(paid, "2026-11", "2026-11", [ADV]);
+    expect(payments.reduce((n, p) => n + p.amountOre, 0)).toBe(40_000);
+    expect(payments).toContainEqual({ paidOn: "2026-12-05", amountOre: 30_000, month: "2026-11" });
+  });
+
+  it("novemberrapporten: Redan betalt för 1–14 nov. och Kvar att betala", () => {
+    const b = { ...rev2, payments: paymentsFromSettlements([], "2026-11", "2026-11", [ADV]) };
+    const rows = invoiceRows(b, nov(40_000));
+    expect(rows.slice(3).map((r) => [r.label, r.amountOre])).toEqual([
+      ["Redan betalt 16 nov. 2026 (för 1–14 nov. 2026)", 10_000],
+      ["Kvar att betala", 40_000],
+    ]);
+    expect(paymentNotes(b, nov(40_000))).toEqual([]);
+  });
+
+  it("en rapport för 15–30 nov. räknar inte av förskottet för 1–14 nov.", () => {
+    const b = { ...rev2, payments: paymentsFromSettlements([], "2026-11", "2026-11", [ADV]) };
+    const r = nov(20_000, "2026-11-15", "2026-11-30");
+    expect(invoiceRows(b, r)).toEqual(vatRows(b, 20_000));
+    expect(paymentNotes(b, r)[0]).toMatch(/gäller dagar utanför rapporten och räknas inte av här/);
+  });
+
+  it("en rapport för 1–10 nov. räknar av högst rapportens belopp, och säger det", () => {
+    const b = { ...rev2, payments: paymentsFromSettlements([], "2026-11", "2026-11", [ADV]) };
+    const r = nov(6_000, "2026-11-01", "2026-11-10");
+    const rows = invoiceRows(b, r);
+    expect(rows.find((x) => x.key.startsWith("paid-"))?.amountOre).toBe(6_000);
+    expect(paymentNotes(b, r)[0]).toMatch(/gäller också dagar utanför rapporten/);
+  });
+});

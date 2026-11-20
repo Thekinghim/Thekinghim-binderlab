@@ -1016,3 +1016,39 @@ För en betald avräkning jämförs tre belopp:
 ### Avräkningar för äldre månader
 
 Avräkningar skapas (jobbet och knappen på Utbetalning) för förra månaden **och för varje äldre avslutad månad där en butik sålde men saknar avräkning**, också när månaden är stängd (en månad kan stängas av att bokföringen skickas medan en butik saknar avräkning; butiken ska ha sina pengar ändå, och avräkningen ändrar inget i månaden). Bara månader från och med organisationens första avräkningsmånad räknas: det som såldes innan appen började avräkna har betalats utanför appen. De äldre månaderna står på Utbetalning och i Att göra. Förut skapades och listades bara förra månaden: en butik vars avräkning inte gick att räkna i tid (saknat inköpspris under vinstdelning) eller vars automat kopplades i efterhand föll bort när månaden bytte.
+
+## 32. Betalning för en egen period (`src/server/settlements/advance.ts`, Butiker → Utbetalning)
+
+Ägaren betalar ofta butiken från mitten av en månad till mitten av nästa ("14 okt.–14 nov."). Avräkningarna finns per kalendermånad och skapas först när månaden är slut. **Registrera betalning** (ägare och admin) sparar en betalning med dag, belopp, perioden den gäller och en anteckning (`store_payments`). Den delas upp per kalendermånad när den registreras. Delarna sparas och ändras aldrig; en felaktig betalning tas bort och registreras igen.
+
+### Regeln för uppdelningen
+
+Perioden delas i kalendermånader och delarna fylls i tur och ordning:
+
+1. Varje månad **utom den sista** får det appen själv räknar att butiken ska ha för just de dagarna, högst det som är kvar av betalningen:
+   - Täcker dagarna hela månadens andel (hela månaden, eller allt butiken fick i månaden ligger inom dagarna) och har månaden en avräkning: avräkningens belopp. För en **betald** avräkning det som betalades (rapportens belopp när ägaren valde det), minus det andra betalningar redan lagt på månaden. Betalningen räknas då som **samma pengar** som betalningen av avräkningen, aldrig som pengar till.
+   - Annars butikens andel för dagarna, räknad med samma uträkning som avräkningen och butiksrapporten för ett eget datum. För en betald avräkning samma andel av det som betalades.
+   - Går dagarna inte att räkna (saknat inköpspris) eller är månaden inte slut delas betalningen inte: ägaren får registrera en betalning per månad.
+2. Den **sista** månaden får resten.
+
+Ingen fördelning efter antal dagar. Förhandsvisningen visar delarna innan något sparas, och registreringen sparar bara om delarna är desamma som ägaren såg.
+
+**Exempel (riktigt fall, påhittat namn).** Automaten placerades 14 okt., vinstdelning 50 %. Oktoberavräkningen är 8 388,08 kr och markerad som betald 16 nov. Ägaren betalade 10 089,32 kr den 16 nov. för 14 okt.–14 nov. Oktober får 8 388,08 kr (samma pengar som oktobers avräkning, inget ändras där), november får resten: **1 701,24 kr i förskott för 1–14 nov.** När novemberavräkningen skapas 1 dec. står "Redan betalt i förskott 1 701,24 kr (1–14 nov., betalt 16 nov.)" och "Kvar att betala" = novemberavräkningen − 1 701,24 kr.
+
+### Avdraget
+
+- På en **obetald** avräkning dras förskotten för månaden av: Kvar att betala = avräkningen (räknad nu) − förskotten. Summan på Utbetalning, Hem och Att göra är det som är kvar.
+- Täcker förskotten hela avräkningen (förskott ≥ belopp) blir den **betald med betalningarna** (`paid_from_payments`): betalt belopp = förskotten, dagen = den senaste betalningens dag (aldrig före månaden). Det händer när betalningen registreras, när avräkningen skapas och när det nattliga jobbet räknar om obetalda. Bara registreringen stänger månaden (som "Markera som betald"); jobbet stänger aldrig något.
+- **För mycket betalt**: skillnaden blir en vanlig "betald mot dagens uträkning"-skillnad (avsnitt 31), "Butiken har fått 5,00 kr för mycket", som kan läggas på nästa avräkning. Inget räknas två gånger: `paid_amount_ore`, rättelser och förskott hänger ihop i samma betalda belopp.
+- En **betald** avräkning drar aldrig av något: det som betalats i förskott ingår i det som betalades. Markeras en delvis förskottsbetald avräkning som betald för hand är det betalda hela avräkningen (förskottet och resten).
+- En betalning som skulle ge en redan betald sista månad mer än det som återstår av det betalda nekas ("November är redan betald. Betalningen är … mer …").
+
+### Ta bort
+
+"Ta bort" (frågar först) tar bort betalningen. Avräkningar som var betalda med den blir obetalda igen (och betalda på nytt om andra betalningar fortfarande täcker dem). Ligger en sådan avräkning i en **stängd månad** tas inget bort förrän ägaren öppnat månaden. En avräkning betald med betalningar ångras inte för sig ("Ta bort betalningen under Betalningar").
+
+### Butiksrapporten, portalen och exporten
+
+- Butiksrapportens "Redan betalt" tar med delarna för rapportens månader med sina dagar: "Redan betalt 16 nov. 2026 (för 1–14 nov. 2026)". En del som ligger helt inom rapportens dagar räknas av helt; en del utanför räknas inte av; en del som delvis överlappar räknas av med högst rapportens belopp, och en mening säger det. För en betald avräkning är avräkningens egen rad det betalda minus förskotten.
+- Butiksportalen ser delarna för sin egen butik (`portal_store_payments`, utan anteckningen) och "på väg till er" är det som är kvar.
+- Bokföringen ändras inte: butikens andel bokförs som förut ur försäljningen. "Exportera all data" har `butiksbetalningar.csv`.

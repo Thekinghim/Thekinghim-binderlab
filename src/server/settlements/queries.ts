@@ -4,6 +4,7 @@
  *
  * Beloppet räknas om NU (./live.ts), samma som på Butiksportal: ett sparat belopp från
  * innan inköpspriser, testköp eller avtal ändrades visas aldrig som "Betala … kr".
+ * Betalningar i förskott för månaden (store_payments) dras av: punkten säger det som är kvar.
  */
 
 import "server-only";
@@ -17,6 +18,8 @@ import { monthPeriod, PlacementIndex, type IsoDate, type IsoMonth } from "@/doma
 import { queryEffectivePlacements } from "@/server/data/core/queries";
 import { storesPlacedIn } from "@/server/reports/sources";
 
+import { advancesFor, advanceTotal } from "./advance";
+import { queryAdvanceParts } from "./advances-db";
 import { liveFor } from "./live";
 
 /** Obetalda avräkningar med beloppet räknat nu (för Att göra). */
@@ -35,14 +38,21 @@ export async function queryUnpaidSettlements(
     .from(s.storeSettlements)
     .where(and(eq(s.storeSettlements.organizationId, orgId), isNull(s.storeSettlements.paidOn)));
   if (rows.length === 0) return [];
-  const live = await liveFor(tx, orgId, rows, now);
+  const [live, advances] = await Promise.all([
+    liveFor(tx, orgId, rows, now),
+    queryAdvanceParts(tx, orgId),
+  ]);
   const out: SettlementRef[] = [];
   for (const r of rows) {
     const l = live.get(r.id);
     const ref = { id: r.id, storeId: r.storeId, month: r.month as IsoDate };
-    if (l && !l.ok) out.push({ ...ref, amountOre: r.amountOre, blocked: true });
+    // Betalningar i förskott för månaden dras av: det som återstår att betala (./advance.ts).
+    const advanceOre = advanceTotal(
+      advancesFor(advances, r.storeId, r.month.slice(0, 7) as IsoMonth),
+    );
+    if (l && !l.ok) out.push({ ...ref, amountOre: r.amountOre - advanceOre, blocked: true });
     else {
-      const amountOre = l?.ok ? l.computed.amountOre : r.amountOre;
+      const amountOre = (l?.ok ? l.computed.amountOre : r.amountOre) - advanceOre;
       if (amountOre > 0) out.push({ ...ref, amountOre });
     }
   }

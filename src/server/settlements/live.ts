@@ -9,7 +9,7 @@
 import "server-only";
 
 import type { Tx } from "@/db/client";
-import { DomainError, type IsoMonth } from "@/domain";
+import { DomainError, type IsoMonth, type Period } from "@/domain";
 import { buildSnapshot } from "@/server/reports/snapshot";
 import { loadSnapshotInput, settlementOrderWindow } from "@/server/reports/sources";
 
@@ -51,6 +51,11 @@ export async function computeSettlementsTx(
     month: IsoMonth;
     storeIds: readonly string[];
     now: Date;
+    /**
+     * Bara de här dagarna i månaden (en betalning för en egen period, ./advance.ts). Samma
+     * uträkning som butiksrapporten för ett eget datum. Utelämnad = hela månaden.
+     */
+    period?: Period;
   },
 ): Promise<Map<string, LiveSettlement>> {
   const out = new Map<string, LiveSettlement>();
@@ -62,6 +67,7 @@ export async function computeSettlementsTx(
     storeId: null,
     now: input.now.toISOString(),
     orderWindow: settlementOrderWindow(input.month),
+    ...(input.period ? { period: input.period } : {}),
   });
   for (const storeId of input.storeIds) {
     try {

@@ -30,6 +30,12 @@ import {
   SettlementError,
   undoSettlementPaidFor,
 } from "@/server/settlements/service";
+import {
+  deletePaymentFor,
+  previewPaymentFor,
+  registerPaymentFor,
+  type PaymentPartView,
+} from "@/server/settlements/payments";
 
 export type SettlementActionResult<T = undefined> =
   { ok: true; data: T } | { ok: false; error: string };
@@ -217,6 +223,91 @@ export async function createMissingSettlements(confirmNoAgreement = false): Prom
     }
     await revalidateSettlementData();
     return { ok: true, data: { created: run?.created ?? 0, errors: run?.errors.length ?? 0 } };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+const paymentSchema = z.object({
+  storeId: z.string().uuid("Välj en butik."),
+  paidOn: dateSchema,
+  amountOre: z.number().int("Skriv ett belopp.").positive("Skriv ett belopp över 0 kr.").safe(),
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Välj perioden betalningen gäller."),
+  periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Välj perioden betalningen gäller."),
+  note: z.string().max(500, "Anteckningen kan vara högst 500 tecken.").nullable().optional(),
+});
+
+/** Hur en betalning för en period delas upp per månad, innan den sparas. */
+export async function previewStorePayment(
+  input: unknown,
+): Promise<SettlementActionResult<{ storeName: string; parts: PaymentPartView[] }>> {
+  try {
+    const viewer = await operator();
+    return { ok: true, data: await previewPaymentFor(viewer, paymentSchema.parse(input)) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * "Registrera betalning": sparas bara om uppdelningen är den som visades (`expectedParts`,
+ * delarnas belopp i öre).
+ */
+export async function registerStorePayment(
+  input: unknown,
+  expectedParts: unknown,
+): Promise<
+  SettlementActionResult<{
+    storeName: string;
+    settledText: string | null;
+    closedText: string | null;
+  }>
+> {
+  try {
+    const viewer = await operator();
+    const expected = z.array(z.number().int().min(0).safe()).max(14).parse(expectedParts);
+    const res = await registerPaymentFor(viewer, paymentSchema.parse(input), expected);
+    await revalidateSettlementData();
+    const cap = (t: string) => `${t.charAt(0).toUpperCase()}${t.slice(1)}`;
+    return {
+      ok: true,
+      data: {
+        storeName: res.storeName,
+        settledText:
+          res.settledMonths.length > 0
+            ? `Avräkningen för ${res.settledMonths.map(monthLong).join(" och ")} är betald.`
+            : null,
+        closedText:
+          res.closedMonths.length > 0
+            ? `${cap(res.closedMonths.map(monthLong).join(" och "))} är stängd.`
+            : null,
+      },
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** "Ta bort" en felaktig betalning (frågar först i sidan). */
+export async function deleteStorePayment(
+  id: unknown,
+): Promise<SettlementActionResult<{ reopenedText: string | null }>> {
+  try {
+    const viewer = await operator();
+    const res = await deletePaymentFor(
+      viewer,
+      z.string().uuid("Betalningen finns inte.").parse(id),
+    );
+    await revalidateSettlementData();
+    return {
+      ok: true,
+      data: {
+        reopenedText:
+          res.reopened.length > 0
+            ? `Avräkningen för ${res.reopened.map(monthLong).join(" och ")} är obetald igen.`
+            : null,
+      },
+    };
   } catch (error) {
     return failure(error);
   }

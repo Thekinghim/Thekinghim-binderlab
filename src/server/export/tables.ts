@@ -113,6 +113,12 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
     table: "store_settlements",
     description: "Månadsavräkningar per butik (öre) och när de betalades.",
   },
+  {
+    file: "butiksbetalningar.csv",
+    table: "store_payments",
+    description:
+      "Betalningar till butikerna för egna perioder (öre), med delarna per månad (parts) som dras av på avräkningarna.",
+  },
   { file: "utbetalningar.csv", table: "payouts", description: "Utbetalningar från plattformen." },
   {
     file: "utbetalningsrader.csv",

@@ -1141,6 +1141,14 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
                   '{"version":1,"storeName":"Testbutik","month":"2025-03","modelText":"Provision","steps":[],"salesInclVatOre":16800,"orders":2,"totalOre":3360}'::jsonb,
                   'calc@1')`,
     );
+    // Betalning för en egen period (20261221000000_butiksbetalning_period.sql).
+    await tx.execute(
+      sql`insert into public.store_payments
+            (organization_id, store_id, paid_on, amount_ore, period_start, period_end, parts)
+          values (${orgId}, ${store!.id}, '2025-04-16', 5000, '2025-03-14', '2025-04-14',
+                  '[{"month":"2025-03","start":"2025-03-14","end":"2025-03-31","amountOre":3360},
+                    {"month":"2025-04","start":"2025-04-01","end":"2025-04-14","amountOre":1640}]'::jsonb)`,
+    );
     // Plan för fler automater (20261104233300_tillvaxt_plan.sql).
     await tx.execute(
       sql`insert into public.growth_plans

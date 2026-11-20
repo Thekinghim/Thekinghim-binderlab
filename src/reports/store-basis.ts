@@ -206,6 +206,24 @@ export interface BasisPayment {
    * mycket betalt för `month`, avdraget på den senare avräkningen).
    */
   readonly paidWithMonth?: IsoMonth;
+  /**
+   * En betalning för en egen period (store_payments): dagarna i `month` som den gällde.
+   * Saknas = hela avräkningen för `month`.
+   */
+  readonly start?: IsoDate;
+  readonly end?: IsoDate;
+}
+
+/**
+ * En del av en betalning för en egen period (store_payments): det som betalades `paidOn`
+ * för dagarna `start`–`end` i `month`.
+ */
+export interface BasisAdvance {
+  readonly paidOn: IsoDate;
+  readonly month: IsoMonth;
+  readonly start: IsoDate;
+  readonly end: IsoDate;
+  readonly amountOre: number;
 }
 
 /** En betald avräkning som den läses ur databasen, med rättelserna som lagts på den. */
@@ -222,20 +240,42 @@ export interface PaidSettlement {
  * delas upp: avräkningens egen månad får det betalda minus rättelserna, och varje rättelse
  * blir en egen betalning för sin månad (samma dag). Bara månader i `first`–`last` tas med,
  * och inga belopp på 0 kr.
+ *
+ * Betalningar för en egen period (`advances`, delarna per månad i store_payments) blir egna
+ * betalningar med sina dagar, också för en månad utan avräkning än. För en BETALD avräkning
+ * ingår de redan i det som betalades: avräkningens egen betalning är då det betalda minus
+ * förskotten, så att inget räknas två gånger.
  */
 export function paymentsFromSettlements(
   settlements: readonly PaidSettlement[],
   first: IsoMonth,
   last: IsoMonth,
+  advances: readonly BasisAdvance[] = [],
 ): BasisPayment[] {
   const inside = (m: IsoMonth) => m >= first && m <= last;
   const out: BasisPayment[] = [];
+  const validAdvances = advances.filter(
+    (a) => Number.isSafeInteger(a.amountOre) && a.amountOre > 0,
+  );
+  for (const a of validAdvances) {
+    if (!inside(a.month)) continue;
+    out.push({
+      paidOn: a.paidOn,
+      amountOre: a.amountOre,
+      month: a.month,
+      start: a.start,
+      end: a.end,
+    });
+  }
   for (const ss of settlements) {
     if (!Number.isSafeInteger(ss.paidOre)) continue;
     const corrections = ss.corrections.filter(
       (c) => Number.isSafeInteger(c.amountOre) && c.month !== ss.month,
     );
-    const ownOre = ss.paidOre - corrections.reduce((n, c) => n + c.amountOre, 0);
+    const advanceOre = validAdvances
+      .filter((a) => a.month === ss.month)
+      .reduce((n, a) => n + a.amountOre, 0);
+    const ownOre = ss.paidOre - corrections.reduce((n, c) => n + c.amountOre, 0) - advanceOre;
     if (inside(ss.month) && ownOre > 0) {
       out.push({ paidOn: ss.paidOn, amountOre: ownOre, month: ss.month });
     }
@@ -505,6 +545,8 @@ interface PaymentPart {
   readonly monthOre: number | null;
   /** Det som räknas av: hela beloppet för en hel månad, annars rapportens del av månaden. */
   readonly countedOre: number;
+  /** En betalning för en egen period: dagarna den gällde i månaden. null = hela avräkningen. */
+  readonly range: Period | null;
 }
 
 /**
@@ -551,19 +593,41 @@ function paymentParts(basis: StoreBasis, report: InvoiceReport): PaymentPart[] {
         part: null,
         monthOre: null,
         countedOre: p.amountOre,
+        range: null,
       });
       continue;
     }
-    const start = monthStart(month);
-    const end = monthEnd(month);
+    // En betalning för en egen period gäller bara sina dagar i månaden.
+    const start = typeof p.start === "string" ? p.start : monthStart(month);
+    const end = typeof p.end === "string" ? p.end : monthEnd(month);
     const part: Period = {
       start: report.period.start > start ? report.period.start : start,
       end: report.period.end < end ? report.period.end : end,
     };
+    if (part.start > part.end) {
+      // Inga av rapportens dagar: räknas inte av här.
+      out.push({
+        paidOn: p.paidOn,
+        amountOre: p.amountOre,
+        month,
+        paidWithMonth,
+        whole: false,
+        part: null,
+        monthOre: null,
+        countedOre: 0,
+        range: typeof p.start === "string" ? { start, end } : null,
+      });
+      continue;
+    }
     const whole = part.start === start && part.end === end;
     const monthOre = monthShareOre(report, month);
     let countedOre = p.amountOre;
-    if (!whole) {
+    if (whole && typeof p.start === "string") {
+      // Hela betalningen gäller rapportens dagar: den räknas av och ingår i det som hittills
+      // betalats för månaden (en senare betalning för hela månaden räknas på resten).
+      paidSoFar.set(month, (paidSoFar.get(month) ?? 0) + p.amountOre);
+      countedSoFar.set(month, (countedSoFar.get(month) ?? 0) + p.amountOre);
+    } else if (!whole) {
       const paid = (paidSoFar.get(month) ?? 0) + p.amountOre;
       const before = countedSoFar.get(month) ?? 0;
       const upTo = monthOre !== null && monthOre > 0 ? Math.max(0, Math.min(paid, monthOre)) : 0;
@@ -580,6 +644,7 @@ function paymentParts(basis: StoreBasis, report: InvoiceReport): PaymentPart[] {
       part,
       monthOre,
       countedOre,
+      range: typeof p.start === "string" ? { start, end } : null,
     });
   }
   return out;
@@ -623,7 +688,7 @@ export function invoiceRows(basis: StoreBasis, report: InvoiceReport): BasisVatR
   return [
     ...head,
     ...counted.map((p) => ({
-      key: `paid-${p.paidOn}-${p.month ?? ""}${p.paidWithMonth ? `-${p.paidWithMonth}` : ""}`,
+      key: `paid-${p.paidOn}-${p.month ?? ""}${p.paidWithMonth ? `-${p.paidWithMonth}` : ""}${p.range ? `-${p.range.start}` : ""}`,
       label: paidLabel(p),
       amountOre: p.countedOre,
     })),
@@ -638,6 +703,7 @@ export function invoiceRows(basis: StoreBasis, report: InvoiceReport): BasisVatR
  */
 function paidLabel(p: PaymentPart): string {
   const day = periodText({ start: p.paidOn, end: p.paidOn });
+  if (p.range) return `Redan betalt ${day} (för ${periodText(p.range)})`;
   if (p.month && p.paidWithMonth) {
     const what = `rättelse för ${monthText(p.month)} på avräkningen för ${monthText(p.paidWithMonth)}`;
     return p.countedOre < 0 ? `Avdraget ${day} (${what})` : `Redan betalt ${day} (${what})`;
@@ -662,6 +728,19 @@ export function paymentNotes(basis: StoreBasis, report: InvoiceReport): string[]
     const m = monthText(p.month);
     const sameMonth = sum.parts.filter((x) => x.month === p.month);
     const hasCorrection = sameMonth.some((x) => x.paidWithMonth !== null);
+    // En månad med betalningar för egna perioder: det som totalt betalats för månaden.
+    const hasRange = sameMonth.some((x) => x.range !== null);
+    if (p.range) {
+      const what = `Betalningen ${day(p.paidOn)} för ${periodText(p.range)} (${kr(p.amountOre)})`;
+      if (!p.whole) {
+        notes.push(
+          p.countedOre === 0
+            ? `${what} gäller dagar utanför rapporten och räknas inte av här.`
+            : `${what} gäller också dagar utanför rapporten. Av den räknas ${kr(p.countedOre)} av här, för ${periodText(p.part!)}.`,
+        );
+      }
+      continue;
+    }
     if (p.paidWithMonth !== null) {
       const w = monthText(p.paidWithMonth);
       const what = `Rättelsen för ${m} (${kr(p.amountOre)}) betalades ${day(p.paidOn)} på avräkningen för ${w}`;
@@ -689,7 +768,7 @@ export function paymentNotes(basis: StoreBasis, report: InvoiceReport): string[]
         );
         continue;
       }
-      if (!hasCorrection && p.monthOre !== null && p.monthOre !== p.amountOre) {
+      if (!hasCorrection && !hasRange && p.monthOre !== null && p.monthOre !== p.amountOre) {
         notes.push(`${paid}. Rapportens belopp för ${m} är ${kr(p.monthOre)}.`);
       }
     }

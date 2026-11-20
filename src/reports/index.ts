@@ -80,6 +80,7 @@ export {
   type BasisContractRow,
   type BasisPayer,
   paymentsFromSettlements,
+  type BasisAdvance,
   type BasisPayment,
   type PaidSettlement,
   type BasisRecipient,

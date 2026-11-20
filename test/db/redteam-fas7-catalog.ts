@@ -1360,6 +1360,42 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [c.idsA.store_settlements, c.idsA.store_settlements],
   },
+  // Betalning till en butik för en egen period (20261221000000_butiksbetalning_period.sql)
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "previewStorePayment",
+    allowed: OP,
+    args: (c) => [
+      {
+        storeId: c.idsA.stores,
+        paidOn: TODAY,
+        amountOre: 100,
+        periodStart: "2025-03-01",
+        periodEnd: "2025-03-14",
+      },
+    ],
+  },
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "registerStorePayment",
+    allowed: OP,
+    args: (c) => [
+      {
+        storeId: c.idsA.stores,
+        paidOn: TODAY,
+        amountOre: 100,
+        periodStart: "2025-03-01",
+        periodEnd: "2025-03-14",
+      },
+      [100],
+    ],
+  },
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "deleteStorePayment",
+    allowed: OP,
+    args: (c) => [c.idsA.store_payments],
+  },
   // Stängda månader: bara ägaren öppnar, ägare och admin stänger
   {
     module: "@/app/(app)/_manad/actions",

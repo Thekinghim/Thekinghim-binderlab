@@ -14,6 +14,8 @@ import {
   payoutDueDate,
   STATE_LABEL,
 } from "@/server/settlements/model";
+import { dayRangeText, leftLine } from "@/server/settlements/advance";
+import { loadPaymentListFor, type PaymentListItem } from "@/server/settlements/payments";
 import { loadSettlementPageFor, type SettlementRow } from "@/server/settlements/service";
 
 import {
@@ -25,6 +27,7 @@ import {
   RemoveCorrectionButton,
   UndoPaidButton,
 } from "./settlement-actions";
+import { DeletePaymentButton, RegisterPaymentButton } from "./payment-actions";
 import { CloseMonthButton, ReopenMonthButton } from "../../_manad/period-controls";
 import { MoneyCount } from "./money-count";
 import {
@@ -61,17 +64,19 @@ const dayLabel = (d: string) =>
  * knapp). Butiker utan avtal förra månaden (räknas som 0 %) varnas före "Skapa".
  */
 export async function SettlementsView({ viewer, today }: { viewer: Viewer; today: string }) {
-  const [page, periods] = await Promise.all([
+  const [page, periods, payments] = await Promise.all([
     loadSettlementPageFor(viewer),
     loadPeriodOverviewFor(viewer),
+    loadPaymentListFor(viewer),
   ]);
   const closedBy = new Map(periods.closed.map((c) => [c.month as string, c]));
   const reopenedBy = new Map(periods.reopened.map((r) => [r.month as string, r]));
   // Obetalda har beloppet räknat nu. En som inte kan räknas (t.ex. saknat inköpspris)
   // räknas inte in i summan och kan inte betalas.
-  const unpaid = page.rows.filter((r) => r.state === "unpaid" && !r.blocked);
+  // Det som redan betalats i förskott för månaden dras av (Kvar att betala).
+  const unpaid = page.rows.filter((r) => r.state === "unpaid" && !r.blocked && r.leftOre > 0);
   const blocked = page.rows.filter((r) => r.blocked);
-  const toPay = unpaid.reduce((n, r) => n + r.amountOre, 0);
+  const toPay = unpaid.reduce((n, r) => n + r.leftOre, 0);
   const unpaidStores = new Set(unpaid.map((r) => r.storeId)).size;
   const firstDue = unpaid.length ? unpaid.map((r) => payoutDueDate(r.month)).sort()[0]! : null;
   const late = firstDue !== null && firstDue < today;
@@ -209,9 +214,23 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                       ) : null}
                       <span className="meta truncate text-subtle">
                         {r.state === "paid" && r.paidOn
-                          ? `Betald ${dayLabel(r.paidOn)}`
+                          ? `Betald ${dayLabel(r.paidOn)}${r.paidFromPayments ? " med betalningar" : ""}`
                           : (r.statement?.modelText ?? "")}
                       </span>
+                      {r.advanceText ? (
+                        <span className="text-sm text-fg" data-advance={r.id}>
+                          {r.advanceText}.
+                          {!r.paidOn && !r.blocked ? (
+                            <>
+                              {" "}
+                              Avräkningen {exactKr(r.amountOre)}.{" "}
+                              <span className={r.leftOre < 0 ? "text-signal-fg" : ""}>
+                                {leftLine(r.leftOre)}.
+                              </span>
+                            </>
+                          ) : null}
+                        </span>
+                      ) : null}
                       {r.blocked ? (
                         <span className="text-sm text-signal-fg">
                           Kan inte räknas: {r.blocked}{" "}
@@ -262,7 +281,13 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="tnum text-lg text-fg">
-                        {r.blocked ? "–" : kr(Math.abs(r.paidOn ? r.paidOre : r.amountOre))}
+                        {r.blocked
+                          ? "–"
+                          : kr(
+                              Math.abs(
+                                r.paidOn ? r.paidOre : r.advanceOre > 0 ? r.leftOre : r.amountOre,
+                              ),
+                            )}
                       </span>
                       <StatusTag
                         status={
@@ -292,6 +317,7 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                             id={r.id}
                             storeName={r.storeName}
                             amountOre={r.amountOre}
+                            advanceOre={r.advanceOre}
                             reportOre={
                               r.reportOre === null || r.reportOre === 0
                                 ? null
@@ -302,7 +328,7 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                           />
                         </>
                       ) : null}
-                      {page.canEdit && r.state === "paid" ? (
+                      {page.canEdit && r.state === "paid" && !r.paidFromPayments ? (
                         <UndoPaidButton id={r.id} storeName={r.storeName} />
                       ) : null}
                     </div>
@@ -313,6 +339,13 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
           ))
         )}
       </section>
+
+      <PaymentsSection
+        payments={payments}
+        canEdit={page.canEdit}
+        stores={page.stores}
+        today={today}
+      />
 
       {page.portal ? (
         <section className="rise flex flex-col gap-3" style={rise(3)} aria-labelledby="portal">
@@ -427,5 +460,86 @@ function PaidCompare({ row, canEdit }: { row: SettlementRow; canEdit: boolean })
         </Link>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Betalningar till butikerna för egna perioder (t.ex. 14 okt.–14 nov.): "Registrera
+ * betalning" och listan, med vad varje del gör med månadens avräkning och "Ta bort".
+ */
+function PaymentsSection({
+  payments,
+  canEdit,
+  stores,
+  today,
+}: {
+  payments: readonly PaymentListItem[];
+  canEdit: boolean;
+  stores: readonly { id: string; name: string }[];
+  today: string;
+}) {
+  if (payments.length === 0 && !canEdit) return null;
+  return (
+    <section className="rise flex flex-col gap-3" style={rise(3)} aria-labelledby="betalningar">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="betalningar" className="label text-subtle">
+          Betalningar
+        </h2>
+        {canEdit && stores.length > 0 ? (
+          <RegisterPaymentButton stores={stores} today={today} />
+        ) : null}
+      </div>
+      {payments.length === 0 ? (
+        <p className="text-base text-muted">
+          Har du betalat en butik för andra dagar än en hel månad, till exempel 14 okt.–14 nov.?
+          Registrera betalningen här, så dras den av på rätt avräkning.
+        </p>
+      ) : (
+        <ul className="flex flex-col border-t border-line">
+          {payments.map((p) => {
+            const period = dayRangeText({ start: p.periodStart, end: p.periodEnd });
+            return (
+              <li
+                key={p.id}
+                className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 border-b border-line py-3"
+                data-payment={p.id}
+              >
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="truncate text-md text-fg">
+                    {p.storeName} · {period}
+                  </span>
+                  <span className="meta text-subtle">
+                    Betald {dayLabel(p.paidOn)}
+                    {p.note ? ` · ${p.note}` : ""}
+                  </span>
+                  <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+                    {p.parts.map((part) => (
+                      <li key={part.month} className="flex flex-wrap gap-x-2">
+                        <span className="text-fg">
+                          {dayRangeText(part)}: {exactKr(part.amountOre)}
+                        </span>
+                        <span className="text-muted">{part.effect}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="tnum text-lg text-fg">{exactKr(p.amountOre)}</span>
+                  {canEdit ? (
+                    <DeletePaymentButton
+                      id={p.id}
+                      storeName={p.storeName}
+                      amountOre={p.amountOre}
+                      periodLabel={period}
+                      blocked={p.deleteBlocked}
+                    />
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

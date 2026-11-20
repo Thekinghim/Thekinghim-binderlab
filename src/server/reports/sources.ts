@@ -389,6 +389,27 @@ export async function queryStoreBasis(
     amount_ore: string | number;
     corrections: unknown;
   }>;
+  // Betalningar för en egen period (store_payments): delarna för rapportens månader, med
+  // sina dagar. För en betald avräkning ingår de i det som betalades (paymentsFromSettlements).
+  const advanceRows = Array.from(
+    await tx.execute(
+      sql`select p.paid_on::text as paid_on, part ->> 'month' as month,
+                 part ->> 'start' as part_start, part ->> 'end' as part_end,
+                 (part ->> 'amountOre')::bigint as amount_ore
+            from public.store_payments p
+            cross join lateral jsonb_array_elements(p.parts) part
+           where p.organization_id = ${orgId}::uuid
+             and p.store_id = ${storeId}::uuid
+             and part ->> 'month' between ${firstMonth} and ${lastMonth}
+           order by p.paid_on, part ->> 'start', p.id`,
+    ),
+  ) as Array<{
+    paid_on: string;
+    month: string;
+    part_start: string;
+    part_end: string;
+    amount_ore: string | number;
+  }>;
   // Avräkningens månad: rapporten räknar bara av det som gäller dess dagar (store-basis).
   const payments = paymentsFromSettlements(
     paidRows.map((r) => ({
@@ -399,6 +420,13 @@ export async function queryStoreBasis(
     })),
     firstMonth,
     lastMonth,
+    advanceRows.map((r) => ({
+      paidOn: r.paid_on.slice(0, 10) as IsoDate,
+      month: r.month as IsoMonth,
+      start: r.part_start as IsoDate,
+      end: r.part_end as IsoDate,
+      amountOre: Number(r.amount_ore),
+    })),
   );
   const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
   const legalName = clean(company.companyName);
