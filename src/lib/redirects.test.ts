@@ -23,4 +23,11 @@ describe("APP_REDIRECTS", () => {
       permanent: false,
     });
   });
+
+  it("V2: /rutten och /route skickas till /rutt; /drift/besok ligger kvar tills Rutt är byggd", () => {
+    for (const source of ["/rutten", "/route"]) {
+      expect(APP_REDIRECTS).toContainEqual({ source, destination: "/rutt", permanent: false });
+    }
+    expect(APP_REDIRECTS.some((r) => r.source.startsWith("/drift/besok"))).toBe(false);
+  });
 });

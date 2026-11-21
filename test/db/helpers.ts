@@ -907,7 +907,35 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       channels: ["A1", "A2"],
       syncedAt: new Date("2025-03-01T10:00:00Z"),
     });
+    // V2 (20261223000100_v2_produktbyte.sql): ett produktbyte i ett fack. Bara synken skriver.
+    await tx.insert(s.productSwaps).values({
+      ...org,
+      machineId: machine!.id,
+      channel: "A2",
+      fromTitleId: secondTitle!.id,
+      toTitleId: title!.id,
+      returnedUnits: 2,
+      takenUnits: 6,
+      sourceLocationId: central!.id,
+      transferGroupId: randomUUID(),
+      occurredAt: new Date("2025-03-01T10:00:00Z"),
+    });
     await tx.execute(sql`set local role authenticated`);
+    // V2 (20261223000000_v2_rutt.sql): partnerns lager (tomt), som en butik håller åt oss.
+    await tx.insert(s.stockLocations).values({
+      ...org,
+      kind: "warehouse",
+      name: "Partnerns lager",
+      heldBy: "partner",
+      partnerStoreId: store!.id,
+    });
+    // V2 (20261223000000_v2_rutt.sql): en ändring i dagens rutt.
+    await tx.insert(s.routeDayChanges).values({
+      ...org,
+      day: "2025-03-03",
+      machineId: machine!.id,
+      change: "skip",
+    });
     await tx.insert(s.assortmentChanges).values({
       ...org,
       machineId: machine!.id,

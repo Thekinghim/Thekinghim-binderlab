@@ -1,5 +1,6 @@
 import { ConfigMissing } from "@/components/ui/config-missing";
 import { getConfigStatus } from "@/server/config-status";
+import type { Viewport } from "next";
 import type { ReactNode } from "react";
 import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
 import { ownerChoices } from "@/components/shell/owner-filter";
@@ -38,6 +39,9 @@ import { NoOrganization } from "./no-organization";
  */
 // Inloggade sidor läser sessionen per förfrågan och förrenderas aldrig vid bygget.
 export const dynamic = "force-dynamic";
+
+/** V2 är bara ljust: adressfältet och statusraden får V2:s bakgrund (--v2-bg). */
+export const viewport: Viewport = { themeColor: "#f1f1f1" };
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const config = getConfigStatus();
@@ -117,6 +121,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         })}
         activeOrganizationId={ctx.organization.id}
         vmbUserKey={ctx.canSeeEconomy ? ctx.user.id : null}
+        timeZone={ctx.timeZone}
         todoCount={todoCount}
         syncedAt={sync?.syncedAt ?? undefined}
         syncState={sync?.state}

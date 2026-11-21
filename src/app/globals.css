@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "../styles/tokens.css";
 @import "../styles/print.css";
+@import "../styles/v2.css";
 
 /* Lägesväxling via data-theme, inte media query (mörkt är standard). */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
@@ -56,6 +57,62 @@
 
   --font-sans: var(--bl-font-sans);
   --font-mono: var(--bl-font-mono);
+
+  /*
+   * V2 (src/styles/v2.css): Polaris-färgerna, radierna och typskalan som Tailwind-klasser,
+   * t.ex. bg-v2-panel, text-v2-mute, border-v2-line, rounded-v2-lg, text-v2-xl, font-v2.
+   */
+  --color-v2-bg: var(--v2-bg);
+  --color-v2-panel: var(--v2-panel);
+  --color-v2-hover: var(--v2-hover);
+  --color-v2-sel: var(--v2-sel);
+  --color-v2-line: var(--v2-line);
+  --color-v2-line2: var(--v2-line2);
+  --color-v2-line3: var(--v2-line3);
+  --color-v2-track: var(--v2-track);
+  --color-v2-ink: var(--v2-ink);
+  --color-v2-body2: var(--v2-body2);
+  --color-v2-mute: var(--v2-mute);
+  --color-v2-faint: var(--v2-faint);
+  --color-v2-off: var(--v2-off);
+  --color-v2-primary: var(--v2-primary);
+  --color-v2-profit: var(--v2-profit);
+  --color-v2-profit-text: var(--v2-profit-text);
+  --color-v2-profit-soft: var(--v2-profit-soft);
+  --color-v2-crit: var(--v2-crit);
+  --color-v2-crit-icon: var(--v2-crit-icon);
+  --color-v2-crit-text: var(--v2-crit-text);
+  --color-v2-crit-soft: var(--v2-crit-soft);
+  --color-v2-warn: var(--v2-warn);
+  --color-v2-warn-icon: var(--v2-warn-icon);
+  --color-v2-warn-text: var(--v2-warn-text);
+  --color-v2-warn-soft: var(--v2-warn-soft);
+  --color-v2-warn-line: var(--v2-warn-line);
+  --color-v2-info-icon: var(--v2-info-icon);
+  --color-v2-info-text: var(--v2-info-text);
+  --color-v2-info-soft: var(--v2-info-soft);
+  --font-v2: var(--v2-sans);
+  --font-v2-code: var(--v2-code);
+  --radius-v2-sm: 6px;
+  --radius-v2: 8px;
+  --radius-v2-lg: 12px;
+  --text-v2-xs: 12px;
+  --text-v2-xs--line-height: 16px;
+  --text-v2-sm: 13px;
+  --text-v2-sm--line-height: 18px;
+  --text-v2-md: 14px;
+  --text-v2-md--line-height: 20px;
+  --text-v2-lg: 16px;
+  --text-v2-lg--line-height: 22px;
+  --text-v2-xl: 20px;
+  --text-v2-xl--line-height: 28px;
+  --text-v2-xl--letter-spacing: -0.01em;
+  --text-v2-2xl: 28px;
+  --text-v2-2xl--line-height: 32px;
+  --text-v2-2xl--letter-spacing: -0.03em;
+  --text-v2-3xl: 36px;
+  --text-v2-3xl--line-height: 40px;
+  --text-v2-3xl--letter-spacing: -0.035em;
 
   /* Typskala: storlek / radhöjd / spärrning */
   --text-label: 11px;

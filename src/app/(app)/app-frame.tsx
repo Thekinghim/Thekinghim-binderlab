@@ -44,6 +44,7 @@ export function AppFrame({
   machines,
   earliest,
   vmbUserKey = null,
+  timeZone,
   children,
 }: {
   role: Role;
@@ -60,6 +61,8 @@ export function AppFrame({
   earliest?: Date;
   /** Vyknappen "Med VMB" (roller som ser ekonomi): användarens id. */
   vmbUserKey?: string | null;
+  /** Organisationens tidszon (V2-sidhuvudets "Uppdaterad"). */
+  timeZone?: string;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -91,6 +94,8 @@ export function AppFrame({
     <AssistantPanelProvider role={role} stores={stores}>
       <ShellOwnersProvider owners={owners}>
         <AppShell
+          ui="v2"
+          timeZone={timeZone}
           role={role}
           user={user}
           organizations={organizations}

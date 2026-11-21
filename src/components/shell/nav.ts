@@ -47,7 +47,11 @@ export type RouteId =
   | "varde"
   | "assistent"
   | "datakallor"
-  | "installningar";
+  | "installningar"
+  // V2 (docs/design/v2/byggplan.md, avsnitt 1.1): nya sidor.
+  | "rutt"
+  | "pengar"
+  | "mer";
 
 export type ShellRoute = {
   id: RouteId;
@@ -349,6 +353,44 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     phase: 6,
     lead: "Fråga om er data på svenska.",
     // Frågorna säger själva vilken period de gäller; förslagen gäller alltid 30 dagar.
+    context: false,
+    vmb: false,
+  },
+  // V2: Rutt, Pengar och Mer. De står i V2-menyn (v2Nav nedan), inte i de gamla grupperna.
+  {
+    id: "rutt",
+    group: "hidden",
+    href: "/rutt",
+    label: "Rutt",
+    icon: "machine",
+    section: "main",
+    roles: ALL,
+    phase: 15,
+    lead: "Dagens rutt: stopp, packlista och vägen dit.",
+    context: false,
+    vmb: false,
+  },
+  {
+    id: "pengar",
+    group: "hidden",
+    href: "/pengar",
+    label: "Pengar",
+    icon: "margin",
+    section: "main",
+    roles: READERS,
+    phase: 15,
+    lead: "Resultat, vinst per automat och det som ska betalas.",
+  },
+  {
+    id: "mer",
+    group: "hidden",
+    href: "/mer",
+    label: "Mer",
+    icon: "more",
+    section: "main",
+    roles: ALL,
+    phase: 15,
+    lead: "Alla sidor, inställningar och kopplingar.",
     context: false,
     vmb: false,
   },
@@ -663,4 +705,83 @@ export function splitSubTabs(tabs: ReadonlyArray<SubTab>): {
   const more = tabs.filter((t) => t.more);
   // En ensam flik under "Mer" är ett klick för mycket: då står den i raden.
   return more.length < 2 ? { inline: [...tabs], more: [] } : { inline, more };
+}
+
+/* ------------------------------------------------------------------ */
+/* V2-menyn (docs/design/v2/byggplan.md, avsnitt 1.1)                  */
+/* ------------------------------------------------------------------ */
+
+/** V2:s nya sidor. De står bara i V2-menyn, inte under de gamla huvudflikarna (underflikarna). */
+export const V2_ONLY_ROUTES: ReadonlySet<RouteId> = new Set<RouteId>(["rutt", "pengar", "mer"]);
+
+/** De sju posterna i V2:s sidomeny. Mobilens bottenrad har fem (mobile: true). */
+export type V2NavId = "hem" | "automater" | "rutt" | "vart-lager" | "butiker" | "pengar" | "mer";
+
+/** Ikonerna i V2-menyn (src/components/v2/shell/nav-icon.tsx), ritade som i prototypen. */
+export type V2NavIcon = V2NavId | "meny";
+
+export type V2NavItem = {
+  readonly id: V2NavId;
+  readonly label: string;
+  /** Namnet i mobilens bottenrad ("Lager"). */
+  readonly short?: string;
+  /**
+   * Rutterna posten kan leda till, i ordning: posten länkar till den första som rollen får
+   * se (påfyllaren får Att göra under Hem tills Hem är byggt för påfyllaren). Ingen = dold.
+   */
+  readonly routes: ReadonlyArray<RouteId>;
+  /** Med i mobilens bottenrad. Butiker och Pengar ligger överst på Mer på mobilen. */
+  readonly mobile: boolean;
+  /** Ikonen i mobilens bottenrad (Mer ritas som tre streck där). */
+  readonly mobileIcon?: V2NavIcon;
+  /** Räknaren vid posten. */
+  readonly counter?: "todo" | "rutt";
+};
+
+export const v2Nav: ReadonlyArray<V2NavItem> = [
+  { id: "hem", label: "Hem", routes: ["hem", "att-gora"], mobile: true, counter: "todo" },
+  { id: "automater", label: "Automater", routes: ["automater", "drift"], mobile: true },
+  { id: "rutt", label: "Rutt", routes: ["rutt"], mobile: true, counter: "rutt" },
+  {
+    id: "vart-lager",
+    label: "Vårt lager",
+    short: "Lager",
+    routes: ["vart-lager", "mystery"],
+    mobile: true,
+  },
+  { id: "butiker", label: "Butiker", routes: ["butiker"], mobile: false },
+  { id: "pengar", label: "Pengar", routes: ["pengar"], mobile: false },
+  { id: "mer", label: "Mer", routes: ["mer"], mobile: true, mobileIcon: "meny" },
+];
+
+/** En post i V2-menyn som rollen ser, med adress. */
+export type V2NavLink = V2NavItem & { readonly href: string };
+
+/** V2-menyns poster för rollen (sidomenyn), med adress till första rutten rollen får se. */
+export function v2NavForRole(role: Role): V2NavLink[] {
+  return v2Nav.flatMap((item) => {
+    const route = item.routes.map(routeById).find((r) => r.roles.includes(role));
+    return route ? [{ ...item, href: route.href }] : [];
+  });
+}
+
+/** Mobilens bottenrad för rollen (högst fem). */
+export function v2MobileNavForRole(role: Role): V2NavLink[] {
+  return v2NavForRole(role).filter((i) => i.mobile);
+}
+
+/**
+ * V2-posten som är aktiv på en sökväg. De gamla sidorna hör till sin gamla huvudflik
+ * (Drift → Automater, Lönsamhet → Pengar, Inställningar → Mer); besöksplanen hör till Rutt.
+ */
+export function activeV2NavId(pathname: string | null | undefined): V2NavId | null {
+  if (!pathname) return null;
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (path === "/drift/besok" || path.startsWith("/drift/besok/")) return "rutt";
+  const id = activeRouteId(path);
+  if (!id) return null;
+  if (id === "rutt" || id === "pengar" || id === "mer") return id;
+  const section = sectionOfRoute(id)?.id ?? null;
+  // Sidor som inte står under någon gammal flik (Assistent m.fl.) hör till Mer.
+  return section ?? "mer";
 }

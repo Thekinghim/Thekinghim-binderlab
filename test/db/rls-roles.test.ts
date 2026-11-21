@@ -60,6 +60,9 @@ const REFILLER_ALLOWLIST = [
   // Mystery packs: innehållet (antal och HIT, inga belopp), påfyllaren packar.
   "mystery_recipes",
   "mystery_recipe_items",
+  // V2: ändringar i dagens rutt och produktbyten (antal pack, inga belopp).
+  "route_day_changes",
+  "product_swaps",
 ];
 /** Påfyllaren ser bara sin egen rad. */
 const OWN_ROW_ONLY = ["profiles", "memberships"];

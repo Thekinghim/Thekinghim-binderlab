@@ -20,6 +20,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  customType,
   date,
   doublePrecision,
   integer,
@@ -128,6 +129,12 @@ export type StockEventKind = (typeof stockEventKind.enumValues)[number];
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const day = (name: string) => date(name, { mode: "string" });
+/** int2[] (katalogen visar typen som "int2[]", inte "smallint[]"). */
+const int2Array = customType<{ data: number[]; driverData: number[] }>({
+  dataType() {
+    return "int2[]";
+  },
+});
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const orgId = () => uuid("organization_id").notNull();
@@ -497,6 +504,14 @@ export const stockLocations = pgTable("stock_locations", {
     jsonb("awish_fill").$type<
       { title_id: string; units: number; capacity: number; channels: number; empty: number }[]
     >(),
+  /** V2 (20261223000000_v2_rutt.sql): eget lagers adress och plats (ruttens start). */
+  address: text("address"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  /** V2: "own" (standard) eller "partner" (lager som en partnerbutik håller åt oss). */
+  heldBy: text("held_by").$type<"own" | "partner">().notNull().default("own"),
+  /** V2: butiken som håller partnerns lager (bara när heldBy = "partner"). */
+  partnerStoreId: uuid("partner_store_id"),
   ...stamps(),
 });
 
@@ -705,6 +720,11 @@ export const organizationSettings = pgTable("organization_settings", {
   /** T5: momsgränsen vi varnar vid och "Revisorn har koll" (20261205000000_installningar_varning.sql). */
   vatLimitOre: ore("vat_limit_ore").notNull().default(12_000_000),
   vatOkAt: ts("vat_ok_at"),
+  /** V2 dagens rutt (20261223000000_v2_rutt.sql): högst så många besök och pack per dag. */
+  routeMaxStops: integer("route_max_stops").notNull().default(6),
+  routeMaxPacks: integer("route_max_packs").notNull().default(350),
+  /** V2: besöksdagar, 1 = måndag … 7 = söndag (standard mån–fre). */
+  routeWeekdays: int2Array("route_weekdays").notNull().default([1, 2, 3, 4, 5]),
   ...stamps(),
 });
 
@@ -890,3 +910,6 @@ export * from "./schema/inkop";
 
 // Butiksägare: bolaget som äger butikerna (20261219000000_butiksagare.sql).
 export * from "./schema/butiksagare";
+
+// V2: dagens rutt och produktbyten (20261223000000_v2_rutt.sql, 20261223000100_v2_produktbyte.sql).
+export * from "./schema/v2";

@@ -1,7 +1,15 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Suspense, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   CommandPalette,
   useCommandPaletteHotkey,
@@ -27,6 +35,10 @@ import { setTheme, useTheme } from "./theme-toggle";
 import { Topbar, type Period } from "./topbar";
 import { useAutoRefresh } from "./use-auto-refresh";
 import { useCarriedQuery, usePeriod, useScope } from "./use-period";
+import { V2ShellProvider } from "@/components/v2/shell/shell-context";
+import { V2SideNav } from "@/components/v2/shell/side-nav";
+import { V2TabBar } from "@/components/v2/shell/tab-bar";
+import { V2Toaster } from "@/components/v2/toast";
 
 export type AppShellProps = {
   children: ReactNode;
@@ -76,6 +88,17 @@ export type AppShellProps = {
   period?: Period;
   onPeriodChange?: (p: Period) => void;
   comparison?: string;
+  /**
+   * "v2": V2-skalet (docs/design/v2/byggplan.md avsnitt 4): Polaris-färgerna, sidomenyn med
+   * sju poster, bottenraden med fem flikar och notiserna (sonner). De gamla sidornas huvud
+   * (brödsmulor, filter, underflikar) står kvar men döljs på V2-sidor (data-v2-page).
+   * Standard "legacy" (/design och /datamodell har det gamla skalet).
+   */
+  ui?: "v2" | "legacy";
+  /** V2: antal stopp i dagens rutt (grått tal vid Rutt). */
+  routeCount?: TodoCountSource;
+  /** V2: organisationens tidszon (Uppdaterad-klockslaget). */
+  timeZone?: string;
 };
 
 /**
@@ -121,6 +144,95 @@ export function AppShell(props: AppShellProps) {
     signOutHref: props.signOutHref,
   };
   const legacyPeriod = props.period !== undefined && props.onPeriodChange !== undefined;
+  const v2 = props.ui === "v2";
+  const openCommand = useCallback(
+    () => (onOpenCommand ? onOpenCommand() : setPaletteOpen(true)),
+    [onOpenCommand],
+  );
+  useLightTheme(v2);
+
+  if (v2) {
+    const syncedAt =
+      props.syncedAt === undefined
+        ? undefined
+        : typeof props.syncedAt === "string"
+          ? props.syncedAt
+          : props.syncedAt.toISOString();
+    return (
+      <ShellNavigationProvider>
+        <V2ShellProvider
+          value={{
+            role,
+            syncedAt,
+            syncState: props.syncState,
+            openCommand,
+            timeZone: props.timeZone ?? "Europe/Stockholm",
+          }}
+        >
+          <div className="v2-app" data-ui="v2">
+            <NavigationProgress />
+            <a
+              href="#main"
+              className="sr-only-focusable text-white fixed top-2 left-2 z-50 rounded-v2 bg-v2-primary px-3 py-2"
+            >
+              Hoppa till innehåll
+            </a>
+            <V2SideNav
+              role={role}
+              todoCount={props.todoCount}
+              routeCount={props.routeCount}
+              user={props.user}
+              organizations={props.organizations}
+              activeOrganizationId={props.activeOrganizationId}
+              onOrganizationChange={props.onOrganizationChange}
+              onSignOut={props.onSignOut}
+            />
+            <ShellMain className="v2-main">
+              {/* De gamla sidornas huvud: döljs av CSS när sidan är en V2-sida (data-v2-page). */}
+              <div data-legacy-chrome>
+                <Topbar
+                  crumbs={crumbs}
+                  homeHref={homeHref(role)}
+                  onOpenCommand={openCommand}
+                  assistantHref={routesForRole(role).find((r) => r.id === "assistent")?.href}
+                  showContext={showContext}
+                  stores={props.stores}
+                  machines={props.machines}
+                  earliest={props.earliest}
+                  vmbUserKey={route?.vmb === false ? null : (props.vmbUserKey ?? null)}
+                />
+                <SubTabs
+                  role={role}
+                  activeHref={props.activeHref}
+                  todoCount={props.todoCount}
+                  className="mx-auto w-full max-w-[1280px] px-4 pt-1 md:px-8 md:pt-5"
+                />
+              </div>
+              <div key={pathname}>{children}</div>
+            </ShellMain>
+            <V2TabBar role={role} todoCount={props.todoCount} />
+            <V2Toaster />
+            {onOpenCommand ? null : (
+              <Suspense fallback={null}>
+                <ShellCommandPalette
+                  open={paletteOpen}
+                  onOpenChange={setPaletteOpen}
+                  role={role}
+                  stores={props.stores ?? []}
+                  machines={props.machines ?? []}
+                  machineHref={props.machineHref}
+                  commands={props.commands}
+                  withPeriod={showContext}
+                  onSignOut={props.onSignOut}
+                  signOutHref={props.signOutHref}
+                />
+              </Suspense>
+            )}
+          </div>
+        </V2ShellProvider>
+      </ShellNavigationProvider>
+    );
+  }
 
   return (
     <ShellNavigationProvider>
@@ -363,4 +475,23 @@ function ShellCommandPalette({
       placeholder="Sök sida, butik, automat eller åtgärd"
     />
   );
+}
+
+/**
+ * V2 är bara ljust (ägarens val): sätter data-theme="light" på <html> medan V2-skalet visas, så
+ * att de gamla sidornas light:-varianter gäller. Personens sparade tema (cookien) ändras inte,
+ * så portal och rapporter ser ut som förut. Färgerna själva kommer från v2.css redan i första
+ * HTML-svaret (:root:has([data-ui="v2"])).
+ */
+function useLightTheme(on: boolean) {
+  useEffect(() => {
+    if (!on) return;
+    const html = document.documentElement;
+    const before = html.dataset.theme;
+    html.dataset.theme = "light";
+    return () => {
+      if (before) html.dataset.theme = before;
+      else delete html.dataset.theme;
+    };
+  }, [on]);
 }

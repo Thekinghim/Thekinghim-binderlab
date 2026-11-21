@@ -1090,3 +1090,45 @@ Ingen fördelning efter antal dagar. Förhandsvisningen visar delarna innan någ
 - Butiksrapportens "Redan betalt" tar med delarna för rapportens månader med sina dagar: "Redan betalt 16 nov. 2026 (för 1–14 nov. 2026)". En del som ligger helt inom rapportens dagar räknas av helt; en del utanför räknas inte av; en del som delvis överlappar räknas av med högst rapportens belopp, och en mening säger det. För en betald avräkning är avräkningens egen rad det betalda minus rättelserna minus förskotten. Blir det under 0 (avräkningen betalades med betalningarna och bar en rättelse för en tidigare månad, så en del av förskottet betalade rättelsen) räknas förskotten för månaden ned med det, senaste betalningen först. Rättelsen räknas för sin egen månad, och summan av "Redan betalt" över flera månader är alltid det som faktiskt betalades.
 - Butiksportalen ser delarna för sin egen butik (`portal_store_payments`, utan anteckningen) och "på väg till er" är det som är kvar.
 - Bokföringen ändras inte: butikens andel bokförs som förut ur försäljningen. "Exportera all data" har `butiksbetalningar.csv`.
+
+## 33. V2: automatens läge och förlorad vinst per dag (`src/analytics/fleet-status`, `src/server/data/v2/fleet.ts`)
+
+Hem, Automater, Rutt och menyns räknare i V2 läser samma flottläge (en rad per aktiv automat), så att alla visar samma status och samma tal.
+
+### Läget (en status per automat, första som stämmer)
+
+1. **Offline**: maskinhälsan säger offline (avsnittet om maskinhälsa). Aldrig när strömmen är av enligt butikens tider (räknas då som strömmen av, som förut).
+2. **Tom**: pack i automaten = 0.
+3. **Fyll på i dag**: minst ett fack tomt, eller fyllnaden ≤ 25 % (`LOW_FILL_BP`, prototypens värde).
+4. **Startklar**: ny automat med steg kvar (Startklar-listan, bara ägare och admin).
+5. **Ström av**: strömmen är av just nu enligt butikens tider.
+6. **Tom om N d**: tom inom 3 dagar (`SOON_DAYS`) med nuvarande takt.
+7. **I drift**: allt annat.
+
+Listorna sorteras: offline, tom, fyll på i dag, startklar, tom om N d, i drift och sist ström av (planerat och lugnt); lika status sorteras på dagar till tom och sedan kod.
+
+- **Pack och fyllnad**: Awish-läsningen (`stock_locations.awish_fill`): Σ pack ÷ Σ kapacitet, tomma fack = Σ tomma kanaler. Utan Awish-läsning används lagret i appen och fyllnaden är okänd ("Inte läst från Awish").
+- **Takt**: sålda pack de 14 hela dagarna t.o.m. i går (samma fönster som besöksplanen), ur försäljningen i lagret, så att den fungerar för påfyllaren.
+- **Tom om** = pack ÷ takt, nedåt till hela dagar. Säljer automaten inte tar den inte slut (inget "tom om").
+
+### Förlorad vinst per dag (Kräver åtgärd)
+
+Ungefär hur mycket vinst per dag som går förlorad tills någon gör något, i öre (`lossProfitPerDayOre`). Vinst per dag kommer från automat-rankingen (avsnitt 28, 30 dagar, samma vinst som övriga sidor; med "Visa butikernas andel" efter andelen).
+
+| Läge             | Förlorad vinst per dag                                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Offline          | Automatens vinst per aktiv dag.                                                                                                                                 |
+| Tom              | Automatens vinst per aktiv dag.                                                                                                                                 |
+| Fack tomma       | Σ över titlarna som är slut: titelns takt × vinst per pack. Vinst per pack = automatens vinst per dag ÷ sålda pack per dag (snittet) när titelns egen inte ges. |
+| Tom inom 1 dag   | Minst hälften av automatens vinst per dag (prototypens regel).                                                                                                  |
+| Startklar        | Medianens vinst per dag ("en vanlig automat").                                                                                                                  |
+| Pris med förlust | (vinst per pack vid föreslaget pris − nu) × pack per dag (`priceLossPerDayOre`, prisrådet avsnitt 30).                                                          |
+| Ström av         | 0.                                                                                                                                                              |
+
+Gäller flera regler tas den största, aldrig mer än automatens hela vinst per dag. Negativ vinst räknas som 0. Raden visar "tappar ca X kr vinst/dag" först från 5 kr (`LOSS_SHOW_MIN_ORE`). Påfyllaren får samma ordning men aldrig talet: servern räknar ingen ekonomi för roller utan ekonomi (fälten finns inte i svaret).
+
+## 34. V2: dagens rutt, gränsen per dag (`organization_settings.route_*`, `src/server/data/v2/route.ts`)
+
+- **Dagens gräns** (ägarbeslut b, byggt som inställning): högst `route_max_stops` besök (standard 6) och `route_max_packs` pack (standard 350) per dag, på besöksdagarna `route_weekdays` (standard mån–fre, som förut). Alla roller läser gränsen via `route_settings()`; ägare och admin ändrar den.
+- **Första versionen** av dagens rutt är besöksplanens dag för i dag (samma plan som Att göra, Drift och Lager) med flottans läge per stopp. Ett stopp är **klart** när automaten fyllts på i dag (påfyllning eller flytt in på automatens plats, i organisationens tidszon). **Brist** = Σ `shortBy` per titel över dagens stopp.
+- Partnerns lager (ägarbeslut a): `stock_locations.held_by = 'partner'` med `partner_store_id`. Standard är oförändrat: eget lager, och "Fylls på från" utan val = Hemma.

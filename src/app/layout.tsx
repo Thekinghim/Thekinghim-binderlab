@@ -1,12 +1,34 @@
 import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { Google_Sans, Google_Sans_Code } from "next/font/google";
 import { cookies } from "next/headers";
 import { ThemeSync } from "@/components/shell/theme-sync";
 import { ToastProvider } from "@/components/ui/toast";
 import { getRequestLocale } from "@/i18n/request";
 import { THEME_COOKIE, themeFromCookie } from "@/lib/theme";
 import "./globals.css";
+
+/**
+ * V2-typsnitten (src/styles/v2.css): Google Sans för allt i V2-skalet, Google Sans Code bara
+ * för tangenten Ctrl K. Geist står kvar för de orörda delarna (portal, rapporter, inloggning).
+ */
+const googleSans = Google_Sans({
+  subsets: ["latin", "latin-ext"],
+  weight: "variable",
+  display: "swap",
+  variable: "--font-google-sans",
+  // Next har inga mått för Google Sans (varning vid varje sida): reservtypsnittet justeras inte.
+  adjustFontFallback: false,
+});
+const googleSansCode = Google_Sans_Code({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  display: "swap",
+  variable: "--font-google-sans-code",
+  adjustFontFallback: false,
+  preload: false,
+});
 
 export const metadata: Metadata = {
   title: { default: "Binderlab", template: "%s · Binderlab" },
@@ -46,7 +68,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html
       lang={locale}
       data-theme={theme}
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      className={`${GeistSans.variable} ${GeistMono.variable} ${googleSans.variable} ${googleSansCode.variable}`}
       suppressHydrationWarning
     >
       <body>

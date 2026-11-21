@@ -2,13 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   activeSectionId,
   activeSubTab,
+  activeV2NavId,
   navSections,
+  routeById,
   sectionHref,
   sectionsForRole,
   shellRoutes,
   showsContext,
   splitSubTabs,
   subTabHref,
+  v2MobileNavForRole,
+  v2NavForRole,
+  V2_ONLY_ROUTES,
   type Role,
 } from "./nav";
 import { withQuery } from "./side-nav";
@@ -29,7 +34,7 @@ describe("huvudflikar", () => {
   });
 
   it("varje rutt ligger under exakt en huvudflik", () => {
-    for (const r of shellRoutes) {
+    for (const r of shellRoutes.filter((r) => !V2_ONLY_ROUTES.has(r.id))) {
       const owners = navSections.filter((s) => s.tabs.some((t) => t.route === r.id));
       expect(owners, r.id).toHaveLength(1);
     }
@@ -211,5 +216,64 @@ describe("periodraden", () => {
     for (const [path, view, shown] of cases) {
       expect(showsContext(path, view), `${path}?vy=${view}`).toBe(shown);
     }
+  });
+});
+
+describe("V2-menyn", () => {
+  it("ägaren ser sju poster; mobilen fem (Butiker och Pengar ligger på Mer)", () => {
+    expect(v2NavForRole("owner").map((i) => [i.id, i.href])).toEqual([
+      ["hem", "/"],
+      ["automater", "/automater"],
+      ["rutt", "/rutt"],
+      ["vart-lager", "/vart-lager"],
+      ["butiker", "/butiker"],
+      ["pengar", "/pengar"],
+      ["mer", "/mer"],
+    ]);
+    expect(v2MobileNavForRole("owner").map((i) => i.short ?? i.label)).toEqual([
+      "Hem",
+      "Automater",
+      "Rutt",
+      "Lager",
+      "Mer",
+    ]);
+  });
+
+  it("påfyllaren: Hem leder till Att göra, inga Butiker eller Pengar", () => {
+    const items = v2NavForRole("refiller");
+    expect(items.map((i) => i.id)).not.toContain("butiker");
+    expect(items.map((i) => i.id)).not.toContain("pengar");
+    expect(items.find((i) => i.id === "hem")?.href).toBe("/att-gora");
+    expect(items.find((i) => i.id === "rutt")?.href).toBe("/rutt");
+  });
+
+  it("butiksrollen ser ingenting", () => {
+    expect(v2NavForRole("store")).toEqual([]);
+  });
+
+  it.each([
+    ["/", "hem"],
+    ["/att-gora", "hem"],
+    ["/automater/bl-001", "automater"],
+    ["/drift", "automater"],
+    ["/drift/besok", "rutt"],
+    ["/rutt", "rutt"],
+    ["/vart-lager/mystery", "vart-lager"],
+    ["/prognos", "vart-lager"],
+    ["/butiker/abc", "butiker"],
+    ["/avtal", "butiker"],
+    ["/lonsamhet", "pengar"],
+    ["/pengar", "pengar"],
+    ["/installningar/anvandare", "mer"],
+    ["/assistent", "mer"],
+    ["/mer", "mer"],
+  ] as const)("%s → %s", (path, id) => {
+    expect(activeV2NavId(path)).toBe(id);
+  });
+
+  it("de nya sidornas roller: Rutt och Mer för alla, Pengar som Lönsamhet", () => {
+    expect(routeById("rutt").roles).toEqual(["owner", "admin", "refiller", "viewer"]);
+    expect(routeById("mer").roles).toEqual(["owner", "admin", "refiller", "viewer"]);
+    expect(routeById("pengar").roles).toEqual(routeById("lonsamhet").roles);
   });
 });

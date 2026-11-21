@@ -40,6 +40,8 @@ const APPEND_ONLY = [
   "mystery_recipes",
   "payout_imports",
   "payout_lines",
+  // V2: produktbyten i Awish-fack (20261223000100_v2_produktbyte.sql).
+  "product_swaps",
   // Inköp: ett inskick skrivs aldrig två gånger (20261210000000_inkop_en_gang.sql).
   "purchase_requests",
   "report_approvals",
@@ -126,6 +128,8 @@ const RPCS = [
   "reopen_period",
   // Månadsstängning från appen: öppna med anledning (ägare).
   "reopen_period_with_reason",
+  // V2: dagens gräns för rutten, för alla roller (20261223000000_v2_rutt.sql).
+  "route_settings",
   "sales_data_until",
   // Mystery packs: spara innehållet (ägare, admin).
   "save_mystery_recipe",
@@ -241,6 +245,8 @@ describe("tabeller", () => {
         "purchase_requests",
         "price_experiment_machines",
         "price_experiments",
+        // V2: produktbyten i Awish-fack (20261223000100_v2_produktbyte.sql).
+        "product_swaps",
         "push_subscriptions",
         "release_allocations",
         "releases",
@@ -249,6 +255,8 @@ describe("tabeller", () => {
         "report_files",
         "report_recipients",
         "reports",
+        // V2: ändringar i dagens rutt (20261223000000_v2_rutt.sql).
+        "route_day_changes",
         // Daglig kontroll: resultatet per körning (20261114000000_daglig_kontroll.sql).
         "self_check_runs",
         // Lager: larmgräns per automat och titel (20261103160000_lager_larmgrans.sql).
@@ -595,8 +603,12 @@ describe("policyer", () => {
       "mystery_recipe_items",
       "mystery_recipes",
       "organizations",
+      // V2: produktbyten (antal pack, inga belopp).
+      "product_swaps",
       "profiles",
       "push_subscriptions",
+      // V2: ändringar i dagens rutt (påfyllaren hoppar över och lägger till stopp).
+      "route_day_changes",
       // Lager: larmgränsen (antal pack, inga belopp).
       "slot_alerts",
       "stock_events",
@@ -678,6 +690,7 @@ describe("anon", () => {
       rename_warehouse: sql`gen_random_uuid(), gen_random_uuid(), 'x'`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       reopen_period_with_reason: sql`gen_random_uuid(), '2025-01-01'::date, 'Rödteam'`,
+      route_settings: sql`gen_random_uuid()`,
       sales_data_until: sql`gen_random_uuid()`,
       save_mystery_recipe: sql`gen_random_uuid(), gen_random_uuid(), 14, '[]'::jsonb`,
       save_stock_count: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), '[]'::jsonb`,

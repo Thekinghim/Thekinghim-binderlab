@@ -7,6 +7,7 @@ import { AppUpdate } from "@/components/pwa/app-update";
 import { AppFrameRoot } from "@/components/shell/frame-root";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker";
 import { ConfigMissing } from "@/components/ui/config-missing";
+import { V2Toaster } from "@/components/v2/toast";
 import { liveBuildId } from "@/server/build-id";
 import { getConfigStatus } from "@/server/config-status";
 import { getT } from "@/i18n/server";
@@ -38,8 +39,14 @@ export default async function FillLayout({ children }: { children: ReactNode }) 
     .digest("hex")
     .slice(0, 32);
   const buildId = await liveBuildId();
+  // V2 (docs/design/v2/byggplan.md 4.1): ljusa Polaris-färger och V2:s notiser, utom i Enkel vy.
+  const v2 = ctx.viewMode !== "simple";
   const page = (
-    <div className="mx-auto min-h-dvh w-full max-w-[560px] bg-bg text-fg">
+    <div
+      className="mx-auto min-h-dvh w-full max-w-[560px] bg-bg text-fg"
+      data-ui={v2 ? "v2" : undefined}
+    >
+      {v2 ? <V2Toaster /> : null}
       <ServiceWorkerRegistration scope={scope} />
       {/* "Ny version av appen finns": överst, så att Klar nedtill aldrig skyms. */}
       <AppUpdate buildId={buildId} />
