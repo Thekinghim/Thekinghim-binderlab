@@ -1402,11 +1402,26 @@
     margin: 16px 0 4px;
   }
   .hem2 .x-hd {
+    flex-wrap: wrap;
+    row-gap: 8px;
     margin-bottom: 8px;
     padding: 0 4px;
   }
   .hem2 .x-hd > .lk {
     display: none;
+  }
+  /* Periodvalet i full bredd under rubriken (som i sidhuvudet), så att det ryms på 375 px. */
+  .hem2 .x-hd .v2-seg-period {
+    display: flex;
+    width: 100%;
+  }
+  .hem2 .x-hd .v2-seg-period .v2-seg {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+  }
+  .hem2 .x-hd .v2-seg-period .v2-seg button {
+    flex: 1;
   }
   .hem2 .x-grid {
     grid-template-columns: minmax(0, 1fr);
