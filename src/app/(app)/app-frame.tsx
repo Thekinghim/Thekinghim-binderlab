@@ -37,6 +37,7 @@ export function AppFrame({
   organizations,
   activeOrganizationId,
   todoCount,
+  routeCount,
   syncedAt,
   syncState,
   stores,
@@ -52,6 +53,8 @@ export function AppFrame({
   organizations: ShellOrganization[];
   activeOrganizationId?: string;
   todoCount?: TodoCountSource;
+  /** V2: stoppen i dagens rutt (räknaren vid Rutt i sidomenyn). */
+  routeCount?: TodoCountSource;
   syncedAt?: string;
   syncState?: SyncState;
   stores: ShellStore[];
@@ -101,6 +104,7 @@ export function AppFrame({
           organizations={organizations}
           activeOrganizationId={activeOrganizationId}
           todoCount={todoCount}
+          routeCount={routeCount}
           syncedAt={syncedAt}
           syncState={syncState}
           stores={stores}

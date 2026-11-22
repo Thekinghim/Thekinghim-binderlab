@@ -410,7 +410,6 @@ describe("cron-rutterna", () => {
 const ECONOMY_PAGES = [
   "lonsamhet",
   "order",
-  "automater",
   "butiker",
   "inkopspriser",
   "rapporter",
@@ -440,6 +439,17 @@ async function renderPage(route: string, params: Record<string, string> = {}) {
 }
 
 describe("sidorna", () => {
+  it.each(["automater/svinn", "automater/enhetsekonomi"])(
+    "/%s: påfyllaren skickas till Automater (V2) innan något läses",
+    async (route) => {
+      await loginAs(req, cast.personas.refiller);
+      const outcome = await renderPage(route);
+      expect(outcome.kind).toBe("redirect");
+      expect((outcome as { to: string }).to).toBe("/automater");
+    },
+    60_000,
+  );
+
   it.each([...ECONOMY_PAGES, ...OPERATOR_PAGES])(
     "/%s: påfyllaren skickas till sin startsida innan något läses",
     async (route) => {
@@ -447,10 +457,29 @@ describe("sidorna", () => {
       const outcome = await renderPage(route);
       expect(outcome.kind).toBe("redirect");
       // Startsidan med en förklaring (?nekad=<rutt>, DeniedNotice i skalet).
-      expect((outcome as { to: string }).to).toBe(`/att-gora?nekad=${route.split("/")[0]}`);
+      // V2 (G1): påfyllarens startsida är Hem ("/").
+      expect((outcome as { to: string }).to).toBe(`/?nekad=${route.split("/")[0]}`);
     },
     60_000,
   );
+
+  it("/ (Hem V2): påfyllaren får sidan, och Hems laddare skickar inga belopp", async () => {
+    await loginAs(req, cast.personas.refiller);
+    const mod = (await import("@/app/(app)/page")) as {
+      default: (props: unknown) => Promise<unknown>;
+    };
+    const outcome = await call(() => mod.default({ searchParams: Promise.resolve({}) }));
+    expect(outcome.kind).toBe("ok");
+    const { loadHemToday } = await import("@/app/(app)/_hem/v2/today-data");
+    const { loadKpiBand } = await import("@/server/data/v2/analytics/kpi-band");
+    const { loadLiveOrders } = await import("@/server/data/v2/analytics/live");
+    const today = await loadHemToday();
+    expect(today.economy).toBe(false);
+    const money = [...keysDeep(today)].filter((k) => MONEY_KEY.test(k));
+    expect(money).toEqual([]);
+    expect(await loadKpiBand({})).toBeNull();
+    expect(await loadLiveOrders()).toBeNull();
+  }, 60_000);
 
   it.each(OPERATOR_PAGES)(
     "/%s: läsaren skickas bort (bara ägare och admin)",
@@ -470,6 +499,8 @@ describe("sidorna", () => {
     "drift/besok",
     "drift/pafyllning",
     "inkorg",
+    // V2 (byggplanen 2.3): Automater för påfyllaren, utan belopp.
+    "automater",
   ])(
     "/%s: påfyllarens egen sida skickar inga belopp till klienten (props i sidans träd)",
     async (route) => {

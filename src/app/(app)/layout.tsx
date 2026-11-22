@@ -16,7 +16,9 @@ import {
   loadSyncInfo,
 } from "@/server/data/core";
 import { redirectStoreUserToPortal } from "@/server/portal/session";
-import { loadTodoCount } from "@/server/data/todos";
+import { loadDayRoute } from "@/server/data/v2/route";
+
+import { loadHemCount } from "./_hem/v2/today-data";
 import { myInvitationsFlow } from "@/server/auth/flows";
 import { requireUser } from "@/server/session";
 import { AppUpdate } from "@/components/pwa/app-update";
@@ -87,10 +89,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const hasTodos = routeById("att-gora").roles.includes(ctx.role);
+  // V2: räknaren vid Hem = Kräver åtgärd + Att göra (samma rader som Hem visar, byggplanen 2.1).
+  const hasTodos = routeById("hem").roles.includes(ctx.role);
   // Räknaren i menyn väntas inte in: den skickas som ett löfte och strömmar in när
   // punkterna är räknade (Att göra läser order och lager och tar längst tid i skalet).
   const todoCount = hasTodos ? countTodos() : undefined;
+  // Räknaren vid Rutt: stoppen i dagens rutt (samma laddare som Hem och Rutt, strömmar in).
+  const routeCount = routeById("rutt").roles.includes(ctx.role) ? countRouteStops() : undefined;
   const [master, sync, dataStart, machineCounts] = await shellP;
   const buildId = await liveBuildId();
 
@@ -123,6 +128,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         vmbUserKey={ctx.canSeeEconomy ? ctx.user.id : null}
         timeZone={ctx.timeZone}
         todoCount={todoCount}
+        routeCount={routeCount}
         syncedAt={sync?.syncedAt ?? undefined}
         syncState={sync?.state}
         stores={stores}
@@ -136,13 +142,26 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   );
 }
 
-/** Antal punkter i Att göra. Ett fel i reglerna får inte stoppa hela appen: då visas ingen räknare. */
+/**
+ * Räknaren vid Hem: raderna i Kräver åtgärd + Att göra (_hem/v2/today-data.ts, samma laddare
+ * som Hem, en gång per förfrågan). Ett fel får inte stoppa hela appen: då visas ingen räknare.
+ */
 async function countTodos(): Promise<number | undefined> {
   try {
-    // Samma punkter som listan: utan påfyllningar av utgångna titlar (som Lager och Drift).
-    return await loadTodoCount();
+    return await loadHemCount();
   } catch (error) {
-    console.error("[layout] Att göra kunde inte räknas:", error);
+    console.error("[layout] Hems räknare kunde inte räknas:", error);
+    return undefined;
+  }
+}
+
+/** Räknaren vid Rutt: dagens stopp som inte är klara (loadDayRoute). Fel: ingen räknare. */
+async function countRouteStops(): Promise<number | undefined> {
+  try {
+    const route = await loadDayRoute();
+    return route.stops.filter((s) => !s.done).length;
+  } catch (error) {
+    console.error("[layout] Ruttens räknare kunde inte räknas:", error);
     return undefined;
   }
 }

@@ -210,6 +210,21 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // V2 (G2): "Det var ett produktbyte" på Svinn, ägare och admin.
+  {
+    module: "@/app/(app)/automater/actions",
+    name: "correctProductSwap",
+    allowed: OP,
+    args: (c) => [{ machineId: c.A.machineId, titleId: c.A.titleId, quantity: 1 }],
+  },
+  // V2 (G2): automatens historik, alla roller, inga belopp.
+  {
+    module: "@/app/(app)/automater/actions",
+    name: "machineHistory",
+    allowed: MEMBERS,
+    readOnly: true,
+    args: (c) => [c.A.machineId],
+  },
   {
     module: "@/app/(app)/automater/enhetsekonomi/actions",
     name: "saveInvestment",
@@ -1046,6 +1061,26 @@ export const ACTIONS: ActionSpec[] = [
     name: "setTargetMargin",
     allowed: OP,
     args: () => [{ targetMarginBp: 3300 }],
+  },
+  // Rutt (V2, även Hem → Lägg i rutten): ändra dagens rutt och ångra (route_day_changes),
+  // dagens gräns (organization_settings)
+  {
+    module: "@/app/(app)/rutt/actions",
+    name: "changeRoute",
+    allowed: FIELD,
+    args: (c) => [c.A.machineId, "add"],
+  },
+  {
+    module: "@/app/(app)/rutt/actions",
+    name: "undoRouteChange",
+    allowed: FIELD,
+    args: () => ["00000000-0000-4000-8000-000000000001", null],
+  },
+  {
+    module: "@/app/(app)/rutt/actions",
+    name: "saveRouteLimits",
+    allowed: OP,
+    args: () => [{ maxStops: 6, maxPacks: 350, weekdays: [1, 2, 3, 4, 5] }],
   },
   // Marknad
   {

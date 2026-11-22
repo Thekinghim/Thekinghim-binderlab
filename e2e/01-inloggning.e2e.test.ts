@@ -50,12 +50,16 @@ describe("inloggning", () => {
     // Ägaren når Datakällor: under Mer i huvudmenyn (sex flikar), som underflik.
     const nav = page.getByRole("navigation", { name: "Huvudmeny" });
     await nav.getByRole("link", { name: "Mer", exact: true }).click();
-    await page.getByRole("link", { name: "Datakällor", exact: true }).first().waitFor();
+    // Mer (V2): raden heter "Datakällor" följt av sin förklaring.
+    await page
+      .getByRole("link", { name: /^Datakällor/ })
+      .first()
+      .waitFor();
 
     const menu = page.getByRole("button", { name: /kontomeny/ });
     expect(await menu.innerText()).toContain("Ägare");
     await menu.click();
-    await page.getByText(e2e().users.owner).waitFor();
+    await page.getByRole("menu").getByText(e2e().users.owner).waitFor();
     await screenshot(page, "01-inloggning-agare-kontomeny");
 
     await page.getByRole("button", { name: "Logga ut", exact: true }).click();
@@ -92,7 +96,7 @@ describe("inloggning", () => {
     await login(page, e2e().users.partner);
     const menu = page.getByRole("button", { name: /kontomeny/ });
     expect(await menu.innerText()).toMatch(/Läsare|Delägare/);
-    expect(await page.getByRole("link", { name: "Datakällor" }).count()).toBe(0);
+    expect(await page.getByRole("link", { name: /^Datakällor/ }).count()).toBe(0);
     await page.goto("/datakallor");
     await page.waitForURL((url) => !url.pathname.startsWith("/datakallor"));
     // Inte tyst: startsidan förklarar varför (requireRoute → ?nekad=datakallor).

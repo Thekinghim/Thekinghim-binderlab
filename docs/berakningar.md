@@ -1132,3 +1132,27 @@ Gäller flera regler tas den största, aldrig mer än automatens hela vinst per 
 - **Dagens gräns** (ägarbeslut b, byggt som inställning): högst `route_max_stops` besök (standard 6) och `route_max_packs` pack (standard 350) per dag, på besöksdagarna `route_weekdays` (standard mån–fre, som förut). Alla roller läser gränsen via `route_settings()`; ägare och admin ändrar den.
 - **Första versionen** av dagens rutt är besöksplanens dag för i dag (samma plan som Att göra, Drift och Lager) med flottans läge per stopp. Ett stopp är **klart** när automaten fyllts på i dag (påfyllning eller flytt in på automatens plats, i organisationens tidszon). **Brist** = Σ `shortBy` per titel över dagens stopp.
 - Partnerns lager (ägarbeslut a): `stock_locations.held_by = 'partner'` med `partner_store_id`. Standard är oförändrat: eget lager, och "Fylls på från" utan val = Hemma.
+
+### Rutt i V2 (`src/analytics/visits/plan.ts`, `src/server/data/v2/route-model.ts`)
+
+- **Packgränsen**: en dag med fler stopp än `route_max_stops` eller fler pack än `route_max_packs` flyttar sitt minst brådskande stopp till närmaste tidigare dag med plats (stopp och pack), annars nästa senare dag. När små dagar slås ihop måste även den sammanslagna dagen hålla packgränsen. Ett ensamt stopp som är större än gränsen behåller sin dag. Samma plan används på Hem, Rutt, Att göra, Drift, Lager och i assistenten.
+- **Ändringar i dagens rutt** (`route_day_changes`): Hoppa över, Till i morgon och Lägg till, högst en gällande per automat och dag (en ny ändring ångrar den förra). Ångra sätter `undone_at`, och den ersatta ändringen kan läggas tillbaka. "Till i morgon" från i går räknas med i dag. Hem → Lägg i rutten använder samma tjänst (`rutt/_lib/service.ts`).
+- **Körsträcka och tid "ca"**: planens sträcka (fågelväg med återresa från standardlagret) × 1,25. Tid = km ÷ 65 km/h + 18 min per påfyllning + 12 min per kontroll (offline). Visas inte när en butik saknar koordinater eller när rutten ändrats för hand.
+- **Ersättare**: saknas en titel hemma föreslås titeln vi har mest kvar av hemma efter dagens packlista, i hela fack, aldrig mystery pack eller arkiverade titlar, i ruttordning så att samma pack inte föreslås två gånger (`src/analytics/visits/substitutes.ts`).
+- **Räddar ca X kr/dag**: Σ förlorad vinst per dag (avsnitt 33) över dagens stopp. Bara ekonomiroller.
+
+## 35. V2: Hem, Pengar, Butiker, Vårt lager och Automater
+
+Sidorna läser samma laddare, så att samma tal syns överallt: Lönsamhets modell för perioden (`loadMoneyProfit`, som Hem läser som `loadHemProfit`, samma minne per förfrågan), underpresterarna (`loadMoneyWorst`), månadens mål (`loadMoneyGoal`), att betala (`loadMoneyPay`) och Vårt lager (`loadVartLagerFor`).
+
+- **Vinst per automat och dag** (Hem): periodens vinst ÷ automatdagar, där en automatdag är en dag en automat var i drift (inte arkiverad, `activeFrom` ≤ dag ≤ `activeTo`). En automat som kom till mitt i perioden räknas bara för sina dagar.
+- **Vinst per dag i tjänst** (Pengar, tabellen 12 månader): månadens vinst ÷ dagar automaten var aktiv den månaden. "Alla" = flottans vinst per kalenderdag.
+- **Titelns trend** (Mest sålda på Hem): sålda per dag de senaste 7 dagarna mot periodens snitt per dag, i bp. Visas bara när perioden är längre än 7 dagar.
+- **När säljer vi mest**: köpen per veckodag × tvåtimmarsblock i organisationens tidszon, per vecka (periodens dagar ÷ 7, minst 1). "I dag" använder de senaste 30 dagarna som mönster.
+- **Från intäkt till vinst** (Pengar): intäkt → (VMB) → inköp → kortavgift → vinst före butikernas andel (som Hem) → butikernas andel → (återbetalningar, gratis-pack) → fasta kostnader → "Kvar efter allt". Ur Lönsamhets brygga och `resultAfterProfit`.
+- **I dag** jämförs inte med hela i går på Pengar (en halv dag mot en hel ser ut som ett ras); Hem visar "i dag mot samma tid en vanlig samma veckodag" (intäkt, `_hem/pace.ts`).
+- **Att betala** (Hem, Pengar, Butiker): obetalda avräkningar som inte är spärrade, minus förskott (samma urval som Butiker → Utbetalning). Sista dag = `payoutDueDate`.
+- **Lagervärde**: hemma (Σ max(0, hemma) × dagens inköpspris) + i automaterna (Σ max(0, i automaten) × samma pris), bara titlar med pris.
+- **Senaste händelser** (Vårt lager): en påfyllning, inventering, inleverans, flytt, packning eller ett produktbyte som skrivit flera rader visas som en rad.
+- **Produktbyte i Awish** (`src/server/awish/product-swap.ts`): när ett fack byter titel mellan två läsningar flyttas det som försvann av den gamla titeln tillbaka till automatens "Fylls på från", och den nya titeln tas därifrån, innan räkningen. Inget byte vid första läsningen eller när en sändning till Awish väntar. Svinn: ägare och admin kan i efterhand märka en rad med saknade pack som "Det var ett produktbyte" (packen tillbaka till lagret en sekund före räkningen, en gång per räkning).
+- **Automatens historik** (Automater → Historik): påfyllningar per person, inventeringar, produktbyten, offline-larm och installation. Inga belopp, alla roller.

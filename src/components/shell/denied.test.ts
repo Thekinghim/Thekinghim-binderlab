@@ -10,7 +10,7 @@ describe("nekad sida", () => {
   it("skickar till rollens startsida med rutten i ?nekad=", () => {
     expect(DENIED_PARAM).toBe("nekad");
     expect(deniedHref("viewer", "datakallor")).toBe("/?nekad=datakallor");
-    expect(deniedHref("refiller", "lonsamhet")).toBe("/att-gora?nekad=lonsamhet");
+    expect(deniedHref("refiller", "lonsamhet")).toBe("/?nekad=lonsamhet");
   });
 
   it("förklarar vem sidan är för och vart användaren kom", () => {
@@ -20,7 +20,7 @@ describe("nekad sida", () => {
         "Sidan är för ägare och administratör. Du är inloggad som läsare och kom till Hem i stället.",
     });
     expect(deniedNotice("refiller", "lonsamhet")?.description).toMatch(
-      /^Sidan är för ägare, administratör och läsare\. Du är inloggad som påfyllare och kom till Att göra i stället\.$/,
+      /^Sidan är för ägare, administratör och läsare\. Du är inloggad som påfyllare och kom till Hem i stället\.$/,
     );
   });
 

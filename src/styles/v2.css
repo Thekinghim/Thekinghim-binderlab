@@ -832,6 +832,16 @@
   .v2-search:focus-within {
     border-color: var(--v2-line3);
   }
+  /* Telefon: hela rutan går att trycka på (44 px) och texten zoomar inte sidan (16 px). */
+  @media (max-width: 900px) {
+    .v2-search {
+      height: auto;
+    }
+    .v2-search input {
+      min-height: 44px;
+      font-size: 16px;
+    }
+  }
 
   /* Listrad (rubrik + undertext, innehåll, åtgärder) */
   .v2-row {
@@ -1300,6 +1310,12 @@
     flex: 1;
   }
 
+  /* Äldre sektioner inne i en V2-sida (t.ex. rangordningen på Automater): V2:s typsnitt. */
+  .v2-legacy,
+  .v2-legacy * {
+    font-family: var(--v2-sans) !important;
+  }
+
   /* Notiser (sonner) */
   .v2-toast {
     font-family: var(--v2-sans) !important;
@@ -1352,5 +1368,55 @@
   .v2-roll {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+}
+
+/*
+ * Tryckytor på telefonen (V2): minst 44 × 44 px att trycka på, utan att knappen ritas större
+ * (prototypens täta knappar på 28–32 px står kvar). En osynlig ::before växer ut till 44 px
+ * runt små knappar, länkar, flikar och reglage. I lagret base och med :where() (ingen vikt):
+ * Tailwinds klasser (absolute, fixed, before:) och sidornas egna regler vinner alltid.
+ */
+@layer base {
+  @media (max-width: 900px) {
+    :where(
+      [data-ui="v2"]
+        :is(
+          a[href],
+          button,
+          summary,
+          [role="tab"],
+          [role="radio"],
+          [role="switch"],
+          [role="checkbox"],
+          [role="button"]
+        )
+    ) {
+      position: relative;
+      /* Egen stapling: tryckytan ligger under knappens innehåll (texten tar klicket), men
+         över grannarna utanför knappen. */
+      isolation: isolate;
+    }
+    :where(
+      [data-ui="v2"]
+        :is(
+          a[href],
+          button,
+          summary,
+          [role="tab"],
+          [role="radio"],
+          [role="switch"],
+          [role="checkbox"],
+          [role="button"]
+        )
+    )::before {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      top: min(0px, calc(50% - 22px));
+      bottom: min(0px, calc(50% - 22px));
+      left: min(0px, calc(50% - 22px));
+      right: min(0px, calc(50% - 22px));
+    }
   }
 }

@@ -94,7 +94,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     label: "Hem",
     icon: "overview",
     section: "main",
-    roles: READERS,
+    // V2 (G1): påfyllaren ser Hem utan belopp (servern tar bort dem, _hem/v2/today-data.ts).
+    roles: ALL,
     mobileRank: 1,
     phase: 3,
     lead: "Dagens läge i hela flottan.",
@@ -177,7 +178,9 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     label: "Automater",
     icon: "machine",
     section: "main",
-    roles: READERS,
+    // V2: påfyllaren ser listan och facken utan belopp (servern tar bort dem). Automatens
+    // sida, Svinn och Enhetsekonomi skickar påfyllaren hit (requireAutomaterEconomy).
+    roles: ALL,
     mobileRank: 5,
     phase: 5,
     lead: "Status, försäljning och påfyllning.",
@@ -527,9 +530,11 @@ export type SubTab = {
    * Butiksportal på förra månaden.
    */
   context?: false;
+  /** Bara de här rollerna ser fliken (utöver ruttens roller), t.ex. Svinn under Automater. */
+  roles?: ReadonlyArray<Role>;
 };
 
-type TabOptions = Pick<SubTab, "short" | "more" | "context">;
+type TabOptions = Pick<SubTab, "short" | "more" | "context" | "roles">;
 
 export type NavSection = {
   id: SectionId;
@@ -566,7 +571,7 @@ export const navSections: ReadonlyArray<NavSection> = [
       tab("lager", "Lager i automaterna", undefined, { short: "Lager" }),
       tab("order", "Order"),
       // Mindre använda: under "Mer", så att de fyra viktigaste får plats på mobilen.
-      tab("automater", "Svinn", "svinn", { more: true }),
+      tab("automater", "Svinn", "svinn", { more: true, roles: READERS }),
       tab("inkorg", "Inkorg", undefined, { more: true }),
       tab("kampanjer", "Kampanjer", undefined, { more: true }),
       tab("kampanjer", "Gratis-pack", "gratis-pack", { more: true }),
@@ -633,7 +638,12 @@ export function subTabHref(t: SubTab): string {
 /** Huvudflikarna en roll ser, med bara de underflikar rollen får se. Tomma flikar döljs. */
 export function sectionsForRole(role: Role): NavSection[] {
   return navSections
-    .map((s) => ({ ...s, tabs: s.tabs.filter((t) => routeById(t.route).roles.includes(role)) }))
+    .map((s) => ({
+      ...s,
+      tabs: s.tabs.filter(
+        (t) => routeById(t.route).roles.includes(role) && (!t.roles || t.roles.includes(role)),
+      ),
+    }))
     .filter((s) => s.tabs.length > 0);
 }
 

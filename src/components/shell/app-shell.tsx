@@ -38,6 +38,7 @@ import { useCarriedQuery, usePeriod, useScope } from "./use-period";
 import { V2ShellProvider } from "@/components/v2/shell/shell-context";
 import { V2SideNav } from "@/components/v2/shell/side-nav";
 import { V2TabBar } from "@/components/v2/shell/tab-bar";
+import { FillReturnToast } from "@/components/v2/fill-return-toast";
 import { V2Toaster } from "@/components/v2/toast";
 
 export type AppShellProps = {
@@ -212,6 +213,7 @@ export function AppShell(props: AppShellProps) {
             </ShellMain>
             <V2TabBar role={role} todoCount={props.todoCount} />
             <V2Toaster />
+            <FillReturnToast />
             {onOpenCommand ? null : (
               <Suspense fallback={null}>
                 <ShellCommandPalette

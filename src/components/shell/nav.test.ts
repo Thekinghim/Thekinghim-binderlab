@@ -71,14 +71,16 @@ describe("huvudflikar", () => {
 
   it("påfyllaren ser bara det den får; tomma huvudflikar döljs", () => {
     expect(tree("refiller")).toEqual({
-      hem: ["Att göra"],
-      automater: ["Drift", "Lager i automaterna", "Inkorg"],
+      // V2 (G1): påfyllaren har Hem (utan belopp) som startsida.
+      hem: ["Översikt", "Att göra"],
+      // V2: Automater utan belopp (Svinn är bara för ekonomiroller).
+      automater: ["Automater", "Drift", "Lager i automaterna", "Inkorg"],
       // Påfyllaren packar mystery packs (innehållet och saldot, inga belopp).
       "vart-lager": ["Mystery packs"],
       mer: ["Assistent"],
     });
     const hem = sectionsForRole("refiller").find((s) => s.id === "hem");
-    expect(hem && sectionHref(hem)).toBe("/att-gora");
+    expect(hem && sectionHref(hem)).toBe("/");
   });
 
   it("butiksrollen ser ingenting i appen", () => {
@@ -161,7 +163,7 @@ describe("underfliken Mer", () => {
 
   it("få flikar står alla i raden (påfyllaren, Vårt lager, Pengar)", () => {
     expect(labels("refiller", "automater")).toEqual({
-      inline: ["Drift", "Lager i automaterna", "Inkorg"],
+      inline: ["Automater", "Drift", "Lager i automaterna", "Inkorg"],
       more: [],
     });
     expect(labels("owner", "pengar").more).toEqual([]);
@@ -239,12 +241,15 @@ describe("V2-menyn", () => {
     ]);
   });
 
-  it("påfyllaren: Hem leder till Att göra, inga Butiker eller Pengar", () => {
+  it("påfyllaren: Hem är startsidan, inga Butiker eller Pengar", () => {
     const items = v2NavForRole("refiller");
     expect(items.map((i) => i.id)).not.toContain("butiker");
     expect(items.map((i) => i.id)).not.toContain("pengar");
-    expect(items.find((i) => i.id === "hem")?.href).toBe("/att-gora");
+    // V2 (G1): Hem utan belopp för påfyllaren.
+    expect(items.find((i) => i.id === "hem")?.href).toBe("/");
     expect(items.find((i) => i.id === "rutt")?.href).toBe("/rutt");
+    // V2 (G2): Automater utan belopp för påfyllaren.
+    expect(items.find((i) => i.id === "automater")?.href).toBe("/automater");
   });
 
   it("butiksrollen ser ingenting", () => {

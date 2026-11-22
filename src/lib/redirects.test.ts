@@ -24,10 +24,10 @@ describe("APP_REDIRECTS", () => {
     });
   });
 
-  it("V2: /rutten och /route skickas till /rutt; /drift/besok ligger kvar tills Rutt är byggd", () => {
-    for (const source of ["/rutten", "/route"]) {
+  it("V2: /rutten, /route och /drift/besok skickas till /rutt; kalenderfilen ligger kvar", () => {
+    for (const source of ["/rutten", "/route", "/drift/besok"]) {
       expect(APP_REDIRECTS).toContainEqual({ source, destination: "/rutt", permanent: false });
     }
-    expect(APP_REDIRECTS.some((r) => r.source.startsWith("/drift/besok"))).toBe(false);
+    expect(APP_REDIRECTS.some((r) => r.source.startsWith("/drift/besok/"))).toBe(false);
   });
 });

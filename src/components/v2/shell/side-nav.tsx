@@ -183,6 +183,8 @@ function WhoMenu({
           <div className="truncate text-v2-md font-[650]">{org?.name ?? user?.name}</div>
           <div className="truncate text-v2-xs text-v2-mute">{org?.detail ?? user?.name}</div>
         </div>
+        {/* Rollen och vad knappen gör, för skärmläsare (och e2e-testerna). */}
+        <span className="sr-only">, {roleLabel[role]}, kontomeny</span>
       </button>
     </div>
   );
