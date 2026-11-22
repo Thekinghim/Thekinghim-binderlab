@@ -80,23 +80,34 @@ export default async function VartLagerPage({
     }));
     return (
       <V2Page
-        title="Ändra"
+        title={view.canEdit ? "Ändra antal" : "Antal per titel"}
         date={date}
+        sub={
+          view.canEdit
+            ? "Skriv antalet hemma, lägg in inköp och flytta mellan lagren. Sparas direkt."
+            : undefined
+        }
         tools={
           <>
+            {/* Telefon: Lager i bottenmenyn leder tillbaka; rubriken får plats. */}
+            <ButtonLink
+              href="/vart-lager"
+              size="lg"
+              aria-label="Tillbaka till Vårt lager"
+              className="max-[900px]:hidden"
+            >
+              <span aria-hidden="true">←</span> Vårt lager
+            </ButtonLink>
             {/* Inventering: räkna ett helt lager (ägare och admin). */}
             {view.canEdit && view.rows.length > 0 ? (
               <ButtonLink href="/vart-lager/inventering" size="lg">
                 Inventera
               </ButtonLink>
             ) : null}
-            <ButtonLink href="/vart-lager" size="lg" icon aria-label="Tillbaka till Vårt lager">
-              ←
-            </ButtonLink>
           </>
         }
       >
-        <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-8">
+        <div className="v2-stack">
           {!view.hasWarehouse ? (
             <>
               <StateMessage kind="empty" message="Inget eget lager än." />

@@ -116,6 +116,13 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
               <Live nowIso={ctx.now} />
             </Suspense>
           ) : null}
+          {/* Resultat bor i vänsterkolumnen (under Senaste köp), så att den inte lämnar ett hål
+              bredvid Att göra. Under 1240 px ligger den efter Senaste köp (hem.css). */}
+          {economy ? (
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c x-res" />}>
+              <ResultCard sp={sp} />
+            </Suspense>
+          ) : null}
         </div>
         <div className="col">
           <Suspense fallback={<SkeletonCard rows={5} className="o-rutt" />}>
@@ -146,9 +153,6 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         <div className="x-grid">
           {economy ? (
             <>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c x-res" />}>
-                <ResultCard sp={sp} />
-              </Suspense>
               <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
                 <WhenCardView sp={sp} />
               </Suspense>

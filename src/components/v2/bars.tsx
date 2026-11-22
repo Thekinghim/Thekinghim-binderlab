@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 
 import { cn } from "@/lib/cn";
 
+import { AxisTick } from "./axis-tick";
 import { formatValue, type ValueUnit } from "./format";
 
 export type BarDatum = {
@@ -103,10 +104,17 @@ export function BarChart({
           );
         })}
       </div>
-      <div className="mt-1.5 flex gap-[3px] text-v2-xs text-v2-faint" aria-hidden="true">
+      {/* Etiketterna gallras efter bredd och flyttas in vid kanterna (AxisTick). */}
+      <div className="v2-axr mt-1.5 flex gap-[3px] text-v2-xs text-v2-faint" aria-hidden="true">
         {data.map((d, i) => (
-          <span key={d.key} className="flex-1 truncate text-center">
-            {data.length > 14 && i % Math.ceil(data.length / 8) !== 0 ? "" : d.label}
+          <span key={d.key} className="min-w-0 flex-1 text-center">
+            <AxisTick
+              index={i}
+              count={data.length}
+              step={data.length > 8 ? Math.ceil(data.length / 8) : 1}
+            >
+              {d.label}
+            </AxisTick>
           </span>
         ))}
       </div>

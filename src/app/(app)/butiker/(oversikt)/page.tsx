@@ -1,22 +1,21 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { SectionHeader } from "@/components/ui/section-header";
 import { MobileFold } from "@/components/ui/mobile-fold";
-import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
-import type React from "react";
 import { Suspense } from "react";
 
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { SubNav } from "@/components/v2/sub-nav";
 import { requireRoute, requireViewer } from "@/server/data/core";
 
-import { MobileMore } from "../../_mobil/mobile-more";
 import { StoreKpis } from "../_components/kpis";
-import { PageHead } from "../_components/page-head";
 import { OwnersView } from "../_components/owners-view";
 import { SettlementsView } from "../_components/settlements-view";
 import { StoreTable } from "../_components/store-table";
@@ -103,7 +102,10 @@ export default async function ButikerPage({
   return <ShopsPage sp={sp} />;
 }
 
-/** Den gamla butikslistan (?vy=lista): nyckeltal, kontrakt, avtal som saknas, på väg in. */
+/**
+ * Butikslistan med nyckeltal (?vy=lista), i V2: nyckeltal, kontrakt och avtal som saknas,
+ * alla butiker i en tabell och butikerna på väg in med sina startlistor.
+ */
 async function LegacyStoreList({ sp }: { sp: Record<string, string | string[] | undefined> }) {
   const data = await loadStoreList(sp);
   const { ctx, rows, period, headline } = data;
@@ -144,164 +146,171 @@ async function LegacyStoreList({ sp }: { sp: Record<string, string | string[] | 
         : `${dayText(cov.start, ctx.today)}${SPACED_RANGE_DASH}${dayText(cov.end, ctx.today)}`
       : null;
 
+  const ctxDate = headerDate(new Date(ctx.now), ctx.timeZone);
+  const facts = [
+    { label: "Period", value: period.rangeLabel },
+    ...(data.scopeLabel ? [{ label: "Filter", value: data.scopeLabel }] : []),
+    ...(dataRange ? [{ label: "Data", value: dataRange }] : []),
+  ];
+
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 max-md:gap-7 md:gap-12 md:px-8 md:pt-12">
-      <PageHead
-        eyebrow={data.scopeLabel ? `Butiker · ${data.scopeLabel}` : "Butiker"}
-        title={headline.title}
-        aside={headline.aside}
-        actions={
-          ctx.canEdit ? (
-            // Guiden: butik, villkor, automat och kontrakt på en minut. Mobil: bakom "⋯".
-            <MobileMore
-              label="Fler val för butiker"
-              className="max-md:absolute max-md:-top-2 max-md:-right-2"
-            >
-              <Link
-                href="/butiker/ny"
-                className="inline-flex h-11 items-center gap-2 rounded-sm border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse transition-colors hover:bg-inverse-hover"
-              >
-                <span aria-hidden>+</span>
+    <V2Page
+      title="Butiker"
+      date={ctxDate}
+      period
+      filters
+      tools={
+        ctx.canEdit ? (
+          <ButtonLink href="/butiker/ny" size="md" className="max-md:hidden">
+            Ny butik
+          </ButtonLink>
+        ) : undefined
+      }
+    >
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <PageIntro
+          title={headline.title}
+          aside={headline.aside}
+          facts={facts}
+          actions={
+            ctx.canEdit ? (
+              // Telefon: Ny butik här (sidhuvudets knapp syns bara på datorn).
+              <ButtonLink href="/butiker/ny" touch className="md:hidden">
                 Ny butik
-              </Link>
-            </MobileMore>
-          ) : undefined
-        }
-      />
-
-      {rows.length === 0 ? (
-        <StateMessage kind="empty" message="Inga butiker ännu." />
-      ) : (
-        <>
-          <div className="rise flex flex-col gap-3" style={{ "--i": 1 } as React.CSSProperties}>
-            {data.ignoredMachine ? (
-              <p className="meta text-subtle">Automatfiltret gäller inte här.</p>
-            ) : null}
-            {/* Mobil: hopfällt bakom "Fler siffror" (rubriken har intäkten och vinsten). */}
-            <MobileFold summary="Fler siffror" meta={formatInt(data.kpis.length)}>
-              <div className="flex flex-col gap-3">
-                <StoreKpis
-                  items={data.kpis}
-                  label={`Nyckeltal · ${days}`}
-                  comparison={comparison}
-                />
-                {/* Butikernas andel på begäran; med vald butik visas den alltid. */}
-                {data.scopeLabel ? null : (
-                  <Suspense fallback={null}>
-                    <StoreShareToggle on={data.showStoreShare} />
-                  </Suspense>
-                )}
-                {dataRange ? <p className="meta text-subtle">Data {dataRange}</p> : null}
-              </div>
-            </MobileFold>
-          </div>
-
-          {unsigned > 0 ? (
-            <Link
-              href="/avtal"
-              className="rise lift flex items-center justify-between gap-3 rounded-md border border-signal-line bg-surface px-4 py-3"
-              style={{ "--i": 2 } as React.CSSProperties}
-            >
-              <span className="flex items-center gap-2 text-base text-fg">
-                <span aria-hidden className="size-2 rounded-full bg-signal" />
-                {unsigned === 1
-                  ? "1 butik saknar signerat kontrakt."
-                  : `${formatInt(unsigned)} butiker saknar signerat kontrakt.`}
-              </span>
-              <span className="text-sm font-medium text-fg">Kontrakt{NBSP}→</span>
-            </Link>
+              </ButtonLink>
+            ) : undefined
+          }
+        >
+          {data.ignoredMachine ? (
+            <p className="text-v2-sm text-v2-mute">Automatfiltret gäller inte här.</p>
           ) : null}
+        </PageIntro>
 
-          {noDeal.length > 0 ? (
-            <Link
-              href={
-                noDeal.length === 1
-                  ? `${noDeal[0]!.href}${noDeal[0]!.href.includes("?") ? "&" : "?"}vy=avtal`
-                  : "#alla-butiker"
+        {rows.length === 0 ? (
+          <Card title="Butiker">
+            <Empty
+              title="Inga butiker ännu"
+              action={
+                ctx.canEdit ? (
+                  <ButtonLink href="/butiker/ny" variant="act">
+                    Lägg till butik
+                  </ButtonLink>
+                ) : undefined
               }
-              className="rise lift flex items-center justify-between gap-3 rounded-md border border-signal-line bg-surface px-4 py-3"
-              style={{ "--i": 2 } as React.CSSProperties}
-              data-no-agreement-banner
             >
-              <span className="flex items-center gap-2 text-base text-fg">
-                <span aria-hidden className="size-2 shrink-0 rounded-full bg-signal" />
-                {noDeal.length === 1
-                  ? `${noDeal[0]!.name}: ${noDeal[0]!.agreementGap!.short.charAt(0).toLocaleLowerCase("sv-SE")}${noDeal[0]!.agreementGap!.short.slice(1)}.`
-                  : `${formatInt(noDeal.length)} butiker saknar avtal och räknas som 0${NBSP}%.`}
-              </span>
-              <span className="shrink-0 text-sm font-medium text-fg">
-                {noDeal.length === 1 ? "Lägg in avtal" : "Visa"}
-                {NBSP}→
-              </span>
-            </Link>
-          ) : null}
+              Lägg till butiken, villkoren och automaten på en minut.
+            </Empty>
+          </Card>
+        ) : (
+          <>
+            <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+            {/* Butikernas andel på begäran; med vald butik visas den alltid. */}
+            {data.scopeLabel ? null : (
+              <Suspense fallback={null}>
+                <StoreShareToggle on={data.showStoreShare} />
+              </Suspense>
+            )}
 
-          <section
-            aria-labelledby="alla-butiker"
-            className="rise flex flex-col gap-6"
-            style={{ "--i": 3 } as React.CSSProperties}
-          >
-            <SectionHeader
-              id="alla-butiker"
-              // Mobil: den grå meningen döljs.
-              className="max-md:[&_h2>span+span]:hidden"
-              size="md"
-              eyebrow={`Per butik · ${days}`}
-              title={
-                data.showStoreShare
-                  ? `${sek(earned)} intjänat i ${data.monthLabel}.`
-                  : `${sek(toStores)} till butikerna.`
-              }
-              aside={`${formatInt(data.signed)} av ${plural(active.length, "butik", "butiker")} har signerat kontrakt.`}
-            />
-            <StoreTable
-              rows={listed}
-              monthLabel={data.monthLabel}
-              caption={`Butiker, intäkt och till butiken ${period.rangeLabel}`}
-              showStoreShare={data.showStoreShare}
-              showTotal
-            />
-          </section>
-
-          {prospects.length > 0 ? (
-            <section
-              aria-labelledby="pa-vag-in"
-              className="rise flex flex-col gap-6"
-              style={{ "--i": 4 } as React.CSSProperties}
-            >
-              <SectionHeader
-                id="pa-vag-in"
-                size="md"
-                eyebrow="På väg in"
+            {unsigned > 0 ? (
+              <Notice
+                tone="critical"
                 title={
-                  startLists.length > 0
-                    ? startListHeadline(startLists)
-                    : `${plural(prospects.length, "butik", "butiker")} utan automat än.`
+                  unsigned === 1
+                    ? "1 butik saknar signerat kontrakt."
+                    : `${formatInt(unsigned)} butiker saknar signerat kontrakt.`
                 }
-                aside="Räknas inte i siffrorna ovan."
-                // Mobil: den grå meningen döljs.
-                className="max-md:[&_h2>span+span]:hidden"
+                action={
+                  <ButtonLink href="/avtal" size="sm" touch>
+                    Kontrakt
+                  </ButtonLink>
+                }
               />
-              {startLists.length > 0 ? (
-                // Syns direkt, också på mobilen: listan är det som ska göras.
-                <StoreStartLists lists={startLists} canEdit={ctx.canEdit} />
-              ) : (
-                <MobileFold
-                  summary="På väg in"
-                  meta={`${plural(prospects.length, "butik", "butiker")} utan automat`}
-                >
-                  <StoreTable
-                    rows={prospects}
-                    monthLabel={data.monthLabel}
-                    caption="Butiker utan automat"
-                    showStoreShare={data.showStoreShare}
-                  />
-                </MobileFold>
-              )}
+            ) : null}
+
+            {noDeal.length > 0 ? (
+              <div data-no-agreement-banner>
+                <Notice
+                  tone="critical"
+                  title={
+                    noDeal.length === 1
+                      ? `${noDeal[0]!.name}: ${noDeal[0]!.agreementGap!.short.charAt(0).toLocaleLowerCase("sv-SE")}${noDeal[0]!.agreementGap!.short.slice(1)}.`
+                      : `${formatInt(noDeal.length)} butiker saknar avtal och räknas som 0${NBSP}%.`
+                  }
+                  action={
+                    <ButtonLink
+                      href={
+                        noDeal.length === 1
+                          ? `${noDeal[0]!.href}${noDeal[0]!.href.includes("?") ? "&" : "?"}vy=avtal`
+                          : "#alla-butiker"
+                      }
+                      size="sm"
+                      touch
+                    >
+                      {noDeal.length === 1 ? "Lägg in avtal" : "Visa"}
+                    </ButtonLink>
+                  }
+                />
+              </div>
+            ) : null}
+
+            <section aria-labelledby="alla-butiker" className="v2-card scroll-mt-28">
+              <div className="v2-card-hd">
+                <h2 id="alla-butiker">Per butik · {days}</h2>
+              </div>
+              <CardBody className="flex flex-col gap-4">
+                <p className="text-v2-md font-[550] text-v2-ink">
+                  {data.showStoreShare
+                    ? `${sek(earned)} intjänat i ${data.monthLabel}.`
+                    : `${sek(toStores)} till butikerna.`}{" "}
+                  <span className="font-normal text-v2-mute">
+                    {`${formatInt(data.signed)} av ${plural(active.length, "butik", "butiker")} har signerat kontrakt.`}
+                  </span>
+                </p>
+                <StoreTable
+                  rows={listed}
+                  monthLabel={data.monthLabel}
+                  caption={`Butiker, intäkt och till butiken ${period.rangeLabel}`}
+                  showStoreShare={data.showStoreShare}
+                  showTotal
+                />
+              </CardBody>
             </section>
-          ) : null}
-        </>
-      )}
-    </div>
+
+            {prospects.length > 0 ? (
+              <section aria-labelledby="pa-vag-in" className="v2-card">
+                <div className="v2-card-hd">
+                  <h2 id="pa-vag-in">På väg in</h2>
+                </div>
+                <CardBody className="flex flex-col gap-4">
+                  <p className="text-v2-md font-[550] text-v2-ink">
+                    {startLists.length > 0
+                      ? startListHeadline(startLists)
+                      : `${plural(prospects.length, "butik", "butiker")} utan automat än.`}{" "}
+                    <span className="font-normal text-v2-mute">Räknas inte i siffrorna ovan.</span>
+                  </p>
+                  {startLists.length > 0 ? (
+                    // Syns direkt, också på mobilen: listan är det som ska göras.
+                    <StoreStartLists lists={startLists} canEdit={ctx.canEdit} />
+                  ) : (
+                    <MobileFold
+                      summary="På väg in"
+                      meta={`${plural(prospects.length, "butik", "butiker")} utan automat`}
+                    >
+                      <StoreTable
+                        rows={prospects}
+                        monthLabel={data.monthLabel}
+                        caption="Butiker utan automat"
+                        showStoreShare={data.showStoreShare}
+                      />
+                    </MobileFold>
+                  )}
+                </CardBody>
+              </section>
+            ) : null}
+          </>
+        )}
+      </div>
+    </V2Page>
   );
 }

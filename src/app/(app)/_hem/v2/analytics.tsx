@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import { Fragment, type CSSProperties, type ReactNode } from "react";
 
 import { blockText, peakText, WEEKDAYS_SHORT, WHEN_BLOCKS } from "@/analytics/home-v2";
+import { AxisTick } from "@/components/v2/axis-tick";
 import { Badge, DeltaBadge } from "@/components/v2/badge";
 import { ButtonLink } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
@@ -169,10 +170,12 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
             </div>
           ))}
         </div>
-        <div className="x-xl" aria-hidden="true">
+        <div className="x-xl v2-axr" aria-hidden="true">
           {r.bars.map((b, i) => (
             <span key={b.key}>
-              {i % step !== 0 ? "" : b.label}
+              <AxisTick index={i} count={r.bars.length} step={step}>
+                {b.label}
+              </AxisTick>
               {b.partial && !hours ? (
                 <small>{i === r.bars.length - 1 ? "pågår" : "del"}</small>
               ) : null}

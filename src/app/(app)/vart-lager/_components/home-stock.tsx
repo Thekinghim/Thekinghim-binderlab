@@ -78,7 +78,7 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
   const kpiCount = 3 + (place && multi ? 1 : 0) + (t.idle.packs > 0 ? 1 : 0);
 
   return (
-    <div className="flex flex-col gap-8 max-md:gap-5">
+    <div className="v2-stack">
       <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
         <MobileFold summary="Fler siffror" meta={formatInt(kpiCount)}>
           <KpiStrip
@@ -137,17 +137,32 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
         </MobileFold>
       </div>
 
-      <PlaceBar
-        places={places}
-        totals={t.byPlace}
-        selected={multi ? selected : null}
-        onSelect={(id) => setStored(id ?? ALL)}
-        canEdit={model.canEdit}
-      />
-
-      <div className="rise flex flex-col" style={{ "--i": 2 } as React.CSSProperties}>
+      {/* V2: lagerväljaren och tabellen i ett kort, som resten av Vårt lager. */}
+      <section
+        aria-label="Antal per titel"
+        className="v2-card rise flex flex-col"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
+        <div className="v2-card-hd">
+          <h2>
+            Antal per titel
+            <span aria-hidden="true">·</span>
+            <span className="n">{formatInt(model.rows.length)}</span>
+          </h2>
+        </div>
+        {multi || model.canEdit ? (
+          <div className="border-b border-v2-line2 px-1.5 py-1">
+            <PlaceBar
+              places={places}
+              totals={t.byPlace}
+              selected={multi ? selected : null}
+              onSelect={(id) => setStored(id ?? ALL)}
+              canEdit={model.canEdit}
+            />
+          </div>
+        ) : null}
         <div
-          className={cn(GRID, "border-b border-line-strong pb-2")}
+          className={cn(GRID, "border-b border-v2-line2 px-[18px] pt-2.5 pb-2")}
           style={actWidth(multi, model.canEdit)}
         >
           <span className="label text-subtle">Titel</span>
@@ -180,7 +195,7 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
             type="button"
             aria-expanded={showRetired}
             onClick={() => setShowRetired((v) => !v)}
-            className="label flex min-h-11 w-full items-center justify-between gap-3 border-b border-line text-left text-muted hover:text-fg md:hidden"
+            className="label flex min-h-11 w-full items-center justify-between gap-3 px-[18px] text-left text-muted hover:text-fg md:hidden"
           >
             <span>{`${showRetired ? "Dölj utgångna" : "Utgångna titlar"} (${formatInt(retired)})`}</span>
             <Icon
@@ -190,7 +205,7 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
             />
           </button>
         ) : null}
-      </div>
+      </section>
 
       <Sheet
         open={chooseFor !== null}
@@ -395,7 +410,7 @@ function StockRow({
     <li
       id={`rad-${row.titleId}`}
       className={cn(
-        "rise scroll-mt-32 border-b border-line target:bg-hover",
+        "rise scroll-mt-32 border-b border-v2-line2 px-[18px] last:border-b-0 target:bg-hover",
         foldMobile && "max-md:hidden",
       )}
       style={{ "--i": Math.min(index, 16) + 3 } as React.CSSProperties}

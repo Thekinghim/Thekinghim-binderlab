@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 
 import { DeltaBadge } from "@/components/v2/badge";
+import { AxisTick } from "@/components/v2/axis-tick";
 import { Button } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
@@ -181,10 +182,12 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
                     );
                   })}
                 </div>
-                <div className={cn("g4-wls", dense && "dense")} aria-hidden="true">
+                <div className={cn("g4-wls v2-axr", dense && "dense")} aria-hidden="true">
                   {r.bars.map((b, i) => (
                     <span key={b.key}>
-                      {i % step === 0 ? <AxisLabel label={b.label} /> : ""}
+                      <AxisTick index={i} count={r.bars.length} step={step}>
+                        <AxisLabel label={b.label} />
+                      </AxisTick>
                       {b.partialText ? <small>{b.partialText}</small> : null}
                       {b.paceOre !== null ? (
                         <small className="tk">takt {kr(b.paceOre).replace(/\s?kr$/, "")}</small>

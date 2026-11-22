@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -310,8 +310,14 @@ export function columnsFor(
       hideOnMobile: true,
     });
   }
-  return cols;
+  // Talkolumnernas rubriker får brytas på två rader ("Intäkt / med pris"), så att tabellen
+  // ryms i kortet vid 1280–1440 px i stället för att sista kolumnen klipps. Gäller bara <th>.
+  return cols.map((c) => (c.numeric ? { ...c, className: cn(c.className, WRAP_HEADER) } : c));
 }
+
+/** Rubriken (th) får radbrytas; cellerna (td) påverkas inte. */
+const WRAP_HEADER =
+  "[th&]:whitespace-normal [th&]:py-1 [th&]:align-bottom [th&_button>span]:whitespace-normal [th&_button>span]:text-right [th&_button>span]:text-balance";
 
 /** Raderna i tabellens ordning (samma sortering som DataTable). */
 export function sortedLines(rows: readonly ProfitLine[], sort: readonly SortKey[]): ProfitLine[] {
@@ -454,23 +460,57 @@ export function ProfitTable({
     [view, rows, totals, showUnpriced, selectedKey, showStoreShare, storeShareLabel],
   );
   return (
-    <DataTable
-      key={view}
-      columns={columns}
-      rows={rows}
-      rowKey={(r) => r.key}
-      caption={caption}
-      defaultSort={sort}
-      onSortChange={onSortChange}
-      toolbar={
-        <Segmented
-          options={VIEW_OPTIONS}
-          value={view}
-          onChange={onViewChange}
-          label="Visa lönsamhet per"
-          size="sm"
-        />
-      }
-    />
+    <ScrollFade>
+      <DataTable
+        key={view}
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.key}
+        caption={caption}
+        defaultSort={sort}
+        onSortChange={onSortChange}
+        toolbar={
+          <Segmented
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={onViewChange}
+            label="Visa lönsamhet per"
+            size="sm"
+          />
+        }
+      />
+    </ScrollFade>
   );
+}
+
+const FADE = "linear-gradient(to left, transparent, #000 40px)";
+
+/**
+ * Tonar ut högerkanten på tabellens scrollyta (DataTable) när fler kolumner finns till
+ * höger, så att det syns att tabellen går att svepa. Försvinner när man scrollat till slutet.
+ */
+function ScrollFade({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = ref.current;
+    const el = root?.querySelector("table")?.parentElement;
+    if (!root || !el) return;
+    const update = () => {
+      const more = el.scrollWidth - el.clientWidth - el.scrollLeft > 1;
+      const mask = more ? FADE : "";
+      el.style.maskImage = mask;
+      el.style.setProperty("-webkit-mask-image", mask);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    const table = el.querySelector("table");
+    if (table) ro.observe(table);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  });
+  return <div ref={ref}>{children}</div>;
 }

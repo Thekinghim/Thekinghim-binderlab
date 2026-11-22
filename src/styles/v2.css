@@ -1255,6 +1255,47 @@
     }
   }
 
+  /* --- phone-tabs-kpi: KPI-bandet radbryts på telefon i stället för att rulla ---
+     Två rutor per rad, så varje ruta och enhet syns hela vid 375–390 px. Ett udda antal:
+     första rutan (huvudtalet) tar hela raden. Talet krymper lite och får bryta efter tankstreck (80 500–
+     / 102 600 kr); tal och "kr" hålls ihop av hårda mellanslag från formatet. */
+  @media (max-width: 900px) {
+    .v2-band-wrap {
+      overflow: visible;
+      scroll-snap-type: none;
+      margin: 0;
+      padding: 0;
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+    .v2-band {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: auto;
+      padding-right: 0;
+    }
+    .v2-band > .v2-kt:first-child:nth-last-child(odd) {
+      grid-column: 1 / -1;
+    }
+    .v2-band .v2-kt {
+      width: auto;
+      padding: 12px 14px 0;
+    }
+    .v2-band .v2-kt .ks {
+      margin-left: -14px;
+      margin-right: -14px;
+    }
+    .v2-band .v2-kt .kn {
+      white-space: normal;
+      font-size: clamp(17px, 5vw, var(--v2-t-xl));
+      line-height: 1.25;
+      text-wrap: balance;
+      /* Sista utvägen för ett tal utan brytpunkt: bryt hellre än kapa. */
+      overflow-wrap: anywhere;
+    }
+  }
+  /* --- slut phone-tabs-kpi --- */
+
   /* Diagram: staplar växer med kort förskjutning */
   .v2-bar-grow {
     transform-origin: bottom;
@@ -1589,6 +1630,40 @@
       height: 44px;
     }
   }
+
+  /* --- phone-tabs-kpi: SubNav-raden visar att den rullar ---
+     Kanten tonas ut på den sida där fler flikar finns (attributen sätts i sub-nav.tsx),
+     och vald flik rullas fram när sidan öppnas. */
+  .v2-subnav {
+    position: relative;
+  }
+  @media (max-width: 900px) {
+    .v2-subnav[data-more-end] {
+      -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+      mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+    }
+    .v2-subnav[data-more-start] {
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px);
+      mask-image: linear-gradient(90deg, transparent, #000 32px);
+    }
+    .v2-subnav[data-more-start][data-more-end] {
+      -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent,
+        #000 32px,
+        #000 calc(100% - 32px),
+        transparent
+      );
+      mask-image: linear-gradient(
+        90deg,
+        transparent,
+        #000 32px,
+        #000 calc(100% - 32px),
+        transparent
+      );
+    }
+  }
+  /* --- slut phone-tabs-kpi --- */
 
   /* Sektion (rubrik över en grupp kort) */
   .v2-section {
@@ -2459,5 +2534,52 @@
   .v2-main:not(:has([data-v2-page])) [class*="text-lg"]:not([class*="text-v2-"]) {
     font-size: var(--v2-t-lg);
     line-height: 22px;
+  }
+}
+
+/* ---- x-axelns etiketter (AxisTick, src/components/v2/axis-tick.tsx) ----
+   Stapeldiagrammens datumrad (Hem och Pengar · Resultat). Raden (.v2-axr) är en container: är
+   den smal döljs var annan etikett (nivå 1), är den mycket smal även nivå 2, så att datumen aldrig
+   krockar. Etiketten centreras under sin stapel; vid kanterna ("safe") flyttas den in i stället
+   för att kapas. */
+@layer components {
+  .v2-axr {
+    container: v2-axr / inline-size;
+  }
+  .v2-axt {
+    display: flex;
+    justify-content: center;
+  }
+  .v2-axt > b {
+    flex: none;
+    direction: ltr;
+    font-weight: inherit;
+    white-space: nowrap;
+  }
+  .v2-axt[data-start] {
+    justify-content: safe center;
+  }
+  .v2-axt[data-end] {
+    /* "safe" faller tillbaka på radens början: höger i rtl, så att texten slutar vid kanten. */
+    direction: rtl;
+    justify-content: safe center;
+  }
+  @container v2-axr (max-width: 420px) {
+    .v2-axt[data-k="1"] {
+      display: none;
+    }
+    .v2-axt[data-end2] {
+      direction: rtl;
+      justify-content: safe center;
+    }
+  }
+  @container v2-axr (max-width: 210px) {
+    .v2-axt[data-k="2"] {
+      display: none;
+    }
+    .v2-axt[data-end4] {
+      direction: rtl;
+      justify-content: safe center;
+    }
   }
 }

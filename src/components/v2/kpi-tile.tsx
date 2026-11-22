@@ -69,8 +69,8 @@ export function KpiTile({
 }
 
 /**
- * KPI-bandet: 4 eller 8 rutor i en panel. 8 blir 2 × 4 under 1 240 px; på telefon rullar
- * rutorna i sidled (fäster mot kanten).
+ * KPI-bandet: 4 eller 8 rutor i en panel. 8 blir 2 × 4 under 1 240 px; på telefon två rutor
+ * per rad, så att alla rutor och enheter syns utan att rulla.
  */
 export function KpiBand({
   cols = 4,
