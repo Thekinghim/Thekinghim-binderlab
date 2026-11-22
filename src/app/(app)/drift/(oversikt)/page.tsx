@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Suspense } from "react";
 
 import { connectivityView, milliToTenths, probabilityText } from "@/analytics/health";
 import { fillLevels } from "@/analytics/visits";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
-import { cn } from "@/lib/cn";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
 import { formatInt, MINUS, NBSP } from "@/lib/format";
 import { requireRoute, requireViewer } from "@/server/data/core";
 import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
@@ -15,6 +15,7 @@ import { AwishExpiry } from "../../_awish/awish-expiry";
 import { WatchLines } from "../../_vakt/watch-lines";
 
 import { AlertList } from "../_components/alert-list";
+import { DriftFrame } from "../_components/drift-frame";
 import { HealthTable, type HealthRow } from "../_components/health-table";
 import { toAlertItems } from "../_lib/alert-items";
 import { alertCountLink } from "../_lib/nav";
@@ -106,42 +107,24 @@ export default async function DriftPage() {
   const critical = openAlerts.filter((a) => a.severity === "critical").length;
   const alertLink = alertCountLink(items.length, critical);
 
-  return (
-    <div className="flex flex-col gap-10 max-md:gap-7 md:gap-12">
-      <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow="Drift"
-          title={headline.title}
-          aside={headline.aside}
-          actions={
-            <div className="flex flex-wrap gap-2">
-              {alertLink ? (
-                // Antalet larm leder till listan nedanför (Notiser är bara inställningarna).
-                <a
-                  href={alertLink.href}
-                  className={cn(
-                    "inline-flex h-9 items-center gap-2 rounded-sm border px-3.5 text-base transition-colors max-md:h-11 max-md:min-h-11 max-md:px-3 max-md:text-sm",
-                    critical > 0
-                      ? "border-signal-line text-signal-fg hover:border-signal hover:bg-signal-soft"
-                      : "border-line-strong bg-surface text-fg hover:bg-hover",
-                  )}
-                >
-                  {`${alertLink.label} →`}
-                </a>
-              ) : null}
-              <Link
-                href="/drift/besok"
-                className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:bg-hover max-md:h-11 max-md:min-h-11 max-md:px-3 max-md:text-sm"
-              >
-                {`Besök i veckan: ${formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0))} →`}
-              </Link>
-            </div>
-          }
-        />
-      </div>
+  const visits = plan.days.reduce((n, d) => n + d.stops.length, 0);
 
+  return (
+    <DriftFrame
+      ctx={ctx}
+      sub={
+        <>
+          <b>{headline.title}</b>
+          {headline.aside ? <span>{headline.aside}</span> : null}
+          {alertLink ? (
+            // Antalet larm leder till listan (Notiser är bara inställningarna).
+            <a href={alertLink.href} className="ops-link max-[900px]:min-h-0">
+              {`${alertLink.label} →`}
+            </a>
+          ) : null}
+        </>
+      }
+    >
       {/* Vakten: ingen får larm, kontrollen eller hämtningen har stannat. */}
       <Suspense fallback={null}>
         <WatchLines />
@@ -149,82 +132,85 @@ export default async function DriftPage() {
 
       {awishExpiry ? <AwishExpiry notice={awishExpiry} className="mb-0 max-md:mb-0" /> : null}
 
-      <section
-        aria-labelledby="halsa"
-        className="rise flex flex-col gap-6 max-md:gap-3"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        <SectionHeader id="halsa" size="md" title="Status per automat." />
-        {rows.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message="Inga automater i organisationen."
-            action={{ label: "Lägg till en automat", href: "/automater" }}
-          />
-        ) : (
-          <HealthTable rows={rows} />
-        )}
-      </section>
+      <div className="v2-cols">
+        <div className="v2-stack">
+          <Card
+            title="Status per automat"
+            count={rows.length > 0 ? rows.length : null}
+            link={{ href: "/automater", label: "Automater" }}
+          >
+            {rows.length === 0 ? (
+              <Empty
+                title="Inga automater i organisationen."
+                action={
+                  <ButtonLink href="/automater" variant="act" touch>
+                    Lägg till en automat
+                  </ButtonLink>
+                }
+              />
+            ) : (
+              <HealthTable rows={rows} />
+            )}
+          </Card>
+        </div>
 
-      <section
-        aria-labelledby="larm"
-        className="rise flex scroll-mt-28 flex-col gap-6"
-        id="larm-sektion"
-        style={{ "--i": 2 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="larm"
-          size="md"
-          title={
-            items.length === 0
-              ? "Inga öppna larm."
-              : `${plural(items.length, "öppet larm", "öppna larm")}${critical > 0 ? `, ${formatInt(critical)} kritiska` : ""}.`
-          }
-          aside={
-            overview.lastRun
-              ? `Koll ${formatWhen(overview.lastRun.ranAt, ctx.timeZone, now)}.`
-              : undefined
-          }
-          actions={
-            <Link
-              href="/drift/larm"
-              className="rounded-xs text-sm text-muted hover:text-fg max-md:tap max-md:inline-flex max-md:min-h-11 max-md:items-center"
-            >
-              Notiser →
-            </Link>
-          }
-        />
-        {ctx.canSeeEconomy && !overview.lastRun ? (
-          <StateMessage
-            kind="not-configured"
-            compact
-            message="Larm är inte igång än."
-            diagnostics={[
-              { label: "Jobb", value: "GET /api/cron/larm" },
-              { label: "Kräver", value: "CRON_SECRET och schemaläggning (Vercel Cron)" },
-            ]}
-          />
-        ) : null}
-        {overview.lastRun?.status === "failed" ? (
-          <StateMessage
-            kind="error"
-            compact
-            message="Larmkollen misslyckades senast."
-            diagnostics={[{ label: "Fel", value: overview.lastRun.error ?? "okänt" }]}
-          />
-        ) : null}
-        {items.length > 0 ? <AlertList items={items} canAck={ctx.canEdit} /> : null}
-        {resolved.length > 0 ? (
-          <details>
-            <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:tap max-md:flex max-md:min-h-11 max-md:items-center">
-              {`Lösta de senaste 7 dagarna (${formatInt(resolved.length)})`}
-            </summary>
-            <div className="mt-4">
-              <AlertList items={resolved} canAck={false} />
-            </div>
-          </details>
-        ) : null}
-      </section>
-    </div>
+        <div className="v2-stack">
+          <Card
+            id="larm-sektion"
+            className="scroll-mt-28"
+            title={
+              items.length === 0
+                ? "Inga öppna larm"
+                : `${plural(items.length, "öppet larm", "öppna larm")}${critical > 0 ? `, ${formatInt(critical)} kritiska` : ""}`
+            }
+            link={{ href: "/drift/larm", label: "Notiser" }}
+          >
+            {overview.lastRun ? (
+              <p className="ops-p border-b border-v2-line2 px-[18px] py-2.5 text-v2-xs">
+                {`Koll ${formatWhen(overview.lastRun.ranAt, ctx.timeZone, now)}.`}
+              </p>
+            ) : null}
+            {ctx.canSeeEconomy && !overview.lastRun ? (
+              <div className="p-3">
+                <Notice tone="info" title="Larm är inte igång än.">
+                  Jobbet GET /api/cron/larm kräver CRON_SECRET och schemaläggning (Vercel Cron).
+                </Notice>
+              </div>
+            ) : null}
+            {overview.lastRun?.status === "failed" ? (
+              <div className="p-3">
+                <Notice tone="critical" title="Larmkollen misslyckades senast.">
+                  {`Fel: ${overview.lastRun.error ?? "okänt"}`}
+                </Notice>
+              </div>
+            ) : null}
+            {items.length > 0 ? (
+              <AlertList items={items} canAck={ctx.canEdit} />
+            ) : overview.lastRun?.status !== "failed" ? (
+              <Empty title="Allt lugnt.">Inget larm är öppet just nu.</Empty>
+            ) : null}
+            {resolved.length > 0 ? (
+              <details className="ops-more border-t border-v2-line2 px-[18px] py-2">
+                <summary>{`Lösta de senaste 7 dagarna (${formatInt(resolved.length)})`}</summary>
+                <div className="-mx-[18px] mt-2 border-t border-v2-line2">
+                  <AlertList items={resolved} canAck={false} />
+                </div>
+              </details>
+            ) : null}
+          </Card>
+
+          <Card title="Besök i veckan" link={{ href: "/drift/besok", label: "Besöksplan" }}>
+            <CardBody>
+              <p className="tnum text-v2-2xl font-[650]">{formatInt(visits)}</p>
+              <p className="ops-p">
+                {visits === 0
+                  ? "Inga besök behövs de närmaste 7 dagarna."
+                  : `${plural(visits, "besök", "besök")} de närmaste 7 dagarna.`}
+              </p>
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </DriftFrame>
   );
 }

@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { OpsLoading } from "../_components/ops-loading";
 
-/** Medan sidan hämtar och räknar: rubriken och innehållet som skeleton. */
+/** Medan sidan hämtar och räknar: rubriken och korten som skeleton. */
 export default function DriftLoading() {
-  return <RouteLoading label="Laddar drift" inset="inset" blocks={["kpi", "table"]} />;
+  return <OpsLoading label="Laddar drift" />;
 }

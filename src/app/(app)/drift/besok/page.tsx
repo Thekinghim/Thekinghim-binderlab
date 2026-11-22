@@ -5,27 +5,22 @@ import { personOptions } from "@/analytics/team";
 import { weekdayDay } from "@/analytics/todos/text";
 import { kmText } from "@/analytics/visits";
 import { ChannelTags } from "@/components/ui/channel-tags";
-import { Panel, PanelSection } from "@/components/ui/frame";
 import { Icon } from "@/components/ui/icon";
 import { MineToggle } from "@/components/ui/mine-toggle";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { Badge } from "@/components/v2/badge";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { PersonPicker } from "../../_team/person-picker";
+import { DriftFrame } from "../_components/drift-frame";
 import { plural, sentenceEnd } from "../_lib/display";
 import { loadVisitPlan } from "../_lib/load";
 import { dayRouteView } from "../_lib/route";
-
-/** Länk som ser ut som en knapp. */
-const linkButton =
-  "inline-flex h-9 items-center justify-center max-md:min-h-11 gap-2 rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument";
-const linkPrimary =
-  "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover";
-const linkSecondary =
-  "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover";
 
 export const metadata: Metadata = { title: "Besöksplan" };
 
@@ -58,26 +53,20 @@ export default async function VisitPlanPage({
   const late = plan.days.flatMap((d) => d.stops).filter((s) => s.late).length;
 
   return (
-    <div className="flex flex-col gap-10">
-      <SectionHeader
-        className="rise"
-        as="h1"
-        size="xl"
-        eyebrow="Besöksplan"
-        title={stops === 0 ? "Inga besök behövs i veckan." : sentenceEnd(plan.summary)}
-        aside={
-          stops === 0
-            ? "Lagret räcker 7 dagar."
-            : late > 0
-              ? `${plural(late, "automat hinner", "automater hinner")} ta slut före besöket.`
-              : undefined
-        }
-      />
-
-      <div
-        className="rise flex flex-wrap items-center gap-3"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
+    <DriftFrame
+      ctx={ctx}
+      sub={
+        <>
+          <b>{stops === 0 ? "Inga besök behövs i veckan." : sentenceEnd(plan.summary)}</b>
+          {stops === 0 ? (
+            <span>Lagret räcker 7 dagar.</span>
+          ) : late > 0 ? (
+            <span>{`${plural(late, "automat hinner", "automater hinner")} ta slut före besöket.`}</span>
+          ) : null}
+        </>
+      }
+    >
+      <div className="ops-bar">
         <MineToggle
           mine={mine}
           hrefMine="/drift/besok?mina=1"
@@ -85,10 +74,7 @@ export default async function VisitPlanPage({
           label="Vems besök"
         />
         {stops > 0 ? (
-          <a
-            href={calendarHref()}
-            className={cn(linkButton, linkSecondary, "h-8 text-sm max-md:min-h-11")}
-          >
+          <a href={calendarHref()} className="v2-btn touch">
             <Icon name="calendar" className="shrink-0" />
             Veckan i kalender
           </a>
@@ -96,114 +82,119 @@ export default async function VisitPlanPage({
       </div>
 
       {!hasWarehouse ? (
-        <StateMessage
-          kind="not-configured"
-          compact
-          message="Vårt lager har inget saldo, så packlistan räknar med att allt finns."
-          action={{ label: "Öppna Lager", href: "/lager" }}
+        <Notice
+          tone="info"
+          title="Vårt lager har inget saldo, så packlistan räknar med att allt finns."
+          action={
+            <ButtonLink href="/lager" size="sm" touch>
+              Öppna Lager
+            </ButtonLink>
+          }
         />
       ) : null}
 
       {plan.overflow.length > 0 ? (
-        <StateMessage
-          kind="error"
-          compact
-          message={`${plural(plan.overflow.length, "automat", "automater")} fick inte plats i veckans besöksdagar: ${plan.overflow.map((id) => machineCode.get(id) ?? id).join(", ")}.`}
+        <Notice
+          tone="critical"
+          title={`${plural(plan.overflow.length, "automat", "automater")} fick inte plats i veckans besöksdagar: ${plan.overflow.map((id) => machineCode.get(id) ?? id).join(", ")}.`}
         />
       ) : null}
 
       {plan.days.length === 0 ? (
-        <StateMessage kind="empty" compact message="Inga besök behövs de närmaste 7 dagarna." />
+        <Card>
+          <Empty title="Inga besök behövs de närmaste 7 dagarna." />
+        </Card>
       ) : (
-        <div className="flex flex-col gap-12">
-          {plan.days.map((day, i) => (
-            <section
-              key={day.date}
-              aria-labelledby={`dag-${day.date}`}
-              className="rise flex flex-col gap-6"
-              style={{ "--i": i + 1 } as React.CSSProperties}
-            >
-              <SectionHeader
-                id={`dag-${day.date}`}
-                eyebrow={day.routeMethod === "distance" ? "Efter avstånd" : "Efter brådska"}
-                title={sentenceEnd(day.title)}
-                aside={
-                  day.totalMeters !== null ? `${kmText(day.totalMeters)} med återresa.` : undefined
-                }
-                size="md"
-              />
-              {(() => {
-                const route = dayRouteView(day, data.machines, places);
-                return (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-wrap gap-2">
-                      {route.mapsUrls.map((url, n) => (
-                        <a
-                          key={url}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={cn(linkButton, n === 0 ? linkPrimary : linkSecondary)}
+        plan.days.map((day) => {
+          const route = dayRouteView(day, data.machines, places);
+          return (
+            <section key={day.date} aria-labelledby={`dag-${day.date}`} className="v2-section">
+              <div className="v2-section-hd flex-wrap">
+                <div className="min-w-0">
+                  <h2 id={`dag-${day.date}`}>{sentenceEnd(day.title)}</h2>
+                  <p>
+                    {day.routeMethod === "distance" ? "Efter avstånd" : "Efter brådska"}
+                    {day.totalMeters !== null ? ` · ${kmText(day.totalMeters)} med återresa` : ""}
+                  </p>
+                </div>
+                <div className="acts flex-initial">
+                  {route.mapsUrls.map((url, n) => (
+                    <a
+                      key={url}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn("v2-btn touch", n === 0 && "act")}
+                    >
+                      <Icon name="external" className="shrink-0" />
+                      {route.mapsUrls.length > 1
+                        ? `Google Maps ${n + 1}/${route.mapsUrls.length}`
+                        : "Öppna i Google Maps"}
+                    </a>
+                  ))}
+                  <a href={calendarHref(day.date)} className="v2-btn touch">
+                    <Icon name="calendar" className="shrink-0" />
+                    Lägg i kalender
+                  </a>
+                </div>
+              </div>
+              {route.missing.length > 0 ? (
+                <p className="ops-p mb-3">
+                  {`Adress saknas: `}
+                  {route.missing.map((m, n) => (
+                    <span key={m.storeId ?? m.name}>
+                      {n > 0 ? ", " : ""}
+                      {m.storeId && ctx.canEdit ? (
+                        <Link
+                          href={`/butiker/${m.storeId}`}
+                          className="text-v2-ink underline underline-offset-2"
                         >
-                          <Icon name="external" className="shrink-0" />
-                          {route.mapsUrls.length > 1
-                            ? `Google Maps ${n + 1}/${route.mapsUrls.length}`
-                            : "Öppna i Google Maps"}
-                        </a>
-                      ))}
-                      <a href={calendarHref(day.date)} className={cn(linkButton, linkSecondary)}>
-                        <Icon name="calendar" className="shrink-0" />
-                        Lägg i kalender
-                      </a>
-                    </div>
-                    {route.missing.length > 0 ? (
-                      <p className="text-sm text-muted">
-                        {`Adress saknas: `}
-                        {route.missing.map((m, n) => (
-                          <span key={m.storeId ?? m.name}>
-                            {n > 0 ? ", " : ""}
-                            {m.storeId && ctx.canEdit ? (
-                              <Link
-                                href={`/butiker/${m.storeId}`}
-                                className="rounded-xs text-fg underline underline-offset-2"
-                              >
-                                {m.name}
-                              </Link>
-                            ) : (
-                              m.name
-                            )}
-                          </span>
-                        ))}
-                        {ctx.canEdit ? ". Butiken → Ändra → Adress." : "."}
-                      </p>
-                    ) : route.needsLocation ? (
-                      <p className="text-sm text-muted">
-                        {ctx.canEdit
-                          ? "Lägg in butikens kartlänk för kortaste väg."
-                          : "Ordning efter brådska."}
-                      </p>
-                    ) : null}
-                  </div>
-                );
-              })()}
-              <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-                <ol className="flex flex-col gap-4 lg:col-span-8">
+                          {m.name}
+                        </Link>
+                      ) : (
+                        m.name
+                      )}
+                    </span>
+                  ))}
+                  {ctx.canEdit ? ". Butiken → Ändra → Adress." : "."}
+                </p>
+              ) : route.needsLocation ? (
+                <p className="ops-p mb-3">
+                  {ctx.canEdit
+                    ? "Lägg in butikens kartlänk för kortaste väg."
+                    : "Ordning efter brådska."}
+                </p>
+              ) : null}
+              <div className="v2-cols">
+                <ol className="v2-stack">
                   {day.stops.map((stop) => (
                     <li key={stop.machineId}>
-                      <Panel className="lift">
-                        <div className="flex flex-wrap items-baseline justify-between gap-3">
-                          <div className="flex items-baseline gap-3">
-                            <span className="meta tnum text-subtle">
+                      <Card
+                        as="article"
+                        title={
+                          <>
+                            <span className="tnum text-v2-mute">
                               {String(stop.sequence).padStart(2, "0")}
                             </span>
                             <Link
                               href={`/drift/automat/${stop.machineId}`}
-                              className="rounded-xs text-base text-fg hover:underline max-md:tap"
+                              className="min-w-0 truncate hover:underline"
                             >
                               {`${(machineCode.get(stop.machineId) ?? "").replace("-", "‑")} ${stop.machineName}`}
                             </Link>
-                          </div>
-                          <span className="flex flex-wrap items-center gap-3">
+                          </>
+                        }
+                        actions={
+                          <span className="flex shrink-0 items-center gap-3">
+                            {stop.late ? <Badge tone="warning">Hinner ta slut</Badge> : null}
+                            <span className="tnum text-v2-xs text-v2-mute">
+                              {`${formatInt(stop.totalPacks)}${NBSP}pack`}
+                            </span>
+                          </span>
+                        }
+                      >
+                        <CardBody className="flex flex-col gap-3">
+                          <div className="flex flex-wrap items-center gap-2">
                             <PersonPicker
                               target={{ kind: "machine", machineId: stop.machineId }}
                               value={responsibles.get(stop.machineId) ?? ""}
@@ -214,74 +205,55 @@ export default async function VisitPlanPage({
                               )}
                               editable={ctx.canEdit}
                             />
-                            <span className="meta text-subtle">
-                              {stop.late ? "Hinner ta slut · " : ""}
-                              {`${formatInt(stop.totalPacks)}${NBSP}pack`}
-                            </span>
-                          </span>
-                        </div>
-                        {/* Under md står packlistan först; prognosraderna ligger under Underlag. */}
-                        <ul
-                          className={cn(
-                            "mt-2 flex flex-col gap-1 text-sm text-muted",
-                            stop.packs.length > 0 && "max-md:hidden",
-                          )}
-                        >
-                          {stop.reasons.slice(0, 3).map((r) => (
-                            <li key={r}>{r}</li>
-                          ))}
-                          {stop.reasons.length > 3 ? (
-                            <li>
-                              <details>
-                                <summary className="w-fit cursor-pointer rounded-xs hover:text-fg max-md:tap">
-                                  {`Och ${formatInt(stop.reasons.length - 3)} ${stop.reasons.length - 3 === 1 ? "titel" : "titlar"} till`}
-                                </summary>
-                                <ul className="mt-1 flex flex-col gap-1">
-                                  {stop.reasons.slice(3).map((r) => (
-                                    <li key={r}>{r}</li>
-                                  ))}
-                                </ul>
-                              </details>
-                            </li>
-                          ) : null}
-                        </ul>
-                        {stop.packs.length > 0 ? (
-                          <PanelSection
-                            label="Packlista"
-                            meta={`${formatInt(stop.totalPacks)} st`}
-                            className="mt-4"
+                          </div>
+                          {/* Telefon: packlistan först; prognosraderna ligger under Underlag. */}
+                          <ul
+                            className={cn(
+                              "flex flex-col gap-1 text-v2-sm text-v2-mute",
+                              stop.packs.length > 0 && "max-[900px]:hidden",
+                            )}
                           >
-                            <table className="w-full text-sm max-sm:table-fixed">
+                            {stop.reasons.slice(0, 3).map((r) => (
+                              <li key={r}>{r}</li>
+                            ))}
+                            {stop.reasons.length > 3 ? (
+                              <li>
+                                <details className="ops-more">
+                                  <summary>
+                                    {`Och ${formatInt(stop.reasons.length - 3)} ${stop.reasons.length - 3 === 1 ? "titel" : "titlar"} till`}
+                                  </summary>
+                                  <ul className="mt-1 flex flex-col gap-1">
+                                    {stop.reasons.slice(3).map((r) => (
+                                      <li key={r}>{r}</li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              </li>
+                            ) : null}
+                          </ul>
+                        </CardBody>
+                        {stop.packs.length > 0 ? (
+                          <div className="v2-table-wrap border-t border-v2-line">
+                            <table className="v2-table">
                               <caption className="sr-only">{`Packlista för ${stop.machineName}`}</caption>
                               <thead>
-                                <tr className="label text-subtle">
-                                  <th scope="col" className="py-1 text-left font-normal">
-                                    Titel
-                                  </th>
-                                  <th
-                                    scope="col"
-                                    className="py-1 text-right font-normal max-sm:w-20"
-                                  >
+                                <tr>
+                                  <th scope="col">Packlista</th>
+                                  <th scope="col" className="num">
                                     Ta med
                                   </th>
-                                  <th
-                                    scope="col"
-                                    className="hidden py-1 text-right font-normal sm:table-cell"
-                                  >
+                                  <th scope="col" className="num ph-hide">
                                     Kvar vid besök
                                   </th>
-                                  <th
-                                    scope="col"
-                                    className="hidden py-1 text-right font-normal sm:table-cell"
-                                  >
+                                  <th scope="col" className="num ph-hide">
                                     Mål
                                   </th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-line">
+                              <tbody>
                                 {stop.packs.map((p) => (
                                   <tr key={p.titleId}>
-                                    <td className="py-2 pr-2 [overflow-wrap:anywhere] text-fg">
+                                    <td className="[overflow-wrap:anywhere]">
                                       {p.titleName}
                                       {p.capacity !== null && p.channels.length > 0 ? (
                                         <ChannelTags
@@ -290,87 +262,91 @@ export default async function VisitPlanPage({
                                         />
                                       ) : null}
                                       {p.shortBy > 0 ? (
-                                        <span className="block text-xs text-muted">{`${formatInt(p.shortBy)} pack saknas i vårt lager`}</span>
+                                        <span className="block text-v2-xs text-v2-crit-text">{`${formatInt(p.shortBy)} pack saknas i vårt lager`}</span>
                                       ) : null}
                                     </td>
-                                    <td className="tnum py-2 text-right text-fg">
-                                      {formatInt(p.quantity)}
-                                    </td>
-                                    <td className="tnum hidden py-2 text-right text-muted sm:table-cell">
+                                    <td className="num font-[550]">{formatInt(p.quantity)}</td>
+                                    <td className="num ph-hide text-v2-mute">
                                       {formatInt(p.projectedAtVisit)}
                                     </td>
-                                    <td className="tnum hidden py-2 text-right text-muted sm:table-cell">
+                                    <td className="num ph-hide text-v2-mute">
                                       {formatInt(p.target)}
                                     </td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
-                          </PanelSection>
+                          </div>
                         ) : null}
-                        <details className="mt-4">
-                          <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:tap">
-                            Underlag
-                          </summary>
-                          {stop.packs.length > 0 ? (
-                            <ul className="mt-2 flex flex-col gap-1 text-sm text-muted md:hidden">
-                              {stop.reasons.map((r) => (
-                                <li key={r}>{r}</li>
-                              ))}
-                            </ul>
-                          ) : null}
-                          <p className="mt-2 text-sm text-muted">{stop.evidence.rule}</p>
-                        </details>
-                      </Panel>
+                        <div className="border-t border-v2-line2 px-[18px] py-1.5 max-[900px]:px-4">
+                          <details className="ops-more">
+                            <summary>Underlag</summary>
+                            {stop.packs.length > 0 ? (
+                              <ul className="mt-1 flex flex-col gap-1 text-v2-sm text-v2-mute min-[901px]:hidden">
+                                {stop.reasons.map((r) => (
+                                  <li key={r}>{r}</li>
+                                ))}
+                              </ul>
+                            ) : null}
+                            <p className="ops-p mt-1 mb-2">{stop.evidence.rule}</p>
+                          </details>
+                        </div>
+                      </Card>
                     </li>
                   ))}
                 </ol>
-                <aside className="lg:col-span-4" aria-label={`Att lasta ${day.date}`}>
-                  <Panel>
-                    <PanelSection label="Att lasta" meta={`${formatInt(day.totalPacks)} st`}>
-                      <ul className="flex flex-col divide-y divide-line text-sm">
-                        {day.load
-                          .filter((l) => l.quantity > 0)
-                          .map((l) => (
-                            <li
-                              key={l.titleId}
-                              className="flex items-baseline justify-between gap-3 py-2"
-                            >
-                              <span className="text-fg">{l.titleName}</span>
-                              <span className="tnum text-fg">{formatInt(l.quantity)}</span>
-                            </li>
-                          ))}
-                      </ul>
-                    </PanelSection>
-                  </Panel>
+                <aside aria-label={`Att lasta ${day.date}`}>
+                  <Card
+                    title="Att lasta"
+                    actions={
+                      <span className="tnum text-v2-xs text-v2-mute">{`${formatInt(day.totalPacks)} st`}</span>
+                    }
+                  >
+                    <ul className="ops-list">
+                      {day.load
+                        .filter((l) => l.quantity > 0)
+                        .map((l) => (
+                          <li
+                            key={l.titleId}
+                            className="flex items-baseline justify-between gap-3 text-v2-sm"
+                          >
+                            <span className="min-w-0 text-v2-ink">{l.titleName}</span>
+                            <span className="tnum font-[550] text-v2-ink">
+                              {formatInt(l.quantity)}
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  </Card>
                 </aside>
               </div>
             </section>
-          ))}
-        </div>
+          );
+        })
       )}
 
       {plan.notNeeded.length > 0 ? (
-        <section aria-labelledby="inte-besok" className="flex flex-col gap-4">
-          <SectionHeader
-            id="inte-besok"
-            eyebrow="Inget besök i veckan"
-            title={`${plural(plan.notNeeded.length, "automat", "automater")} klarar sig.`}
-            aside="Senaste besöksdag."
-            size="sm"
-          />
-          <ul className="flex flex-col divide-y divide-line border-y border-line text-sm">
+        <Card
+          title={`${plural(plan.notNeeded.length, "automat", "automater")} klarar sig`}
+          actions={<span className="text-v2-xs text-v2-mute">Senaste besöksdag</span>}
+        >
+          <ul className="ops-list">
             {plan.notNeeded.map((n) => (
-              <li key={n.machineId} className="flex items-baseline justify-between gap-3 py-2">
-                <span className="meta text-fg">{machineCode.get(n.machineId) ?? n.machineId}</span>
-                <span className="meta text-subtle">
+              <li
+                key={n.machineId}
+                className="flex items-baseline justify-between gap-3 text-v2-sm"
+              >
+                <span className="font-[550] text-v2-ink">
+                  {machineCode.get(n.machineId) ?? n.machineId}
+                </span>
+                <span className="text-v2-mute">
                   {n.needBy ? `Senast ${weekdayDay(n.needBy)}` : "Ingen försäljning att räkna på"}
                 </span>
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       ) : null}
-    </div>
+    </DriftFrame>
   );
 }

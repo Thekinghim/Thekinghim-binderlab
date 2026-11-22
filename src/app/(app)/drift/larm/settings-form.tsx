@@ -55,11 +55,11 @@ function Check({
       />
       <label
         htmlFor={id}
-        className="flex flex-col gap-0.5 text-sm text-fg max-md:min-h-11 max-md:justify-center"
+        className="flex flex-col gap-0.5 text-v2-sm text-v2-ink max-md:min-h-11 max-md:justify-center"
       >
         {children}
         {hint ? (
-          <span id={`${id}-hint`} className="text-xs text-subtle">
+          <span id={`${id}-hint`} className="text-v2-xs text-v2-mute">
             {hint}
           </span>
         ) : null}
@@ -78,10 +78,10 @@ function Group({
   children: ReactNode;
 }) {
   return (
-    <fieldset className="flex min-w-0 flex-col gap-3 border-t border-line pt-4">
-      <legend className="label float-left mb-3 w-full text-muted">{legend}</legend>
+    <fieldset className="flex min-w-0 flex-col gap-3 border-t border-v2-line2 pt-4">
+      <legend className="float-left mb-1 w-full text-v2-sm font-[650] text-v2-ink">{legend}</legend>
       {children}
-      {error ? <p className="text-xs text-signal-fg">{error}</p> : null}
+      {error ? <p className="text-v2-xs text-v2-crit-text">{error}</p> : null}
     </fieldset>
   );
 }
@@ -146,14 +146,14 @@ export function SettingsForm({
     <form
       onSubmit={submit}
       noValidate
-      className="flex flex-col gap-8"
+      className="flex flex-col gap-6"
       aria-label="Larminställningar"
     >
       <Check checked={v.active} onChange={(x) => set("active", x)}>
         Ta emot larm
       </Check>
 
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-6">
         <Group legend="Larm" error={errors.kinds}>
           <Check checked={v.allKinds} onChange={(x) => set("allKinds", x)}>
             Alla typer jag får se
@@ -314,7 +314,7 @@ export function SettingsForm({
         </Group>
       </div>
 
-      {errors.form ? <p className="text-sm text-signal-fg">{errors.form}</p> : null}
+      {errors.form ? <p className="text-v2-sm text-v2-crit-text">{errors.form}</p> : null}
       <div>
         <Button type="submit" variant="primary" loading={pending}>
           Spara larminställningar

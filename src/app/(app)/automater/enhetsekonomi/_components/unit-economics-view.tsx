@@ -129,11 +129,11 @@ export function ComparisonTable({
             className="flex min-w-0 flex-col rounded-xs hover:underline max-md:min-h-11 max-md:justify-center"
             title={r.name}
           >
-            <span className="font-mono text-sm">
+            <span className="text-v2-sm font-[550]">
               {codes[r.machineId] ?? r.machineId.slice(0, 8)}
             </span>
             {/* Under md bara koden, så att vinst och återbetalning ryms i 375 px. */}
-            <span className="hidden truncate text-sm text-muted md:block">{r.name}</span>
+            <span className="hidden truncate text-v2-xs text-v2-mute md:block">{r.name}</span>
           </Link>
         ),
         csv: (r) => r.name,
@@ -321,8 +321,8 @@ export function InvestmentsSection({
         sortValue: (r) => byId.get(r.machineId)?.code ?? r.machineId,
         render: (r) => (
           <span className="flex flex-col">
-            <span className="font-mono text-sm">{byId.get(r.machineId)?.code ?? MISSING}</span>
-            <span className="text-sm text-muted">{byId.get(r.machineId)?.name ?? ""}</span>
+            <span className="text-v2-sm font-[550]">{byId.get(r.machineId)?.code ?? MISSING}</span>
+            <span className="text-v2-xs text-v2-mute">{byId.get(r.machineId)?.name ?? ""}</span>
           </span>
         ),
       },
@@ -331,7 +331,7 @@ export function InvestmentsSection({
         key: "date",
         header: "Datum",
         sortValue: (r) => r.investedOn,
-        render: (r) => <span className="font-mono text-sm">{r.investedOn}</span>,
+        render: (r) => <span className="text-v2-sm font-[550]">{r.investedOn}</span>,
         hideOnMobile: true,
       },
       {

@@ -3,10 +3,10 @@
 import { useMemo, useState } from "react";
 
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { Panel } from "@/components/ui/frame";
 import { Segmented } from "@/components/ui/segmented";
 import { StatusTag } from "@/components/ui/status-tag";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Empty } from "@/components/v2/empty";
 import { formatInt, NBSP } from "@/lib/format";
 
 import { dayText, periodShort } from "../_lib/dates";
@@ -154,11 +154,16 @@ export function ForecastView({ model }: { model: ForecastModel }) {
 
   if (model.bySeries.length === 0) {
     return (
-      <StateMessage
-        kind="empty"
-        message="Ingen försäljning de senaste 8 veckorna."
-        action={{ label: "Öppna Datakällor", href: "/datakallor" }}
-      />
+      <div className="v2-card">
+        <Empty
+          title="Ingen försäljning de senaste 8 veckorna."
+          action={
+            <ButtonLink href="/datakallor" touch>
+              Öppna Datakällor
+            </ButtonLink>
+          }
+        />
+      </div>
     );
   }
 
@@ -172,22 +177,22 @@ export function ForecastView({ model }: { model: ForecastModel }) {
     `per vecka med ${model.coverage}-intervall.`;
 
   return (
-    <div className="flex flex-col gap-10">
-      <Panel grid marks>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="label text-subtle">
-              {metric === "revenue" ? "Intäkt per vecka" : "Sålda pack per vecka"}
-              {NBSP}· utfall och prognos
-            </p>
-            <Segmented
-              label="Mått i diagram och tabell"
-              options={METRICS}
-              value={metric}
-              onChange={setMetric}
-              size="sm"
-            />
-          </div>
+    <div className="v2-stack">
+      <section className="v2-card" aria-label="Utfall och prognos per vecka">
+        <div className="v2-card-hd">
+          <h2>
+            {metric === "revenue" ? "Intäkt per vecka" : "Sålda pack per vecka"}
+            {NBSP}· utfall och prognos
+          </h2>
+          <Segmented
+            label="Mått i diagram och tabell"
+            options={METRICS}
+            value={metric}
+            onChange={setMetric}
+            size="sm"
+          />
+        </div>
+        <div className="flex flex-col gap-3 px-[18px] py-4 max-[900px]:px-4">
           <ForecastChart
             history={model.history}
             weeks={model.weeks}
@@ -195,45 +200,45 @@ export function ForecastView({ model }: { model: ForecastModel }) {
             coverage={model.coverage}
             summary={summary}
           />
-          {model.correctionNote ? <p className="meta text-subtle">{model.correctionNote}</p> : null}
+          {model.correctionNote ? (
+            <p className="text-v2-xs text-v2-mute">{model.correctionNote}</p>
+          ) : null}
         </div>
-      </Panel>
+      </section>
 
-      <section aria-labelledby="veckodagar" className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h3 id="veckodagar" className="label text-subtle">
-            Veckodagar · {periodShort(model.horizon)}
-          </h3>
+      <section aria-labelledby="veckodagar" className="v2-card">
+        <div className="v2-card-hd">
+          <h2 id="veckodagar">Veckodagar</h2>
+          <span className="text-v2-xs text-v2-mute">{periodShort(model.horizon)}</span>
+        </div>
+        <div className="flex flex-col gap-4 px-[18px] py-4 max-[900px]:px-4">
           {strongest ? (
-            <p className="text-md text-fg">
+            <p className="text-v2-md text-v2-ink">
               {strongest.plural} väntas ge mest, {kr(strongest.revenueOre)} på fyra veckor.
             </p>
           ) : null}
+          <ol className="grid grid-cols-4 gap-x-3 gap-y-4 sm:grid-cols-7">
+            {model.weekdays.map((d) => {
+              const v = metric === "revenue" ? d.revenueOre : d.unitsMilli;
+              return (
+                <li key={d.weekday} className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-v2-xs font-[550] text-v2-mute">{d.label}</span>
+                  <span className="v2-track block w-full" aria-hidden>
+                    <i style={{ transform: `scaleX(${v / maxWeekday})` }} />
+                  </span>
+                  <span className="tnum truncate text-v2-sm font-[550] text-v2-ink">
+                    {metric === "revenue" ? kr(d.revenueOre) : packsMilli(d.unitsMilli)}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
         </div>
-        <ol className="grid grid-cols-4 gap-x-2 gap-y-4 sm:grid-cols-7">
-          {model.weekdays.map((d) => {
-            const v = metric === "revenue" ? d.revenueOre : d.unitsMilli;
-            return (
-              <li key={d.weekday} className="flex min-w-0 flex-col gap-1.5">
-                <span className="label text-subtle">{d.label}</span>
-                <span className="h-1 w-full bg-hover" aria-hidden>
-                  <span
-                    className="block h-1 bg-data-2"
-                    style={{ width: `${Math.round((v / maxWeekday) * 100)}%` }}
-                  />
-                </span>
-                <span className="meta tnum truncate text-fg">
-                  {metric === "revenue" ? kr(d.revenueOre) : packsMilli(d.unitsMilli)}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
       </section>
 
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted">
+      <section className="v2-card" aria-label="Prognos per serie, titel eller automat">
+        <div className="v2-card-hd flex-wrap">
+          <p className="text-v2-sm text-v2-mute">
             {group === "series"
               ? `${model.bySeries.length} serier`
               : group === "title"
@@ -251,23 +256,25 @@ export function ForecastView({ model }: { model: ForecastModel }) {
             size="sm"
           />
         </div>
-        <DataTable
-          surface="bg"
-          columns={columns}
-          rows={rows}
-          rowKey={(r) => r.key}
-          caption={`Prognos kommande 4 veckor ${group === "title" ? "per titel" : group === "machine" ? "per automat" : "per titel och automat"}`}
-          defaultSort={{ key: "total", dir: "desc" }}
-          dense
-          exportFileName={`prognos-${model.horizon.start}`}
-        />
-        {model.ordersWithoutMachine > 0 ? (
-          <p className="text-xs text-subtle">
-            {formatInt(model.ordersWithoutMachine)} order saknar automat och ingår inte. Koppla
-            automaterna i Datakällor.
-          </p>
-        ) : null}
-      </div>
+        <div className="flex flex-col gap-3 px-[18px] py-3 max-[900px]:px-4">
+          <DataTable
+            surface="bg"
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.key}
+            caption={`Prognos kommande 4 veckor ${group === "title" ? "per titel" : group === "machine" ? "per automat" : "per titel och automat"}`}
+            defaultSort={{ key: "total", dir: "desc" }}
+            dense
+            exportFileName={`prognos-${model.horizon.start}`}
+          />
+          {model.ordersWithoutMachine > 0 ? (
+            <p className="text-v2-xs text-v2-mute">
+              {formatInt(model.ordersWithoutMachine)} order saknar automat och ingår inte. Koppla
+              automaterna i Datakällor.
+            </p>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }

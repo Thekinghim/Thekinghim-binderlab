@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { getT } from "@/i18n/server";
 import { requireRoute, requireViewer } from "@/server/data/core";
 import { loadTodoCount } from "@/server/data/todos";
@@ -31,15 +32,19 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
     { todos: async () => (ctx.canEdit ? loadTodoCount() : null) },
   );
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 pt-6 pb-16 md:px-8 md:pt-12">
-      <WeekSummary
-        summary={summary}
-        today={ctx.today}
-        t={t}
-        f={f}
-        todoHref={ctx.canEdit ? "/att-gora" : null}
-        close={{ href: "/", label: t.week.toHome }}
-      />
-    </div>
+    <V2Page title={t.week.title} date={headerDate(new Date(ctx.now), ctx.timeZone)}>
+      <div className="mx-auto w-full max-w-[640px]">
+        <WeekSummary
+          summary={summary}
+          today={ctx.today}
+          t={t}
+          f={f}
+          headingLevel="h2"
+          todoHref={ctx.canEdit ? "/att-gora" : null}
+          close={{ href: "/", label: t.week.toHome }}
+          v2
+        />
+      </div>
+    </V2Page>
   );
 }

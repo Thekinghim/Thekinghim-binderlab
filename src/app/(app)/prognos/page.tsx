@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import Link from "next/link";
-import type React from "react";
 import { Suspense } from "react";
 
 import { redirect } from "next/navigation";
@@ -9,8 +8,12 @@ import { redirect } from "next/navigation";
 import { type SearchParamsInput } from "@/components/shell/period-state";
 import { HashTab } from "@/components/ui/hash-tab";
 import { OpenOnHash } from "@/components/ui/open-on-hash";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { CardBody } from "@/components/v2/card";
+import { KpiTile } from "@/components/v2/kpi-tile";
+import { Notice } from "@/components/v2/notice";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { DomainError } from "@/domain";
 import { messages } from "@/i18n";
 import { loadOptionalContextIfSignedIn, loadPeriod, requireRoute } from "@/server/data/core";
@@ -22,14 +25,14 @@ import { ForecastView } from "./_components/forecast-view";
 import { LostSalesView } from "./_components/lost-sales-view";
 import { OrdersView } from "./_components/orders-view";
 import { OurStock } from "./_components/our-stock";
+import { PackRows } from "./_components/pack-rows";
+import "../drift/_components/ops.css";
 import { ourStockTitle } from "./_lib/our-stock";
 import { OnTheWayList } from "./_components/buy-actions";
 import { PlanView } from "./_components/plan-view";
 import { SuppliersView } from "./_components/suppliers-view";
 import { ValuationView } from "./_components/valuation-view";
-import { PageHead } from "../vart-lager/_components/page-head";
 import { packActionHref } from "../vart-lager/mystery/_lib/model";
-import { TodoList } from "../vart-lager/_components/todo-list";
 import { buildPageModel, ordersInMainView, type PageModel } from "./_lib/model";
 import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
 
@@ -62,11 +65,6 @@ const OLD_VIEWS: Record<string, { tab: Tab; hash: string }> = {
   forlorad: { tab: "prognos", hash: "forlorad-forsaljning" },
   lager: { tab: "bestall", hash: "leverantorer" },
 };
-
-const SECTION = "flex scroll-mt-28 flex-col gap-8";
-/** "Mer"-raderna. Mobil: platta rader med linje under (inga kort), 44 px höga. */
-const MORE =
-  "group scroll-mt-28 rounded-sm border border-line [&>summary]:flex [&>summary]:cursor-pointer [&>summary]:items-baseline [&>summary]:justify-between [&>summary]:gap-4 [&>summary]:px-4 [&>summary]:py-3 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:[&>summary]:min-h-11 max-md:[&>summary]:items-center max-md:[&>summary]:px-0 max-md:[&>summary]:flex-wrap max-md:[&>summary]:gap-x-3 max-md:[&>summary]:py-2 max-md:[&>div]:px-0";
 
 function viewParam(sp: SearchParamsInput): string | undefined {
   return sp instanceof URLSearchParams || "get" in sp
@@ -135,19 +133,23 @@ export default async function PrognosPage({
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;
     return (
-      <div className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 md:px-8 md:pt-12">
-        <StateMessage
-          kind="loading-failed"
-          message="Prognosen kunde inte räknas fram."
-          detail={error.message}
-          action={{ label: "Öppna Datakällor", href: "/datakallor" }}
-          diagnostics={[{ label: "Kod", value: error.code }]}
-        />
-      </div>
+      <V2Page title={tab === "prognos" ? "Prognos" : "Inköp"}>
+        <SubNav />
+        <Notice
+          tone="critical"
+          title="Prognosen kunde inte räknas fram."
+          action={
+            <ButtonLink href="/datakallor" size="sm" touch>
+              Öppna Datakällor
+            </ButtonLink>
+          }
+        >
+          {`${error.message} (kod ${error.code})`}
+        </Notice>
+      </V2Page>
     );
   }
 
-  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
   // Hela ordertabellen ligger under "Mer". Det som är beställt står redan i huvudvyn som
   // "På väg" med "Kom fram"; bara ett utkast (som måste beställas eller tas bort) lyfter upp den.
   const ordersMain = ordersInMainView(m.orders.open);
@@ -165,29 +167,42 @@ export default async function PrognosPage({
     (x) => x.label !== "Att beställa" && x.label !== "Kapitalbindning",
   );
 
+  const head = tab === "prognos" ? m.heading : m.plan.heading;
+
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-14 md:px-8 md:pt-12">
+    <V2Page
+      title={tab === "prognos" ? "Prognos" : "Inköp"}
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      period={tab === "prognos"}
+      sub={
+        <>
+          <b>{head.title}</b>
+          {head.aside ? <span>{head.aside}</span> : null}
+          {tab === "bestall" && m.scoped ? <span>Hela organisationen</span> : null}
+        </>
+      }
+    >
       <Suspense fallback={null}>
         <HashTab map={HASH_TO_TAB} defaultTab="bestall" />
       </Suspense>
+      <SubNav />
 
       {tab === "bestall" ? (
-        <div key="bestall" className="fade-in flex flex-col gap-12 max-md:gap-8 md:gap-14">
-          <PageHead
-            eyebrow={m.scoped ? "Inköp · hela organisationen" : "Inköp"}
-            title={m.plan.heading.title}
-            aside={m.plan.heading.aside}
-          />
-
+        <div key="bestall" className="v2-stack">
           {m.plan.packLines.length > 0 ? (
-            <section id="att-packa" aria-labelledby="att-packa-rubrik" className={SECTION}>
-              <h2 id="att-packa-rubrik" className="label text-subtle">
-                Att packa
-              </h2>
-              <TodoList
-                label="Att packa"
-                done=""
-                max={12}
+            <section
+              id="att-packa"
+              aria-labelledby="att-packa-rubrik"
+              className="v2-card scroll-mt-28"
+            >
+              <div className="v2-card-hd">
+                <h2 id="att-packa-rubrik">
+                  Att packa
+                  <span aria-hidden="true">·</span>
+                  <span className="n">{m.plan.packLines.length}</span>
+                </h2>
+              </div>
+              <PackRows
                 items={m.plan.packLines.map((l) => ({
                   key: l.titleId,
                   // Under 0 hemma: räkna om först (samma två steg som på Vårt lager).
@@ -216,53 +231,54 @@ export default async function PrognosPage({
             canEdit={m.canEdit && m.hasCentralWarehouse}
             places={buyPlaces}
             scope={buyScope}
+            v2
           />
 
-          <section aria-labelledby="inkopsforslag" className={`rise ${SECTION}`} style={rise(2)}>
-            <h2 id="inkopsforslag" className="label text-subtle">
-              Att beställa
-            </h2>
-            <PlanView
-              model={m.plan}
-              suppliers={m.suppliers.suppliers}
-              canEdit={m.canEdit}
-              today={m.today}
-              places={buyPlaces}
-              scope={buyScope}
-            />
+          <section aria-labelledby="inkopsforslag" className="v2-card scroll-mt-28">
+            <div className="v2-card-hd">
+              <h2 id="inkopsforslag">Att beställa</h2>
+            </div>
+            <CardBody>
+              <PlanView
+                model={m.plan}
+                suppliers={m.suppliers.suppliers}
+                canEdit={m.canEdit}
+                today={m.today}
+                places={buyPlaces}
+                scope={buyScope}
+              />
+            </CardBody>
           </section>
 
           {ordersMain ? (
-            <section aria-labelledby="inkopsorder" className={`rise ${SECTION}`} style={rise(3)}>
-              <SectionHeader
-                id="inkopsorder"
-                size="md"
-                eyebrow="Inköpsorder"
-                title={m.orders.heading.title}
-              />
-              {orders}
+            <section aria-labelledby="inkopsorder" className="v2-card scroll-mt-28">
+              <div className="v2-card-hd">
+                <h2 id="inkopsorder">Inköpsorder</h2>
+                <span className="text-v2-xs text-v2-mute">{m.orders.heading.title}</span>
+              </div>
+              <CardBody>{orders}</CardBody>
             </section>
           ) : null}
 
-          <div className="rise flex flex-col gap-3 max-md:gap-0" style={rise(4)}>
-            <p className="label text-subtle max-md:border-b max-md:border-line max-md:pb-2">Mer</p>
+          <section aria-label="Mer" className="v2-card">
+            <div className="v2-card-hd">
+              <h2>Mer</h2>
+            </div>
             {!ordersMain ? (
-              <details id="inkopsorder" className={MORE}>
+              <details id="inkopsorder" className="ops-acc">
                 <summary>
-                  <span className="text-sm font-medium text-fg">Inköpsorder</span>
-                  <span className="meta text-muted">{m.orders.heading.title}</span>
+                  <span>Inköpsorder</span>
+                  <small>{m.orders.heading.title}</small>
                 </summary>
-                <div className="border-t border-line p-4">{orders}</div>
+                <div>{orders}</div>
               </details>
             ) : null}
-            <details id="vart-lager" className={MORE}>
+            <details id="vart-lager" className="ops-acc">
               <summary>
-                <span className="text-sm font-medium text-fg">Lager per titel</span>
-                <span className="meta text-muted">
-                  {ourStockTitle(stock.rows, stock.places.length)}
-                </span>
+                <span>Lager per titel</span>
+                <small>{ourStockTitle(stock.rows, stock.places.length)}</small>
               </summary>
-              <div className="flex flex-col gap-4 border-t border-line p-4">
+              <div className="flex flex-col gap-4">
                 <OurStock
                   rows={stock.rows}
                   titles={stock.titles}
@@ -272,33 +288,30 @@ export default async function PrognosPage({
                   // Flera lager: antalet räknas per lager på Vårt lager (här vore det oklart vilket).
                   canRegister={stock.canRegister && stock.places.length <= 1}
                 />
-                <Link href="/vart-lager" className="meta w-fit text-muted hover:text-fg max-md:tap">
+                <Link href="/vart-lager" className="ops-link w-fit">
                   Vårt lager{"\u00a0"}→
                 </Link>
               </div>
             </details>
-            <details id="leverantorer" className={MORE}>
+            <details id="leverantorer" className="ops-acc">
               <summary>
-                <span className="text-sm font-medium text-fg">Leverantörer</span>
-                <span className="meta text-muted">{m.suppliers.heading.title}</span>
+                <span>Leverantörer</span>
+                <small>{m.suppliers.heading.title}</small>
               </summary>
-              <div className="flex flex-col gap-4 border-t border-line p-4">
-                <p className="text-sm text-muted">{m.suppliers.heading.aside}</p>
+              <div className="flex flex-col gap-4">
+                <p className="ops-p">{m.suppliers.heading.aside}</p>
                 <SuppliersView model={m.suppliers} titles={m.titles} canEdit={m.canEdit} />
-                <Link
-                  href="/inkopspriser"
-                  className="meta w-fit text-muted hover:text-fg max-md:tap"
-                >
+                <Link href="/inkopspriser" className="ops-link w-fit">
                   Inköpspriser{"\u00a0"}→
                 </Link>
               </div>
             </details>
-            <details id="lagervarde" className={MORE}>
+            <details id="lagervarde" className="ops-acc">
               <summary>
-                <span className="text-sm font-medium text-fg">Lagervärde</span>
-                <span className="meta text-muted">{m.valuation.heading.title}</span>
+                <span>Lagervärde</span>
+                <small>{m.valuation.heading.title}</small>
               </summary>
-              <div className="border-t border-line p-4">
+              <div>
                 <ValuationView model={m.valuation} />
               </div>
             </details>
@@ -306,53 +319,53 @@ export default async function PrognosPage({
             <OpenOnHash id="vart-lager" />
             <OpenOnHash id="leverantorer" />
             <OpenOnHash id="lagervarde" />
-          </div>
+          </section>
         </div>
       ) : (
-        <div key="prognos" className="fade-in flex flex-col gap-12 max-md:gap-8 md:gap-14">
-          <PageHead eyebrow="Prognos · 4 veckor" title={m.heading.title} aside={m.heading.aside} />
-          <section aria-labelledby="prognos" className={`rise ${SECTION}`} style={rise(1)}>
+        <div key="prognos" className="v2-stack">
+          <section aria-labelledby="prognos" className="v2-stack scroll-mt-28">
             <h2 id="prognos" className="sr-only">
               Prognos
             </h2>
-            <dl className="flex flex-wrap gap-x-8 gap-y-2">
-              {forecastMeta.map((x) => (
-                <div key={x.label} className="flex flex-col">
-                  <dt className="label text-subtle">{x.label}</dt>
-                  <dd className="tnum text-base text-fg">{x.value}</dd>
-                </div>
-              ))}
-            </dl>
+            {forecastMeta.length > 0 ? (
+              <div className="v2-band">
+                {forecastMeta.map((x) => (
+                  <KpiTile key={x.label} label={x.label} value={x.value} />
+                ))}
+              </div>
+            ) : null}
             <ForecastView model={m.forecast} />
           </section>
 
-          <div className="rise flex flex-col gap-3 max-md:gap-0" style={rise(2)}>
-            <p className="label text-subtle max-md:border-b max-md:border-line max-md:pb-2">Mer</p>
-            <details id="forlorad-forsaljning" className={MORE}>
+          <section aria-label="Mer" className="v2-card">
+            <div className="v2-card-hd">
+              <h2>Mer</h2>
+            </div>
+            <details id="forlorad-forsaljning" className="ops-acc">
               <summary>
-                <span className="text-sm font-medium text-fg">Förlorad försäljning</span>
-                <span className="meta text-muted">{m.lost.heading.title}</span>
+                <span>Förlorad försäljning</span>
+                <small>{m.lost.heading.title}</small>
               </summary>
-              <div className="flex flex-col gap-6 border-t border-line p-4">
-                <p className="text-sm text-muted">{m.lost.periodText}</p>
+              <div className="flex flex-col gap-4">
+                <p className="ops-p">{m.lost.periodText}</p>
                 <LostSalesView model={m.lost} />
               </div>
             </details>
-            <details id="traffsakerhet" className={MORE}>
+            <details id="traffsakerhet" className="ops-acc">
               <summary>
-                <span className="text-sm font-medium text-fg">Träffsäkerhet</span>
-                <span className="meta text-muted">{m.accuracy.heading.title}</span>
+                <span>Träffsäkerhet</span>
+                <small>{m.accuracy.heading.title}</small>
               </summary>
-              <div className="flex flex-col gap-6 border-t border-line p-4">
-                <p className="text-sm text-muted">{m.accuracy.heading.aside}</p>
+              <div className="flex flex-col gap-4">
+                <p className="ops-p">{m.accuracy.heading.aside}</p>
                 <AccuracyView model={m.accuracy} />
               </div>
             </details>
             <OpenOnHash id="forlorad-forsaljning" />
             <OpenOnHash id="traffsakerhet" />
-          </div>
+          </section>
         </div>
       )}
-    </div>
+    </V2Page>
   );
 }

@@ -1,7 +1,6 @@
 import type React from "react";
 
 import type { SearchParamsInput } from "@/components/shell/period-state";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
@@ -34,65 +33,62 @@ export async function BestAssortment({
     storeShareDeducted: data.storeShareDeducted,
   });
   return (
-    <section
-      aria-labelledby="basta-sortiment"
-      data-assortment
-      className="fade-in flex flex-col gap-6 border-t border-line pt-8"
-    >
-      <SectionHeader
-        id="basta-sortiment"
-        eyebrow={`Bästa sortiment · ${formatInt(data.assortment.days)}${NBSP}d`}
-        title={view.title}
-        aside={view.aside}
-      />
-      {view.suggestions.length > 0 ? (
-        <ul className="flex flex-col gap-2" data-assortment-suggestions>
-          {view.suggestions.map((text) => (
-            <li
-              key={text}
-              className="flex items-start gap-2.5 rounded-md border border-signal-line bg-surface px-4 py-3 text-base text-fg max-md:px-3"
-            >
-              <span aria-hidden className="mt-2 inline-block size-2 shrink-0 bg-signal" />
-              <span>{text}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {view.notice ? <p className="text-base text-muted">{view.notice}</p> : null}
-      {view.rows.length > 0 ? (
-        <ol className="flex flex-col">
-          {view.rows.map((r, i) => (
-            <li
-              key={r.titleId}
-              className="flex flex-col gap-2 border-t border-line py-3 first:border-t-0"
-            >
-              <span className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0 text-base break-words text-fg">{r.name}</span>
-                <span className="tnum shrink-0 text-base font-medium text-fg">{r.units}</span>
-              </span>
-              <span aria-hidden className="block h-2 overflow-hidden rounded-xs bg-line">
-                <span
-                  className={cn(
-                    "grow-x block h-full rounded-xs",
-                    r.warn ? "bg-signal" : "bg-fg/70",
-                  )}
-                  style={{ width: `${Math.round(r.bar * 100)}%`, "--i": i } as React.CSSProperties}
-                />
-              </span>
-              <span className="flex flex-col gap-1">
-                {r.tag ? (
-                  <StatusTag status={r.warn ? "warning" : "neutral"} wrap>
-                    {r.tag}
-                  </StatusTag>
-                ) : null}
-                <span className="meta text-muted">Vinst {r.profit}</span>
-                <span className="meta text-subtle">{r.basis}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      <p className="meta text-subtle">{view.note}</p>
+    <section aria-labelledby="basta-sortiment" data-assortment className="v2-card">
+      <div className="v2-card-hd">
+        <h2>{`Bästa sortiment · ${formatInt(data.assortment.days)}${NBSP}d`}</h2>
+      </div>
+      <div className="flex flex-col gap-3 px-[18px] pt-3.5 pb-4 max-[900px]:px-4">
+        <div className="flex flex-col gap-1">
+          <h3 id="basta-sortiment" className="text-v2-lg font-[650] text-v2-ink">
+            {view.title}
+          </h3>
+          {view.aside ? <p className="text-v2-sm text-v2-mute">{view.aside}</p> : null}
+        </div>
+        {view.suggestions.length > 0 ? (
+          <ul className="flex flex-col gap-2" data-assortment-suggestions>
+            {view.suggestions.map((text) => (
+              <li key={text} className="v2-notice warning">
+                <span className="dot" aria-hidden="true" />
+                <div className="tx">
+                  <div>{text}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {view.notice ? <p className="text-v2-sm text-v2-mute">{view.notice}</p> : null}
+        {view.rows.length > 0 ? (
+          <ol className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
+            {view.rows.map((r) => (
+              <li key={r.titleId} className="flex flex-col gap-1.5 border-t border-v2-line2 py-2.5">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-v2-sm font-[550] break-words text-v2-ink">
+                    {r.name}
+                  </span>
+                  <span className="tnum shrink-0 text-v2-sm font-[550] text-v2-ink">{r.units}</span>
+                </span>
+                <span className="v2-track block w-full" aria-hidden>
+                  <i
+                    className={cn(r.warn && "critical")}
+                    style={{ transform: `scaleX(${r.bar})` }}
+                  />
+                </span>
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-v2-xs text-v2-mute">
+                  {r.tag ? (
+                    <StatusTag status={r.warn ? "warning" : "neutral"} wrap>
+                      {r.tag}
+                    </StatusTag>
+                  ) : null}
+                  <span>{`Vinst ${r.profit}`}</span>
+                  <span aria-hidden>·</span>
+                  <span>{r.basis}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        <p className="text-v2-xs text-v2-mute">{view.note}</p>
+      </div>
     </section>
   );
 }

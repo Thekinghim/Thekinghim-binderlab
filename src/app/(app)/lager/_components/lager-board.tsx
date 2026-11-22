@@ -3,10 +3,8 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
-import type React from "react";
-
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Empty } from "@/components/v2/empty";
 
 import { plural, tenthsText } from "../_lib/display";
 import type { LagerView } from "../_lib/types";
@@ -102,63 +100,49 @@ export function LagerBoard({
 
   const packSection =
     view.machines.length > 0 ? (
-      <section
-        aria-labelledby="pafyllningslista"
-        // Mobil: påfyllningslistan (det man gör) direkt under rubriken.
-        className="rise max-md:-order-1"
-        style={{ "--i": packFirst ? 1 : 3 } as React.CSSProperties}
-      >
-        <PackList
-          machines={view.machines}
-          lists={view.packLists}
-          machineId={packMachine}
-          onMachine={setPackMachine}
-          today={view.today}
-          canRegister={view.canRegister}
-          onSelect={(m, line) =>
-            setSelection({ kind: "machine", machineId: m.id, titleId: line.titleId })
-          }
-        />
-      </section>
+      <PackList
+        machines={view.machines}
+        lists={view.packLists}
+        machineId={packMachine}
+        onMachine={setPackMachine}
+        today={view.today}
+        canRegister={view.canRegister}
+        onSelect={(m, line) =>
+          setSelection({ kind: "machine", machineId: m.id, titleId: line.titleId })
+        }
+      />
     ) : null;
 
   return (
     <>
       {packFirst ? packSection : null}
 
-      <section
-        aria-labelledby="matris"
-        className="rise flex flex-col gap-6 max-md:gap-4 md:gap-10"
-        style={{ "--i": 2 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="matris"
-          // Mobil: den grå förklaringen döljs (cellerna visar dagar och status).
-          className="max-md:[&_h2>span+span]:hidden"
-          eyebrow={`Lager per automat · ${salesWindow.days} d`}
-          title={
-            hasMachines
-              ? `${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}.`
-              : "Ingen automat i urvalet."
-          }
-          aside={
-            hasMachines
-              ? `Dagar kvar. Snart slut under ${tenthsText(view.lowThresholdTenths)} d.`
-              : undefined
-          }
-        />
+      <section aria-labelledby="matris" className="v2-card">
+        <div className="v2-card-hd">
+          <h2 id="matris" className="min-w-0">
+            {hasMachines
+              ? `${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}`
+              : "Ingen automat i urvalet"}
+          </h2>
+          {hasMachines ? (
+            <span className="text-v2-xs text-v2-mute max-[900px]:hidden">
+              {`Dagar kvar (${salesWindow.days} d). Snart slut under ${tenthsText(view.lowThresholdTenths)} d.`}
+            </span>
+          ) : null}
+        </div>
         {view.machines.length === 0 || view.titles.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message={
+          <Empty
+            title={
               view.machines.length === 0
                 ? "Ingen automat i drift i urvalet."
                 : "Inget lager registrerat i automaterna."
             }
             action={
-              view.machines.length === 0
-                ? { label: "Placera automat", href: "/automater" }
-                : undefined
+              view.machines.length === 0 ? (
+                <ButtonLink href="/automater" variant="act" touch>
+                  Placera automat
+                </ButtonLink>
+              ) : undefined
             }
           />
         ) : (
@@ -174,7 +158,7 @@ export function LagerBoard({
           />
         )}
         {hasMachines && view.retiredTitles.length > 0 ? (
-          <p className="max-w-prose text-sm text-muted">
+          <p className="ops-p border-t border-v2-line2 px-[18px] py-3 max-[900px]:px-4">
             {retiredText(view.retiredTitles.map((t) => t.name))}
           </p>
         ) : null}

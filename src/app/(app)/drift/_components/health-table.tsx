@@ -6,9 +6,8 @@ import { useState } from "react";
 import type { HealthStatus } from "@/analytics/health";
 import { fillPercent } from "@/analytics/visits/fill";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { FillBar, FillValue } from "@/components/ui/fill-bar";
-import { Icon } from "@/components/ui/icon";
 import { StatusTag } from "@/components/ui/status-tag";
+import { FillBar } from "@/components/v2/fill-bar";
 
 import { cn } from "@/lib/cn";
 
@@ -46,14 +45,14 @@ function Connection({ c }: { c: ConnectionLabel | null }) {
   const power = c.state === "power_off";
   return (
     <span
-      className={cn("meta mt-0.5 flex items-center gap-1.5", off ? "text-signal-fg" : "text-muted")}
+      className={cn(
+        "mt-0.5 flex items-center gap-1.5 text-v2-xs",
+        off ? "text-v2-crit-text" : "text-v2-mute",
+      )}
     >
       <span
         aria-hidden
-        className={cn(
-          "inline-block size-1.5 rounded-full",
-          off ? "bg-signal" : power ? "border border-line-strong" : "bg-fill-ok",
-        )}
+        className={cn("v2-dot", off ? "critical" : power ? "off" : "bg-v2-profit")}
       />
       {c.text}
     </span>
@@ -71,12 +70,11 @@ const columns: Column<HealthRow>[] = [
     render: (r) => (
       <Link
         href={`/drift/automat/${r.machineId}`}
-        className="flex min-w-0 flex-col rounded-xs hover:underline max-md:min-h-11 max-md:justify-center"
+        className="flex min-w-0 flex-col hover:underline"
       >
-        <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
-        <span className="truncate text-sm text-muted">{r.name}</span>
+        <span className="font-[550] text-v2-ink">{r.code.replace("-", "‑")}</span>
+        <span className="truncate text-v2-xs text-v2-mute">{r.name}</span>
         <Connection c={r.connection} />
-        {r.fillBp !== null ? <FillBar bp={r.fillBp} className="mt-1.5 w-24 md:hidden" /> : null}
       </Link>
     ),
     csv: (r) => `${r.code} ${r.name}`,
@@ -94,20 +92,20 @@ const columns: Column<HealthRow>[] = [
     headerTitle: FILL_SOURCE,
     // Utan kapacitet sist.
     sortValue: (r) => r.fillBp ?? 10_001,
-    render: (r) => <FillValue bp={r.fillBp} />,
+    render: (r) => <FillBar bp={r.fillBp} width={64} />,
     csv: (r) => (r.fillBp === null ? "" : fillPercent(r.fillBp)),
     hideOnMobile: true,
   },
   {
     key: "since",
     header: "Sedan",
-    render: (r) => <span className="meta text-muted">{r.since}</span>,
+    render: (r) => <span className="text-v2-xs text-v2-mute">{r.since}</span>,
     hideOnMobile: true,
   },
   {
     key: "lastSale",
     header: "Senaste försäljning",
-    render: (r) => <span className="meta text-muted">{r.lastSale}</span>,
+    render: (r) => <span className="text-v2-xs text-v2-mute">{r.lastSale}</span>,
     hideOnMobile: true,
   },
   {
@@ -115,22 +113,22 @@ const columns: Column<HealthRow>[] = [
     header: "Underlag",
     render: (r) => (
       <details className="group max-w-xl">
-        <summary className="cursor-pointer list-none text-sm text-fg [&::-webkit-details-marker]:hidden">
+        <summary className="cursor-pointer list-none text-v2-sm text-v2-ink [&::-webkit-details-marker]:hidden">
           {r.detail}
         </summary>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-muted">
-          <dt className="label text-subtle">Regel</dt>
+        <dl className="ops-dl mt-2">
+          <dt>Regel</dt>
           <dd>{r.rule}</dd>
           {r.expected ? (
             <>
-              <dt className="label text-subtle">Förväntat</dt>
-              <dd className="tnum">{r.expected}</dd>
+              <dt>Förväntat</dt>
+              <dd>{r.expected}</dd>
             </>
           ) : null}
           {r.probability ? (
             <>
-              <dt className="label text-subtle">Sannolikhet</dt>
-              <dd className="tnum">{r.probability}</dd>
+              <dt>Sannolikhet</dt>
+              <dd>{r.probability}</dd>
             </>
           ) : null}
         </dl>
@@ -141,8 +139,8 @@ const columns: Column<HealthRow>[] = [
 ];
 
 /**
- * Mobil: en kompakt rad per automat (kod och namn, status, fyllnad) med underlaget bakom
- * en utfällning, i samma ordning som tabellens standardsortering. Från md tabellen.
+ * Telefon: en rad per automat (kod och namn, fyllnad, status) med underlaget bakom en
+ * utfällning, i samma ordning som tabellens standardsortering. Från 900 px tabellen.
  */
 function HealthList({ rows }: { rows: HealthRow[] }) {
   const [showOk, setShowOk] = useState(false);
@@ -154,60 +152,50 @@ function HealthList({ rows }: { rows: HealthRow[] }) {
   const foldOk = okCount > 0 && okCount < sorted.length && !showOk;
   const shown = foldOk ? sorted.filter((r) => r.status !== "ok") : sorted;
   return (
-    <div className="flex flex-col md:hidden">
-      <ul aria-label="Status per automat" className="flex flex-col border-y border-line">
+    <div className="flex flex-col min-[901px]:hidden">
+      <ul aria-label="Status per automat" className="ops-list">
         {shown.map((r) => (
-          <li key={r.machineId} className="flex flex-col border-b border-line py-2 last:border-b-0">
+          <li key={r.machineId} className="flex flex-col gap-1">
             <div className="flex min-h-11 items-center gap-3">
               <Link
                 href={`/drift/automat/${r.machineId}`}
-                className="flex min-w-0 flex-1 flex-col rounded-xs hover:underline max-md:min-h-11 max-md:justify-center"
+                className="flex min-h-11 min-w-0 flex-1 flex-col justify-center"
               >
-                <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
-                <span className="truncate text-sm text-muted">{r.name}</span>
+                <span className="font-[550] text-v2-ink">{r.code.replace("-", "‑")}</span>
+                <span className="truncate text-v2-xs text-v2-mute">{r.name}</span>
                 <Connection c={r.connection} />
               </Link>
-              {r.fillBp !== null ? (
-                <span className="shrink-0">
-                  <FillValue bp={r.fillBp} />
-                </span>
-              ) : null}
               <StatusTag status={statusTag(r).status} className="shrink-0">
                 {statusTag(r).label}
               </StatusTag>
             </div>
-            <details className="group">
-              <summary className="meta flex min-h-8 cursor-pointer list-none items-center gap-1 text-subtle hover:text-fg max-md:min-h-11 [&::-webkit-details-marker]:hidden">
-                {/* I drift: bara ordet; annars underlaget, som är skälet till statusen. */}
+            {r.fillBp !== null ? <FillBar bp={r.fillBp} width={96} /> : null}
+            <details className="ops-more">
+              {/* I drift: bara ordet; annars underlaget, som är skälet till statusen. */}
+              <summary>
                 <span className="line-clamp-2 min-w-0">
                   {r.status === "ok" ? "Underlag" : r.detail}
                 </span>
-                {/* Visar att raden går att öppna (hela texten och underlaget). */}
-                <Icon
-                  name="chevronDown"
-                  size={12}
-                  className="ml-auto shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
-                />
               </summary>
-              <dl className="mt-1 mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-muted">
-                <dt className="label text-subtle">Underlag</dt>
+              <dl className="ops-dl mt-1 mb-2">
+                <dt>Underlag</dt>
                 <dd>{r.detail}</dd>
-                <dt className="label text-subtle">Sedan</dt>
+                <dt>Sedan</dt>
                 <dd>{r.since}</dd>
-                <dt className="label text-subtle">Senast sålt</dt>
+                <dt>Senast sålt</dt>
                 <dd>{r.lastSale}</dd>
-                <dt className="label text-subtle">Regel</dt>
+                <dt>Regel</dt>
                 <dd>{r.rule}</dd>
                 {r.expected ? (
                   <>
-                    <dt className="label text-subtle">Förväntat</dt>
-                    <dd className="tnum">{r.expected}</dd>
+                    <dt>Förväntat</dt>
+                    <dd>{r.expected}</dd>
                   </>
                 ) : null}
                 {r.probability ? (
                   <>
-                    <dt className="label text-subtle">Sannolikhet</dt>
-                    <dd className="tnum">{r.probability}</dd>
+                    <dt>Sannolikhet</dt>
+                    <dd>{r.probability}</dd>
                   </>
                 ) : null}
               </dl>
@@ -220,7 +208,7 @@ function HealthList({ rows }: { rows: HealthRow[] }) {
           type="button"
           aria-expanded={showOk}
           onClick={() => setShowOk((v) => !v)}
-          className="label flex min-h-11 w-full items-center justify-between border-b border-line text-left text-muted hover:text-fg"
+          className="flex min-h-11 w-full items-center justify-between border-t border-v2-line2 px-4 text-left text-v2-sm font-[550] text-v2-mute"
         >
           {showOk ? "Dölj automater i drift" : `I drift · ${okCount}`}
           <span aria-hidden>{showOk ? "↑" : "↓"}</span>
@@ -234,7 +222,7 @@ export function HealthTable({ rows }: { rows: HealthRow[] }) {
   return (
     <>
       <HealthList rows={rows} />
-      <div className="max-md:hidden">
+      <div className="px-[18px] pb-2 max-[900px]:hidden">
         <DataTableFull rows={rows} />
       </div>
     </>

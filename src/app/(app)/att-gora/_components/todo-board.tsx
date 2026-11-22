@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Modal } from "@/components/ui/modal";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
@@ -32,12 +31,11 @@ import type {
   VisitView,
 } from "../_lib/model";
 
-/** Länk som ser ut som en knapp (sekundär eller ghost, liten). */
-const linkButton =
-  "inline-flex h-7 items-center justify-center gap-2 rounded-sm border px-2.5 text-sm font-medium whitespace-nowrap transition-colors duration-fast ease-instrument";
+/** Länk som ser ut som en V2-knapp (sekundär eller tyst, liten; 44 px på telefon). */
+const linkButton = "v2-btn sm touch";
 const linkVariant = {
-  secondary: "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover",
-  ghost: "border-transparent text-muted hover:bg-hover hover:text-fg",
+  secondary: "",
+  ghost: "quiet",
 } as const;
 
 function ActionLink({
@@ -63,13 +61,6 @@ function rowId(key: string): string {
 function hideId(item: Pick<TodoView, "key" | "fingerprint">): string {
   return `${item.key}\u0000${item.fingerprint}`;
 }
-
-/**
- * Grupprubriken på mobil: mindre, och den grå delen på en egen, mindre rad.
- * Från md som förut.
- */
-const MOBILE_GROUP_HEADER =
-  "max-md:[&_h2]:text-lg max-md:[&_h2>span+span]:block max-md:[&_h2>span+span]:text-base";
 
 /** Notisen med "Ångra" står kvar så här länge (och så länge den har fokus eller hovras). */
 const UNDO_TOAST_MS = 15_000;
@@ -182,7 +173,7 @@ export function TodoBoard({
   ].filter((d) => !undone.has(d.key));
 
   return (
-    <div className="flex flex-col">
+    <div className="v2-stack">
       {groups.map((g) => {
         // Ett besök visar titlarna som är kvar; är alla avbockade försvinner raden.
         const rows: RowView[] = g.rows.flatMap((r): RowView[] => {
@@ -195,20 +186,25 @@ export function TodoBoard({
           <section
             key={g.level}
             aria-labelledby={`${g.id}-rubrik`}
-            className="scroll-mt-28 border-t border-line pt-8 pb-10 max-md:pt-5 max-md:pb-6 md:pt-10"
+            className="v2-card scroll-mt-28"
           >
-            <SectionHeader
-              id={`${g.id}-rubrik`}
-              title={g.title}
-              aside={g.aside}
-              className={MOBILE_GROUP_HEADER}
-            />
+            <div className="v2-card-hd">
+              <h2 id={`${g.id}-rubrik`} className="min-w-0 flex-wrap">
+                <span>{g.title}</span>
+                {g.aside ? (
+                  <span className="font-[450] text-v2-mute max-[900px]:hidden">{g.aside}</span>
+                ) : null}
+              </h2>
+              <span className="tnum shrink-0 text-v2-xs text-v2-mute">
+                {formatInt(rows.length)}
+              </span>
+            </div>
             {g.level === "later" ? (
               <button
                 type="button"
                 aria-expanded={laterOpen}
                 onClick={() => setLaterOpen((v) => !v)}
-                className="label mt-3 flex min-h-11 w-full items-center justify-between border-y border-line text-muted md:hidden"
+                className="flex min-h-11 w-full items-center justify-between px-4 text-v2-sm font-[550] text-v2-mute md:hidden"
               >
                 <span>
                   {laterOpen ? "Dölj" : "Visa"} · {formatInt(rows.length)}
@@ -221,10 +217,7 @@ export function TodoBoard({
               </button>
             ) : null}
             <ol
-              className={cn(
-                "mt-6 flex flex-col max-md:mt-3 md:mt-8",
-                g.level === "later" && !laterOpen && "max-md:hidden",
-              )}
+              className={cn("flex flex-col", g.level === "later" && !laterOpen && "max-md:hidden")}
             >
               {rows.map((row, i) =>
                 row.type === "visit" ? (
@@ -269,7 +262,10 @@ function DismissedList({
   const [open, setOpen] = useState(false);
   const listId = useId();
   return (
-    <section aria-labelledby={`${listId}-rubrik`} className="border-t border-line pt-6 pb-4">
+    <section
+      aria-labelledby={`${listId}-rubrik`}
+      className="v2-card px-[18px] py-2 max-[900px]:px-4"
+    >
       <h2 id={`${listId}-rubrik`} className="sr-only">
         Klara punkter
       </h2>
@@ -278,7 +274,7 @@ function DismissedList({
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((v) => !v)}
-        className={cn(linkButton, linkVariant.ghost, "-ml-2.5 max-md:min-h-11")}
+        className={cn(linkButton, linkVariant.ghost, "-ml-2.5")}
       >
         <Icon
           name="chevronRight"
@@ -289,17 +285,17 @@ function DismissedList({
           {open ? "Dölj klara" : "Visa klara"} ({formatInt(items.length)})
         </span>
       </button>
-      <div id={listId} hidden={!open} className="mt-4">
+      <div id={listId} hidden={!open} className="mt-2">
         <ul className="flex flex-col">
           {items.map((d) => (
             <li
               key={d.key}
-              className="flex flex-col gap-3 border-t border-line py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8"
+              className="flex flex-col gap-3 border-t border-v2-line2 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-8"
             >
               <div className="flex min-w-0 flex-col gap-1">
                 <span className="label text-subtle">{d.eyebrow}</span>
-                <span className="text-base text-fg">{d.title}</span>
-                <span className="text-sm text-muted">{d.meta}</span>
+                <span className="text-v2-md font-[550] text-v2-ink">{d.title}</span>
+                <span className="text-v2-sm text-v2-mute">{d.meta}</span>
               </div>
               <Button
                 size="sm"
@@ -344,27 +340,27 @@ function VisitRow({
       aria-labelledby={titleId}
       data-visit={visit.machineId}
       style={{ "--i": Math.min(index, 8) + 2 } as CSSProperties}
-      className="rise flex min-w-0 flex-col gap-2 border-t border-line py-5 outline-offset-2 first:border-t-0 max-md:py-3"
+      className="flex min-w-0 flex-col gap-2 border-t border-v2-line2 px-[18px] py-4 -outline-offset-2 first:border-t-0 max-md:px-4 max-md:py-3"
     >
       <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-8">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <StatusTag status={visit.status}>{visit.statusText}</StatusTag>
           </div>
-          <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
+          <h3 id={titleId} className="text-v2-md font-[550] text-balance hyphens-none text-v2-ink">
             {visit.title}
           </h3>
-          <p className="tnum text-sm text-muted">{visit.facts}</p>
+          <p className="tnum text-v2-sm text-v2-mute">{visit.facts}</p>
         </div>
-        <div className="shrink-0 max-md:[&>a]:h-11 max-md:[&>a]:w-full">
-          <Link href={visit.fillHref} className={cn(linkButton, linkVariant.secondary)}>
+        <div className="shrink-0 max-md:[&>a]:w-full">
+          <Link href={visit.fillHref} className={cn(linkButton, "act")}>
             <span>Fyll på</span>
             <Icon name="chevronRight" className="-mr-0.5 shrink-0" />
           </Link>
         </div>
       </div>
       <details className="group/visit min-w-0">
-        <summary className="meta inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-xs pr-4 text-subtle hover:text-fg md:min-h-7 [&::-webkit-details-marker]:hidden">
+        <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-xs pr-4 text-v2-sm font-[550] text-v2-mute hover:text-v2-ink md:min-h-7 [&::-webkit-details-marker]:hidden">
           <Icon
             name="chevronRight"
             size={12}
@@ -373,7 +369,7 @@ function VisitRow({
           <span>{`Visa titlarna (${formatInt(visit.items.length)})`}</span>
         </summary>
         <div className="flex flex-col gap-3 pt-2">
-          <div className="flex flex-wrap gap-2 max-md:[&>a]:h-11">
+          <div className="flex flex-wrap gap-2">
             {visit.mapsHref ? (
               <a
                 href={visit.mapsHref}
@@ -388,7 +384,7 @@ function VisitRow({
               Ta med-lista
             </Link>
           </div>
-          <ol className="flex flex-col border-t border-line md:pl-4">
+          <ol className="-mx-[18px] flex flex-col border-t border-v2-line2 max-md:-mx-4 md:pl-4">
             {visit.items.map((item, i) => (
               <TodoRow
                 key={item.key}
@@ -432,7 +428,7 @@ function TodoRow({
       tabIndex={-1}
       aria-labelledby={titleId}
       style={{ "--i": Math.min(index, 8) + 2 } as CSSProperties}
-      className="rise grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-5 outline-offset-2 first:border-t-0 max-md:gap-x-3 max-md:gap-y-2 max-md:py-3 lg:grid-cols-12"
+      className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-3 border-t border-v2-line2 px-[18px] py-4 -outline-offset-2 first:border-t-0 max-md:gap-x-3 max-md:gap-y-2 max-md:px-4 max-md:py-3 lg:grid-cols-12"
     >
       <div className="flex min-w-0 flex-col gap-2 max-md:row-start-1 max-md:gap-1 lg:col-span-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -440,13 +436,13 @@ function TodoRow({
           {/* Mobil: etiketten upprepar rubriken ("Påfyllning · BL-001") och visas inte. */}
           <span className="label text-subtle max-md:hidden">{item.eyebrow}</span>
         </div>
-        <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
+        <h3 id={titleId} className="text-v2-md font-[550] text-balance hyphens-none text-v2-ink">
           {item.title}
         </h3>
         {/* Mobil: talen som en grå rad under rubriken, alltid synlig. */}
-        {item.facts ? <p className="tnum text-sm text-muted md:hidden">{item.facts}</p> : null}
+        {item.facts ? <p className="tnum text-v2-sm text-v2-mute md:hidden">{item.facts}</p> : null}
         <details className="group max-w-2xl" onToggle={(e) => setMore(e.currentTarget.open)}>
-          <summary className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg max-md:-my-1.5 max-md:min-h-11 max-md:pr-4 [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-v2-xs font-[550] text-v2-mute hover:text-v2-ink max-md:-my-1.5 max-md:min-h-11 max-md:pr-4 [&::-webkit-details-marker]:hidden">
             <Icon
               name="chevronRight"
               size={12}
@@ -456,18 +452,18 @@ function TodoRow({
             <span className="max-md:hidden">Varför</span>
             <span className="sr-only">{`: ${item.title}`}</span>
           </summary>
-          <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
-            {item.detail ? <p className="text-sm text-muted">{item.detail}</p> : null}
-            <p className="text-sm text-subtle">{item.rule}</p>
+          <div className="mt-3 flex flex-col gap-3 border-t border-v2-line2 pt-3">
+            {item.detail ? <p className="text-v2-sm text-v2-ink">{item.detail}</p> : null}
+            <p className="text-v2-sm text-v2-mute">{item.rule}</p>
             {item.evidence.length > 0 ? (
               <dl className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
                 {item.evidence.map((f) => (
                   <div
                     key={f.label}
-                    className="flex items-baseline justify-between gap-4 border-b border-line py-1.5"
+                    className="flex items-baseline justify-between gap-4 border-b border-v2-line2 py-1.5"
                   >
-                    <dt className="text-sm text-muted">{f.label}</dt>
-                    <dd className="tnum text-sm text-fg">{f.value}</dd>
+                    <dt className="text-v2-sm text-v2-mute">{f.label}</dt>
+                    <dd className="tnum text-v2-sm text-v2-ink">{f.value}</dd>
                   </div>
                 ))}
               </dl>
@@ -486,8 +482,8 @@ function TodoRow({
               key={f.label}
               className="flex min-w-0 flex-col gap-0.5 lg:flex-row lg:items-baseline lg:justify-between lg:gap-4"
             >
-              <dt className="label text-subtle">{f.label}</dt>
-              <dd className="tnum text-base text-fg">{f.value}</dd>
+              <dt className="text-v2-xs text-v2-mute">{f.label}</dt>
+              <dd className="tnum text-v2-sm font-[550] text-v2-ink">{f.value}</dd>
             </div>
           ))}
         </dl>
@@ -497,7 +493,7 @@ function TodoRow({
 
       <div className="flex flex-wrap items-start gap-2 max-md:contents lg:col-span-3 lg:flex-col lg:items-end">
         {hasPrimary ? (
-          <div className="max-md:row-start-2 md:contents max-md:[&>a]:h-11 max-md:[&>a]:w-full max-md:[&>button]:h-11 max-md:[&>button]:w-full">
+          <div className="max-md:row-start-2 md:contents max-md:[&>a]:w-full max-md:[&>button]:h-11 max-md:[&>button]:w-full">
             {item.action?.kind === "register-refill" ? (
               <RefillDialog action={item.action} />
             ) : item.action?.kind === "merge-titles" ? (
@@ -514,7 +510,7 @@ function TodoRow({
           )}
         >
           {item.link ? (
-            <span className={cn("md:contents max-md:[&>a]:h-11", fold)}>
+            <span className={cn("md:contents", fold)}>
               <ActionLink action={item.link} variant="ghost" />
             </span>
           ) : null}

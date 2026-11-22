@@ -38,13 +38,11 @@ function fitsWithoutScroll(machines: number): boolean {
 }
 
 /**
- * Kolumnhuvudets cell: klistrig under toppraden (56 px) på mobilen, där påfyllaren
- * scrollar genom matrisen. Från md är kontextraden också klistrig med varierande höjd,
- * och där står huvudet still (top: auto); vänsterkolumnen är klistrig i sidled ändå.
+ * Kolumnhuvudet (V2: grå rubrikrad som tabellerna). Matrisen står i ett kort, så huvudet
+ * står still; vänsterkolumnen är klistrig i sidled när matrisen scrollar.
  */
-const STICKY_HEAD = "sticky top-14 bg-bg md:top-auto";
-/** Kolumnhuvudet när matrisen scrollar i sidled: står still, vänsterkolumnen klistrig. */
-const STILL_HEAD = "bg-bg";
+const STICKY_HEAD = "bg-v2-hover";
+const STILL_HEAD = "bg-v2-hover";
 
 export function StockMatrix({
   machines,
@@ -76,29 +74,24 @@ export function StockMatrix({
   const retiredCount = retiredRow.filter(Boolean).length;
   return (
     <>
-      <div
-        className={cn(
-          "relative -mx-4 border-y border-line md:mx-0 md:rounded-md md:border",
-          fits ? "overflow-x-clip" : "overflow-x-auto",
-        )}
-      >
+      <div className={cn("relative", fits ? "overflow-x-clip" : "overflow-x-auto")}>
         <table
-          className="w-full table-fixed border-collapse text-base"
+          className="w-full table-fixed border-collapse text-v2-sm"
           style={{ minWidth: `${112 + machines.length * 76}px` }}
         >
           <caption className="sr-only">
             Lager per titel och automat: antal kvar, dagar kvar och status.
           </caption>
           <thead>
-            <tr className="border-b border-line-strong">
+            <tr className="border-b border-v2-line2">
               <th
                 scope="col"
                 className={cn(
                   head,
-                  "sticky left-0 z-30 w-28 px-4 py-2 text-left align-bottom shadow-[inset_0_-1px_0_var(--bl-line-strong)] md:w-64",
+                  "sticky left-0 z-30 w-28 px-4 py-2 text-left align-bottom md:w-64 md:px-[18px]",
                 )}
               >
-                <span className="label text-subtle">Titel</span>
+                <span className="text-v2-xs font-[550] text-v2-mute">Titel</span>
               </th>
               {machines.map((m) => (
                 <th
@@ -106,15 +99,17 @@ export function StockMatrix({
                   scope="col"
                   className={cn(
                     head,
-                    "z-20 border-l border-line px-2 py-2 text-right align-bottom font-normal shadow-[inset_0_-1px_0_var(--bl-line-strong)]",
+                    "z-20 border-l border-v2-line2 px-2 py-2 text-right align-bottom font-normal",
                   )}
                 >
-                  <span className="label block text-fg">{codeText(m.code)}</span>
-                  <span className="block truncate text-xs text-subtle" title={m.name}>
+                  <span className="block text-v2-xs font-[650] text-v2-ink">
+                    {codeText(m.code)}
+                  </span>
+                  <span className="block truncate text-v2-xs text-v2-mute" title={m.name}>
                     {m.storeName ?? m.name}
                   </span>
                   {m.awishSyncedAt ? (
-                    <span className="meta block truncate text-subtle">
+                    <span className="block truncate text-v2-xs text-v2-faint">
                       Awish {formatWhen(m.awishSyncedAt, timeZone, now)}
                     </span>
                   ) : null}
@@ -127,13 +122,13 @@ export function StockMatrix({
               <tr
                 key={t.id}
                 className={cn(
-                  "border-b border-line last:border-b-0",
+                  "border-b border-v2-line2 last:border-b-0",
                   retiredRow[i] && !showRetired && "max-md:hidden",
                 )}
               >
                 <th
                   scope="row"
-                  className="sticky left-0 z-10 bg-bg px-4 py-2 text-left align-middle text-sm font-normal hyphens-none text-fg md:text-base"
+                  className="sticky left-0 z-10 bg-v2-panel px-4 py-2 text-left align-middle text-v2-sm font-[450] hyphens-none text-v2-ink md:px-[18px]"
                 >
                   <span className="line-clamp-2 break-words">{t.name}</span>
                 </th>
@@ -141,7 +136,7 @@ export function StockMatrix({
                   const m = machines[j];
                   if (!m) return null;
                   return (
-                    <td key={m.id} className="border-l border-line p-0 align-middle">
+                    <td key={m.id} className="border-l border-v2-line2 p-0 align-middle">
                       <Cell
                         cell={c}
                         machine={m}
@@ -163,7 +158,7 @@ export function StockMatrix({
           type="button"
           aria-expanded={showRetired}
           onClick={() => setShowRetired((v) => !v)}
-          className="label -mt-2 flex min-h-11 w-full items-center justify-between gap-3 border-b border-line text-left text-muted hover:text-fg md:hidden"
+          className="flex min-h-11 w-full items-center justify-between gap-3 border-t border-v2-line2 px-4 text-left text-v2-sm font-[550] text-v2-mute md:hidden"
         >
           <span>{`${showRetired ? "Dölj utgår" : "Utgår"} (${formatInt(retiredCount)})`}</span>
           <Icon
@@ -203,31 +198,34 @@ function Cell({
     cell.stocked && !cell.known ? (
       // Ingen inventering och inget från Awish: aldrig "tom", bara okänt.
       <>
-        <span className="tnum text-xl leading-none font-medium text-subtle">?</span>
-        <span className="label text-subtle">Saldo okänt</span>
+        <span className="tnum text-v2-lg leading-none font-[650] text-v2-faint">?</span>
+        <span className="text-v2-xs text-v2-mute">Saldo okänt</span>
       </>
     ) : cell.stocked && cell.retired ? (
       // Utgången titel: säljs ut, ingen status och ingen signal (design.md §3).
       <>
-        <span className="tnum text-xl leading-none font-medium text-muted">
+        <span className="tnum text-v2-lg leading-none font-[650] text-v2-mute">
           {formatInt(cell.onHand)}
         </span>
-        <span className="label text-subtle">Utgår</span>
+        <span className="text-v2-xs text-v2-mute">Utgår</span>
       </>
     ) : cell.stocked ? (
       <>
         <span className="flex w-full flex-wrap items-baseline justify-end gap-x-2">
-          <span className="meta text-subtle">{daysLeftText(cell)}</span>
-          <span className="tnum text-xl leading-none font-medium">{formatInt(cell.onHand)}</span>
+          <span className="text-v2-xs text-v2-mute">{daysLeftText(cell)}</span>
+          <span className="tnum text-v2-lg leading-none font-[650]">{formatInt(cell.onHand)}</span>
         </span>
         <span
           className={cn(
-            "label flex items-center gap-1.5",
-            cell.status === "ok" ? "text-muted" : "text-fg",
+            "flex items-center gap-1.5 text-v2-xs font-[550]",
+            cell.status === "ok" ? "text-v2-mute" : "text-v2-ink",
           )}
         >
           <span
-            className={cn("inline-flex w-2 justify-center", cell.status === "ok" && "text-subtle")}
+            className={cn(
+              "inline-flex w-2 justify-center",
+              cell.status === "ok" && "text-v2-faint",
+            )}
           >
             <StatusGlyph
               status={statusTone(cell.status, cell.onHand)}
@@ -238,7 +236,7 @@ function Cell({
         </span>
       </>
     ) : (
-      <span className="text-subtle" aria-hidden>
+      <span className="text-v2-faint" aria-hidden>
         {MISSING}
       </span>
     );
@@ -258,7 +256,7 @@ function Cell({
       type="button"
       className={cn(
         cls,
-        "transition-colors duration-fast ease-instrument hover:bg-hover focus-visible:-outline-offset-2",
+        "transition-colors duration-150 hover:bg-v2-hover focus-visible:-outline-offset-2",
       )}
       aria-label={`${label} Registrera påfyllning eller inventering.`}
       onClick={() => onSelect(machine, title, cell)}
