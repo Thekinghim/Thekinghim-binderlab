@@ -165,7 +165,8 @@ describe("Automat-ranking med tio automater (iPhone SE)", () => {
     await page.goto("/automater");
     const section = '[data-ranking="fleet"]';
     const body = await sectionText(page, section);
-    expect(body).toMatch(/RANGORDNING · VINST PER DAG · 29 D/i);
+    // V2-kortet: "Rangordning" och "vinst per dag · 29 d" på var sin rad i rubriken.
+    expect(body).toMatch(/RANGORDNING\s+VINST PER DAG · 29 D/i);
     expect(body).toMatch(/BL-001 tjänar mest: [\d ]+ kr\/dag\./);
     expect(body).toContain("BL-009 tjänar dåligt: överväg att flytta den.");
     expect(body).toContain("Vinst före butikernas andel.");
@@ -190,13 +191,15 @@ describe("Automat-ranking med tio automater (iPhone SE)", () => {
     await shot(page, `${section} a[data-verdict="weak"]`, "rank-03-automater-gar-daligt");
 
     // Vinsten är före butikernas andel; med vyknappen dras den (20 % provision).
-    const before = kronor(await rows.nth(0).innerText());
+    const before = kronor(await rows.nth(0).locator(".ao-rank-profit").innerText());
     await page.getByRole("button", { name: "Visa butikernas andel" }).first().click();
     await until(
       async () => (await sectionText(page, section)).includes("Vinst efter butikernas andel."),
       "vinsten efter butikernas andel",
     );
-    const after = kronor(await page.locator(`${section} ol > li`).nth(0).innerText());
+    const after = kronor(
+      await page.locator(`${section} ol > li .ao-rank-profit`).nth(0).innerText(),
+    );
     expect(after).toBeLessThan(before);
     expect(after).toBeGreaterThan(0);
     await shot(page, section, "rank-04-automater-efter-andel");
@@ -248,7 +251,13 @@ describe("Talen stämmer med resten av appen", () => {
     // väntar på det synliga och på att det dolda är borta.
     await sectionText(page, section);
     const profitOf = async (code: string) =>
-      kronor(await page.locator(`${section} ol > li`).filter({ hasText: code }).innerText());
+      kronor(
+        await page
+          .locator(`${section} ol > li`)
+          .filter({ hasText: code })
+          .locator(".ao-rank-profit")
+          .innerText(),
+      );
     // 79 kr per pack − 45 kr inköp = 34 kr, före butikens andel (ingen moms i organisationen).
     // BL-001: 14 pack per dag × 34 = 476. BL-002: 12 × 34 = 408.
     // BL-009: (3 × 29 + 2 White Flair) × 34 / 29 = 104,3.

@@ -68,8 +68,10 @@ function random(fromOre: number, spanOre: number, salt = 0): number {
 
 /** Sidan med titeln vald, och titelns formulär. */
 async function openTitle(p: Page = page): Promise<Locator> {
-  // Standardperioden (slutar i dag): tabellen visar då priset som gäller i dag.
-  await p.goto("/inkopspriser");
+  // Standardperioden (slutar i dag): tabellen visar då priset som gäller i dag. Uttryckligen
+  // i adressen: annars öppnas sidan med det sparade periodvalet (kakan), och figures() har
+  // just visat seedens fasta period.
+  await p.goto("/inkopspriser?period=30d");
   await p.getByRole("link", { name: TITLE, exact: true }).first().click();
   const form = p.getByRole("form", { name: `Nytt inköpspris för ${TITLE}` });
   await form.waitFor();

@@ -104,7 +104,8 @@ describe("Plattformen på datorn (Binderlabs ägare)", () => {
 
   it("Inställningar länkar till Plattform", async () => {
     await page.goto("/installningar");
-    await page.getByText("Ni driver plattformen.").waitFor();
+    // Inom main: medan sidan strömmas kan en dold kopia ligga i strömningsbufferten.
+    await page.locator("main").getByText("Ni driver plattformen.").waitFor();
     await page.getByRole("link", { name: "Öppna Plattform →" }).click();
     await page.waitForURL((url) => url.pathname === "/plattform");
     await page.getByRole("heading", { level: 1, name: /MRR/ }).waitFor();

@@ -400,7 +400,8 @@ describe("rapportutskick", () => {
     // Brytaren står på butikens sida, under Kontakt och rapport.
     await openStoreReportSettings();
     const toggle = page.getByRole("switch", { name: `Visa detaljer i rapporten, ${STORE}` });
-    await page.getByText("Titlar och service. Av: butiken får bara uträkningen.").waitFor();
+    // I brytaren: medan sidan strömmas kan en dold kopia ligga i strömningsbufferten.
+    await toggle.getByText("Titlar och service. Av: butiken får bara uträkningen.").waitFor();
     expect(await toggle.getAttribute("aria-checked")).toBe("false");
     await toggle.click();
     await page.getByText("Klart! Rapporten visar detaljer.").waitFor();

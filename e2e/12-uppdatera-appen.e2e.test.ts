@@ -15,9 +15,15 @@
  * 5. Fyll på fungerar sedan fortfarande utan nät (workern har sparat sidan igen).
  * 6. Nätet försvinner precis när workern hör om ett nytt bygge och Uppdatera trycks: de
  *    sparade sidorna finns kvar och Fyll på öppnas utan nät.
+ *
+ * Förberedelse i databasen (E2E_DATABASE_URL): påfyllarens första automat får en
+ * Awish-läsning (stock_locations.awish_fill, som synken skriver) med ett tomt fack och vårt
+ * lager räknas upp, så att Fyll på har rutor att trycka på utan riktiga Awish och utan att
+ * ett annat test har körts först. Testet går att köra flera gånger.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import postgres from "postgres";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { TEST_BUILD_COOKIE } from "@/lib/build-id";
 
@@ -44,6 +50,61 @@ const OFFLINE_ERRORS =
 
 let errors: Error[] = [];
 afterEach(() => expectNoPageErrors(errors));
+
+let sql: postgres.Sql | undefined;
+
+/**
+ * Fyll på visar rutor bara för automater med en Awish-läsning. I e2e finns ingen Awish, så
+ * läsningen skrivs här: en automat med placering och saldo får ett tomt fack (och står då
+ * först), de andra ingen läsning, och vårt lager har titeln.
+ */
+beforeAll(async () => {
+  sql = postgres(process.env.E2E_DATABASE_URL!, { max: 1, onnotice: () => {} });
+  const [row] = await sql<
+    { org_id: string; location_id: string; central: string; title_id: string; units: number }[]
+  >`
+    select m.organization_id as org_id, l.id as location_id, c.id as central,
+           t.id as title_id, sl.quantity::int as units
+    from public.memberships ms
+    join auth.users u on u.id = ms.user_id and u.email = ${e2e().users.refiller}
+    join public.machines m on m.organization_id = ms.organization_id and m.archived_at is null
+    join public.machine_placements p on p.organization_id = m.organization_id
+      and p.machine_id = m.id and p.valid_from <= current_date
+      and (p.valid_to is null or p.valid_to >= current_date)
+    join public.stock_locations l on l.organization_id = m.organization_id and l.machine_id = m.id
+    join public.stock_locations c on c.organization_id = m.organization_id and c.is_central
+      and c.archived_at is null
+    join public.stock_levels sl on sl.location_id = l.id and sl.quantity between 0 and 50
+    join public.titles t on t.organization_id = m.organization_id and t.id = sl.title_id
+      and t.archived_at is null and t.merged_into_id is null
+    order by m.code, t.name
+    limit 1`;
+  if (!row) throw new Error("Seeden saknar en automat med placering och saldo.");
+  await sql`update public.stock_locations set awish_fill = null, awish_synced_at = null
+            where organization_id = ${row.org_id}::uuid and machine_id is not null`;
+  await sql`
+    update public.stock_locations
+    set awish_synced_at = now(),
+        awish_fill = ${sql.json([
+          {
+            title_id: row.title_id,
+            units: row.units,
+            capacity: row.units + 6,
+            channels: 2,
+            empty: 1,
+          },
+        ])}
+    where id = ${row.location_id}::uuid`;
+  await sql`
+    insert into public.stock_events
+      (organization_id, location_id, title_id, kind, quantity, occurred_at, note)
+    values (${row.org_id}::uuid, ${row.central}::uuid, ${row.title_id}::uuid, 'count', 50, now(),
+            'E2E: Uppdatera appen')`;
+});
+
+afterAll(async () => {
+  await sql?.end();
+});
 
 /** Låtsas att bygget `id` har driftsatts. */
 async function deploy(context: BrowserContext, id: string): Promise<void> {

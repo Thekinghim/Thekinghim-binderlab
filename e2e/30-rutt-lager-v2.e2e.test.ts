@@ -64,7 +64,8 @@ describe.each([
     await page.goto("/vart-lager");
     await page.getByRole("heading", { level: 1, name: /Vårt lager/ }).waitFor();
     await page.locator(".v2-lager").waitFor();
-    await page.getByRole("heading", { name: /Per titel/ }).waitFor();
+    // Nivå 2: kortet Dagens försäljning har en egen rubrik "Per titel" (nivå 3).
+    await page.getByRole("heading", { level: 2, name: /Per titel/ }).waitFor();
     await page.getByRole("heading", { name: /Lagervärde/ }).waitFor();
     await page.waitForLoadState("networkidle");
     await noSideScroll(page);
