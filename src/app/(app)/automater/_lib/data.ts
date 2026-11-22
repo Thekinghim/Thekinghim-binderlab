@@ -5,7 +5,7 @@
 
 import "server-only";
 
-import { unstable_rethrow } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 import {
   carriedQuery,
@@ -237,8 +237,19 @@ export interface OverviewData {
   readonly scopeLabel: string | null;
 }
 
+/**
+ * Automaternas ekonomisidor (listans belopp, automatens sida, svinn, enhetsekonomi): bara roller
+ * som ser ekonomi. Påfyllaren får Automater (V2, utan belopp) men skickas dit från de här
+ * sidorna, innan något läses (`to`, standard /automater).
+ */
+export async function requireAutomaterEconomy(to = "/automater"): Promise<AppContext> {
+  const ctx = await requireRoute("automater");
+  if (!ctx.canSeeEconomy) redirect(to);
+  return ctx;
+}
+
 export async function loadOverview(searchParams: SearchParamsInput): Promise<OverviewData> {
-  await requireRoute("automater");
+  await requireAutomaterEconomy();
   return loadOverviewWith(requestPageLoaders(), searchParams);
 }
 
@@ -381,7 +392,7 @@ export function findMachine(
 
 /** Automatens kod för en sökväg (id eller kod), eller null. Kräver rätt roll. */
 export async function resolveMachineCode(slug: string): Promise<string | null> {
-  await requireRoute("automater");
+  await requireAutomaterEconomy(`/automater?valj=${encodeURIComponent(slug.slice(0, 64))}`);
   return findMachine((await loadMasterData()).machines, slug)?.code ?? null;
 }
 
@@ -389,7 +400,9 @@ export async function loadMachineDetail(
   slug: string,
   searchParams: SearchParamsInput,
 ): Promise<MachineDetailData | null> {
-  const ctx = await requireRoute("automater");
+  const ctx = await requireAutomaterEconomy(
+    `/automater?valj=${encodeURIComponent(slug.slice(0, 64))}`,
+  );
   const master = await loadMasterData();
   const machine = findMachine(master.machines, slug);
   if (!machine) return null;

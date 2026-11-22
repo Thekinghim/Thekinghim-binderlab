@@ -10,7 +10,12 @@
  * Butiker, Lager och rapporterna: hela appen räknas om (revalidateAppData).
  */
 
+import { unstable_rethrow } from "next/navigation";
+
+import { isUuid } from "@/server/access";
 import type { ActionResult } from "@/server/auth/flows";
+import { loadMachineHistoryFor } from "@/server/data/v2/analytics/history";
+import type { HistoryEntry } from "@/server/data/v2/analytics/history-model";
 import { revalidateAppData } from "@/server/data/core";
 import { AuthorizationError } from "@/server/session";
 
@@ -22,6 +27,7 @@ import {
   updateMachineFor,
 } from "./_lib/service";
 import { currentViewer } from "./_lib/session";
+import { correctProductSwapFor } from "./_lib/swap-correction";
 import type { Viewer } from "./_lib/service";
 
 async function withViewer<T>(
@@ -81,4 +87,36 @@ export async function decommissionMachine(input: {
 /** Ångrar en avveckling. */
 export async function reactivateMachine(input: { machineId: string }): Promise<ActionResult> {
   return withViewer((v) => reactivateMachineFor(v, input));
+}
+
+/**
+ * Automatens historik (V2, Automater → Historik): påfyllningar, inventeringar, produktbyten,
+ * offline och placeringar. Inga belopp; alla roller. Läses först när fliken öppnas.
+ */
+export async function machineHistory(
+  machineId: string,
+): Promise<ActionResult<readonly HistoryEntry[]>> {
+  if (!isUuid(machineId)) return { ok: false, error: "Automaten finns inte." };
+  try {
+    const viewer = await currentViewer();
+    return { ok: true, data: await loadMachineHistoryFor(viewer, machineId) };
+  } catch (error) {
+    // Utloggad: Nexts omdirigering till inloggningen ska gå vidare, inte bli ett fel här.
+    unstable_rethrow(error);
+    if (error instanceof AuthorizationError) return { ok: false, error: error.message };
+    console.error("[automater] Historiken kunde inte läsas:", error);
+    return { ok: false, error: "Historiken kunde inte läsas. Försök igen." };
+  }
+}
+
+/**
+ * "Det var ett produktbyte" (Svinn): ett gammalt byte i ett Awish-fack som räknats som svinn
+ * rättas med en flytt tillbaka till lagret strax före räkningen. Bara ägare och admin.
+ */
+export async function correctProductSwap(input: {
+  machineId: string;
+  titleId: string;
+  quantity: number;
+}): Promise<ActionResult<{ quantity: number }>> {
+  return withViewer((v) => correctProductSwapFor(v, input));
 }

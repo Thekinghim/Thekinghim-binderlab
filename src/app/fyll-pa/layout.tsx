@@ -43,7 +43,12 @@ export default async function FillLayout({ children }: { children: ReactNode }) 
   const v2 = ctx.viewMode !== "simple";
   const page = (
     <div
-      className="mx-auto min-h-dvh w-full max-w-[560px] bg-bg text-fg"
+      // V2: sidan styr bredden själv (en kolumn på telefon, två på datorn, .v2-fill-app).
+      className={
+        v2
+          ? "min-h-dvh w-full bg-bg text-fg"
+          : "mx-auto min-h-dvh w-full max-w-[560px] bg-bg text-fg"
+      }
       data-ui={v2 ? "v2" : undefined}
     >
       {v2 ? <V2Toaster /> : null}

@@ -512,10 +512,11 @@ describe("buildPage", () => {
       evidence: { ...missingPrice.evidence, machineIds: [M1], figures: [] },
     });
     const refiller = buildPage(input([stale], { role: "refiller", economy: false }));
+    // V2: påfyllaren ser Automater (utan belopp), med automaten vald.
     expect(refiller.groups[0]!.items[0]!.action).toEqual({
       kind: "link",
-      label: "Visa lagret",
-      href: `/lager?automat=${M1}`,
+      label: "Öppna automaten",
+      href: `/automater?valj=${M1}`,
     });
   });
 });

@@ -54,6 +54,25 @@ export interface FillData {
    * påfyllning som skickats till Awish. Saknas = ingen.
    */
   readonly restartAfterPush?: readonly string[];
+  /**
+   * V2: butiken där automaten står i dag (adress, kontakt, strömtider), per automat. Visas
+   * överst i Fyll på ("Kör dit", "Ring"). Kontaktuppgifterna syns för alla roller som fyller på.
+   * Saknas i en sparad sida från en äldre version.
+   */
+  readonly stores?: Readonly<Record<string, FillStore>>;
+}
+
+/** Butiken vid automaten (V2): det påfyllaren behöver för att komma dit och in. */
+export interface FillStore {
+  readonly name: string;
+  readonly address: string | null;
+  readonly city: string | null;
+  readonly phone: string | null;
+  readonly contactName: string | null;
+  readonly lat: number | null;
+  readonly lng: number | null;
+  /** "21:00"–"08:00", null = alltid på. */
+  readonly power: { readonly off: string; readonly on: string } | null;
 }
 
 /** Automaterna som väntar på Awish (public.awish_push_pending, som användaren). */
@@ -150,6 +169,12 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
           storeName: s.stores.name,
           powerOn: s.stores.powerOnTime,
           powerOff: s.stores.powerOffTime,
+          address: s.stores.address,
+          city: s.stores.city,
+          phone: s.stores.phone,
+          contactName: s.stores.contactName,
+          latitude: s.stores.latitude,
+          longitude: s.stores.longitude,
         })
         .from(s.machinePlacements)
         .innerJoin(
@@ -289,6 +314,24 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       restartAfterPush: placements
         .filter((p) => p.powerOn !== null && p.powerOff !== null)
         .map((p) => p.machineId),
+      stores: Object.fromEntries(
+        placements.map((p) => [
+          p.machineId,
+          {
+            name: p.storeName,
+            address: p.address?.trim() || null,
+            city: p.city?.trim() || null,
+            phone: p.phone?.trim() || null,
+            contactName: p.contactName?.trim() || null,
+            lat: p.latitude ?? null,
+            lng: p.longitude ?? null,
+            power:
+              p.powerOff && p.powerOn
+                ? { off: p.powerOff.slice(0, 5), on: p.powerOn.slice(0, 5) }
+                : null,
+          } satisfies FillStore,
+        ]),
+      ),
     };
   });
 }

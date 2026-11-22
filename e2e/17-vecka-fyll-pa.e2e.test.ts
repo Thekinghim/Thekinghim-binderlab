@@ -148,10 +148,24 @@ async function smallTargets(page: Page, scope: string) {
         Array.from(root.querySelectorAll("a, button, input, select, [role=radio], [role=switch]"))
           .map((el) => {
             const r = el.getBoundingClientRect();
+            // V2: en osynlig ::before (styles/v2.css, telefon) gör tryckytan minst 44 px.
+            const hit = (() => {
+              const s = getComputedStyle(el, "::before");
+              if (s.content === "none" || s.position !== "absolute") return { w: 0, h: 0 };
+              const px = (v: string) => (v.endsWith("px") ? parseFloat(v) : 0);
+              return {
+                w: r.width - px(s.left) - px(s.right),
+                h: r.height - px(s.top) - px(s.bottom),
+              };
+            })();
             const label = (el.getAttribute("aria-label") ?? el.textContent ?? "")
               .trim()
               .slice(0, 40);
-            return { label, w: Math.round(r.width), h: Math.round(r.height) };
+            return {
+              label,
+              w: Math.round(Math.max(r.width, hit.w)),
+              h: Math.round(Math.max(r.height, hit.h)),
+            };
           })
           .filter((x) => x.w > 0 && x.h > 0 && (x.h < 44 || x.w < 44)),
       ),

@@ -658,6 +658,11 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
       if (machineId && !canOpen(input.role, "automater") && canOpen(input.role, "lager")) {
         return { kind: "link", label: "Visa lagret", href: `/lager?automat=${machineId}` };
       }
+      // V2: påfyllaren har Automater (utan belopp) men inte automatens ekonomisida: den
+      // valda automaten i listan (?valj=).
+      if (machineId && canOpen(input.role, "automater") && input.role === "refiller") {
+        return { kind: "link", label: "Öppna automaten", href: `/automater?valj=${machineId}` };
+      }
       return canOpen(input.role, "automater")
         ? { kind: "link", label: "Öppna automaten", href: item.link }
         : null;

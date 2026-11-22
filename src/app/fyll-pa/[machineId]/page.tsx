@@ -1,3 +1,5 @@
+import { fillReturnTo } from "@/lib/fill-return";
+
 import { FillPage } from "../_components/fill-page";
 
 /**
@@ -6,7 +8,16 @@ import { FillPage } from "../_components/fill-page";
  * och samma rutt). Hit kommer bara adresser som inte är ett id (de visar listan), och
  * automaten själv om omskrivningen av något skäl inte gäller. Samma app som /fyll-pa.
  */
-export default async function Page({ params }: { params: Promise<{ machineId: string }> }) {
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ machineId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { machineId } = await params;
-  return <FillPage machineId={machineId} />;
+  const sp = await searchParams;
+  return (
+    <FillPage machineId={machineId} routeMode={sp.rutt === "1"} returnTo={fillReturnTo(sp.fran)} />
+  );
 }

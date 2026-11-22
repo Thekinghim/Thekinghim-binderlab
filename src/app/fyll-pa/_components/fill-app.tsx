@@ -26,7 +26,7 @@ import { SimpleMenuButton, useSimpleShell } from "@/components/shell/simple-shel
 import { useFormat, useT } from "@/i18n/client";
 import type { Messages } from "@/i18n/sv";
 import { cn } from "@/lib/cn";
-import { NBSP } from "@/lib/format";
+import { formatInt, NBSP } from "@/lib/format";
 import { rememberKey, useRemembered } from "@/lib/remembered";
 import { useHydrated } from "@/lib/use-hydrated";
 
@@ -36,6 +36,8 @@ import { registerCount } from "@/app/(app)/lager/actions";
 import { packMystery } from "@/app/(app)/vart-lager/mystery/actions";
 
 import { refreshFill, retryAwishPush } from "../actions";
+import { saveFillReturn } from "@/lib/fill-return";
+
 import { bringStore, useBring, useDone, type Done } from "../_lib/done-store";
 import {
   applyAdjustments,
@@ -62,7 +64,7 @@ import {
   type PackAsk,
   type SourceChoice,
 } from "../_lib/model";
-import type { FillData } from "../_lib/data";
+import type { FillData, FillStore } from "../_lib/data";
 import {
   clockLabel,
   lastAwishRead,
@@ -73,6 +75,10 @@ import {
 import { FILL_BASE, machineIdFrom, shownMachineId, type FillNav } from "../_lib/route";
 import { useFreshData } from "../_lib/use-fresh-data";
 import { BringScreen } from "./bring-list";
+import { ConfirmSheet, MachineHead, MysterySheet, powerText, SayCard, SlotRow } from "./fill-v2";
+import { Button } from "@/components/v2/button";
+import { toastUndo } from "@/components/v2/toast";
+import { PackImage } from "@/components/v2/pack-image";
 
 export interface FillAppProps {
   /** Köns ägare: organisation och användare (samma som /drift/pafyllning). */
@@ -87,6 +93,17 @@ export interface FillAppProps {
    * hydreringen: en sparad /fyll-pa (service workern utan nät) får inte krocka med adressen.
    */
   readonly initialMachineId?: string | null;
+  /**
+   * V2: ruttläget (öppnat från Rutt, ?rutt=1): dagens stopp i körordning. Stegraden "Stopp 2 av
+   * 5" ersätter automatväljaren, och efter Klar öppnas nästa stopp. null = vanligt läge.
+   */
+  readonly route?: { readonly ids: readonly string[] } | null;
+  /**
+   * V2: öppnad från Hem eller Automater (?fran=): efter Klar går appen tillbaka dit och sidan
+   * visar notisen med Ångra (src/lib/fill-return.ts). Bara när allt sparades direkt och Awish
+   * fick antalen; annars stannar bekräftelsen här. null = stanna i Fyll på.
+   */
+  readonly returnTo?: string | null;
 }
 
 const BASE = FILL_BASE;
@@ -169,6 +186,8 @@ export function FillApp({
   timeZone,
   renderedAt,
   initialMachineId = null,
+  route = null,
+  returnTo = null,
 }: FillAppProps) {
   const router = useRouter();
   const toast = useToast();
@@ -470,8 +489,52 @@ export function FillApp({
     }
   };
   const busy = reading || refreshing;
-  const refreshButton = <RefreshButton busy={busy} onClick={() => void update()} />;
+  const refreshButton = simple ? (
+    <RefreshButton busy={busy} onClick={() => void update()} />
+  ) : (
+    // V2: kompakt (ikonen på telefon, texten från 901 px).
+    <Button
+      className="refresh"
+      onClick={() => void update()}
+      disabled={busy}
+      aria-busy={busy}
+      aria-label={busy ? t.fill.refreshing : t.fill.refresh}
+    >
+      <Icon name="refresh" size={16} className={cn(busy && "motion-safe:animate-spin")} />
+      <span className="lbl">{busy ? t.fill.refreshing : t.fill.refresh}</span>
+    </Button>
+  );
   const noticeLine = notice ? <NoticeLine notice={notice} /> : null;
+
+  /** Ångra en påfyllning (bekräftelsen, eller Ångra i notisen i V2). */
+  const undoDone = async (d: Done) => {
+    const ids = new Set(d.clientIds);
+    const queued = q.queue.filter((i) => ids.has(i.clientId));
+    for (const i of queued) await q.remove(i.clientId);
+    const queuedIds = new Set(queued.map((i) => i.clientId));
+    const sent = d.clientIds.filter((id) => !queuedIds.has(id));
+    if (sent.length > 0) {
+      const res = await undoRefills(sent).catch(() => ({
+        ok: false as const,
+        error: t.common.offlineRetry,
+      }));
+      if (!res.ok) {
+        toast({
+          title: t.fill.undoFailed,
+          description: t.serverError(res.error),
+          tone: "critical",
+        });
+        return;
+      }
+    }
+    setSaved((prev) => ({
+      base: prev.base,
+      items: prev.items.filter((i) => !("clientId" in i) || !ids.has((i as QueuedRefill).clientId)),
+    }));
+    setDone(null);
+    toast({ title: t.fill.undone(d.packs), tone: "neutral" });
+    router.refresh();
+  };
 
   const view = useMemo(() => {
     const pending = q.queue.filter((i) => i.status === "queued");
@@ -506,7 +569,8 @@ export function FillApp({
   const sourceOf = (machineId: string) => view.choice[machineId]?.id ?? null;
 
   const go = useCallback((href: string) => {
-    setNav({ machineId: machineIdFrom(href) });
+    // Ruttläget bär ?rutt=1: automaten läses ur sökvägen utan frågan.
+    setNav({ machineId: machineIdFrom(href.split("?")[0]) });
     window.history.pushState(null, "", href);
     window.scrollTo({ top: 0 });
   }, []);
@@ -515,11 +579,35 @@ export function FillApp({
   const rejected = q.queue.filter((i) => i.status === "rejected");
   const waiting = q.queue.length - rejected.length;
 
+  // Ruttläget (V2): dagens stopp som finns bland automaterna, i körordning.
+  const stops = route ? route.ids.filter((id) => view.machines.some((m) => m.id === id)) : [];
+  const stopIndex = selectedId ? stops.indexOf(selectedId) : -1;
+  const routeSuffix = route ? "?rutt=1" : "";
+  const goStop = (i: number) => {
+    const id = stops[i];
+    if (id) go(`${BASE}/${id}${routeSuffix}`);
+  };
+
   if (selectedId && selected) {
     const source = sourceOf(selected.id);
     return (
       <MachineScreen
         key={`${selected.id}/${source ?? ""}`}
+        v2={!simple}
+        store={data.stores?.[selected.id] ?? null}
+        machines={view.machines}
+        onPick={(id) => go(`${BASE}/${id}`)}
+        restartHint={(data.restartAfterPush ?? []).includes(selected.id)}
+        route={
+          stopIndex >= 0
+            ? {
+                index: stopIndex,
+                total: stops.length,
+                ...(stopIndex > 0 ? { onPrev: () => goStop(stopIndex - 1) } : {}),
+                ...(stopIndex < stops.length - 1 ? { onNext: () => goStop(stopIndex + 1) } : {}),
+              }
+            : null
+        }
         machine={selected}
         places={sources.places.map((p) => ({
           id: p.id,
@@ -552,7 +640,7 @@ export function FillApp({
             {pendingLine(selected)}
           </>
         }
-        onBack={() => go(BASE)}
+        onBack={() => (route ? router.push("/rutt") : go(BASE))}
         onCounted={(titleId, value) => {
           setCounted((prev) => {
             const map = new Map(prev.base === data ? prev.map : []);
@@ -617,19 +705,54 @@ export function FillApp({
             return;
           } else {
             const rejectedIds = new Set(out.rejected.map((r) => r.clientId));
-            setDone({
+            const d: Done = {
               packs,
               left: source ? t.fill.leftAt(Math.max(0, homeLeft), placeName(source)) : "",
               offline: out.offline,
               clientIds: items.map((i) => i.clientId).filter((id) => !rejectedIds.has(id)),
               restart: needsRestartReminder(out.awish, [selected.id], data.restartAfterPush),
-            });
+            };
+            // V2, öppnad från Hem/Automater: tillbaka dit när allt sparades och Awish fick
+            // antalen (annars behövs beskedet här, t.ex. omstarten eller "Försök igen").
+            const savedIds = new Set(out.saved.map((i) => i.clientId));
+            if (
+              returnTo &&
+              !simple &&
+              stopIndex < 0 &&
+              !out.offline &&
+              !d.restart &&
+              (!out.awish || out.awish.state === "sent") &&
+              items.every((i) => savedIds.has(i.clientId)) &&
+              saveFillReturn({
+                title: t.fill.doneTitle(packs),
+                detail: `${selected.name}${d.left ? ` · ${d.left}` : ""}`,
+                packs,
+                clientIds: d.clientIds,
+              })
+            ) {
+              rememberSaved(out.saved);
+              router.push(returnTo);
+              router.refresh();
+              return;
+            }
+            setDone(d);
+            // V2, ruttläget: nästa stopp öppnas direkt, så Ångra står i en notis (i listan
+            // står bekräftelsen med Ångra i stället, en gång).
+            if (!simple && stopIndex >= 0 && stops[stopIndex + 1]) {
+              toastUndo(
+                t.fill.doneTitle(packs),
+                d.restart ? t.fill.restartScreen : d.offline ? t.fill.doneOffline : d.left,
+                () => void undoDone(d),
+                { id: "fyll-klar" },
+              );
+            }
           }
           if (out.saved.length > 0) rememberSaved(out.saved);
           reportAwish(out.awish, [selected.id]);
-          // Först tillbaka till listan (bekräftelsen syns direkt), sedan hämtas datan om för
-          // den adressen.
-          go(BASE);
+          // Ruttläget: nästa stopp direkt; sista stoppet (eller vanligt läge) tillbaka till listan.
+          // Bekräftelsen syns direkt, sedan hämtas datan om för den adressen.
+          const nextStop = stopIndex >= 0 ? stops[stopIndex + 1] : undefined;
+          go(nextStop ? `${BASE}/${nextStop}${routeSuffix}` : BASE);
           if (out.saved.length > 0) router.refresh();
         }}
       />
@@ -692,6 +815,124 @@ export function FillApp({
   const stockLabel =
     sources.places.length === 1 ? t.fill.stockAt(sources.places[0]!.name) : t.fill.stockAll;
 
+  if (!simple) {
+    const awishLine =
+      waitingShown.length === 1 ? (
+        pendingLine(waitingShown[0]!)
+      ) : waitingShown.length > 1 ? (
+        <AwishPendingLine
+          title={t.r2.t1.fill.awishPendingMany(
+            waitingShown
+              .map((m) => m.code)
+              .sort((a, b) => a.localeCompare(b, "sv", { numeric: true })),
+          )}
+          busy={retrying !== null}
+          disabled={!q.online}
+          onRetry={() => void retryPush(null)}
+        />
+      ) : null;
+    return (
+      <div className="v2-fill-app">
+        <header className="top">
+          <Link href="/" className="back" aria-label="Till Hem">
+            <Icon name="chevronLeft" size={22} />
+          </Link>
+          <h1>
+            {t.fill.title}
+            {lastRead ? (
+              <span className="crumb keep">
+                {t.fill.awishRead(clockLabel(lastRead, renderedAt, timeZone, t))}
+              </span>
+            ) : null}
+          </h1>
+          <div className="tools">
+            {refreshButton}
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+          </div>
+        </header>
+        {noticeLine}
+        <section className="pn say-list" aria-live="polite">
+          <h2>
+            {need > 0
+              ? `${t.fill.needPrefix}${formatInt(need)}${t.fill.needSuffix(need)}`
+              : headline}
+          </h2>
+          {data.hasWarehouse || waitingAwish ? (
+            <p className="mt-2 text-v2-md text-v2-mute">
+              {data.hasWarehouse ? `${formatInt(homeTotal)}${NBSP}${stockLabel}` : null}
+              {data.hasWarehouse && waitingAwish ? " · " : null}
+              {waitingAwish ? t.fill.waitingAwish : null}
+            </p>
+          ) : null}
+          {data.hasOthers ? (
+            <div className="mt-3">
+              <MineSwitch mine={mine} onChange={(v) => setMineOnly(v ? "1" : null)} />
+            </div>
+          ) : null}
+        </section>
+        {done ? (
+          <DoneV2 done={done} onClose={() => setDone(null)} onUndo={() => undoDone(done)} />
+        ) : null}
+        {awishLine}
+        {rejected.length > 0 ? (
+          <RejectedList
+            items={rejected}
+            names={view.machines}
+            onRetryDirect={async (item) => {
+              await q.remove(item.clientId);
+              const out = await q.enqueue([
+                {
+                  ...item,
+                  clientId: newClientId(),
+                  fromWarehouse: false,
+                  status: "queued",
+                  attempts: 0,
+                  error: undefined,
+                },
+              ]);
+              if (out.saved.length > 0) {
+                rememberSaved(out.saved);
+                toast({ title: t.fill.savedDirect, tone: "ok" });
+                router.refresh();
+              }
+            }}
+            onRemove={(item) => void q.remove(item.clientId)}
+          />
+        ) : null}
+        {shown.length === 0 && mine ? (
+          <p className="text-v2-md text-v2-mute">{t.fill.noneMine}</p>
+        ) : null}
+        {shown.length > 0 ? (
+          <Button
+            className="self-start"
+            onClick={() => {
+              setBring({ chosen: null, placeId: null });
+              window.scrollTo({ top: 0 });
+            }}
+          >
+            <Icon name="stock" size={16} />
+            {t.fill.bringOpen}
+          </Button>
+        ) : null}
+        <ul className="list" aria-label={t.fill.machines}>
+          {shown.map((m) => (
+            <li key={m.id}>
+              <MachineCardV2
+                machine={m}
+                store={data.stores?.[m.id] ?? null}
+                syncLabel={syncLabels[m.id]}
+                onOpen={() => {
+                  setDone(null);
+                  go(`${BASE}/${m.id}`);
+                }}
+              />
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 px-4 pt-[calc(16px+env(safe-area-inset-top))] pb-[calc(32px+env(safe-area-inset-bottom))]">
       <header className="rise flex flex-col gap-3" style={rise(0)}>
@@ -747,40 +988,7 @@ export function FillApp({
       </header>
 
       {done ? (
-        <DoneBanner
-          done={done}
-          onClose={() => setDone(null)}
-          onUndo={async () => {
-            const ids = new Set(done.clientIds);
-            const queued = q.queue.filter((i) => ids.has(i.clientId));
-            for (const i of queued) await q.remove(i.clientId);
-            const queuedIds = new Set(queued.map((i) => i.clientId));
-            const sent = done.clientIds.filter((id) => !queuedIds.has(id));
-            if (sent.length > 0) {
-              const res = await undoRefills(sent).catch(() => ({
-                ok: false as const,
-                error: t.common.offlineRetry,
-              }));
-              if (!res.ok) {
-                toast({
-                  title: t.fill.undoFailed,
-                  description: t.serverError(res.error),
-                  tone: "critical",
-                });
-                return;
-              }
-            }
-            setSaved((prev) => ({
-              base: prev.base,
-              items: prev.items.filter(
-                (i) => !("clientId" in i) || !ids.has((i as QueuedRefill).clientId),
-              ),
-            }));
-            setDone(null);
-            toast({ title: t.fill.undone(done.packs), tone: "neutral" });
-            router.refresh();
-          }}
-        />
+        <DoneBanner done={done} onClose={() => setDone(null)} onUndo={() => undoDone(done)} />
       ) : null}
 
       {waitingShown.length === 1 ? (
@@ -1173,7 +1381,24 @@ function MachineScreen({
   onBack,
   onDone,
   onCounted,
+  v2 = false,
+  store = null,
+  machines = [],
+  onPick,
+  route = null,
+  restartHint = false,
 }: {
+  /** V2: butiken stänger av strömmen på natten (påminn om omstart vid bekräftelsen). */
+  restartHint?: boolean;
+  /** V2-utseendet (inte i Enkel vy). */
+  v2?: boolean;
+  /** V2: butiken vid automaten (adress, kontakt, strömtider). */
+  store?: FillStore | null;
+  /** V2: automaterna för "Byt automat". */
+  machines?: readonly FillMachine[];
+  onPick?: (id: string) => void;
+  /** V2: ruttläget ("Stopp 2 av 5"). */
+  route?: { index: number; total: number; onPrev?: () => void; onNext?: () => void } | null;
   machine: FillMachine;
   /** Våra lager med antal pack (för "Från: Hemma ▾"). */
   places: readonly { id: string; name: string; count: number }[];
@@ -1315,6 +1540,55 @@ function MachineScreen({
     setQty((prev) => ({ ...prev, [titleId]: Math.max(0, Math.min(max, Math.trunc(value) || 0)) }));
   };
 
+  /** Klar: fråga om mystery-omgångar eller bekräfta; utan antal tillbaka till listan. */
+  const onKlar = async () => {
+    if (total > 0) {
+      // Utan nät går det inte att packa: påfyllningen läggs i kön som vanligt.
+      const asks = online ? packAsks(linesNow(), recipes, sourceStock) : [];
+      if (asks.length > 0) setAsking({ asks, index: 0, yes: [] });
+      else setConfirming(true);
+      return;
+    }
+    toast({ title: t.fill.nothingFilled, tone: "neutral" });
+    await finish();
+  };
+  const fillAll = () => {
+    setTouched(true);
+    setQty(Object.fromEntries(m.rows.map((r) => [r.titleId, fillAllQty(r, qty[r.titleId] ?? 0)])));
+  };
+  const onCount = async (r: FillRow, value: number) => {
+    if (!online) {
+      toast({
+        title: t.fill.needsNet,
+        description: t.fill.doneStillWorks,
+        tone: "critical",
+      });
+      return;
+    }
+    const res = await registerCount({
+      location: "machine",
+      machineId: m.id,
+      titleId: r.titleId,
+      counted: value,
+      note: "Räkna om (Fyll på)",
+    }).catch(() => ({ ok: false as const, error: t.common.offline }));
+    if (!res.ok) {
+      toast({
+        title: t.fill.countFailed,
+        description: t.serverError(res.error),
+        tone: "critical",
+      });
+      return;
+    }
+    setCounting(null);
+    onCounted(r.titleId, value);
+    const next = qtyAfterCount(r, value);
+    if (next !== null) {
+      set(r.titleId, next, maxFill({ ...r, now: value }));
+    }
+    toast({ title: t.fill.countSaved(value), tone: "ok" });
+  };
+
   // Det som behöver fyllas syns först; resten under "Fler titlar".
   const first = m.rows.filter(
     (r) => r.status !== null || r.emptySlots > 0 || r.suggested > 0 || fullFastNote(r, t) !== null,
@@ -1330,41 +1604,158 @@ function MachineScreen({
         onChange={(v) => set(r.titleId, v, maxFill(r))}
         counting={counting === r.titleId}
         onCountToggle={() => setCounting((c) => (c === r.titleId ? null : r.titleId))}
-        onCount={async (value) => {
-          if (!online) {
-            toast({
-              title: t.fill.needsNet,
-              description: t.fill.doneStillWorks,
-              tone: "critical",
-            });
-            return;
-          }
-          const res = await registerCount({
-            location: "machine",
-            machineId: m.id,
-            titleId: r.titleId,
-            counted: value,
-            note: "Räkna om (Fyll på)",
-          }).catch(() => ({ ok: false as const, error: t.common.offline }));
-          if (!res.ok) {
-            toast({
-              title: t.fill.countFailed,
-              description: t.serverError(res.error),
-              tone: "critical",
-            });
-            return;
-          }
-          setCounting(null);
-          onCounted(r.titleId, value);
-          const next = qtyAfterCount(r, value);
-          if (next !== null) {
-            set(r.titleId, next, maxFill({ ...r, now: value }));
-          }
-          toast({ title: t.fill.countSaved(value), tone: "ok" });
-        }}
+        onCount={(value) => onCount(r, value)}
       />
     </li>
   );
+
+  if (v2) {
+    const sourceSheet = (
+      <Sheet
+        open={choosing}
+        onClose={() => setChoosing(false)}
+        title={t.fill.takeFrom}
+        eyebrow={m.place}
+        closeLabel={t.common.close}
+      >
+        <div className="px-5 pb-5">
+          <PlaceButtons
+            label={t.fill.takeFrom}
+            places={places.map((p) => ({ ...p, name: t.common.placeName(p.name) }))}
+            countText={t.common.packs}
+            value={sourceId}
+            onChange={(id) => {
+              setChoosing(false);
+              onSource(id);
+            }}
+          />
+        </div>
+      </Sheet>
+    );
+    const rowV2 = (r: FillRow, i: number) => (
+      <SlotRow
+        key={r.titleId}
+        index={i}
+        row={r}
+        sourceName={sourceName}
+        hasSource={sourceId !== null}
+        value={qty[r.titleId] ?? 0}
+        onChange={(v) => set(r.titleId, v, maxFill(r))}
+        countSlot={
+          <CountForm
+            row={r}
+            counting={counting === r.titleId}
+            onToggle={() => setCounting((c) => (c === r.titleId ? null : r.titleId))}
+            onCount={(value) => onCount(r, value)}
+          />
+        }
+      />
+    );
+    return (
+      <div className="v2-fill-app">
+        <header className="top">
+          <button type="button" className="back" onClick={onBack} aria-label={t.fill.machines}>
+            <Icon name="chevronLeft" size={22} />
+          </button>
+          <h1>
+            {t.fill.title}
+            <span className="crumb">
+              {m.code} · {m.place}
+            </span>
+          </h1>
+          <div className="tools">{headerActions}</div>
+        </header>
+        {notice}
+        <MachineHead
+          m={m}
+          store={store}
+          machines={machines}
+          onPick={(id) => onPick?.(id)}
+          route={route}
+          syncLabel={syncLabel}
+        />
+        <div className="work">
+          <div className="side2">
+            <SayCard
+              m={m}
+              total={total}
+              after={after}
+              source={
+                places.length > 1 ? (
+                  <div className="src">
+                    <span>{sourceReason ?? t.fill.takeFrom}</span>
+                    <Button size="sm" onClick={() => setChoosing(true)}>
+                      {t.fill.from} {t.common.placeName(sourceName)}
+                    </Button>
+                  </div>
+                ) : null
+              }
+            />
+            <div className="foot">
+              <Button
+                variant="act"
+                size="lg"
+                disabled={busy || total === 0}
+                pending={busy}
+                onClick={() => void onKlar()}
+              >
+                {busy ? t.common.saving : total > 0 ? t.fill.doneWith(total) : t.fill.done}
+              </Button>
+              {total === 0 ? <p className="hint">Tryck på + eller Fyll fack.</p> : null}
+            </div>
+          </div>
+          <section className="pn slots" aria-label={t.fill.titlesAria}>
+            <div className="hd">
+              <b>Fack · {formatInt(m.rows.length)}</b>
+              {m.rows.some((r) => r.capacity !== null) ? (
+                <Button size="sm" onClick={fillAll}>
+                  Fyll alla
+                </Button>
+              ) : null}
+            </div>
+            {m.rows.length === 0 ? (
+              <p className="p-4 text-v2-sm text-v2-mute">{t.fill.noTitles}</p>
+            ) : (
+              <>
+                {first.map((r, i) => rowV2(r, i))}
+                {rest.length > 0 ? (
+                  <details className="more" open={first.length === 0}>
+                    <summary>{t.fill.moreTitles(rest.length)}</summary>
+                    <div>{rest.map((r, i) => rowV2(r, first.length + i))}</div>
+                  </details>
+                ) : null}
+              </>
+            )}
+          </section>
+        </div>
+        <ConfirmSheet
+          open={confirming}
+          total={total}
+          busy={busy}
+          restart={restartHint}
+          onYes={() => void finish()}
+          onClose={() => setConfirming(false)}
+        />
+        <MysterySheet
+          ask={ask}
+          last={lastAsk}
+          busy={busy}
+          packing={packing}
+          sourceName={sourceName}
+          cut={
+            asking && ask
+              ? afterPacking(linesNow(), recipes, [...asking.yes, ask]).cut.map((c) =>
+                  t.r2.t1.fill.packAskCut(c.name, c.to, c.from),
+                )
+              : []
+          }
+          onAnswer={answer}
+          onCancel={() => setAsking(null)}
+        />
+        {sourceSheet}
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -1425,14 +1816,7 @@ function MachineScreen({
           {m.rows.some((r) => r.capacity !== null) ? (
             <button
               type="button"
-              onClick={() => {
-                setTouched(true);
-                setQty(
-                  Object.fromEntries(
-                    m.rows.map((r) => [r.titleId, fillAllQty(r, qty[r.titleId] ?? 0)]),
-                  ),
-                );
-              }}
+              onClick={fillAll}
               className="min-h-11 rounded-sm border border-line-strong bg-surface px-4 text-md font-medium text-fg active:bg-hover"
             >
               {t.fill.fillAll}
@@ -1557,17 +1941,7 @@ function MachineScreen({
           <button
             type="button"
             disabled={busy}
-            onClick={async () => {
-              if (total > 0) {
-                // Utan nät går det inte att packa: påfyllningen läggs i kön som vanligt.
-                const asks = online ? packAsks(linesNow(), recipes, sourceStock) : [];
-                if (asks.length > 0) setAsking({ asks, index: 0, yes: [] });
-                else setConfirming(true);
-                return;
-              }
-              toast({ title: t.fill.nothingFilled, tone: "neutral" });
-              await finish();
-            }}
+            onClick={() => void onKlar()}
             className={cn(
               "flex h-14 w-full items-center justify-center gap-2 rounded-md border text-lg font-medium transition-colors",
               busy
@@ -1846,5 +2220,179 @@ function RejectedList({
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * "Fel antal i automaten?" (V2): räkna om en titel i automaten. Samma inventering som förut
+ * (registerCount via MachineScreen); formuläret öppnas under raden.
+ */
+function CountForm({
+  row: r,
+  counting,
+  onToggle,
+  onCount,
+}: {
+  row: FillRow;
+  counting: boolean;
+  onToggle: () => void;
+  onCount: (value: number) => Promise<void>;
+}) {
+  const t = useT();
+  const [draft, setDraft] = useState(String(r.now));
+  const [saving, setSaving] = useState(false);
+  const inputId = `raknat-${r.titleId}`;
+  if (!counting) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setDraft(String(r.now));
+          onToggle();
+        }}
+        className="min-h-8 text-v2-sm text-v2-mute underline-offset-4 hover:text-v2-ink hover:underline"
+      >
+        {t.fill.wrongCount}
+      </button>
+    );
+  }
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const n = Number(draft);
+        if (!Number.isInteger(n) || n < 0 || n > 10000) return;
+        setSaving(true);
+        try {
+          await onCount(n);
+        } finally {
+          setSaving(false);
+        }
+      }}
+    >
+      <label htmlFor={inputId} className="w-full text-v2-sm text-v2-mute">
+        {t.fill.countLabel}
+      </label>
+      <input
+        id={inputId}
+        type="number"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        min={0}
+        max={10000}
+        value={draft}
+        autoFocus
+        onChange={(e) => setDraft(e.target.value)}
+        className="h-10 w-24 rounded-v2 border border-v2-line bg-v2-panel text-center"
+      />
+      <Button type="submit" variant="act" size="sm" pending={saving}>
+        {saving ? t.common.saving : t.common.save}
+      </Button>
+      <Button size="sm" variant="quiet" onClick={onToggle}>
+        {t.common.cancel}
+      </Button>
+    </form>
+  );
+}
+
+/** Bekräftelsen efter Klar i V2: "Klart! 12 pack påfyllda", omstart och Ångra. */
+function DoneV2({
+  done,
+  onUndo,
+  onClose,
+}: {
+  done: Done;
+  onUndo: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className="pn done" role="status" aria-live="polite">
+      <span className="ok" aria-hidden="true">
+        <Icon name="check" size={20} />
+      </span>
+      <h2>{t.fill.doneTitle(done.packs)}</h2>
+      <p className="sub">{done.offline ? t.fill.doneOffline : done.left}</p>
+      {done.restart ? (
+        // Butiken stänger av strömmen på natten: skärmen läser antalen när den startar.
+        <p className="restart" data-restart-reminder>
+          {t.fill.restartScreen}
+        </p>
+      ) : null}
+      <div className="acts">
+        <Button onClick={onClose}>{t.common.close}</Button>
+        <Button
+          pending={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onUndo();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? t.common.undoing : t.common.undo}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/** En automat i listan (V2): butik, kod, fyllnad, vad som behövs och tomma fack som packbilder. */
+function MachineCardV2({
+  machine: m,
+  store,
+  syncLabel,
+  onOpen,
+}: {
+  machine: FillMachine;
+  store: FillStore | null;
+  syncLabel?: string;
+  onOpen: () => void;
+}) {
+  const t = useT();
+  const label = needLabel(m, t);
+  const urgent = m.emptySlots > 0 || m.empty > 0;
+  const empties = m.rows.filter((r) => r.status === "empty" || r.emptySlots > 0);
+  return (
+    <a
+      href={`${BASE}/${m.id}`}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        onOpen();
+      }}
+      aria-label={t.fill.cardAria(m.place, label, m.fillPct)}
+      className={cn("mcard", urgent ? "crit" : m.needs && "hot")}
+    >
+      <span className="top2">
+        <span className="min-w-0">
+          <b>{m.place}</b>
+          <small>
+            {[m.code, store?.city, powerText(store), syncLabel].filter(Boolean).join(" · ")}
+          </small>
+        </span>
+        {m.fillPct !== null ? <span className="pc">{t.common.pct(m.fillPct)}</span> : null}
+      </span>
+      {m.fillPct !== null ? (
+        <span className="bar" aria-hidden="true">
+          <i
+            className={cn("now", m.fillPct <= 25 && "o")}
+            style={{ transform: `scaleX(${Math.max(0, Math.min(1, m.fillPct / 100))})` }}
+          />
+        </span>
+      ) : null}
+      {label ? <span className="need first-letter:uppercase">{label}</span> : null}
+      {empties.length > 0 ? (
+        <span className="flex flex-wrap gap-1.5" aria-hidden="true">
+          {empties.slice(0, 6).map((r) => (
+            <PackImage key={r.titleId} title={r.name} size="xs" />
+          ))}
+        </span>
+      ) : null}
+    </a>
   );
 }

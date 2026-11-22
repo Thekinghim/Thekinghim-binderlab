@@ -5,11 +5,23 @@ import { loadContext } from "@/server/data/core";
 
 import { currentViewer } from "@/app/(app)/lager/_lib/session";
 
+import { loadDayRoute } from "@/server/data/v2/route";
+
 import { loadFillDataFor } from "../_lib/data";
 import { FillApp } from "./fill-app";
 
 /** Serverdelen av Fyll på (/fyll-pa och /fyll-pa/<automat>): samma data, samma app. */
-export async function FillPage({ machineId = null }: { machineId?: string | null } = {}) {
+export async function FillPage({
+  machineId = null,
+  routeMode = false,
+  returnTo = null,
+}: {
+  machineId?: string | null;
+  /** Öppnad från Rutt (?rutt=1): dagens stopp i körordning (V2, ruttläget). */
+  routeMode?: boolean;
+  /** Öppnad från Hem eller Automater (?fran=): dit efter Klar, med Ångra i notisen. */
+  returnTo?: string | null;
+} = {}) {
   const ctx = await loadContext();
   const t = messages(ctx.locale);
   if (!["owner", "admin", "refiller"].includes(ctx.role)) {
@@ -24,13 +36,22 @@ export async function FillPage({ machineId = null }: { machineId?: string | null
     );
   }
   const now = new Date(ctx.now);
-  const data = await loadFillDataFor(await currentViewer(), now);
+  const [data, route] = await Promise.all([
+    loadFillDataFor(await currentViewer(), now),
+    routeMode && ctx.viewMode !== "simple"
+      ? loadDayRoute()
+          .then((r) => ({ ids: r.stops.map((x) => x.machineId) }))
+          .catch(() => null)
+      : Promise.resolve(null),
+  ]);
   return (
     <FillApp
       scope={`${ctx.organization.id}:${ctx.user.id}`}
       data={data}
       timeZone={ctx.timeZone}
       renderedAt={now.toISOString()}
+      route={route}
+      returnTo={ctx.viewMode !== "simple" && !routeMode ? returnTo : null}
       initialMachineId={
         machineId && data.machines.some((m) => m.id === machineId) ? machineId : null
       }

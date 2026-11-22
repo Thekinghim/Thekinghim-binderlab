@@ -44,6 +44,7 @@ import {
   type AppContext,
   type AppPeriod,
 } from "@/server/data/core";
+import { requireAutomaterEconomy } from "@/app/(app)/automater/_lib/data";
 import { goalsProgress } from "@/server/data/goals";
 
 import {
@@ -138,7 +139,8 @@ export interface UnitEconomicsPageData {
 }
 
 export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<UnitEconomicsPageData> {
-  const ctx = await requireRoute("automater");
+  // Bara ekonomiroller (påfyllaren får Automater i V2 men inte enhetsekonomin).
+  const ctx = await requireAutomaterEconomy();
   const p = await loadPeriod(sp);
   // Snitt per dag: bara hela dagar med data (i dag pågår och räknas inte), både i beloppen
   // och i antalet dagar. Samma regel som Mål och Effekt (@/analytics/days).

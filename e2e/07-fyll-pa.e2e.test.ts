@@ -144,7 +144,8 @@ describe("Fyll på på iPhone 15", () => {
     // Förslaget: kapacitet − nu = 6 (50 hemma räcker).
     expect(await input.inputValue()).toBe("6");
     expect(await page.locator("main, body").first().innerText()).toContain(
-      `${target.before}/${target.before + 6}`,
+      // V2: "4 av 10 i automaten".
+      `${target.before} av ${target.before + 6}`,
     );
     await page.getByRole("button", { name: `En mindre ${target.title}` }).click();
     expect(await input.inputValue()).toBe("5");
@@ -187,7 +188,7 @@ describe("Fyll på på iPhone 15", () => {
     await page.getByLabel(target.title, { exact: true }).waitFor();
     const now = await level(target.machineLocation, target.titleId);
     const text = () => page.locator("body").innerText();
-    expect(await text()).toContain(`${now}/${target.before + 6}`);
+    expect(await text()).toContain(`${now} av ${target.before + 6}`);
     // Laddas sidan om försvinner markören.
     await page.evaluate(() => {
       (window as unknown as { __kvar?: boolean }).__kvar = true;
@@ -210,7 +211,10 @@ describe("Fyll på på iPhone 15", () => {
     );
     expect(height).toBeGreaterThanOrEqual(44);
     await button.click();
-    await until(async () => (await text()).includes(`${now}/${now + 17}`), "nya kapaciteten syns");
+    await until(
+      async () => (await text()).includes(`${now} av ${now + 17}`),
+      "nya kapaciteten syns",
+    );
     await page.getByText(/^Uppdaterat \d\d:\d\d$/).waitFor();
     expect(await text()).toMatch(/Awish läst \d\d:\d\d/);
     expect(

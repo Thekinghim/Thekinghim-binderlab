@@ -410,11 +410,15 @@ describe("Fyll på: 'Packade du en omgång?'", () => {
     await shot(page, "r2-t1-fyll-pa-tomt-mystery-fack");
     await page.getByRole("button", { name: /^Fyll på en omgång \(14\sst\)$/ }).click();
     await page.getByRole("button", { name: /^Klar/ }).click();
-    const ask = page.getByRole("group", { name: "Packade du en omgång?" });
+    // V2: Klar frågar först (Ja, jag har fyllt på), sedan kommer frågan i ett ark.
+    const confirm = page.getByRole("button", { name: "Ja, jag har fyllt på" });
+    const ask = page.getByRole("dialog", { name: "Packade du en omgång?" });
+    await Promise.race([confirm.waitFor(), ask.waitFor()]).catch(() => {});
+    if (await confirm.isVisible()) await confirm.click();
     await ask.waitFor();
     expect(await plain(ask)).toContain(`Det finns 0 ${MYSTERY} ${inCentral}.`);
     await expectNoSideScroll(page);
-    await expectTapTargets(page, '[role="group"]');
+    await expectTapTargets(page, '[role="dialog"]');
     await shot(page, "r2-t1-fyll-pa-fraga");
     await ask.getByRole("button", { name: "Ja, packa 1 omgång och fyll på" }).click();
     await page.getByText(/Klart! \d+\spack påfyllda/).waitFor();

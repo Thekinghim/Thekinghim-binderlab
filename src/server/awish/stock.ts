@@ -28,6 +28,12 @@
  *   antalet tills sändningen går fram, och påfyllningen ska inte försvinna under tiden.
  *   Köp under väntan dras ändå: de kommer in som order och blir försäljningshändelser (−1)
  *   efter påfyllningen, så saldot som skickas vid nästa försök är påfyllt minus sålt.
+ * - Produktbyte (./product-swap, byggplanen V2 3.3): ett fack som bytt titel sedan förra
+ *   läsningen (machine_slot_capacity.channels) är ett byte. Före inventeringarna flyttas den
+ *   gamla titelns pack tillbaka till "Fylls på från" (transfer_out/transfer_in med noteringen
+ *   "Produktbyte A3: A → B") och en ny titels pack dras därifrån, och bytet loggas i
+ *   product_swaps. Då stämmer räkningen av den gamla titeln med väntat saldo (inget svinn).
+ *   Aldrig vid första läsningen och aldrig när automaten väntar på en sändning.
  * - stock_locations.awish_synced_at sätts, så att Lager vet att saldot är känt.
  * - Kapaciteten per titel (fyllnadsgraden) skrivs till machine_slot_capacity
  *   (./slot-capacity).
@@ -45,6 +51,7 @@ import { comparableText } from "@/import/adapter";
 import { writeSlotCapacities } from "@/server/awish/slot-capacity";
 
 import { AWISH_MIN_CALL_MS, AwishApiError, type AwishApi, type AwishProduct } from "./grpc-client";
+import { detectSwaps, swapNote, type ProductSwap } from "./product-swap";
 import { awishRefillNote, refillDeductions } from "./refill-deduction";
 
 type Row = Record<string, unknown>;
@@ -168,6 +175,8 @@ export interface MachineStockResult {
    * Awish gick inte fram (automaten väntar, se unsentRefillTitles).
    */
   readonly heldBack?: number;
+  /** Produktbyten som registrerades (./product-swap). */
+  readonly swaps?: number;
 }
 
 /**
@@ -392,6 +401,75 @@ export async function applyMachineStock(
     // Påfyllt i appen men inte framme i Awish (sändningen misslyckades): sänk inte saldot.
     const unsent = await unsentRefillTitles(tx, org, input.machineId, location.id);
     let heldBack = 0;
+
+    // Produktbyte: fack som bytt titel sedan förra läsningen (./product-swap).
+    const syncedBefore = location.synced !== null && location.synced !== undefined;
+    const swaps = syncedBefore
+      ? detectSwaps({
+          previous: await previousChannels(tx, org, input.machineId),
+          current: input.products.flatMap((p) => {
+            const name = comparableText(p.goodName);
+            const titleId = name !== "" ? byKey.get(name.toLowerCase()) : undefined;
+            return titleId && p.channel !== "" ? [{ channel: p.channel, titleId }] : [];
+          }),
+          unitsNow: new Map([...wanted].map(([titleId, w]) => [titleId, w.units])),
+          levels: new Map(
+            levels.map((l) => [
+              l.title_id,
+              { quantity: Number(l.quantity), counted: l.last_counted_at !== null },
+            ]),
+          ),
+          syncedBefore,
+          waiting: unsent.size > 0,
+        })
+      : [];
+    // Påfyllning enligt Awish: ökningen dras ur vårt lager (./refill-deduction).
+    const deductions = refillDeductions({
+      syncedBefore,
+      levels: new Map(
+        levels.map((l) => [
+          l.title_id,
+          { quantity: Number(l.quantity), counted: l.last_counted_at !== null },
+        ]),
+      ),
+      awish: new Map([...wanted].map(([titleId, w]) => [titleId, w.units])),
+    });
+    const moving = swaps.filter((w) => w.returned > 0 || w.taken > 0);
+    // Automatens "Fylls på från" (ett aktivt eget lager), annars standardlagret.
+    const central =
+      deductions.length > 0 || swaps.length > 0
+        ? ((
+            await query<{ id: string | null }>(
+              tx,
+              sql`select private.refill_source_for(${org}::uuid, ${input.machineId}::uuid)::text as id`,
+            )
+          )[0]?.id ?? null)
+        : null;
+    if (central && (deductions.length > 0 || moving.length > 0)) {
+      // Samma lås som register_refill och flytt: ett samtidigt uttag i appen köas. Låsen
+      // tas i titelordning så att två automater som synkas samtidigt inte låser varandra.
+      const lockOrder = [
+        ...new Set([
+          ...deductions.map((d) => d.titleId),
+          ...moving.flatMap((w) => [w.fromTitleId, w.toTitleId]),
+        ]),
+      ].sort();
+      for (const titleId of lockOrder) {
+        await tx.execute(sql`select private.lock_own_stock(${org}::uuid, ${titleId}::uuid)`);
+      }
+    }
+    let swapsWritten = 0;
+    if (swaps.length > 0) {
+      swapsWritten = await writeSwaps(tx, {
+        org,
+        machineId: input.machineId,
+        locationId: location.id,
+        sourceId: central,
+        at,
+        swaps,
+      });
+    }
+
     const counts: { titleId: string; quantity: number }[] = [];
     for (const [titleId, w] of wanted) {
       const l = level.get(titleId);
@@ -421,40 +499,18 @@ export async function applyMachineStock(
       );
     }
 
-    // Påfyllning enligt Awish: ökningen dras ur vårt lager (./refill-deduction).
-    const deductions = refillDeductions({
-      syncedBefore: location.synced !== null && location.synced !== undefined,
-      levels: new Map(
-        levels.map((l) => [
-          l.title_id,
-          { quantity: Number(l.quantity), counted: l.last_counted_at !== null },
-        ]),
-      ),
-      awish: new Map([...wanted].map(([titleId, w]) => [titleId, w.units])),
-    });
-    let warehouseOut = 0;
+    let warehouseOut = swapsWritten;
     if (deductions.length > 0) {
-      // Automatens "Fylls på från" (ett aktivt eget lager), annars standardlagret.
-      const [central] = await query<{ id: string | null }>(
-        tx,
-        sql`select private.refill_source_for(${org}::uuid, ${input.machineId}::uuid)::text as id`,
-      );
-      if (central?.id) {
-        // Samma lås som register_refill och flytt: ett samtidigt uttag i appen köas. Låsen
-        // tas i titelordning så att två automater som synkas samtidigt inte låser varandra.
-        const lockOrder = [...new Set(deductions.map((d) => d.titleId))].sort();
-        for (const titleId of lockOrder) {
-          await tx.execute(sql`select private.lock_own_stock(${org}::uuid, ${titleId}::uuid)`);
-        }
+      if (central) {
         await tx.execute(
           sql`insert into public.stock_events
                 (organization_id, location_id, title_id, kind, quantity, occurred_at, performed_by, source, note)
-              select ${org}::uuid, ${central.id}::uuid, r.title_id, 'adjustment', -r.quantity,
+              select ${org}::uuid, ${central}::uuid, r.title_id, 'adjustment', -r.quantity,
                      ${at}::timestamptz, null, 'awish', ${awishRefillNote(machine.code, machine.place)}
               from jsonb_to_recordset(${JSON.stringify(deductions.map((d) => ({ title_id: d.titleId, quantity: d.quantity })))}::jsonb)
                 as r(title_id uuid, quantity integer)`,
         );
-        warehouseOut = deductions.reduce((sum, d) => sum + d.quantity, 0);
+        warehouseOut += deductions.reduce((sum, d) => sum + d.quantity, 0);
       }
     }
 
@@ -491,8 +547,103 @@ export async function applyMachineStock(
       slotsChanged,
       skipped: null,
       ...(heldBack > 0 ? { heldBack } : {}),
+      ...(swaps.length > 0 ? { swaps: swaps.length } : {}),
     };
   });
+}
+
+/** Förra läsningens fack per titel (machine_slot_capacity, före den här läsningen). */
+async function previousChannels(
+  tx: Tx,
+  org: string,
+  machineId: string,
+): Promise<Map<string, string[]>> {
+  const rows = await query<{ title_id: string; channels: string[] | null }>(
+    tx,
+    sql`select title_id::text as title_id, channels from public.machine_slot_capacity
+        where organization_id = ${org}::uuid and machine_id = ${machineId}::uuid`,
+  );
+  return new Map(rows.map((r) => [r.title_id, Array.isArray(r.channels) ? r.channels : []]));
+}
+
+/**
+ * Skriver bytena (./product-swap): den gamla titelns pack flyttas tillbaka till lagret
+ * (transfer_out på automaten, transfer_in i lagret, samma grupp; source null, eftersom
+ * stock_events_source_check bara tillåter 'awish' på inventering och negativ justering, och
+ * noteringen "Produktbyte …" visar varifrån flytten kom), den nya titelns pack dras
+ * ur lagret (adjustment), och bytet loggas i product_swaps. Allt med tiden för läsningen, före
+ * inventeringarna. Utan eget lager flyttas inget, men bytet loggas. Returnerar pack ur lagret.
+ */
+async function writeSwaps(
+  tx: Tx,
+  input: {
+    org: string;
+    machineId: string;
+    locationId: string;
+    sourceId: string | null;
+    at: string;
+    swaps: readonly ProductSwap[];
+  },
+): Promise<number> {
+  const { org, at } = input;
+  const ids = [...new Set(input.swaps.flatMap((w) => [w.fromTitleId, w.toTitleId]))];
+  const names = new Map(
+    (
+      await query<{ id: string; name: string }>(
+        tx,
+        sql`select id::text as id, name from public.titles
+            where organization_id = ${org}::uuid
+              and id = any (array(select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid))`,
+      )
+    ).map((r) => [r.id, r.name]),
+  );
+  let taken = 0;
+  for (const w of input.swaps) {
+    const note = swapNote(
+      w.channel,
+      names.get(w.fromTitleId) ?? "?",
+      names.get(w.toTitleId) ?? "?",
+    );
+    const [logged] = await query<{ id: string }>(
+      tx,
+      sql`insert into public.product_swaps
+            (organization_id, machine_id, channel, from_title_id, to_title_id, returned_units,
+             taken_units, source_location_id, transfer_group_id, occurred_at)
+          values (${org}::uuid, ${input.machineId}::uuid, ${w.channel.slice(0, 20)},
+                  ${w.fromTitleId}::uuid, ${w.toTitleId}::uuid,
+                  ${input.sourceId ? w.returned : 0}, ${input.sourceId ? w.taken : 0},
+                  ${input.sourceId}::uuid,
+                  ${input.sourceId && w.returned > 0 ? sql`gen_random_uuid()` : sql`null`},
+                  ${at}::timestamptz)
+          on conflict (organization_id, machine_id, channel, occurred_at) do nothing
+          returning transfer_group_id::text as id`,
+    );
+    // En andra synk med samma tid skriver inget nytt.
+    if (!logged || !input.sourceId) continue;
+    if (w.returned > 0 && logged.id) {
+      await tx.execute(
+        sql`insert into public.stock_events
+              (organization_id, location_id, title_id, kind, quantity, occurred_at, performed_by,
+               source, transfer_group_id, note)
+            values
+              (${org}::uuid, ${input.locationId}::uuid, ${w.fromTitleId}::uuid, 'transfer_out',
+               ${-w.returned}, ${at}::timestamptz, null, null, ${logged.id}::uuid, ${note}),
+              (${org}::uuid, ${input.sourceId}::uuid, ${w.fromTitleId}::uuid, 'transfer_in',
+               ${w.returned}, ${at}::timestamptz, null, null, ${logged.id}::uuid, ${note})`,
+      );
+    }
+    if (w.taken > 0) {
+      await tx.execute(
+        sql`insert into public.stock_events
+              (organization_id, location_id, title_id, kind, quantity, occurred_at, performed_by,
+               source, note)
+            values (${org}::uuid, ${input.sourceId}::uuid, ${w.toTitleId}::uuid, 'adjustment',
+                    ${-w.taken}, ${at}::timestamptz, null, 'awish', ${note})`,
+      );
+      taken += w.taken;
+    }
+  }
+  return taken;
 }
 
 /** Sortimentet (machine_slots) från Awish fack. Sant om något ändrades. */

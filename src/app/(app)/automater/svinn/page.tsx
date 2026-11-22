@@ -20,14 +20,15 @@ import { EN_DASH, formatInt, MINUS, NBSP } from "@/lib/format";
 import {
   loadMasterData,
   loadPeriod,
-  requireRoute,
   requireViewer,
   storeInScope,
   storeScoped,
 } from "@/server/data/core";
+import { requireAutomaterEconomy } from "../_lib/data";
 import { loadShrinkageFor } from "@/server/data/shrinkage";
 
 import { machineHref } from "../_lib/model";
+import { SwapButton } from "./swap-button";
 
 export const metadata: Metadata = { title: "Svinn" };
 
@@ -41,7 +42,7 @@ export default async function SvinnPage({
 }: {
   searchParams: Promise<SearchParamsInput>;
 }) {
-  await requireRoute("automater");
+  const ctx = await requireAutomaterEconomy();
   const sp = await searchParams;
   const [p, master, viewer] = await Promise.all([
     loadPeriod(sp),
@@ -89,7 +90,7 @@ export default async function SvinnPage({
             Pack saknas
           </h2>
           {report.flagged.map((m, i) => (
-            <MachineCard key={m.machineId} machine={m} index={i} flagged />
+            <MachineCard key={m.machineId} machine={m} index={i} flagged canEdit={ctx.canEdit} />
           ))}
         </section>
       ) : null}
@@ -112,7 +113,13 @@ export default async function SvinnPage({
             </summary>
             <div className="mt-6 flex flex-col gap-6">
               {report.ok.map((m, i) => (
-                <MachineCard key={m.machineId} machine={m} index={i} flagged={false} />
+                <MachineCard
+                  key={m.machineId}
+                  machine={m}
+                  index={i}
+                  flagged={false}
+                  canEdit={ctx.canEdit}
+                />
               ))}
             </div>
           </details>
@@ -131,10 +138,13 @@ function MachineCard({
   machine,
   index,
   flagged,
+  canEdit = false,
 }: {
   machine: ShrinkageMachine;
   index: number;
   flagged: boolean;
+  /** Ägare och admin: "Det var ett produktbyte" på rader där pack saknas. */
+  canEdit?: boolean;
 }) {
   const value = shrinkageValueText(machine.valueOre);
   const lines = flagged ? machine.lines.filter((l) => l.state !== "unknown") : machine.lines;
@@ -208,7 +218,21 @@ function MachineCard({
           </thead>
           <tbody>
             {lines.map((l) => (
-              <LineRow key={l.titleId} line={l} noRefills={machine.refilled === 0} />
+              <LineRow
+                key={l.titleId}
+                line={l}
+                noRefills={machine.refilled === 0}
+                swap={
+                  canEdit && l.flagged && l.missing !== null && l.missing > 0 ? (
+                    <SwapButton
+                      machineId={machine.machineId}
+                      titleId={l.titleId}
+                      titleName={l.titleName}
+                      missing={l.missing}
+                    />
+                  ) : null
+                }
+              />
             ))}
           </tbody>
         </table>
@@ -229,11 +253,21 @@ function missingText(l: ShrinkageLine): string {
   return formatInt(l.missing);
 }
 
-function LineRow({ line, noRefills }: { line: ShrinkageLine; noRefills: boolean }) {
+function LineRow({
+  line,
+  noRefills,
+  swap = null,
+}: {
+  line: ShrinkageLine;
+  noRefills: boolean;
+  /** V2: "Det var ett produktbyte" (ägare och admin). */
+  swap?: React.ReactNode;
+}) {
   return (
     <tr className="border-t border-line">
       <th scope="row" className="px-4 py-2 text-left font-normal text-fg">
         {line.titleName}
+        {swap ? <span className="ml-3">{swap}</span> : null}
       </th>
       <td className="tnum px-2 py-2 text-right text-muted">
         {noRefills ? EN_DASH : formatInt(line.refilled)}
