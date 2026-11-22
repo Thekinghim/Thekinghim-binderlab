@@ -62,15 +62,16 @@ describe("TitleTable: hyran hör till butikernas andel", () => {
     const out = html(null);
     expect(out).not.toContain("Kvar efter hyra");
     expect(out).not.toContain("Hyra per order");
-    expect(out).not.toContain("47,00");
-    expect(out).toContain("50,00");
+    // V2: hela kronor i tabellen (ören bara när de finns).
+    expect(out).not.toMatch(/>47\s?kr</);
+    expect(out).toMatch(/>50\s?kr</);
   });
 
   it("med andelen: andelen inklusive hyra och vår del efter båda, som Lönsamhet", () => {
     const out = html({ header: "Butikernas andel", scope: "alla butiker" });
     expect(out).toContain("Butikernas andel");
-    expect(out).toContain("13,00");
-    expect(out).toContain("37,00");
+    expect(out).toMatch(/>13\s?kr</);
+    expect(out).toMatch(/>37\s?kr</);
     // Ingen andra "vår del" efter hyra: vår del är redan efter hyran.
     expect(out).not.toContain("Vår del efter hyra");
     expect(out).not.toContain("Kvar efter hyra");
