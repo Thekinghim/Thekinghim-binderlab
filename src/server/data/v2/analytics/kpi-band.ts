@@ -32,7 +32,7 @@ import {
   profitPerMachineDayOre,
   splitTodayYesterday,
 } from "@/analytics/home-v2";
-import type { SearchParamsInput } from "@/components/shell/period-state";
+import { compareTextShort, type SearchParamsInput } from "@/components/shell/period-state";
 import { addDays, profitability, type IsoDate } from "@/domain";
 import { withUserDbFor } from "@/server/access";
 import {
@@ -206,8 +206,6 @@ function profitOf(
     .profitOre;
 }
 
-const COMPARE: Record<string, string> = { "30d": "mot förra 30 d", "7d": "mot förra 7 d" };
-
 export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] | null> {
   const key = hemKey(sp);
   const [ctx, home] = await Promise.all([loadContext(), loadHemCore(key)]);
@@ -226,7 +224,7 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
     loadSyncInfo().catch(() => null),
   ]);
   const kpis = new Map(home.model.kpis.map((k) => [k.id, k]));
-  const compare = isToday ? "mot i går" : (COMPARE[p.key] ?? "mot förra");
+  const compare = compareTextShort(p.resolved) ?? "mot förra";
   const lp = (extra: string) => `/pengar${extra}`;
 
   // Vinsten: utan order i perioden 0 kr (inte "–").
@@ -330,7 +328,7 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
       compare: perMachineDelta === null ? null : compare,
       trend: perMachineDaySeries(
         dayBuckets
-          .filter((b) => !b.partial || p.key === "idag")
+          .filter((b) => !b.partial || p.days === 1)
           .map((b) => ({
             date: b.start,
             profitOre: b.profitOre,

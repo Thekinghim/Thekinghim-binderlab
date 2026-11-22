@@ -80,9 +80,11 @@ const REFILLERS: readonly Role[] = ["owner", "admin", "refiller"];
 
 const PERIOD_LABEL: Partial<Record<PeriodKey, string>> = {
   idag: "Visa i dag",
+  igar: "Visa i går",
   "7d": "Visa senaste 7 dagarna",
   "30d": "Visa senaste 30 dagarna",
   manad: "Visa denna månad",
+  "forra-manaden": "Visa förra månaden",
   allt: "Visa hela historiken",
 };
 

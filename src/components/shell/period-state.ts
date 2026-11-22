@@ -1,8 +1,9 @@
 /**
  * Globalt periodval och filter, lagrade i URL:en.
  *
- *   ?period=idag | 7d | 30d | manad | allt
- *   ?from=2026-10-13&to=2026-11-01           (eget intervall, båda ändar ingår)
+ *   ?period=idag | igar | 7d | 30d | manad | forra-manaden | allt
+ *   ?from=2026-10-13&to=2026-11-01           (eget intervall, båda ändar ingår; högst två år)
+ *   ?fran=2026-10-13&till=2026-11-01         (samma sak med svenska namn; läses, skrivs inte)
  *   ?butik=<id>&automat=<id>                 (globalt filter)
  *   ?agare=<id>                              (butiksägare: alla ägarens butiker tillsammans)
  *   ?vmb=1                                   (vyknappen "Med VMB": vinst efter VMB-moms)
@@ -18,6 +19,7 @@ import {
   calendarDaysBetween,
   daysInPeriod,
   endOfMonth,
+  isSameDay,
   normalizePeriod,
   previousPeriod,
   startOfMonth,
@@ -27,7 +29,8 @@ import { formatPeriodShort } from "@/lib/format";
 
 export type { DateRange };
 
-export type PeriodKey = "idag" | "7d" | "30d" | "manad" | "allt" | "eget";
+export type PeriodKey =
+  "idag" | "igar" | "7d" | "30d" | "manad" | "forra-manaden" | "allt" | "eget";
 
 export const DEFAULT_PERIOD: Exclude<PeriodKey, "eget"> = "30d";
 
@@ -37,6 +40,18 @@ export const DEFAULT_TIME_ZONE = "Europe/Stockholm";
 export const PERIOD_PARAM = "period";
 export const FROM_PARAM = "from";
 export const TO_PARAM = "to";
+/** Svenska namn för ett eget intervall (?fran=&till=). Läses som from/to, skrivs aldrig. */
+export const FROM_ALIAS = "fran";
+export const TO_ALIAS = "till";
+/** Längsta egna intervall (dagar, båda ändar inräknade): två år. Längre ger standardvalet. */
+export const MAX_RANGE_DAYS = 731;
+/**
+ * Kakan där periodväljaren sparar senaste valet ("period=igar" eller "from=…&to=…"), så att
+ * valet följer med till nästa periodsida även när länken saknar ?period (proxyn lägger på det).
+ */
+export const PERIOD_COOKIE = "binderlab-period";
+/** Hur länge valet sparas: en arbetsdag. Nästa morgon börjar man på standardvalet igen. */
+export const PERIOD_COOKIE_MAX_AGE = 60 * 60 * 12;
 export const STORE_PARAM = "butik";
 export const MACHINE_PARAM = "automat";
 /**
@@ -72,6 +87,8 @@ export const SHELL_PARAMS = [
   PERIOD_PARAM,
   FROM_PARAM,
   TO_PARAM,
+  FROM_ALIAS,
+  TO_ALIAS,
   STORE_PARAM,
   OWNER_PARAM,
   MACHINE_PARAM,
@@ -79,16 +96,36 @@ export const SHELL_PARAMS = [
   STORE_SHARE_PARAM,
 ] as const;
 
+/** Parametrarna som bär periodvalet (förval eller eget intervall). */
+export const PERIOD_PARAMS = [PERIOD_PARAM, FROM_PARAM, TO_PARAM, FROM_ALIAS, TO_ALIAS] as const;
+
 export const periodChoices: ReadonlyArray<{ key: PeriodKey; label: string; short: string }> = [
   { key: "idag", label: "I dag", short: "I dag" },
+  { key: "igar", label: "I går", short: "I går" },
   { key: "7d", label: "7 dagar", short: "7 d" },
   { key: "30d", label: "30 dagar", short: "30 d" },
   { key: "manad", label: "Denna månad", short: "Månad" },
+  { key: "forra-manaden", label: "Förra månaden", short: "Förra mån." },
   { key: "allt", label: "Allt", short: "Allt" },
   { key: "eget", label: "Eget intervall", short: "Eget" },
 ];
 
-const PRESET_KEYS = new Set<string>(["idag", "7d", "30d", "manad", "allt"]);
+const PRESET_KEYS = new Set<string>([
+  "idag",
+  "igar",
+  "7d",
+  "30d",
+  "manad",
+  "forra-manaden",
+  "allt",
+]);
+
+/** Förvalen (allt utom "eget"). */
+export type PresetKey = Exclude<PeriodKey, "eget">;
+
+export function isPresetKey(value: string | null | undefined): value is PresetKey {
+  return typeof value === "string" && PRESET_KEYS.has(value);
+}
 
 export type ResolvedPeriod = {
   key: PeriodKey;
@@ -193,39 +230,52 @@ export function toIsoDate(d: Date): string {
  * framtiden kapas vid i dag.
  *
  * Jämförelse:
- * - idag, 7d, 30d, eget: lika lång period direkt före.
+ * - idag, igar, 7d, 30d, eget: lika lång period direkt före (i går mot dagen innan).
  * - manad (månaden hittills): samma dagar i föregående månad, så att
  *   1–2 nov jämförs med 1–2 okt och inte med 30–31 okt.
+ * - forra-manaden: hela månaden innan (oktober mot september).
  * - allt: ingen jämförelse.
+ *
+ * Ett eget intervall längre än två år (MAX_RANGE_DAYS) eller som börjar i framtiden ger
+ * standardvalet.
  */
 export function parsePeriod(sp: SearchParamsInput, options: ParseOptions = {}): ResolvedPeriod {
   const today = todayIn(options.now ?? new Date(), options.timeZone);
   const raw = readParam(sp, PERIOD_PARAM);
-  const from = parseIsoDate(readParam(sp, FROM_PARAM));
-  const to = parseIsoDate(readParam(sp, TO_PARAM));
+  const from = parseIsoDate(readParam(sp, FROM_PARAM) ?? readParam(sp, FROM_ALIAS));
+  const to = parseIsoDate(readParam(sp, TO_PARAM) ?? readParam(sp, TO_ALIAS));
 
   // Ett eget intervall gäller när from finns och period saknas eller är "eget".
   if (from && (raw === null || raw === "eget")) {
     const custom = normalizePeriod({ start: from, end: to ?? today });
     if (custom.start.getTime() <= today.getTime()) {
       const range = { start: custom.start, end: custom.end > today ? today : custom.end };
-      return { key: "eget", range, previous: previousPeriod(range), today };
+      if (daysInPeriod(range) <= MAX_RANGE_DAYS) {
+        return { key: "eget", range, previous: previousPeriod(range), today };
+      }
     }
   }
 
-  const key = raw && PRESET_KEYS.has(raw) ? (raw as Exclude<PeriodKey, "eget">) : DEFAULT_PERIOD;
+  const key = isPresetKey(raw) ? raw : DEFAULT_PERIOD;
   return resolvePreset(key, today, options.earliest);
 }
 
-export function resolvePreset(
-  key: Exclude<PeriodKey, "eget">,
-  today: Date,
-  earliest?: Date,
-): ResolvedPeriod {
+export function resolvePreset(key: PresetKey, today: Date, earliest?: Date): ResolvedPeriod {
   switch (key) {
     case "idag": {
       const range = { start: today, end: today };
       return { key, range, previous: previousPeriod(range), today };
+    }
+    case "igar": {
+      const day = addDays(today, -1);
+      const range = { start: day, end: day };
+      return { key, range, previous: previousPeriod(range), today };
+    }
+    case "forra-manaden": {
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const range = { start, end: endOfMonth(start) };
+      const prevStart = new Date(start.getFullYear(), start.getMonth() - 1, 1);
+      return { key, range, previous: { start: prevStart, end: endOfMonth(prevStart) }, today };
     }
     case "7d":
     case "30d": {
@@ -258,8 +308,7 @@ function startOfDayLocal(d: Date): Date {
 /* Skrivning                                                           */
 /* ------------------------------------------------------------------ */
 
-export type PeriodSelection =
-  { key: Exclude<PeriodKey, "eget"> } | { key: "eget"; range: DateRange };
+export type PeriodSelection = { key: PresetKey } | { key: "eget"; range: DateRange };
 
 /**
  * Ny query med periodvalet satt. Övriga parametrar (filter, sidans egna)
@@ -271,9 +320,7 @@ export function withPeriod(
   selection: PeriodSelection,
 ): URLSearchParams {
   const next = toURLSearchParams(current);
-  next.delete(PERIOD_PARAM);
-  next.delete(FROM_PARAM);
-  next.delete(TO_PARAM);
+  for (const p of PERIOD_PARAMS) next.delete(p);
   if (selection.key === "eget") {
     const r = normalizePeriod(selection.range);
     next.set(FROM_PARAM, toIsoDate(r.start));
@@ -435,4 +482,205 @@ export function describePeriod(p: ResolvedPeriod): PeriodDescription {
 /** Antal dagar mellan två datum inklusive båda ändar, oavsett ordning. */
 export function inclusiveDays(a: Date, b: Date): number {
   return Math.abs(calendarDaysBetween(a, b)) + 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Namn, jämförelse och upplösning (samma på alla sidor)               */
+/* ------------------------------------------------------------------ */
+
+/** Bara periodvalet ur en period: "I dag", "Förra månaden", eget intervall. */
+type PeriodLike = Pick<ResolvedPeriod, "key" | "range" | "today">;
+
+/** En period på exakt en dag (I dag, I går eller ett eget intervall på en dag). */
+export function isSingleDay(p: Pick<ResolvedPeriod, "range">): boolean {
+  return p.range !== null && isSameDay(p.range.start, p.range.end);
+}
+
+/**
+ * Periodens namn i rubriker och på knappen: "I dag", "I går", "7 dagar", "Förra månaden",
+ * och för ett eget intervall datumen ("14–20 nov."). Ett eget intervall som råkar vara i dag
+ * eller i går heter så.
+ */
+export function periodName(p: PeriodLike): string {
+  if (p.key !== "eget") return periodChoices.find((c) => c.key === p.key)?.label ?? p.key;
+  if (!p.range) return "Eget intervall";
+  if (isSingleDay(p)) {
+    if (isSameDay(p.range.start, p.today)) return "I dag";
+    if (isSameDay(p.range.start, addDays(p.today, -1))) return "I går";
+  }
+  return formatPeriodShort(p.range, p.today);
+}
+
+/** Namnet i löptext ("Analys · i går", "vinst i går"): förvalen med liten bokstav. */
+export function periodNameInline(p: PeriodLike): string {
+  const name = periodName(p);
+  return p.key === "eget" && !/^I (dag|går)$/.test(name) ? name : lowerFirst(name);
+}
+
+function lowerFirst(s: string): string {
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
+
+/**
+ * Jämförelsetexten efter en förändring: "mot i går", "mot dagen innan", "mot förra 7 dagarna",
+ * "mot månaden innan", "mot perioden innan". null utan jämförelse ("Allt").
+ */
+export function compareText(p: Pick<ResolvedPeriod, "key" | "range" | "previous">): string | null {
+  if (!p.previous || !p.range) return null;
+  switch (p.key) {
+    case "idag":
+      return "mot i går";
+    case "igar":
+      return "mot dagen innan";
+    case "7d":
+      return "mot förra 7 dagarna";
+    case "30d":
+      return "mot förra 30 dagarna";
+    case "manad":
+      return "mot samma dagar förra månaden";
+    case "forra-manaden":
+      return "mot månaden innan";
+    default:
+      if (isSingleDay(p)) return "mot dagen innan";
+      return `mot ${daysInPeriod(p.range)} dagar innan`;
+  }
+}
+
+/** Upplösningen i diagram över perioden. */
+export type ChartUnit = "hour" | "day" | "week" | "month";
+
+/**
+ * Hur ett diagram delar upp perioden: en dag per timme, upp till 31 dagar per dag, upp till
+ * ett halvår per vecka och längre per månad.
+ */
+export function chartUnitFor(days: number): ChartUnit {
+  if (days <= 1) return "hour";
+  if (days <= 31) return "day";
+  if (days <= 183) return "week";
+  return "month";
+}
+
+/* ------------------------------------------------------------------ */
+/* Periodvalet mellan sidor (kakan och länkarna)                       */
+/* ------------------------------------------------------------------ */
+
+/** Finns ett periodval i adressen (förval eller eget intervall)? */
+export function hasPeriodParam(sp: SearchParamsInput): boolean {
+  return PERIOD_PARAMS.some((p) => {
+    const v = readParam(sp, p);
+    return v !== null && v !== "";
+  });
+}
+
+/**
+ * Valet som kakans värde: "period=igar" eller "from=2026-11-14&to=2026-11-20". Standardvalet
+ * (30 dagar) sparas inte (null = ta bort kakan), så att en sida utan ?period visar standard.
+ */
+export function periodCookieValue(selection: PeriodSelection): string | null {
+  if (selection.key === DEFAULT_PERIOD) return null;
+  return withPeriod(new URLSearchParams(), selection).toString();
+}
+
+/**
+ * Kakans värde tillbaka som parametrar, bara om det är ett giltigt val (ett känt förval eller
+ * två riktiga datum). Allt annat ger null, så att en trasig kaka aldrig styr en sida.
+ */
+export function periodFromCookie(value: string | null | undefined): URLSearchParams | null {
+  if (!value || value.length > 80) return null;
+  let raw: URLSearchParams;
+  try {
+    raw = new URLSearchParams(value);
+  } catch {
+    return null;
+  }
+  const key = raw.get(PERIOD_PARAM);
+  if (key !== null) {
+    return isPresetKey(key) && key !== DEFAULT_PERIOD
+      ? new URLSearchParams({ [PERIOD_PARAM]: key })
+      : null;
+  }
+  const from = parseIsoDate(raw.get(FROM_PARAM));
+  const to = parseIsoDate(raw.get(TO_PARAM));
+  if (!from || !to) return null;
+  const r = normalizePeriod({ start: from, end: to });
+  if (daysInPeriod(r) > MAX_RANGE_DAYS) return null;
+  return new URLSearchParams({ [FROM_PARAM]: toIsoDate(r.start), [TO_PARAM]: toIsoDate(r.end) });
+}
+
+/**
+ * Bara periodvalet ur adressen, skrivet som appen skriver det ("?period=igar",
+ * "?from=…&to=…", ?fran/?till översatta), för menyns länkar. "" utan val.
+ */
+export function periodQuery(sp: SearchParamsInput): string {
+  if (!hasPeriodParam(sp)) return "";
+  const raw = readParam(sp, PERIOD_PARAM);
+  let out: URLSearchParams;
+  if (isPresetKey(raw)) out = new URLSearchParams({ [PERIOD_PARAM]: raw });
+  else {
+    const from = readParam(sp, FROM_PARAM) ?? readParam(sp, FROM_ALIAS);
+    const to = readParam(sp, TO_PARAM) ?? readParam(sp, TO_ALIAS);
+    out = new URLSearchParams();
+    if (from) out.set(FROM_PARAM, from);
+    if (to) out.set(TO_PARAM, to);
+  }
+  const s = out.toString();
+  return s ? `?${s}` : "";
+}
+
+/**
+ * Sidorna som visar tal över en period och därför får det sparade valet (kakan) när länken
+ * saknar ?period. Bara exakta sökvägar: en undersida har egna datum.
+ */
+export const PERIOD_PAGES: readonly string[] = [
+  "/",
+  "/pengar",
+  "/butiker",
+  "/automater",
+  "/vart-lager",
+  "/lonsamhet",
+];
+
+/**
+ * Proxyns omdirigering för periodvalet, eller null:
+ * - ?fran=&till= skrivs om till ?from=&to= (appens namn), så att alla laddare läser samma sak.
+ * - En periodsida (PERIOD_PAGES) utan periodval i adressen får det sparade valet ur kakan.
+ * Returnerar sökvägen med query ("/pengar?period=igar"). Övriga parametrar behålls.
+ */
+export function periodRedirect(
+  pathname: string,
+  sp: URLSearchParams,
+  cookieValue: string | undefined,
+): string | null {
+  const build = (next: URLSearchParams) => {
+    const q = next.toString();
+    return q ? `${pathname}?${q}` : pathname;
+  };
+  if (sp.has(FROM_ALIAS) || sp.has(TO_ALIAS)) {
+    const next = new URLSearchParams(sp);
+    const from = next.get(FROM_ALIAS);
+    const to = next.get(TO_ALIAS);
+    next.delete(FROM_ALIAS);
+    next.delete(TO_ALIAS);
+    if (from && !next.has(FROM_PARAM)) next.set(FROM_PARAM, from);
+    if (to && !next.has(TO_PARAM)) next.set(TO_PARAM, to);
+    return build(next);
+  }
+  if (!PERIOD_PAGES.includes(pathname) || hasPeriodParam(sp)) return null;
+  const saved = periodFromCookie(cookieValue);
+  if (!saved) return null;
+  const next = new URLSearchParams(sp);
+  for (const [k, v] of saved) next.set(k, v);
+  return build(next);
+}
+
+/** Kortare jämförelsetext för små rutor (KPI-bandet): "mot förra 7 d", "mot dagen innan". */
+export function compareTextShort(
+  p: Pick<ResolvedPeriod, "key" | "range" | "previous">,
+): string | null {
+  const t = compareText(p);
+  if (t === null) return null;
+  return t
+    .replace(/ dagarna$/, " d")
+    .replace(/ dagar innan$/, " d innan")
+    .replace("samma dagar förra månaden", "förra mån.");
 }

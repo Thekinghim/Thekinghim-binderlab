@@ -8,6 +8,7 @@ import { activeV2NavId, roleLabel, v2NavForRole, type Role } from "@/components/
 import type { ShellOrganization, ShellUser, TodoCountSource } from "@/components/shell/side-nav";
 
 import { NavCount } from "./count";
+import { PeriodLink } from "./period-link";
 import { NavIcon, V2Logo } from "./nav-icon";
 
 /**
@@ -52,7 +53,7 @@ export function V2SideNav({
       </Link>
       <nav aria-label="Huvudmeny" className="contents">
         {items.map((item) => (
-          <Link
+          <PeriodLink
             key={item.id}
             href={item.href}
             className="v2-nav"
@@ -64,7 +65,7 @@ export function V2SideNav({
             {item.counter === "rutt" ? (
               <NavCount count={routeCount} neutral label="stopp i dag" />
             ) : null}
-          </Link>
+          </PeriodLink>
         ))}
       </nav>
       <WhoMenu

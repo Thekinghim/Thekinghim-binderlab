@@ -1413,6 +1413,441 @@
     white-space: nowrap;
   }
 
+  /* Periodvalet: datumknappen, rutan på datorn, arket på telefonen och kalendern */
+  .v2-pdate {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: var(--v2-r-md);
+    border: 1px solid var(--v2-line);
+    background: var(--v2-panel);
+    color: var(--v2-mute);
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    white-space: nowrap;
+    flex: none;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    transition:
+      transform 0.16s var(--v2-ease),
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+  .v2-pdate:active {
+    transform: scale(0.97);
+  }
+  .v2-pdate.on {
+    color: var(--v2-ink);
+    border-color: var(--v2-line3);
+  }
+  .v2-pdate .lbl {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .v2-pdate:hover {
+      background: var(--v2-hover);
+      color: var(--v2-ink);
+    }
+  }
+  .v2-seg-period.busy {
+    cursor: progress;
+  }
+  .v2-pop-anchor {
+    position: relative;
+    display: inline-flex;
+  }
+  .v2-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    width: 340px;
+    padding: 14px;
+    border-radius: var(--v2-r-lg);
+    background: var(--v2-panel);
+    color: var(--v2-ink);
+    box-shadow:
+      0 0 0 1px var(--v2-line),
+      0 12px 32px rgb(0 0 0 / 0.12);
+    transform-origin: top right;
+    transition:
+      opacity 0.16s var(--v2-ease),
+      transform 0.16s var(--v2-ease);
+    @starting-style {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.97);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .v2-pop {
+      transition: opacity 0.12s ease;
+      @starting-style {
+        transform: none;
+      }
+    }
+  }
+  .v2-ppanel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .v2-ppresets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .v2-ppresets button {
+    height: 30px;
+    padding: 0 10px;
+    border-radius: var(--v2-r-md);
+    background: var(--v2-sel);
+    color: var(--v2-ink);
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    transition:
+      transform 0.16s var(--v2-ease),
+      background-color 0.15s ease;
+  }
+  .v2-ppresets button:active {
+    transform: scale(0.97);
+  }
+  .v2-ppresets button[aria-pressed="true"] {
+    background: var(--v2-primary);
+    color: var(--v2-on-primary);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .v2-ppresets button:not([aria-pressed="true"]):hover {
+      background: var(--v2-line);
+    }
+  }
+  .v2-cal-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .v2-cal-hd p {
+    font-size: var(--v2-t-md);
+    font-weight: 650;
+  }
+  .v2-cal-hd p::first-letter {
+    text-transform: uppercase;
+  }
+  .v2-cal table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+  }
+  .v2-cal th {
+    height: 28px;
+    font-size: var(--v2-t-xs);
+    font-weight: 400;
+    color: var(--v2-faint);
+  }
+  .v2-cal td {
+    height: 38px;
+    padding: 1px 0;
+  }
+  .v2-cal td.in {
+    background: var(--v2-sel);
+  }
+  .v2-cal td.span.s {
+    background: linear-gradient(to right, transparent 50%, var(--v2-sel) 50%);
+  }
+  .v2-cal td.span.e {
+    background: linear-gradient(to left, transparent 50%, var(--v2-sel) 50%);
+  }
+  .v2-cal td button {
+    width: 100%;
+    height: 36px;
+    border-radius: var(--v2-r-md);
+    font-size: var(--v2-t-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--v2-body2);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    position: relative;
+  }
+  .v2-cal td.in button {
+    color: var(--v2-ink);
+  }
+  .v2-cal td:is(.s, .e) button {
+    background: var(--v2-primary);
+    color: var(--v2-on-primary);
+    font-weight: 650;
+  }
+  .v2-cal td button[aria-current="date"] {
+    font-weight: 650;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .v2-cal td button:disabled {
+    color: var(--v2-off);
+    cursor: not-allowed;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .v2-cal td:not(.s):not(.e) button:not(:disabled):hover {
+      background: var(--v2-hover);
+      box-shadow: inset 0 0 0 1px var(--v2-line);
+    }
+  }
+  .v2-pfields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .v2-pfields label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+  }
+  .v2-pfields input {
+    height: 36px;
+    padding: 0 8px;
+    border-radius: var(--v2-r-md);
+    border: 1px solid var(--v2-line);
+    background: var(--v2-panel);
+    color: var(--v2-ink);
+    font: inherit;
+    font-size: var(--v2-t-md);
+    font-variant-numeric: tabular-nums;
+    min-width: 0;
+  }
+  @media (pointer: coarse) {
+    .v2-pfields input {
+      font-size: 16px;
+      height: 44px;
+    }
+  }
+  .v2-pfoot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--v2-line2);
+  }
+  .v2-pfoot .sum {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+    font-variant-numeric: tabular-nums;
+  }
+  .v2-psheet .sb {
+    padding: 8px 16px 16px;
+  }
+  .v2-psheet .v2-ppresets button {
+    height: 36px;
+    padding: 0 12px;
+  }
+  .v2-psheet .v2-cal td {
+    height: 44px;
+  }
+  .v2-psheet .v2-cal td button {
+    height: 42px;
+    font-size: var(--v2-t-md);
+  }
+  .v2-psheet .v2-pfoot .v2-btn {
+    flex: none;
+    min-width: 120px;
+  }
+  @media (max-width: 900px) {
+    .v2-mperiod .v2-seg-period {
+      gap: 6px;
+    }
+    .v2-mperiod .v2-seg {
+      width: auto;
+      flex: 1;
+      min-width: 0;
+    }
+    .v2-mperiod .v2-seg button {
+      padding: 6px 4px;
+    }
+    .v2-mperiod .v2-pdate {
+      height: 44px;
+      padding: 0 12px;
+    }
+    .v2-mperiod .v2-pdate .lbl {
+      max-width: 92px;
+    }
+  }
+
+  /* Sålt i går (Hem och Pengar): total, per timme, per titel och per automat */
+  .v2-ds-body {
+    padding: 4px 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .v2-ds-tot {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .v2-ds-tot dt {
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+  }
+  .v2-ds-tot dd {
+    font-size: var(--v2-t-xl);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .v2-ds-tot dd.neg {
+    color: var(--v2-crit-text);
+  }
+  .v2-ds-hours .hd {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: var(--v2-t-sm);
+    margin-bottom: 8px;
+  }
+  .v2-ds-hours .hd span {
+    color: var(--v2-mute);
+  }
+  .v2-ds-hours .bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 56px;
+    border-bottom: 1px solid var(--v2-line);
+  }
+  .v2-ds-hours .bars span {
+    flex: 1;
+    min-width: 0;
+    height: max(3px, calc(var(--h) * 100%));
+    background: var(--v2-profit);
+    border-radius: 3px 3px 0 0;
+  }
+  .v2-ds-hours .bars span.z {
+    background: var(--v2-line);
+    height: 3px;
+  }
+  .v2-ds-hours .ax {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .v2-ds-cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .v2-ds-list .lh {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--v2-line2);
+  }
+  .v2-ds-list h3 {
+    font-size: var(--v2-t-sm);
+    font-weight: 650;
+  }
+  .v2-ds-list .lh span {
+    font-size: var(--v2-t-xs);
+    color: var(--v2-faint);
+  }
+  .v2-ds-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--v2-line2);
+    font-size: var(--v2-t-sm);
+  }
+  .v2-ds-row:not(:has(.v2-pk)) {
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+  }
+  .v2-ds-row .nm {
+    min-width: 0;
+  }
+  .v2-ds-row .nm b {
+    display: block;
+    font-weight: 550;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .v2-ds-row .nm small {
+    display: block;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+  }
+  .v2-ds-row .n,
+  .v2-ds-row .kr {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+  }
+  .v2-ds-row .n {
+    color: var(--v2-ink);
+    font-weight: 550;
+  }
+  .v2-ds-row .kr {
+    color: var(--v2-mute);
+    min-width: 62px;
+  }
+  .v2-ds-row .kr.pf {
+    color: var(--v2-profit-text);
+    font-weight: 550;
+  }
+  .v2-ds-row .kr.pf.neg {
+    color: var(--v2-crit-text);
+  }
+  .v2-ds-list details summary {
+    cursor: pointer;
+    padding: 8px 0 0;
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-mute);
+    list-style: none;
+  }
+  .v2-ds-list details summary::-webkit-details-marker {
+    display: none;
+  }
+  .v2-ds-list details[open] summary {
+    display: none;
+  }
+  .v2-ds-note {
+    font-size: var(--v2-t-xs);
+    color: var(--v2-faint);
+  }
+  @media (max-width: 900px) {
+    .v2-ds-body {
+      padding: 4px 14px 14px;
+    }
+    .v2-ds-tot {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .v2-ds-cols {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .v2-ds-row .kr {
+      min-width: 0;
+    }
+  }
+
   /* Rullande siffra: NumberFlow ärver typsnittet; tabulära siffror */
   .v2-roll {
     font-variant-numeric: tabular-nums;

@@ -13,7 +13,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
+  PERIOD_COOKIE,
   parseVmbView,
+  periodRedirect,
   STORE_SHARE_COOKIE,
   STORE_SHARE_HEADER,
   storeShareViewOf,
@@ -69,6 +71,26 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   if (authenticated) {
+    // Periodvalet: ?fran/?till blir ?from/?to, och en periodsida utan ?period får det sparade
+    // valet (kakan som periodväljaren skriver). Bara vanliga sidvisningar (GET/HEAD).
+    if (request.method === "GET" || request.method === "HEAD") {
+      let saved: string | undefined;
+      try {
+        saved = decodeURIComponent(request.cookies.get(PERIOD_COOKIE)?.value ?? "");
+      } catch {
+        saved = undefined;
+      }
+      const to = periodRedirect(pathname, request.nextUrl.searchParams, saved);
+      if (to) {
+        const target = request.nextUrl.clone();
+        const [path, query = ""] = to.split("?");
+        target.pathname = path ?? pathname;
+        target.search = query ? `?${query}` : "";
+        const redirect = NextResponse.redirect(target);
+        for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
+        return redirect;
+      }
+    }
     return response;
   }
 

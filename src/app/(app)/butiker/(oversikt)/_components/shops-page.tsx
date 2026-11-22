@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { isSingleDay, periodNameInline } from "@/components/shell/period-state";
 import { ButtonLink } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
@@ -20,7 +21,9 @@ type SearchParams = Record<string, string | string[] | undefined>;
 export async function ShopsPage({ sp }: { sp: SearchParams }) {
   const ctx = await requireRoute("butiker");
   const [data, p] = await Promise.all([loadShops(sp), loadPeriod(sp)]);
-  const days = p.key === "idag" ? "i dag" : `${formatInt(p.days)}${NBSP}d`;
+  const days = isSingleDay(p.resolved)
+    ? periodNameInline(p.resolved)
+    : `${formatInt(p.days)}${NBSP}d`;
   const valj = typeof sp.valj === "string" ? sp.valj : null;
   return (
     <V2Page

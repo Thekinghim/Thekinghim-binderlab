@@ -1788,3 +1788,12 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Sålt i går: under KPI-bandet, i full bredd (bara när perioden är en dag, och för påfyllaren). */
+.hem2 .o-sold {
+  margin-top: 14px;
+}
+@media (max-width: 900px) {
+  .hem2 .o-sold {
+    margin-top: 12px;
+  }
+}

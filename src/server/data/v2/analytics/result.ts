@@ -9,12 +9,13 @@ import { periodDays } from "@/domain";
 import "server-only";
 
 import { profitability } from "@/domain";
-import type { SearchParamsInput } from "@/components/shell/period-state";
+import { chartUnitFor, compareText, type SearchParamsInput } from "@/components/shell/period-state";
 import { loadContext, loadPeriod } from "@/server/data/core";
 import { loadProfitAdjustments } from "@/server/data/adjustments";
 
 import { resultAfterProfit } from "@/app/(app)/lonsamhet/_lib/result";
 
+import { loadDaySales } from "./day-sales";
 import { loadMoneyProfit, moneyKey } from "./money-base";
 import { profitBars, waterfallRows, type ProfitBar, type WaterfallRow } from "./money-model";
 
@@ -31,9 +32,13 @@ export interface MoneyResult {
   readonly profitPerDayOre: number | null;
   readonly deltaBp: number | null;
   readonly deltaOre: number | null;
-  /** "mot förra 30 dagarna". */
+  /** "mot förra 30 dagarna", "mot dagen innan". */
   readonly compareText: string | null;
-  readonly unit: "week" | "day" | null;
+  /**
+   * Staplarnas upplösning efter periodens längd (chartUnitFor). "hour": en dag, staplarna är
+   * intäkten per timme (vinst per timme räknas inte, hyra och andel hör till dagen).
+   */
+  readonly unit: "hour" | "day" | "week" | "month" | null;
   readonly bars: readonly ProfitBar[];
   readonly best: { readonly label: string; readonly profitOre: number } | null;
   readonly orders: number;
@@ -44,11 +49,6 @@ export interface MoneyWaterfall {
   /** Order utan inköpspris ingår inte (intäkt, öre). */
   readonly unpricedRevenueOre: number;
 }
-
-const COMPARE: Record<string, string> = {
-  "30d": "mot förra 30 dagarna",
-  "7d": "mot förra 7 dagarna",
-};
 
 export async function loadMoneyResult(sp: SearchParamsInput): Promise<MoneyResult | null> {
   const [data, p, ctx] = await Promise.all([
@@ -63,10 +63,24 @@ export async function loadMoneyResult(sp: SearchParamsInput): Promise<MoneyResul
   // I dag jämförs inte med hela i går (en halv dag mot en hel ser ut som ett ras); Hem har
   // "i går samma tid" ur takten.
   const prevProfit = p.key !== "idag" ? (profit?.previous ?? null) : null;
-  const unit = p.key === "7d" ? "day" : p.key === "idag" ? null : "week";
-  const bars =
-    unit === null ? [] : profitBars(model.trend[unit].buckets, unit, ctx.today).slice(-8);
-  const best = bars.reduce<ProfitBar | null>(
+  const unit = chartUnitFor(p.days);
+  let bars: ProfitBar[];
+  if (unit === "hour") {
+    const day = await loadDaySales(sp);
+    bars = day.sales.hours.map((h) => ({
+      key: String(h.hour),
+      label: String(h.hour).padStart(2, "0"),
+      profitOre: h.revenueOre,
+      partial: false,
+      partialText: null,
+      paceOre: null,
+    }));
+  } else if (unit === "month") {
+    bars = profitBars(model.trend.month.buckets, "day", ctx.today);
+  } else {
+    bars = profitBars(model.trend[unit].buckets, unit, ctx.today);
+  }
+  const best = (unit === "hour" ? [] : bars).reduce<ProfitBar | null>(
     (b, x) => (!x.partial && (b === null || x.profitOre > b.profitOre) ? x : b),
     null,
   );
@@ -83,8 +97,8 @@ export async function loadMoneyResult(sp: SearchParamsInput): Promise<MoneyResul
     deltaBp:
       prevProfit !== null && profit?.delta != null ? Math.round(profit.delta * 10_000) : null,
     deltaOre: prevProfit !== null ? model.bridge.profitOre - prevProfit : null,
-    compareText: prevProfit !== null ? (COMPARE[p.key] ?? "mot förra perioden") : null,
-    unit,
+    compareText: prevProfit !== null ? (compareText(p.resolved) ?? "mot förra perioden") : null,
+    unit: bars.length > 0 ? unit : null,
     bars,
     best: best && best.profitOre > 0 ? { label: best.label, profitOre: best.profitOre } : null,
     orders: model.orders,
