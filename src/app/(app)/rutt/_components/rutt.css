@@ -159,7 +159,7 @@
 .v2-rutt .stitles > div {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
+  gap: 8px 14px;
   margin-top: 8px;
   font-size: var(--v2-t-sm);
   color: var(--v2-body2);
@@ -331,7 +331,8 @@
 .v2-rutt .pkb {
   display: grid;
   place-items: center;
-  width: 30px;
+  /* Bredd för den bredaste packen (151) i storlek m, så att namnen står i linje. */
+  width: 48px;
 }
 .v2-rutt .pkt {
   min-width: 0;

@@ -245,7 +245,7 @@ export function LagerView(p: LagerViewProps) {
                     <div className={cn("tr", r.retired && "idle")} role="row" key={r.titleId}>
                       <span className="ti" role="cell">
                         <span className="pkb">
-                          <PackImage title={r.name} size="xs" />
+                          <PackImage title={r.name} size="s" />
                         </span>
                         <span className="nm">
                           <b>{r.name}</b>

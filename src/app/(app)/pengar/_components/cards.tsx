@@ -476,7 +476,9 @@ export async function TopCard({ sp, days }: { sp: SearchParamsInput; days: strin
         <div key={t.titleId} className="brow">
           <span className="rk">{i + 1}.</span>
           <div className="tn">
-            <PackImage title={t.name} size="m" />
+            <span className="pkb">
+              <PackImage title={t.name} size="m" />
+            </span>
             <div className="tx">
               <b>{t.name}</b>
               <small>

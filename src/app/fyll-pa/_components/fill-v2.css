@@ -312,7 +312,8 @@
   /* Facken */
   .v2-fill-app .row {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    /* Bredd för den bredaste packen (151) i storlek md. */
+    grid-template-columns: 62px minmax(0, 1fr) auto;
     grid-template-areas:
       "pk info step"
       "pk meter fill"

@@ -82,6 +82,8 @@ export interface ShopView {
 }
 
 const REFILL: ReadonlySet<FleetStatus> = new Set(["tom", "fyll-pa", "tom-snart"]);
+/** Packbilder per automat i butikens remsa (storlek xs); resten blir "+N". */
+const MINI_PACKS = 6;
 
 function fillPct(bp: number | null): string {
   return bp === null ? "–" : `${formatInt(Math.round(bp / 100))}${NBSP}%`;
@@ -441,12 +443,14 @@ function ShopDetail({
               </span>
               {m.packs.length > 0 ? (
                 <span className="pstrip" aria-hidden="true">
-                  {m.packs.slice(0, 8).map((p, i) => (
+                  {m.packs.slice(0, MINI_PACKS).map((p, i) => (
                     <span key={`${p.name}-${i}`} className={p.empty ? "ps e" : "ps"} title={p.name}>
                       <PackImage title={p.name} size="xs" />
                     </span>
                   ))}
-                  {m.packs.length > 8 ? <span className="more">+{m.packs.length - 8}</span> : null}
+                  {m.packs.length > MINI_PACKS ? (
+                    <span className="more">+{m.packs.length - MINI_PACKS}</span>
+                  ) : null}
                 </span>
               ) : (
                 <span className="id">{m.code}</span>

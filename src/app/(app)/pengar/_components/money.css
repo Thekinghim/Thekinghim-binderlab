@@ -793,6 +793,13 @@
     gap: 10px;
     min-width: 0;
   }
+  /* Bredd för den bredaste packen (151) i storlek m, så att namnen står i linje. */
+  .g4-best .tn .pkb {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 48px;
+  }
   .g4-best .tn .tx {
     min-width: 0;
   }
@@ -1229,7 +1236,7 @@
   }
   .g4-bminis {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 8px;
     padding: 14px 20px 4px;
   }
@@ -1272,7 +1279,7 @@
     display: flex;
     gap: 3px;
     align-items: flex-end;
-    min-height: 22px;
+    min-height: 40px;
     overflow: hidden;
   }
   .g4-bmini .ps {
@@ -1286,7 +1293,7 @@
   .g4-bmini .pstrip .more {
     font-size: var(--v2-t-xs);
     color: var(--v2-mute);
-    line-height: 22px;
+    line-height: 40px;
   }
   .g4-mchart {
     padding: 16px 20px 0;

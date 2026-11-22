@@ -217,8 +217,8 @@
   grid-template-columns: minmax(170px, 1.7fr) minmax(70px, 0.9fr) 60px 52px 98px 60px 96px;
   gap: 12px;
   align-items: center;
-  padding: 0 18px;
-  min-height: 52px;
+  padding: 6px 18px;
+  min-height: 62px;
   border-top: 1px solid var(--v2-line2);
 }
 .v2-lager .tr.th {
@@ -267,7 +267,8 @@
   min-width: 0;
 }
 .v2-lager .pkb {
-  width: 16px;
+  /* Bredd för den bredaste packen (151) i storlek s, så att namnen står i linje. */
+  width: 36px;
   display: grid;
   place-items: center;
   flex: none;
@@ -515,7 +516,7 @@
   }
   .v2-lager .tr > .dist {
     grid-area: dist;
-    padding-left: 26px;
+    padding-left: 46px;
   }
   .v2-lager .tr > .days {
     grid-area: days;
@@ -530,7 +531,6 @@
     display: none;
   }
   .v2-lager .pkb {
-    width: 16px;
     padding-top: 2px;
   }
   .v2-lager .nm small.mob {

@@ -274,7 +274,9 @@ export async function TopCardView({ sp }: { sp: SearchParamsInput }) {
           style={{ gridTemplateColumns: "minmax(0,1fr) 44px 78px 64px" }}
         >
           <span className="x-tn">
-            <PackImage title={t.name} size="m" />
+            <span className="x-pkb">
+              <PackImage title={t.name} size="s" />
+            </span>
             <span>
               <b>{t.name}</b>
               <small>{kr(t.revenueOre)}</small>
@@ -409,7 +411,9 @@ export async function StockCardView() {
       ) : (
         s.runsOut.map((t) => (
           <div className="x-lr" key={t.titleId}>
-            <PackImage title={t.name} size="xs" />
+            <span className="x-pkb">
+              <PackImage title={t.name} size="s" />
+            </span>
             <span className="x-ln">
               <b>{t.name}</b>
               <small>

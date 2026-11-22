@@ -357,7 +357,7 @@ export function LiveCard({ orders, nowIso }: { orders: readonly LiveOrder[]; now
           {orders.slice(0, 4).map((o) => (
             <div className="sale" key={o.id}>
               <span className="dot g" aria-hidden="true" />
-              <PackImage title={o.titleName} size="l" />
+              <PackImage title={o.titleName} size="md" />
               <span className="tx">
                 <b>{o.titleName}</b>
                 <small>{[o.storeName, o.machineCode].filter(Boolean).join(" · ")}</small>

@@ -3,7 +3,7 @@
  * (docs/design/v2/prototyp.html). Ingen träff = en neutral platta med initialer i samma
  * format (PackImage), så att rutnäten inte hoppar; titeln står alltid bredvid.
  *
- * Bilderna är 240 px höga (2× största visade storlek, 72 px på 2×-skärm ≈ 144 px, med marginal).
+ * Bilderna är 240 px höga: 2× största visade storlek (xl, 120 px), alltså skarpa på 2×-skärm.
  */
 
 /** Nycklarna som har en bild i public/packs/<nyckel>.webp, med bildens mått (px). */
