@@ -5,6 +5,7 @@
  * kostnader). Inget räknas på ett nytt sätt.
  */
 
+import { periodDays } from "@/domain";
 import "server-only";
 
 import { profitability } from "@/domain";
@@ -21,6 +22,8 @@ export interface MoneyResult {
   /** "22 okt – 20 nov". */
   readonly periodLabel: string;
   readonly days: number;
+  /** Periodens längd i dagar (som periodvalet). */
+  readonly periodDays: number;
   readonly profitOre: number;
   readonly profitLabel: string;
   readonly revenueOre: number;
@@ -59,10 +62,7 @@ export async function loadMoneyResult(sp: SearchParamsInput): Promise<MoneyResul
   const profit = kpi.get("profit");
   // I dag jämförs inte med hela i går (en halv dag mot en hel ser ut som ett ras); Hem har
   // "i går samma tid" ur takten.
-  const prevProfit =
-    p.key !== "idag" && profit?.value != null && profit.delta !== null && profit.delta > -1
-      ? Math.round(profit.value / (1 + profit.delta))
-      : null;
+  const prevProfit = p.key !== "idag" ? (profit?.previous ?? null) : null;
   const unit = p.key === "7d" ? "day" : p.key === "idag" ? null : "week";
   const bars =
     unit === null ? [] : profitBars(model.trend[unit].buckets, unit, ctx.today).slice(-8);
@@ -73,6 +73,8 @@ export async function loadMoneyResult(sp: SearchParamsInput): Promise<MoneyResul
   return {
     periodLabel: model.periodLabel,
     days: model.days,
+    // Samma N som periodvalet ("30 dagar"), inte bara dagarna med data.
+    periodDays: periodDays(p.period),
     profitOre: model.bridge.profitOre,
     profitLabel: model.bridge.profitLabel,
     revenueOre: model.bridge.revenueOre,
@@ -111,6 +113,7 @@ export async function loadMoneyWaterfall(sp: SearchParamsInput): Promise<MoneyWa
   return {
     rows: waterfallRows({
       revenueOre: b.revenueOre,
+      unpricedRevenueOre: b.unpricedRevenueOre,
       vmbVatOre: b.vmbVatOre,
       costOre: b.costOre,
       feesOre: b.feesOre,

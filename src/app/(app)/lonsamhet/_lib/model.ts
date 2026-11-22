@@ -200,6 +200,8 @@ export interface Kpi {
   /** Minskning är bra. */
   readonly invert: boolean;
   readonly primary: boolean;
+  /** Jämförelseperiodens värde (bara vinsten), eller null utan jämförelse. */
+  readonly previous?: number | null;
 }
 
 export interface LonsamhetModel {
@@ -611,6 +613,7 @@ export function buildLonsamhetModel(
       unit: "ore",
       value: totalsRow.profitOre,
       delta: prevTotals ? relative(totalsRow.profitOre, prevTotals.profitOre) : null,
+      previous: prevTotals ? prevTotals.profitOre : null,
       deltaKind: "relative",
       invert: false,
       primary: true,

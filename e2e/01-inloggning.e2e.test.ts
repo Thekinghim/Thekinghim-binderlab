@@ -100,8 +100,7 @@ describe("inloggning", () => {
     await page.goto("/datakallor");
     await page.waitForURL((url) => !url.pathname.startsWith("/datakallor"));
     // Inte tyst: startsidan förklarar varför (requireRoute → ?nekad=datakallor).
-    const notice = page.getByRole("region", { name: "Notiser" });
-    await notice.getByText("Du har inte tillgång till Datakällor.").waitFor();
+    await page.getByText("Du har inte tillgång till Datakällor.").first().waitFor();
     await page.waitForURL((url) => !url.searchParams.has("nekad"));
     await screenshot(page, "01-inloggning-lasare-mork");
     expectNoPageErrors(errors);

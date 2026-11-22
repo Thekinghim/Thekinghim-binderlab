@@ -83,50 +83,52 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
   const compare = today ? "mot i går" : "mot förra";
   const lp = (extra: string) => `/lonsamhet${extra}`;
 
-  const profit = kpis.get("profit");
+  const rawProfit = kpis.get("profit");
+  // Inga order i perioden: vinsten är 0 kr (inte "–"), som intäkten.
+  const noSales = (kpis.get("orders")?.value ?? 0) === 0;
+  const profit =
+    rawProfit && rawProfit.value === null && noSales ? { ...rawProfit, value: 0 } : rawProfit;
   const md = machineDays(input.machines, p.period);
   const mdPrev = p.compare ? machineDays(input.machines, p.compare) : 0;
   const perMachine = profitPerMachineDayOre(profit?.value ?? null, md);
-  const prevProfit =
-    profit?.value !== null && profit?.value !== undefined && profit.delta !== null
-      ? Math.round(profit.value / (1 + profit.delta))
-      : null;
+  // Jämförelseperiodens vinst direkt ur modellen (att räkna baklänges ur förändringen blir fel
+  // när den förra vinsten var negativ eller den nya är 0).
+  const prevProfit = profit?.previous ?? null;
   const perMachinePrev = profitPerMachineDayOre(prevProfit, mdPrev);
 
   const pace = home.pace;
   const tiles: (KpiBandTile | null)[] = [
     fromKpi(profit, today ? "Vinst i dag" : "Vinst", lp(""), compare),
-    pace
-      ? {
-          id: "pace",
-          label: "Intäkt i dag",
-          value: pace.soFarOre,
-          unit: "ore",
-          deltaBp: pace.baselineSoFarOre > 0 ? pace.deltaBp : null,
-          deltaUnit: "pct",
-          compare:
-            pace.baselineSoFarOre > 0 ? `mot vanlig ${WEEKDAY[pace.weekday - 1] ?? "dag"}` : null,
-          trend: pace.todayHourly,
-          href: lp("?period=idag"),
-        }
-      : null,
+    // Fast uppsättning rutor (layouten hoppar inte): utan takt står rutan kvar med "–".
+    {
+      id: "pace",
+      label: "Intäkt i dag",
+      value: pace ? pace.soFarOre : null,
+      unit: "ore",
+      deltaBp: pace && pace.baselineSoFarOre > 0 ? pace.deltaBp : null,
+      deltaUnit: "pct",
+      compare:
+        pace && pace.baselineSoFarOre > 0
+          ? `mot vanlig ${WEEKDAY[pace.weekday - 1] ?? "dag"}`
+          : null,
+      trend: pace ? pace.todayHourly : [],
+      href: lp("?period=idag"),
+    },
     fromKpi(kpis.get("revenue"), "Intäkt", lp(""), compare),
     fromKpi(kpis.get("orders"), "Sålda pack", "/order", compare),
     fromKpi(kpis.get("aov"), "Snittköp", "/order", compare),
     fromKpi(kpis.get("margin"), "Marginal", lp(""), compare),
-    perMachine !== null
-      ? {
-          id: "per-machine",
-          label: "Vinst/automat/dag",
-          value: perMachine,
-          unit: "ore",
-          deltaBp: changeBp(perMachine, perMachinePrev),
-          deltaUnit: "pct",
-          compare: changeBp(perMachine, perMachinePrev) === null ? null : compare,
-          trend: [],
-          href: "/automater",
-        }
-      : null,
+    {
+      id: "per-machine",
+      label: "Vinst/automat/dag",
+      value: perMachine,
+      unit: "ore",
+      deltaBp: changeBp(perMachine, perMachinePrev),
+      deltaUnit: "pct",
+      compare: changeBp(perMachine, perMachinePrev) === null ? null : compare,
+      trend: [],
+      href: "/automater",
+    },
     {
       id: "stock-value",
       label: "Lagervärde",

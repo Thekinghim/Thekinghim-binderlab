@@ -51,7 +51,7 @@ import { comparableText } from "@/import/adapter";
 import { writeSlotCapacities } from "@/server/awish/slot-capacity";
 
 import { AWISH_MIN_CALL_MS, AwishApiError, type AwishApi, type AwishProduct } from "./grpc-client";
-import { detectSwaps, swapNote, type ProductSwap } from "./product-swap";
+import { classifySwaps, swapNote, type ProductSwap } from "./product-swap";
 import { awishRefillNote, refillDeductions } from "./refill-deduction";
 
 type Row = Record<string, unknown>;
@@ -225,7 +225,7 @@ async function resolveTitles(
   tx: Tx,
   organizationId: string,
   groups: readonly AwishSlotGroup[],
-): Promise<{ byKey: Map<string, string>; created: number }> {
+): Promise<{ byKey: Map<string, string>; created: number; createdIds: Set<string> }> {
   const lookup = async (names: readonly string[]) => {
     const found = await query<{ raw: string; title_id: string | null }>(
       tx,
@@ -262,6 +262,7 @@ async function resolveTitles(
   const names = groups.map((g) => g.name);
   let hits = await lookup(names);
   let created = 0;
+  const createdIds = new Set<string>();
   const missing = groups.filter((g) => !hits.get(g.name));
   for (const g of missing) {
     const inserted = await query<{ id: string }>(
@@ -272,7 +273,10 @@ async function resolveTitles(
           returning id`,
     );
     let titleId = inserted[0]?.id;
-    if (titleId) created += 1;
+    if (titleId) {
+      created += 1;
+      createdIds.add(titleId);
+    }
     if (!titleId) {
       const existing = await query<{ id: string }>(
         tx,
@@ -297,7 +301,7 @@ async function resolveTitles(
     if (!id) throw new Error(`Aliaset för "${g.name}" saknas.`);
     byKey.set(g.key, id);
   }
-  return { byKey, created };
+  return { byKey, created, createdIds };
 }
 
 /**
@@ -369,7 +373,7 @@ export async function applyMachineStock(
     }
     if (!location) throw new Error("Automatens lagerplats saknas.");
 
-    const { byKey, created } = await resolveTitles(tx, org, groups);
+    const { byKey, created, createdIds } = await resolveTitles(tx, org, groups);
     // Två varunamn kan peka på samma titel (sammanslagna titlar): summera.
     const wanted = new Map<string, { units: number; slots: number; channels: string[] }>();
     // Fyll på: pack, kapacitet och tomma fack per titel (stock_locations.awish_fill).
@@ -404,8 +408,8 @@ export async function applyMachineStock(
 
     // Produktbyte: fack som bytt titel sedan förra läsningen (./product-swap).
     const syncedBefore = location.synced !== null && location.synced !== undefined;
-    const swaps = syncedBefore
-      ? detectSwaps({
+    const classified = syncedBefore
+      ? classifySwaps({
           previous: await previousChannels(tx, org, input.machineId),
           current: input.products.flatMap((p) => {
             const name = comparableText(p.goodName);
@@ -420,9 +424,11 @@ export async function applyMachineStock(
             ]),
           ),
           syncedBefore,
-          waiting: unsent.size > 0,
+          unsent,
+          newTitles: createdIds,
         })
-      : [];
+      : { swaps: [], deferred: [], renamed: [] };
+    const swaps = classified.swaps;
     // Påfyllning enligt Awish: ökningen dras ur vårt lager (./refill-deduction).
     const deductions = refillDeductions({
       syncedBefore,
@@ -523,14 +529,17 @@ export async function applyMachineStock(
       absentTitleIds: absent.map((l) => l.title_id),
     });
 
-    // Fyllnadsgraden: kapaciteten per titel enligt Awish (./slot-capacity).
-    await writeSlotCapacities(tx, {
-      org,
-      machineId: input.machineId,
-      at,
-      groups,
-      titleIdByKey: byKey,
-    });
+    // Fyllnadsgraden: kapaciteten per titel enligt Awish (./slot-capacity). Väntar ett bytt fack
+    // på en sändning till Awish behålls förra läsningens fack, så att bytet hittas sedan.
+    if (classified.deferred.length === 0) {
+      await writeSlotCapacities(tx, {
+        org,
+        machineId: input.machineId,
+        at,
+        groups,
+        titleIdByKey: byKey,
+      });
+    }
 
     await tx.execute(
       sql`update public.stock_locations
@@ -548,6 +557,8 @@ export async function applyMachineStock(
       skipped: null,
       ...(heldBack > 0 ? { heldBack } : {}),
       ...(swaps.length > 0 ? { swaps: swaps.length } : {}),
+      ...(classified.renamed.length > 0 ? { renamed: classified.renamed.length } : {}),
+      ...(classified.deferred.length > 0 ? { swapsDeferred: classified.deferred.length } : {}),
     };
   });
 }

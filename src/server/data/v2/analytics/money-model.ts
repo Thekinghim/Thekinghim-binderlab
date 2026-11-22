@@ -9,6 +9,7 @@
  * testerna kan köra utan server (money-model.test.ts).
  */
 
+import { csvField } from "@/lib/csv";
 import { changeBp, ratioBp, type IsoDate } from "@/domain";
 
 /* ------------------------------------------------------------------ */
@@ -18,6 +19,8 @@ import { changeBp, ratioBp, type IsoDate } from "@/domain";
 export interface WaterfallInput {
   /** Intäkt exkl. moms för order med inköpspris (vattenfallets start). */
   readonly revenueOre: number;
+  /** Intäkt för order utan inköpspris (ingår inte). Utelämnat = 0. */
+  readonly unpricedRevenueOre?: number;
   /** VMB-moms, eller null när organisationen inte redovisar VMB. */
   readonly vmbVatOre: number | null;
   readonly costOre: number;
@@ -72,7 +75,11 @@ export function waterfallRows(input: WaterfallInput): WaterfallRow[] {
     {
       key: "revenue",
       label: "Intäkt",
-      sub: "Allt som sålts i automaterna, utan moms",
+      // Hem visar intäkten för alla order; här ingår bara order med inköpspris.
+      sub:
+        (input.unpricedRevenueOre ?? 0) > 0
+          ? "Order med inköpspris, utan moms"
+          : "Allt som sålts i automaterna, utan moms",
       kind: "revenue",
       valueOre: rev,
       shareBp: rev > 0 ? 10_000 : null,
@@ -478,8 +485,9 @@ function csvKr(ore: number | null): string {
   return `${sign}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, "0")}`;
 }
 
+/** Ett textfält: citerat vid behov och skyddat mot formelinjektion (@/lib/csv). */
 function csvCell(text: string): string {
-  return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  return csvField(text);
 }
 
 /**
@@ -494,7 +502,9 @@ export function monthTableCsv(table: MonthTable): string {
       [r.code, r.name, ...r.values.map(csvKr), csvKr(r.averageOre)].map(csvCell).join(";"),
     );
   }
-  lines.push(["", "Alla", ...table.totals.map(csvKr), csvKr(table.totalAverageOre)].join(";"));
+  lines.push(
+    ["", "Alla", ...table.totals.map(csvKr), csvKr(table.totalAverageOre)].map(csvCell).join(";"),
+  );
   return `﻿${lines.join("\r\n")}\r\n`;
 }
 

@@ -289,9 +289,9 @@
     display: block;
     font-size: var(--v2-t-xs);
     color: var(--v2-mute);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* Får bryta (prototypen kapar inte undertexten). */
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .g4-wtrack {
     position: relative;
@@ -1025,15 +1025,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* Blocknivå (inte flex) så att raden kapas med … i stället för mitt i ett ord. */
   .g4-brow .ch {
+    display: block;
     font-size: var(--v2-t-sm);
     color: var(--v2-mute);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: flex;
-    gap: 4px;
-    align-items: center;
+  }
+  .g4-brow .ch > span + span {
+    margin-left: 4px;
   }
   .g4-brow .r {
     white-space: nowrap;

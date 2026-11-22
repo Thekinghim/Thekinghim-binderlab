@@ -43,6 +43,7 @@ export function fillOf(rows: readonly AwishFillRow[] | null | undefined): Machin
   if (!rows || rows.length === 0) return null;
   let units = 0;
   let capacity = 0;
+  let known = 0;
   let channels = 0;
   let emptyChannels = 0;
   const emptyTitleIds: string[] = [];
@@ -51,6 +52,7 @@ export function fillOf(rows: readonly AwishFillRow[] | null | undefined): Machin
     const c = Math.max(0, Math.trunc(r.capacity));
     units += u;
     capacity += c;
+    known += Math.min(u, c);
     channels += Math.max(0, Math.trunc(r.channels));
     const e = Math.max(0, Math.trunc(r.empty));
     emptyChannels += e;
@@ -59,11 +61,40 @@ export function fillOf(rows: readonly AwishFillRow[] | null | undefined): Machin
   return {
     units,
     capacity,
-    fillBp: capacity > 0 ? Math.min(10_000, Math.round((units * 10_000) / capacity)) : null,
+    fillBp: capacity > 0 ? Math.min(10_000, Math.round((known * 10_000) / capacity)) : null,
     channels,
     emptyChannels,
     emptyTitleIds: [...new Set(emptyTitleIds)].sort(),
   };
+}
+
+/**
+ * Pack i automaten för en titel: vårt lager på automatens plats (stock_levels) när det finns,
+ * annars Awish-läsningen. Samma regel på Hem, Automater, Rutt och Fyll på. Lagret i appen är
+ * aldrig äldre än Awish-läsningen (synken skriver Awish antal som räkning i lagret) och har
+ * påfyllningar och försäljning efter läsningen med.
+ */
+export function fillUnitsOf(awishUnits: number | null | undefined, ledger: number | undefined) {
+  return Math.max(0, Math.trunc(ledger ?? awishUnits ?? 0));
+}
+
+/**
+ * Automatens fyllnad med samma regel som Fyll på: pack per titel ur fillUnitsOf, kapacitet och
+ * tomma fack ur Awish. Ett tomt fack räknas inte som tomt när lagret har fler pack än Awish
+ * visade (påfyllt efter läsningen).
+ */
+export function machineFill(
+  rows: readonly AwishFillRow[] | null | undefined,
+  ledger?: ReadonlyMap<string, number> | null,
+): MachineFill | null {
+  if (!rows || rows.length === 0) return null;
+  if (!ledger || ledger.size === 0) return fillOf(rows);
+  return fillOf(
+    rows.map((r) => {
+      const units = fillUnitsOf(r.units, ledger.get(r.title_id));
+      return { ...r, units, empty: units <= Math.max(0, r.units) ? r.empty : 0 };
+    }),
+  );
 }
 
 /** Sålda pack per dag i tusendelar (1 500 = 1,5 pack per dag). 0 utan dagar. */

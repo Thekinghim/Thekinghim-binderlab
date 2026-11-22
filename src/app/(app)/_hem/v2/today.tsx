@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { approxKr } from "@/analytics/forecast/common";
 import { cn } from "@/lib/cn";
 import type { ReactNode } from "react";
 
@@ -168,13 +169,26 @@ export function ActionsCard({
 /* Dagens rutt                                                         */
 /* ------------------------------------------------------------------ */
 
+function OverflowLine({ n }: { n: number }) {
+  return (
+    <div className="rwarn">
+      <span>
+        {n === 1 ? "1 automat ryms" : `${formatInt(n)} automater ryms`} inte i veckans rutter ·{" "}
+        <Link href="/rutt">Rutt</Link>
+      </span>
+    </div>
+  );
+}
+
 export function RouteCard({ today, canRoute }: { today: HemToday; canRoute: boolean }) {
   const r = today.route;
   if (r.stops === 0) {
     return (
       <Card className="rutt o-rutt" title="Dagens rutt" link={{ href: "/rutt", label: "Rutt" }}>
         <div className="rbody">
-          <b>Ingen påfyllning behövs i dag.</b>
+          <b>{r.empty.title}.</b>
+          {r.empty.body ? <span className="rtx">{r.empty.body}.</span> : null}
+          {r.overflow > 0 ? <OverflowLine n={r.overflow} /> : null}
         </div>
       </Card>
     );
@@ -183,7 +197,7 @@ export function RouteCard({ today, canRoute }: { today: HemToday; canRoute: bool
   const head = [
     `${formatInt(r.stops)} stopp`,
     r.savesOre !== undefined && r.savesOre >= 500
-      ? `räddar ca ${formatInt(Math.round(r.savesOre / 10_000) * 100)} kr vinst/dag`
+      ? `räddar ${approxKr(r.savesOre)} vinst/dag`
       : null,
   ]
     .filter(Boolean)
@@ -240,10 +254,13 @@ export function RouteCard({ today, canRoute }: { today: HemToday; canRoute: bool
             </span>
           </div>
         ) : null}
+        {r.overflow > 0 ? <OverflowLine n={r.overflow} /> : null}
         <div className="racts">
-          <ButtonLink size="lg" href="/rutt">
-            Packa
-          </ButtonLink>
+          {r.totalPacks > 0 ? (
+            <ButtonLink size="lg" href="/rutt">
+              Packa
+            </ButtonLink>
+          ) : null}
           {canRoute ? (
             <ButtonLink
               size="lg"

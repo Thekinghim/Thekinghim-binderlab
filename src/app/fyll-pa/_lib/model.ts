@@ -31,6 +31,7 @@
  *   snart slut, sedan lägst fyllnadsgrad, sist de utan Awish-data; lika ordnas efter kod.
  */
 
+import { fillUnitsOf } from "@/analytics/fleet-status";
 import { inPlace, pickPlace } from "@/components/stock/place-text";
 import { mysteryBatch, mysteryCapacityShort, mysteryRefillQty } from "@/domain";
 import { sv, type Messages } from "@/i18n/sv";
@@ -309,7 +310,8 @@ export function machineRows(machine: FillMachineInput, input: FillInput): FillRo
     if (name === undefined) continue;
     const key = pairKey(machine.id, titleId);
     const f = fill.get(titleId);
-    const now = Math.max(0, input.machineStock.get(key) ?? f?.units ?? 0);
+    // Samma regel som flottan (fillUnitsOf): lagret i appen, annars Awish.
+    const now = fillUnitsOf(f?.units, input.machineStock.get(key));
     // Utgången titel som inte står i automaten längre: ingen rad.
     if (!f && input.retired.has(key) && now === 0) continue;
     const capacity = f && f.capacity > 0 ? f.capacity : null;

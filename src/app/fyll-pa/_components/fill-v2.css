@@ -322,9 +322,34 @@
     align-self: center;
     justify-self: center;
   }
+  .v2-fill-app .row > .v2-pk {
+    transition:
+      opacity 0.2s ease-out,
+      filter 0.2s ease-out;
+  }
   .v2-fill-app .row > .v2-pk.dim {
     opacity: 0.35;
     filter: grayscale(1);
+  }
+  /* Telefon: titeln får hela bredden, stegknapparna och "Fyll fack" till höger under den
+     (prototypen); bilden står överst. */
+  @media (max-width: 600px) {
+    .v2-fill-app .row {
+      grid-template-areas:
+        "pk info info"
+        "pk meter step"
+        "pk cnt fill";
+      align-items: center;
+    }
+    .v2-fill-app .row > .v2-pk {
+      align-self: start;
+    }
+    .v2-fill-app .row .info small {
+      margin-left: 0;
+    }
+    .v2-fill-app .row .meter {
+      padding-left: 0;
+    }
   }
   .v2-fill-app .row .info {
     grid-area: info;

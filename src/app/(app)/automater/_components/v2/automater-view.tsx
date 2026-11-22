@@ -1,5 +1,6 @@
 "use client";
 
+import { approxKr } from "@/analytics/forecast/common";
 import "./automater-v2.css";
 
 import Link from "next/link";
@@ -18,7 +19,6 @@ import { Sparkline } from "@/components/v2/sparkline";
 import { FleetStatusBadge } from "@/components/v2/status-dot";
 import { usePhone } from "@/components/v2/use-media";
 import { cn } from "@/lib/cn";
-import { packKey } from "@/lib/pack-image";
 import { formatDecimal, formatInt, formatSek, MINUS, NBSP } from "@/lib/format";
 
 import type { HistoryEntry } from "@/server/data/v2/analytics/history-model";
@@ -418,7 +418,8 @@ function Row({
       </span>
       <span className="c-m">
         <span className={cn(tone === "warning" && "warn", tone === "critical" && "crit")}>
-          {m.fillBp === null ? "–" : `${Math.round(m.fillBp / 100)}${NBSP}%`}
+          {/* Utan fyllnad: statusen ("I drift", "Offline") i stället för ett streck. */}
+          {m.fillBp === null ? m.statusLabel : `${Math.round(m.fillBp / 100)}${NBSP}%`}
         </span>
         <span className={cn("v2-dot", m.tone !== "neutral" && m.tone)} aria-hidden="true" />
       </span>
@@ -489,36 +490,39 @@ function Detail({
                   const isEmpty = s.units <= 0 || (s.empty > 0 && s.empty >= s.slots);
                   return (
                     <div key={s.titleId} className={cn("fc", isEmpty && "e")} title={s.name}>
+                      {/* Utan bild: PackImage ritar en platta med initialer (namnet i title). */}
                       <PackImage title={s.name} size="m" />
-                      {/* Utan bild: titelns namn (PackImage ritar inget). */}
-                      {packKey(s.name) ? null : <span className="nm">{s.name}</span>}
                       <span className="fb" style={{ "--f": f } as React.CSSProperties} />
                     </div>
                   );
                 })}
               </div>
             ) : null}
-            <div className="bigp">
-              <span>
-                {m.fillBp === null ? "–" : `${Math.round(m.fillBp / 100)}${NBSP}%`}{" "}
-                <span className="s">fylld</span>
-              </span>
-              {m.capacity !== null && m.units !== null ? (
-                <small>
-                  {formatInt(m.units)} av {formatInt(m.capacity)} pack
-                </small>
-              ) : (
-                <small>Inte läst från Awish</small>
-              )}
-            </div>
-            <span className="v2-track bigtrack block" aria-hidden="true">
-              <i
-                className={fillTone(m.fillBp)}
-                style={{
-                  transform: `scaleX(${Math.max(0, Math.min(1, (m.fillBp ?? 0) / 10_000))})`,
-                }}
-              />
-            </span>
+            {m.fillBp === null ? (
+              // Utan fackdata från Awish: en lugn rad i stället för tomma staplar.
+              <p className="line mute">Fyllnad okänd – Awish har inte skickat facken än.</p>
+            ) : (
+              <>
+                <div className="bigp">
+                  <span>
+                    {`${Math.round(m.fillBp / 100)}${NBSP}%`} <span className="s">fylld</span>
+                  </span>
+                  {m.capacity !== null && m.units !== null ? (
+                    <small>
+                      {formatInt(m.units)} av {formatInt(m.capacity)} pack
+                    </small>
+                  ) : null}
+                </div>
+                <span className="v2-track bigtrack block" aria-hidden="true">
+                  <i
+                    className={fillTone(m.fillBp)}
+                    style={{
+                      transform: `scaleX(${Math.max(0, Math.min(1, m.fillBp / 10_000))})`,
+                    }}
+                  />
+                </span>
+              </>
+            )}
             <p className={cn("line", needsFill(m) && "warn")}>
               {m.status === "offline" ? (
                 "Säljer inget tills den är online igen."
@@ -574,7 +578,7 @@ function Detail({
               {e && showsLoss(loss) ? (
                 <div className="wide">
                   <dt>{m.status === "offline" ? "Offline kostar ca" : "Tomma fack kostar ca"}</dt>
-                  <dd className="warn">{kr(loss)} vinst/dag</dd>
+                  <dd className="warn">{approxKr(loss)} vinst/dag</dd>
                 </div>
               ) : null}
             </dl>

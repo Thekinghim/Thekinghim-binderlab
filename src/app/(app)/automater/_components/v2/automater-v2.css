@@ -357,6 +357,11 @@
     border: 1px dashed var(--v2-crit-line);
     background: var(--v2-crit-soft);
   }
+  .v2-auto-det .fc .v2-pk {
+    transition:
+      opacity 0.2s ease-out,
+      filter 0.2s ease-out;
+  }
   .v2-auto-det .fc.e .v2-pk {
     opacity: 0.3;
     filter: grayscale(1);
@@ -401,6 +406,9 @@
   .v2-auto-det .bigtrack {
     height: 8px;
     margin-top: 10px;
+  }
+  .v2-auto-det .line.mute {
+    color: var(--v2-mute);
   }
   .v2-auto-det .line {
     margin-top: 10px;

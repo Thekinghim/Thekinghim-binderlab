@@ -431,6 +431,28 @@
     align-items: center;
     gap: 8px;
   }
+  /* Periodvalet på telefon: full bredd under rubriken, 44 px högt (prototypen). */
+  .v2-mperiod {
+    display: none;
+  }
+  @media (max-width: 900px) {
+    .v2-mperiod {
+      display: block;
+      padding: 6px 12px 0;
+    }
+    .v2-mperiod .v2-seg-period,
+    .v2-mperiod .v2-seg {
+      display: flex;
+      width: 100%;
+    }
+    .v2-mperiod .v2-seg button {
+      flex: 1;
+      height: 38px;
+    }
+    .v2-mperiod .v2-seg {
+      min-height: 44px;
+    }
+  }
   @media (max-width: 900px) {
     .v2-top {
       padding: 14px 16px 6px;
@@ -472,19 +494,14 @@
       padding: 12px 12px 20px;
     }
   }
-  /* Sidbyte: 6 px upp och tona in (inte vid första laddningen, bara tona vid reducerad rörelse) */
+  /* Sidbyte: bara en kort toning (150 ms). Sidbyten sker många gånger om dagen och
+     prototypen flyttar inte innehållet. */
   .v2-enter {
-    animation: v2-page-in 0.22s var(--v2-ease) backwards;
-  }
-  @keyframes v2-page-in {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
+    animation: v2-fade-in 0.15s ease-out backwards;
   }
   @media (prefers-reduced-motion: reduce) {
     .v2-enter {
-      animation-name: v2-fade-in;
+      animation: none;
     }
   }
   @keyframes v2-fade-in {
@@ -1044,16 +1061,16 @@
   }
   .v2-kt .kd {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 2px 6px;
     font-size: var(--v2-t-xs);
     color: var(--v2-mute);
     min-width: 0;
-    white-space: nowrap;
   }
+  /* "mot förra" får bryta till en egen rad i stället för att kapas. */
   .v2-kt .kd > span:last-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .v2-kt .ks {
     display: block;
@@ -1131,8 +1148,9 @@
   /* Diagram: staplar växer med kort förskjutning */
   .v2-bar-grow {
     transform-origin: bottom;
-    animation: v2-grow-y 0.42s var(--v2-ease) backwards;
-    animation-delay: calc(var(--i, 0) * 16ms);
+    animation: v2-grow-y 0.3s var(--v2-ease) backwards;
+    /* 35 ms mellan de första åtta staplarna, resten samtidigt (inom 300 ms). */
+    animation-delay: calc(min(var(--i, 0), 8) * 35ms);
   }
   @keyframes v2-grow-y {
     from {
@@ -1174,6 +1192,20 @@
     height: var(--h, 54px);
     width: auto;
     object-fit: contain;
+  }
+  .v2-pk-none {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    background: var(--v2-line2);
+    border: 1px solid var(--v2-line);
+    border-radius: 3px;
+    color: var(--v2-mute);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    user-select: none;
   }
   .v2-pk.l,
   .v2-pk.xl {

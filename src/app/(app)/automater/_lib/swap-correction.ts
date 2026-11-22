@@ -57,14 +57,54 @@ export async function correctProductSwapFor(
         and l.kind = 'machine'`);
     if (!loc) return { ok: false, error: "Automaten finns inte." };
     if (!loc.source_id) return { ok: false, error: "Det finns inget eget lager att flytta till." };
+    // Senaste räkningen av titeln i automaten och avvikelsen vid den (samma regel som Svinn,
+    // src/server/data/shrinkage.ts): räkningens antal − (förra räkningens antal + övriga
+    // händelser mellan räkningarna). Bara ett minus (pack som "försvann") kan vara ett
+    // produktbyte, och högst så många pack flyttas tillbaka.
     const [count] = await exec(sql`
-      select e.occurred_at as at, e.quantity
-      from public.stock_events e
-      where e.organization_id = ${orgId}::uuid and e.location_id = ${String(loc.id)}::uuid
-        and e.title_id = ${input.titleId}::uuid and e.kind = 'count'
-      order by e.occurred_at desc, e.seq desc
-      limit 1`);
+      with c as (
+        select e.occurred_at, e.seq, e.quantity
+        from public.stock_events e
+        where e.organization_id = ${orgId}::uuid and e.location_id = ${String(loc.id)}::uuid
+          and e.title_id = ${input.titleId}::uuid and e.kind = 'count'
+        order by e.occurred_at desc, e.seq desc
+        limit 1
+      ),
+      p as (
+        select pc.occurred_at, pc.seq, pc.quantity
+        from public.stock_events pc, c
+        where pc.organization_id = ${orgId}::uuid and pc.location_id = ${String(loc.id)}::uuid
+          and pc.title_id = ${input.titleId}::uuid and pc.kind = 'count'
+          and (pc.occurred_at, pc.seq) < (c.occurred_at, c.seq)
+        order by pc.occurred_at desc, pc.seq desc
+        limit 1
+      )
+      select c.occurred_at as at, c.quantity,
+             p.quantity as prev_quantity,
+             (select coalesce(sum(e.quantity), 0) from public.stock_events e
+              where p.seq is not null
+                and e.organization_id = ${orgId}::uuid and e.location_id = ${String(loc.id)}::uuid
+                and e.title_id = ${input.titleId}::uuid and e.kind <> 'count'
+                and (e.occurred_at, e.seq) > (p.occurred_at, p.seq)
+                and (e.occurred_at, e.seq) < (c.occurred_at, c.seq)) as flow
+      from c left join p on true`);
     if (!count) return { ok: false, error: "Titeln har inte räknats i automaten." };
+    const prev =
+      count.prev_quantity === null || count.prev_quantity === undefined
+        ? null
+        : { quantity: count.prev_quantity, flow: count.flow };
+    const deviation = prev
+      ? Number(count.quantity) - (Number(prev.quantity) + Number(prev.flow))
+      : 0;
+    if (!(deviation < 0)) {
+      return { ok: false, error: "Senaste räkningen visar inget svinn att rätta." };
+    }
+    if (quantity > -deviation) {
+      return {
+        ok: false,
+        error: `Högst ${-deviation} pack saknades vid senaste räkningen.`,
+      };
+    }
     const at = new Date(
       (count.at instanceof Date ? count.at : new Date(String(count.at))).getTime() - 1_000,
     ).toISOString();

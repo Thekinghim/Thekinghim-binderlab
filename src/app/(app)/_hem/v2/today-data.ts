@@ -8,6 +8,7 @@
  * hemActions/hemTodos tar bort kronor). Påfyllaren läser aldrig order (RLS).
  */
 
+import { emptyRouteText } from "@/server/data/v2/route-model";
 import "server-only";
 
 import { cache } from "react";
@@ -98,6 +99,10 @@ export interface HemRouteCard {
   readonly limits: { readonly maxStops: number; readonly maxPacks: number };
   /** Första stoppet som inte är klart (Starta rutt öppnar det i Fyll på), eller null. */
   readonly nextMachineId: string | null;
+  /** Raden utan stopp (samma som Rutt, emptyRouteText). */
+  readonly empty: { readonly title: string; readonly body: string | null };
+  /** Automater som inte ryms i veckans rutter. */
+  readonly overflow: number;
 }
 
 export interface HemToday {
@@ -137,20 +142,24 @@ export const loadHemToday = cache(async (): Promise<HemToday> => {
     economy,
   });
 
-  const saves = route.stops.reduce((a, s) => a + (s.lossProfitPerDayOre ?? 0), 0);
+  // Samma km och "räddar" som Rutt (route-model.ts): vägsträckan × 1,25 och bara stopp som
+  // inte är klara.
+  const saves = route.savesProfitPerDayOre;
   const routeCard: HemRouteCard = {
     stops: route.stops.length,
     cities: route.cities,
     totalPacks: route.totalPacks,
-    totalKm: route.totalMeters === null ? null : Math.round(route.totalMeters / 1_000),
+    totalKm: route.km,
     fill: route.stops.filter((s) => s.status !== "offline").length,
     check: route.stops.filter((s) => s.status === "offline").length,
     done: route.stops.filter((s) => s.done).length,
     load: route.load,
     short: route.short,
-    ...(economy ? { savesOre: saves } : {}),
+    ...(economy && saves !== null ? { savesOre: saves } : {}),
     limits: { maxStops: route.limits.maxStops, maxPacks: route.limits.maxPacks },
     nextMachineId: route.stops.find((s) => !s.done)?.machineId ?? null,
+    empty: emptyRouteText(route),
+    overflow: route.overflow.length,
   };
   return { economy, actions, route: routeCard, todos };
 });

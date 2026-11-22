@@ -274,7 +274,7 @@ export function CommandDialog({
                   setQuery("");
                   inputRef.current?.focus();
                 }}
-                className="label inline-flex h-7 items-center rounded-xs px-2 text-subtle transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg max-md:h-11 max-md:min-w-11 max-md:justify-center"
+                className="inline-flex h-7 items-center rounded-xs px-2 font-[family-name:var(--v2-sans)] text-xs text-subtle transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg max-md:h-11 max-md:min-w-11 max-md:justify-center"
               >
                 Rensa
               </button>
@@ -312,7 +312,7 @@ export function CommandDialog({
                   <div
                     id={headId}
                     role="presentation"
-                    className="label flex items-center justify-between px-4 pt-2.5 pb-1.5 text-subtle"
+                    className="flex items-center justify-between px-4 pt-2.5 pb-1.5 font-[family-name:var(--v2-sans)] text-xs font-medium text-muted"
                   >
                     <span>{section.label}</span>
                     {section.count !== undefined ? (
@@ -355,7 +355,7 @@ export function CommandDialog({
                         <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:gap-3">
                           <span className="flex min-w-0 items-baseline gap-2">
                             {row.code ? (
-                              <span className="tnum shrink-0 font-mono text-sm text-muted">
+                              <span className="tnum shrink-0 font-[family-name:var(--v2-sans)] text-sm text-muted">
                                 <Highlight text={row.code} indices={row.codeIndices} />
                               </span>
                             ) : null}
@@ -369,7 +369,7 @@ export function CommandDialog({
                             </span>
                           </span>
                           {row.meta?.length ? (
-                            <span className="tnum min-w-0 truncate font-mono text-xs text-subtle sm:ml-auto sm:shrink-0">
+                            <span className="tnum min-w-0 truncate font-[family-name:var(--v2-sans)] text-xs text-subtle sm:ml-auto sm:shrink-0">
                               {row.meta.join(" · ")}
                             </span>
                           ) : null}
@@ -388,7 +388,7 @@ export function CommandDialog({
           {count === 0 && empty ? <div className="px-4 pt-5 pb-6">{empty}</div> : null}
 
           {/* Sidfot */}
-          <div className="flex h-9 items-center justify-between gap-4 border-t border-line px-4 font-mono text-xs text-subtle">
+          <div className="flex h-9 items-center justify-between gap-4 border-t border-line px-4 font-[family-name:var(--v2-sans)] text-xs text-subtle">
             <span className="hidden items-center gap-1.5 sm:flex" aria-hidden>
               <Kbd>↑</Kbd>
               <Kbd>↓</Kbd>

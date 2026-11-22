@@ -24,7 +24,7 @@ import {
   type VisitDay,
   type VisitStop,
 } from "@/analytics/visits";
-import { addDays, type IsoDate } from "@/domain";
+import { addDays, dayOfWeek, type IsoDate } from "@/domain";
 
 import type {
   DayRoute,
@@ -129,6 +129,19 @@ function stopOf(
   };
 }
 
+/**
+ * Förra ruttdagen före `date` (närmaste dag med veckodag i `weekdays`, högst 7 dagar bakåt).
+ * Utan ruttdagar: dagen före. Dit hör "till i morgon": satt på fredagen gäller den måndag.
+ */
+export function previousRouteDay(date: IsoDate, weekdays: readonly number[]): IsoDate {
+  if (weekdays.length === 0) return addDays(date, -1);
+  for (let i = 1; i <= 7; i += 1) {
+    const d = addDays(date, -i);
+    if (weekdays.includes(dayOfWeek(d))) return d;
+  }
+  return addDays(date, -1);
+}
+
 export function buildDayRoute(args: {
   readonly date: IsoDate;
   /** Besöksplanens dag för `date`, eller null när inga besök behövs i dag. */
@@ -145,13 +158,17 @@ export function buildDayRoute(args: {
   readonly noSubstitute?: ReadonlySet<string>;
   /** Ruttens start (standardlagret). */
   readonly depot?: DayRoute["depot"];
+  /** Automater som inte ryms i veckans rutter (besöksplanens overflow). */
+  readonly overflow?: readonly string[];
 }): DayRoute {
   const { date, day, fleet, limits } = args;
   const later = (args.later ?? []).filter((d) => d.date > date);
   const byId = new Map(fleet.machines.map((m) => [m.id, m]));
-  const yesterday = addDays(date, -1);
+  // "Till i morgon" från förra ruttdagen (eller dagarna mellan den och i dag), så att en
+  // flytt på fredagen inte tappas till måndagen.
+  const yesterday = previousRouteDay(date, limits.weekdays);
   const changes = (args.changes ?? []).filter(
-    (c) => c.day === date || (c.day === yesterday && c.change === "later"),
+    (c) => c.day === date || (c.day >= yesterday && c.day < date && c.change === "later"),
   );
   const todayChange = new Map(changes.filter((c) => c.day === date).map((c) => [c.machineId, c]));
 
@@ -172,17 +189,21 @@ export function buildDayRoute(args: {
   }
   // Tillagda: i går "till i morgon" och i dag "lägg till", som inte redan är med.
   const plannedLater = new Map(later.flatMap((d) => d.stops.map((s) => [s.machineId, s])));
-  const extra: { stop: PlanStop | null; machineId: string; change: RouteChange["change"] }[] = [];
+  const extra: {
+    stop: PlanStop | null;
+    machineId: string;
+    change: RouteChange["change"] | null;
+  }[] = [];
   const inRoute = new Set(kept.map((s) => s.machineId));
   const added: RouteChange[] = [];
   for (const c of [
-    ...changes.filter((x) => x.day === yesterday),
+    ...changes.filter((x) => x.day !== date),
     ...changes.filter((x) => x.day === date && x.change === "add"),
   ]) {
     if (inRoute.has(c.machineId) || !byId.has(c.machineId)) continue;
     // I går "till i morgon" men i dag överhoppad eller flyttad igen: inte med.
     const now = todayChange.get(c.machineId);
-    if (c.day === yesterday && now && now.change !== "add") continue;
+    if (c.day !== date && now && now.change !== "add") continue;
     inRoute.add(c.machineId);
     extra.push({
       stop:
@@ -197,6 +218,23 @@ export function buildDayRoute(args: {
         name: byId.get(c.machineId)?.name ?? "",
         change: c.change,
       });
+  }
+
+  // Flottans "Tom" och "Fyll på i dag" (samma läge som Kräver åtgärd på Hem) är alltid stopp
+  // en ruttdag, även när besöksplanen (lagret och takten) inte tog med dem eller gränsen är
+  // nådd. Inte när de hoppats över eller flyttats i dag.
+  const routeDay = limits.weekdays.length === 0 || limits.weekdays.includes(dayOfWeek(date));
+  if (routeDay) {
+    for (const m of fleet.machines) {
+      if (m.status !== "tom" && m.status !== "fyll-pa") continue;
+      if (inRoute.has(m.id) || todayChange.has(m.id)) continue;
+      inRoute.add(m.id);
+      extra.push({
+        stop: plannedLater.get(m.id) ?? null,
+        machineId: m.id,
+        change: null,
+      });
+    }
   }
 
   const stops: RouteStop[] = [];
@@ -293,6 +331,18 @@ export function buildDayRoute(args: {
   const totalPacks = stops.reduce((a, s) => a + s.packs, 0);
   // Sträckan gäller planens stopp; med tillagda eller borttagna stopp är den okänd.
   const sameAsPlan = extra.length === 0 && removed.length === 0;
+  let nextRouteDay: IsoDate | null = null;
+  for (let i = 1; i <= 7 && limits.weekdays.length > 0; i += 1) {
+    const d = addDays(date, i);
+    if (limits.weekdays.includes(dayOfWeek(d))) {
+      nextRouteDay = d;
+      break;
+    }
+  }
+  const needing = fleet.machines.filter((m) => m.status === "tom" || m.status === "fyll-pa");
+  const overflow = (args.overflow ?? [])
+    .filter((id) => !inRoute.has(id) && byId.has(id))
+    .map((id) => ({ machineId: id, name: byId.get(id)?.name ?? "" }));
   const totalMeters = sameAsPlan ? (day?.totalMeters ?? null) : null;
   const km = roadKm(totalMeters);
   const checks = stops.filter((s) => s.kind === "check" && !s.done).length;
@@ -345,5 +395,39 @@ export function buildDayRoute(args: {
     upcoming,
     depot: args.depot ?? null,
     limits,
+    routeDay,
+    nextRouteDay,
+    needing: needing.length,
+    overflow,
   };
+}
+
+/**
+ * Raden när dagens rutt saknar stopp (Rutt och Hem). Säger aldrig "ingen påfyllning behövs"
+ * när flottan har automater som behöver fyllas på.
+ */
+export function emptyRouteText(
+  route: Pick<DayRoute, "date" | "routeDay" | "nextRouteDay" | "needing" | "removed" | "stops">,
+): { title: string; body: string | null } {
+  const weekday = (d: IsoDate) =>
+    new Intl.DateTimeFormat("sv-SE", { weekday: "long", timeZone: "UTC" }).format(
+      new Date(`${d}T12:00:00Z`),
+    );
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  const need =
+    route.needing === 1
+      ? "1 automat behöver fyllas på"
+      : `${route.needing} automater behöver fyllas på`;
+  if (!route.routeDay) {
+    const next = route.nextRouteDay ? `Nästa rutt ${weekday(route.nextRouteDay)}` : null;
+    return {
+      title: `${cap(weekday(route.date))} är ingen ruttdag`,
+      body: [next, route.needing > 0 ? need : null].filter(Boolean).join(" · ") || null,
+    };
+  }
+  if (route.removed.length > 0 && route.stops.length === 0) {
+    return { title: "Du hoppade över alla stopp i dag", body: route.needing > 0 ? need : null };
+  }
+  if (route.needing > 0) return { title: "Inga stopp i dag", body: need };
+  return { title: "Ingen påfyllning behövs i dag", body: null };
 }

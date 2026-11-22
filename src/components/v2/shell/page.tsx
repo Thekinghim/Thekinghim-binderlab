@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
+import { PeriodSegment } from "../period-segment";
 import { HeaderTools } from "./header-tools";
 import { V2Logo } from "./nav-icon";
 
@@ -9,7 +10,7 @@ import { V2Logo } from "./nav-icon";
  * Sidramen för en V2-sida: rubrik + datum, Uppdaterad, sök, Assistenten och (valfritt)
  * periodvalet, en rad under rubriken ("8 behöver påfyllning · 2 offline") och innehållet.
  * Med data-v2-page döljer skalet de gamla sidornas huvud (brödsmulor, filter, underflikar).
- * Sidbytet tonar in 6 px uppifrån (bara tona vid reducerad rörelse).
+ * Sidbytet tonar bara in (150 ms). På telefon står periodvalet i full bredd under rubriken.
  *
  * Serverkomponent: rubrik och text kommer från sidan, verktygen är klientdelar.
  */
@@ -50,6 +51,11 @@ export function V2Page({
         </div>
       </header>
       {sub ? <div className="v2-sub">{sub}</div> : null}
+      {period ? (
+        <div className="v2-mperiod">
+          <PeriodSegment />
+        </div>
+      ) : null}
       <div className="v2-page-body">{children}</div>
     </div>
   );

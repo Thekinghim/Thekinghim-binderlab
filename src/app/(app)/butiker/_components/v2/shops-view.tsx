@@ -11,6 +11,7 @@ import { SearchField } from "@/components/v2/search-field";
 import { Sheet } from "@/components/v2/sheet";
 import { StatusDot } from "@/components/v2/status-dot";
 import { usePhone } from "@/components/v2/use-media";
+import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 import type { FleetStatus, FleetStatusTone } from "@/analytics/fleet-status";
 
@@ -259,13 +260,15 @@ export function ShopsView({
                             {r.power ? <span className="g4-nchip">Nattstängt</span> : null}
                           </span>
                         </span>
-                        <span className="r vin up">{kr(r.profitOre)}</span>
+                        <span className={cn("r vin", r.profitOre > 0 && "up")}>
+                          {kr(r.profitOre)}
+                        </span>
                         <span className="r vpm">
                           {r.perMachineOre !== null ? kr(r.perMachineOre) : "–"}
                         </span>
                         <span className="r vsh">{kr(r.shareOre)}</span>
                         <span className={r.payOre > 0 ? "r due o" : "r due"}>
-                          {r.payOre > 0 ? kr(r.payOre) : everPaid.has(r.id) ? "Betald" : "–"}
+                          {r.payOre > 0 ? kr(r.payOre) : everPaid.has(r.id) ? "Betald" : null}
                         </span>
                         <span className="shr">Andel {kr(r.shareOre)}</span>
                       </button>

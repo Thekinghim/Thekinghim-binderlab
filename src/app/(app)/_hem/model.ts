@@ -69,6 +69,8 @@ export interface HomeKpi {
    * procentenheter (2,5 = +2,5 p.e.). null utan jämförbar period.
    */
   readonly delta: number | null;
+  /** Jämförelseperiodens värde (bara vinsten), eller null utan jämförelse. */
+  readonly previous?: number | null;
   readonly deltaKind: "relative" | "absolute";
   /** Dagsserie för de dagar som har data, i samma enhet som värdet. */
   readonly trend: number[];
@@ -444,6 +446,7 @@ function buildKpis(args: {
       unit: "ore",
       value: split ? split.ourOre : null,
       delta: hasPrev && split ? relative(split.ourOre, prevOurOre) : null,
+      previous: hasPrev && split ? prevOurOre : null,
       deltaKind: "relative",
       trend: priced ? days.map((r) => r.profitOre) : [],
       reference: hasPrev && priced ? perDay(prevDailyProfit, compareDays) : null,

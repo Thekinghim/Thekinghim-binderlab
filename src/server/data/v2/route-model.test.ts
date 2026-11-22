@@ -6,6 +6,8 @@ import type { IsoDate } from "@/domain";
 import {
   buildDayRoute,
   DEFAULT_ROUTE_LIMITS,
+  emptyRouteText,
+  previousRouteDay,
   durationText,
   powerLine,
   roadKm,
@@ -234,5 +236,87 @@ describe("buildDayRoute (V2)", () => {
       "Strömmen av 21:00–08:00: fyll före 21:00",
     );
     expect(powerLine(null)).toBeNull();
+  });
+});
+
+describe("till i morgon över helgen", () => {
+  it("satt på fredagen kommer med på måndagens rutt", () => {
+    const fri = "2026-11-20" as IsoDate;
+    const mon = "2026-11-23" as IsoDate;
+    expect(previousRouteDay(mon, [1, 2, 3, 4, 5])).toBe(fri);
+    const ms = [machine("m1", "Borås"), machine("m4", "Lerum")];
+    const r = buildDayRoute({
+      date: mon,
+      day: day(mon, [stop("m1", [line("a", 5)])]),
+      fleet: { ...fleet(ms), today: mon },
+      limits: DEFAULT_ROUTE_LIMITS,
+      changes: [{ id: "c1", day: fri, machineId: "m4", change: "later" }],
+    });
+    expect(r.stops.map((s) => s.machineId)).toEqual(["m1", "m4"]);
+  });
+
+  it("en flytt äldre än förra ruttdagen följer inte med", () => {
+    const thu = "2026-11-19" as IsoDate;
+    const mon = "2026-11-23" as IsoDate;
+    const r = buildDayRoute({
+      date: mon,
+      day: day(mon, [stop("m1", [line("a", 5)])]),
+      fleet: {
+        ...fleet([machine("m1", "Borås"), machine("m4", "Lerum", { status: "i-drift" })]),
+        today: mon,
+      },
+      limits: DEFAULT_ROUTE_LIMITS,
+      changes: [{ id: "c1", day: thu, machineId: "m4", change: "later" }],
+    });
+    expect(r.stops.map((s) => s.machineId)).toEqual(["m1"]);
+  });
+});
+
+describe("flottans brådskande automater och tomt läge", () => {
+  const mon = "2026-11-23" as IsoDate;
+  const sun = "2026-11-22" as IsoDate;
+  it("Fyll på i dag i flottan är alltid ett stopp en ruttdag (som Kräver åtgärd)", () => {
+    const r = buildDayRoute({
+      date: mon,
+      day: day(mon, [stop("m1", [line("a", 5)])]),
+      fleet: { ...fleet([machine("m1", "Borås"), machine("m2", "Lerum")]), today: mon },
+      limits: DEFAULT_ROUTE_LIMITS,
+    });
+    expect(r.stops.map((s) => s.machineId)).toEqual(["m1", "m2"]);
+    expect(r.needing).toBe(2);
+  });
+  it("ingen ruttdag: säger det och nästa ruttdag, aldrig 'ingen påfyllning behövs'", () => {
+    const r = buildDayRoute({
+      date: sun,
+      day: null,
+      fleet: { ...fleet([machine("m1", "Borås")]), today: sun },
+      limits: DEFAULT_ROUTE_LIMITS,
+      overflow: ["m1"],
+    });
+    expect(r.stops).toEqual([]);
+    expect(r.routeDay).toBe(false);
+    expect(r.nextRouteDay).toBe(mon);
+    expect(r.overflow).toEqual([{ machineId: "m1", name: "Automat m1" }]);
+    expect(emptyRouteText(r)).toEqual({
+      title: "Söndag är ingen ruttdag",
+      body: "Nästa rutt måndag · 1 automat behöver fyllas på",
+    });
+  });
+  it("alla stopp överhoppade", () => {
+    const r = buildDayRoute({
+      date: mon,
+      day: day(mon, [stop("m1", [line("a", 5)])]),
+      fleet: { ...fleet([machine("m1", "Borås", { status: "i-drift" })]), today: mon },
+      limits: DEFAULT_ROUTE_LIMITS,
+      changes: [{ id: "c1", day: mon, machineId: "m1", change: "skip" }],
+    });
+    expect(emptyRouteText(r).title).toBe("Du hoppade över alla stopp i dag");
+    const calm = buildDayRoute({
+      date: mon,
+      day: null,
+      fleet: { ...fleet([machine("m1", "Borås", { status: "i-drift" })]), today: mon },
+      limits: DEFAULT_ROUTE_LIMITS,
+    });
+    expect(emptyRouteText(calm).title).toBe("Ingen påfyllning behövs i dag");
   });
 });

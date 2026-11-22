@@ -100,7 +100,7 @@ export function LagerView(p: LagerViewProps) {
     <div className="v2-lager">
       <div className="work">
         <div className="col">
-          {p.route && p.route.stops > 0 ? (
+          {p.route && p.route.stops > 0 && p.route.packs > 0 ? (
             <div className={cn("rtl", p.route.short.length > 0 && "o")}>
               <div>
                 <b>Dagens rutt behöver {formatInt(p.route.packs)} pack</b>

@@ -79,7 +79,8 @@ export function hemTodos(args: {
       level: "now" as const,
       title: `${s.own ? "Packa" : "Beställ"} ${s.titleName}.`,
       detail: `Rutten behöver ${s.shortBy} till än det som finns hemma.`,
-      href: args.stockHref ?? "/vart-lager",
+      // Påfyllaren får inte öppna Vårt lager (värdet till inköpspris): Rutt har packlistan.
+      href: args.stockHref ?? (args.economy ? "/vart-lager" : "/rutt"),
       verb: s.own ? "Packa" : "Beställ",
     }));
 
@@ -146,4 +147,13 @@ export function hemTodos(args: {
         };
   const rows = [...shortRows, ...ranked].map(clean);
   return { rows, total: rows.length };
+}
+
+/** Tar bort belopp ("−12 172 kr", "+1 200,50 kronor", "ca 300 kr") ur en text. */
+export function stripKr(text: string): string {
+  return text
+    .replace(/(?:ca\s|ca\u00a0)?[−+-]?\s?[\d\u00a0\u202f .,]*\d\s?(?:kr|kronor)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .trim();
 }

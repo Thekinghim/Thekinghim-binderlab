@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 
-import { useToast } from "@/components/ui/toast";
+import { toastV2 } from "@/components/v2/toast";
 
 import { DENIED_PARAM, deniedNotice, type Role } from "./nav";
 
@@ -17,7 +17,6 @@ export function DeniedNotice({ role }: { role: Role }) {
   const params = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const toast = useToast();
   const value = params.get(DENIED_PARAM);
   // En gång per värde, även när effekten körs två gånger (React Strict Mode i dev).
   const shown = useRef<string | null>(null);
@@ -26,12 +25,19 @@ export function DeniedNotice({ role }: { role: Role }) {
     if (value === null || shown.current === value) return;
     shown.current = value;
     const notice = deniedNotice(role, value);
-    if (notice) toast({ ...notice, tone: "neutral", duration: 8000 });
+    // Samma notis som resten av V2 (sonner, src/components/v2/toast.tsx).
+    // Efter första målningen, så att Toastern hunnit monteras (som FillReturnToast).
+    if (notice) {
+      window.setTimeout(
+        () => toastV2(notice.title, { detail: notice.description, tone: "neutral" }),
+        60,
+      );
+    }
     const rest = new URLSearchParams(params.toString());
     rest.delete(DENIED_PARAM);
     const query = rest.toString();
     router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
-  }, [value, role, params, pathname, router, toast]);
+  }, [value, role, params, pathname, router]);
 
   return null;
 }

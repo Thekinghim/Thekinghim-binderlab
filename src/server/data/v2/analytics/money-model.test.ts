@@ -253,6 +253,16 @@ describe("monthTable", () => {
     expect(csv).toContain("BL-2;Två;20,00;;20,00");
     expect(csv).toContain(";Alla;16,45;5,00;");
   });
+
+  it("CSV skyddar mot formler i automatens namn", () => {
+    const evil = {
+      ...table,
+      rows: table.rows.map((r) => ({ ...r, name: '=HYPERLINK("http://example.invalid","x")' })),
+    };
+    const csv = monthTableCsv(evil);
+    expect(csv).not.toContain(';"=HYPERLINK');
+    expect(csv).toContain(`;"'=HYPERLINK(""http://example.invalid"",""x"")";`);
+  });
 });
 
 describe("mål", () => {

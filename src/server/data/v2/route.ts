@@ -55,10 +55,12 @@ export const loadRouteLimits = cache(async (): Promise<RouteLimits> =>
   loadRouteLimitsFor(await requireViewer()),
 );
 
-/** Gällande ändringar i rutten i går och i dag (ej ångrade). */
+/** Gällande ändringar i rutten från förra ruttdagen t.o.m. i dag (ej ångrade). */
 export async function loadRouteChangesFor(
   viewer: Viewer,
   today: IsoDate,
+  /** Första dagen att läsa (förra ruttdagen). Standard: i går. */
+  from: IsoDate = addDays(today, -1),
 ): Promise<RouteDayChangeRow[]> {
   return withUserDbFor(viewer.user, async (tx) => {
     const rows = Array.from(
@@ -66,7 +68,7 @@ export async function loadRouteChangesFor(
         select id::text as id, day::text as day, machine_id::text as machine_id, change
         from public.route_day_changes
         where organization_id = ${viewer.organization.id}::uuid
-          and day between ${addDays(today, -1)}::date and ${today}::date
+          and day between ${from}::date and ${today}::date
           and undone_at is null
         order by created_at`),
     ) as { id: string; day: string; machine_id: string; change: RouteDayChangeRow["change"] }[];
@@ -90,7 +92,8 @@ export const loadDayRoute = cache(async (): Promise<DayRoute> => {
     loadTodoVisitPlan(),
     loadFleetState(),
     loadRouteLimits(),
-    loadRouteChangesFor(viewer, ctx.today).catch((error: unknown) => {
+    // En vecka bakåt: modellen tar "till i morgon" från förra ruttdagen (route-model.ts).
+    loadRouteChangesFor(viewer, ctx.today, addDays(ctx.today, -7)).catch((error: unknown) => {
       console.error("[v2/route] Ändringarna kunde inte läsas:", error);
       return [];
     }),
@@ -108,6 +111,7 @@ export const loadDayRoute = cache(async (): Promise<DayRoute> => {
     fleet,
     limits,
     later: days.filter((d) => d.date > ctx.today),
+    overflow: plan?.plan.overflow ?? [],
     changes,
     home: stock ? new Map(ownStockTotals(stock).map((r) => [r.titleId, r.onHand])) : null,
     noSubstitute: new Set(

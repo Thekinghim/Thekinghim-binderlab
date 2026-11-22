@@ -17,6 +17,7 @@ import {
   whenGrid,
   whenLevel,
   type ActionMachineInput,
+  stripKr,
 } from "./index";
 
 const machine = (
@@ -239,5 +240,14 @@ describe("whenGrid", () => {
     expect(blockText(11)).toBe("22–24");
     expect(whenLevel(0, 10)).toBe(0);
     expect(whenLevel(1, 10)).toBe(1);
+  });
+});
+
+describe("stripKr (påfyllarens texter utan belopp)", () => {
+  it("tar bort minus, kronor och ca", () => {
+    expect(stripKr("Betala −12 172 kr till Butik")).toBe("Betala till Butik");
+    expect(stripKr("Utbetalning 1 200,50 kronor · klart")).toBe("Utbetalning · klart");
+    expect(stripKr("tappar ca 300 kr per dag")).toBe("tappar per dag");
+    expect(stripKr("Packa 5 pack")).toBe("Packa 5 pack");
   });
 });

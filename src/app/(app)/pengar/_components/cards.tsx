@@ -42,7 +42,7 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
       <div className="g4-res">
         <div className="l">
           <span className="lab">
-            {r.profitLabel} · {plural(r.days, "dag", "dagar")}
+            {r.profitLabel} · {plural(r.periodDays, "dag", "dagar")}
           </span>
           <div className="g4-big" data-testid="pengar-vinst">
             <span style={{ color: r.profitOre < 0 ? "var(--v2-crit-text)" : undefined }}>

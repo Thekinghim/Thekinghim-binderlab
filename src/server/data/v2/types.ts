@@ -197,6 +197,14 @@ export interface DayRoute {
   } | null;
   /** Dagens gräns (inställningarna, route_settings). */
   readonly limits: RouteLimits;
+  /** I dag är en ruttdag (route_weekdays). */
+  readonly routeDay: boolean;
+  /** Nästa ruttdag efter i dag, eller null. */
+  readonly nextRouteDay: IsoDate | null;
+  /** Automater med "Tom" eller "Fyll på i dag" i flottan. */
+  readonly needing: number;
+  /** Automater som inte ryms i veckans rutter med dagens gräns. */
+  readonly overflow: readonly { readonly machineId: string; readonly name: string }[];
 }
 
 export interface RouteLimits {

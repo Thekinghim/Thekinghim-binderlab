@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { PACK_IMAGES, packImageSrc, packKey, type PackKey } from "./pack-image";
+import { PACK_IMAGES, packImageSrc, packInitials, packKey, type PackKey } from "./pack-image";
 
 describe("packKey", () => {
   it.each([
@@ -19,6 +19,8 @@ describe("packKey", () => {
     ["Mega Dream ex", "mega-dream-ex-jp"],
     ["30th Celebration", "30th-celebration"],
     ["Surging Sparks", "surging-sparks"],
+    ["Destin Rivals", "destined-rivals"],
+    ["White Flair", "white-flare"],
   ] as const)("%s → %s", (title, key) => {
     expect(packKey(title)).toBe(key);
   });
@@ -35,5 +37,12 @@ describe("packKey", () => {
     for (const key of Object.keys(PACK_IMAGES) as PackKey[]) {
       expect(existsSync(path.join(process.cwd(), "public", "packs", `${key}.webp`))).toBe(true);
     }
+  });
+
+  it("initialer för plattan utan bild", () => {
+    expect(packInitials("Journey Together")).toBe("JT");
+    expect(packInitials("Lorcana: Into the Inklands")).toBe("LI");
+    expect(packInitials("Okänd")).toBe("OK");
+    expect(packInitials("")).toBe("");
   });
 });

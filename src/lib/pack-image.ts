@@ -1,7 +1,7 @@
 /**
  * Packbilder (V2): titel → bild i public/packs/. Port av prototypens BL.pkKey
- * (docs/design/v2/prototyp.html). Ingen träff = ingen bild (inget ritas; titeln står alltid
- * bredvid, bilden är dekor).
+ * (docs/design/v2/prototyp.html). Ingen träff = en neutral platta med initialer i samma
+ * format (PackImage), så att rutnäten inte hoppar; titeln står alltid bredvid.
  *
  * Bilderna är 240 px höga (2× största visade storlek, 72 px på 2×-skärm ≈ 144 px, med marginal).
  */
@@ -39,14 +39,16 @@ const RULES: ReadonlyArray<readonly [string, PackKey]> = [
   ["black bolt", "black-bolt"],
   ["30th", "30th-celebration"],
   ["ascended", "ascended-heroes"],
-  ["destined", "destined-rivals"],
+  // "Destin Rivals" och andra stavningar i Awish.
+  ["destin", "destined-rivals"],
   ["phantasmal", "phantasmal-flames"],
   ["surging", "surging-sparks"],
   ["mega dream", "mega-dream-ex-jp"],
   ["emeralda", "mega-storm-emeralda-jp"],
   ["inferno", "mega-inferno-jp"],
   ["fusion", "fusion-strike"],
-  ["white flare", "white-flare"],
+  // "White Flair" (stavning i Awish).
+  ["white fla", "white-flare"],
   ["delta", "delta-reign"],
   ["perfect order", "perfect-order"],
   ["mega evolution", "mega-evolution"],
@@ -74,4 +76,15 @@ export function packImageSrc(title: string | null | undefined): string | null {
 export function packAspect(key: PackKey): number {
   const [w, h] = PACK_IMAGES[key];
   return w / h;
+}
+
+/** Två bokstäver för plattan utan bild: "Journey Together" → "JT", "Lorcana: Ink" → "LI". */
+export function packInitials(title: string | null | undefined): string {
+  const words = (title ?? "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return "";
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
+  return (words[0]![0]! + words[1]![0]!).toUpperCase();
 }

@@ -381,8 +381,16 @@
 }
 
 /* Starta rutt */
-.v2-rutt .rgo {
+.v2-rutt .rsum-go {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* Den klistrade raden "Öppna i Maps / Starta rutt" är telefonens mönster: på dator står
+   knapparna i sidhuvudet. */
+.v2-rutt .rgo {
+  display: none;
   justify-content: flex-end;
   gap: 10px;
   margin-top: 14px;
@@ -500,6 +508,7 @@
     padding: 8px 16px;
   }
   .v2-rutt .rgo {
+    display: flex;
     position: sticky;
     bottom: calc(64px + env(safe-area-inset-bottom, 0px));
     z-index: 6;

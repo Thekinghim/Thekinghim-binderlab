@@ -1,5 +1,6 @@
 "use client";
 
+import { approxKr } from "@/analytics/forecast/common";
 import Link from "next/link";
 
 import { cn } from "@/lib/cn";
@@ -19,8 +20,6 @@ import { changeRoute, undoRouteChange } from "../../rutt/actions";
 const MAX_DESKTOP = 6;
 const MAX_PHONE = 3;
 
-/** Förlusten avrundad till tiotal kronor ("tappar ca 240 kr"). */
-const kr = (ore: number) => `${formatInt(Math.round(ore / 1_000) * 10)}${NBSP}kr`;
 /** Priser i hela kronor. */
 const krExact = (ore: number) => `${formatInt(Math.round(ore / 100))}${NBSP}kr`;
 
@@ -29,7 +28,7 @@ function LossText({ ore }: { ore: number | undefined }) {
   return (
     <>
       {" "}
-      · tappar ca <b>{kr(ore)}</b> vinst/dag
+      · tappar <b>{approxKr(ore)}</b> vinst/dag
     </>
   );
 }

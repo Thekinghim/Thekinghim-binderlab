@@ -5,6 +5,8 @@ import {
   compareFleetRows,
   daysLeftOf,
   fillOf,
+  fillUnitsOf,
+  machineFill,
   fleetStatusLabel,
   fleetStatusOf,
   lossProfitPerDayOre,
@@ -167,5 +169,26 @@ describe("förlorad vinst per dag", () => {
     expect(showsLoss(499)).toBe(false);
     expect(showsLoss(500)).toBe(true);
     expect(showsLoss(null)).toBe(false);
+  });
+});
+
+describe("machineFill (samma fyllnad på Hem, Automater, Rutt och Fyll på)", () => {
+  const rows = [
+    { title_id: "a", units: 2, capacity: 10, channels: 1, empty: 0 },
+    { title_id: "b", units: 0, capacity: 10, channels: 1, empty: 1 },
+  ];
+  it("lagret i appen går före Awish när de skiljer sig", () => {
+    const f = machineFill(rows, new Map([["b", 10]]));
+    expect(f?.units).toBe(12);
+    expect(f?.fillBp).toBe(6_000);
+    expect(f?.emptyChannels).toBe(0);
+    expect(fillUnitsOf(0, 10)).toBe(10);
+  });
+  it("utan lager i appen: Awish", () => {
+    expect(machineFill(rows, new Map())).toEqual(fillOf(rows));
+    expect(fillUnitsOf(4, undefined)).toBe(4);
+  });
+  it("överfyllt fack räknas högst till kapaciteten", () => {
+    expect(machineFill(rows, new Map([["a", 30]]))?.fillBp).toBe(5_000);
   });
 });

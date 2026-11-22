@@ -16,8 +16,15 @@
  * Flera bytta fack för samma titel: talet står på det första facket (kanalordning), de andra
  * får 0, så att summan aldrig räknas två gånger.
  *
- * Inget byte vid första läsningen (ingen förra läsning) och inget när automaten väntar på en
- * sändning till Awish (`waiting`): då visar Awish ett gammalt läge.
+ * Inget byte vid första läsningen (ingen förra läsning). Ett fack där A eller B väntar på en
+ * sändning till Awish (`unsent`) skjuts upp (`deferred`): Awish visar ett gammalt läge för den
+ * titeln. Bara de titlarna skjuts upp, inte hela automaten. Synken behåller då förra läsningens
+ * fack så att bytet hittas när sändningen gått fram.
+ *
+ * Namnbyte direkt i Awish: B skapades just i den här läsningen (`newTitles`) och A finns inte
+ * kvar i något fack. Det är samma vara under nytt namn, inte ett byte: inga pack flyttas
+ * (`renamed`). Annars skulle allt av A gå "tillbaka" till lagret och allt av B tas ur ett lager
+ * som aldrig haft B (fantompack).
  */
 
 /** Ett fack i Awish nu, med titeln det kopplats till. */
@@ -44,8 +51,18 @@ export interface DetectSwapsInput {
   readonly levels: ReadonlyMap<string, SwapLevel>;
   /** Automaten har lästs från Awish förut (stock_locations.awish_synced_at). */
   readonly syncedBefore: boolean;
-  /** Automaten väntar på en sändning till Awish (unsentRefillTitles är inte tom). */
-  readonly waiting?: boolean;
+  /** Titlar som väntar på en sändning till Awish (unsentRefillTitles). */
+  readonly unsent?: ReadonlySet<string>;
+  /** Titlar som skapades i den här läsningen (okänt varunamn i Awish). */
+  readonly newTitles?: ReadonlySet<string>;
+}
+
+export interface SwapClassification {
+  readonly swaps: ProductSwap[];
+  /** Fack som skjuts upp tills sändningen till Awish gått fram. */
+  readonly deferred: string[];
+  /** Fack där varan bara bytt namn i Awish (inget flyttas). */
+  readonly renamed: { channel: string; fromTitleId: string; toTitleId: string }[];
 }
 
 export interface ProductSwap {
@@ -63,7 +80,13 @@ const byChannel = (a: string, b: string) =>
 
 /** Facken som bytt titel sedan förra läsningen, med pack tillbaka och pack tagna. */
 export function detectSwaps(input: DetectSwapsInput): ProductSwap[] {
-  if (!input.syncedBefore || input.waiting || input.previous.size === 0) return [];
+  return classifySwaps(input).swaps;
+}
+
+/** Byten, uppskjutna fack och namnbyten sedan förra läsningen. */
+export function classifySwaps(input: DetectSwapsInput): SwapClassification {
+  const none: SwapClassification = { swaps: [], deferred: [], renamed: [] };
+  if (!input.syncedBefore || input.previous.size === 0) return none;
   const before = new Map<string, string>();
   for (const [titleId, channels] of input.previous) {
     for (const c of channels) {
@@ -81,6 +104,9 @@ export function detectSwaps(input: DetectSwapsInput): ProductSwap[] {
     .sort((a, b) => byChannel(a.channel, b.channel));
 
   const out: ProductSwap[] = [];
+  const deferred: string[] = [];
+  const renamed: SwapClassification["renamed"] = [];
+  const titlesNow = new Set(input.current.map((c) => c.titleId));
   const returnedFor = new Set<string>();
   const takenFor = new Set<string>();
   const seen = new Set<string>();
@@ -88,6 +114,14 @@ export function detectSwaps(input: DetectSwapsInput): ProductSwap[] {
     if (seen.has(c.channel)) continue;
     seen.add(c.channel);
     const from = before.get(c.channel)!;
+    if (input.unsent?.has(from) || input.unsent?.has(c.titleId)) {
+      deferred.push(c.channel);
+      continue;
+    }
+    if (input.newTitles?.has(c.titleId) && !titlesNow.has(from)) {
+      renamed.push({ channel: c.channel, fromTitleId: from, toTitleId: c.titleId });
+      continue;
+    }
     let returned = 0;
     if (!returnedFor.has(from)) {
       returnedFor.add(from);
@@ -104,7 +138,7 @@ export function detectSwaps(input: DetectSwapsInput): ProductSwap[] {
     }
     out.push({ channel: c.channel, fromTitleId: from, toTitleId: c.titleId, returned, taken });
   }
-  return out;
+  return { swaps: out, deferred, renamed };
 }
 
 /** Noteringen på flytten: "Produktbyte A3: Black Bolt → Surging Sparks". */

@@ -1,5 +1,6 @@
 "use client";
 
+import { approxKr } from "@/analytics/forecast/common";
 import "./rutt.css";
 
 import { useRouter } from "next/navigation";
@@ -14,12 +15,12 @@ import { PackImage } from "@/components/v2/pack-image";
 import { FleetStatusBadge } from "@/components/v2/status-dot";
 import { toastUndo, toastV2 } from "@/components/v2/toast";
 import { cn } from "@/lib/cn";
-import { formatInt, formatKronor, NBSP } from "@/lib/format";
+import { formatInt, NBSP } from "@/lib/format";
 import type { DayRoute, RouteStop } from "@/server/data/v2/types";
 
 import { changeRoute, undoRouteChange } from "../actions";
 import type { RouteChangeKind } from "../_lib/service";
-import { durationText } from "@/server/data/v2/route-model";
+import { durationText, emptyRouteText } from "@/server/data/v2/route-model";
 import { LimitsSheet } from "./limits-sheet";
 
 const CHECKLIST = [
@@ -55,8 +56,6 @@ function useDayChecks(key: string): [ReadonlySet<string>, (id: string) => void] 
     });
   return [checked, toggle];
 }
-
-const kr = (ore: number) => formatKronor(Math.round(ore / 100), { decimals: 0 });
 
 function weekdayShort(date: string): string {
   const d = new Date(`${date}T12:00:00Z`);
@@ -161,9 +160,10 @@ export function RouteView({
     )
     .filter(Boolean);
 
+  const empty = emptyRouteText(route);
   const titleLine =
     stopCount === 0
-      ? "Ingen rutt i dag"
+      ? empty.title
       : [
           route.cities.length > 0 ? route.cities.join(" → ") : `${formatInt(stopCount)} stopp`,
           route.km !== null ? `${formatInt(route.km)}${NBSP}km` : null,
@@ -183,7 +183,8 @@ export function RouteView({
               {route.savesProfitPerDayOre !== null && route.savesProfitPerDayOre > 0 ? (
                 <>
                   {" "}
-                  · räddar ca <span className="pf">{kr(route.savesProfitPerDayOre)} vinst/dag</span>
+                  · räddar{" "}
+                  <span className="pf">{approxKr(route.savesProfitPerDayOre)} vinst/dag</span>
                 </>
               ) : null}{" "}
               · {formatInt(route.totalPacks)} pack
@@ -200,13 +201,29 @@ export function RouteView({
                 </>
               ) : null}
             </span>
-          ) : (
-            <span>Inga automater behöver fyllas på i dag.</span>
-          )}
+          ) : empty.body ? (
+            <span>{empty.body}.</span>
+          ) : null}
+          {route.overflow.length > 0 ? (
+            <span className="o">
+              {route.overflow.length === 1
+                ? `${route.overflow[0]!.name} ryms inte i veckans rutter`
+                : `${formatInt(route.overflow.length)} automater ryms inte i veckans rutter`}
+              {canEditLimits ? " · höj gränsen under Kommande dagar" : ""}
+            </span>
+          ) : null}
         </div>
-        {mapStops.length > 0 ? (
-          <RouteMapsLink stops={mapStops} origin={origin} className="max-[900px]:w-full" />
-        ) : null}
+        <div className="rsum-go">
+          {mapStops.length > 0 ? (
+            <RouteMapsLink stops={mapStops} origin={origin} className="max-[900px]:w-full" />
+          ) : null}
+          {/* Dator: Starta rutt i sidhuvudet (telefonen har den klistrade raden längst ner). */}
+          {startHref && canRefill ? (
+            <ButtonLink href={startHref} variant="act" className="max-[900px]:hidden">
+              {remaining.length === stopCount ? "Starta rutt" : "Fortsätt rutten"}
+            </ButtonLink>
+          ) : null}
+        </div>
       </div>
 
       <div className="work">
@@ -221,9 +238,7 @@ export function RouteView({
             }
           >
             {stopCount === 0 ? (
-              <Empty title="Inga stopp i dag">
-                Besöksplanen har inga automater som behöver besök i dag.
-              </Empty>
+              <Empty title={empty.title}>{empty.body ? `${empty.body}.` : null}</Empty>
             ) : (
               route.groups.map((g, gi) => (
                 <div className="rcity" key={`${g.city ?? "-"}-${gi}`}>
@@ -496,7 +511,7 @@ function StopRow({
   const lossBadge =
     loss !== null && loss >= 500 && !s.done ? (
       <Badge tone={s.status === "tom" || s.status === "offline" ? "critical" : "warning"}>
-        {lossLead}appar ca {kr(loss)} vinst/dag
+        {lossLead}appar {approxKr(loss)} vinst/dag
       </Badge>
     ) : null;
   return (
@@ -617,7 +632,7 @@ function StopRow({
         {canEdit && !s.done ? (
           <>
             <Button
-              variant="quiet"
+              variant="plain"
               size="sm"
               disabled={pending}
               pending={busy === `${s.machineId}:skip`}
@@ -626,7 +641,7 @@ function StopRow({
               Hoppa över
             </Button>
             <Button
-              variant="quiet"
+              variant="plain"
               size="sm"
               disabled={pending}
               pending={busy === `${s.machineId}:later`}

@@ -4,7 +4,8 @@
  *
  *   status  = fleetStatusOf (@/analytics/fleet-status): offline (maskinhälsan, aldrig när strömmen
  *             är av enligt schemat), tom, fyll på i dag, startklar, ström av, tom om N d, i drift
- *   pack    = Awish-läsningen (stock_locations.awish_fill), annars lagret i appen
+ *   pack    = lagret i appen per titel, annars Awish-läsningen (machineFill, samma som Fyll på);
+ *             kapacitet och tomma fack ur Awish (stock_locations.awish_fill)
  *   takt    = sålda pack de 14 hela dagarna t.o.m. i går (som besöksplanen)
  *   tom om  = pack ÷ takt
  *   förlust = lossProfitPerDayOre (bara ekonomiroller)
@@ -14,10 +15,10 @@ import {
   compareFleetRows,
   daysLeftOf,
   FLEET_STATUS_TONE,
-  fillOf,
   fleetStatusLabel,
   fleetStatusOf,
   lossProfitPerDayOre,
+  machineFill,
   PACE_WINDOW_DAYS,
   unitsPerDayMilli,
   type AwishFillRow,
@@ -117,15 +118,20 @@ export function buildFleetState(input: FleetInput): FleetState {
     }
   }
   const stockUnits = new Map<string, number>();
+  const ledger = new Map<string, Map<string, number>>();
   for (const s of input.stock) {
     stockUnits.set(s.machineId, (stockUnits.get(s.machineId) ?? 0) + Math.max(0, s.onHand));
+    const m = ledger.get(s.machineId) ?? new Map<string, number>();
+    m.set(s.titleId, (m.get(s.titleId) ?? 0) + s.onHand);
+    ledger.set(s.machineId, m);
   }
   const days30: IsoDate[] = Array.from({ length: 30 }, (_, i) => addDays(sparkStart, i));
 
   const machines: FleetMachine[] = input.machines
     .filter((m) => isMachineActive({ ...m, archived: m.archived ?? false }, today))
     .map((m) => {
-      const fill = fillOf(input.fills.get(m.id) ?? null);
+      // Samma regel som Fyll på (machineFill): lagret i appen per titel, annars Awish.
+      const fill = machineFill(input.fills.get(m.id) ?? null, ledger.get(m.id));
       const units = fill ? fill.units : stockUnits.has(m.id) ? stockUnits.get(m.id)! : null;
       const perDay = unitsPerDayMilli(sold.get(m.id) ?? 0);
       const daysLeft = units === null ? null : daysLeftOf(units, perDay);
