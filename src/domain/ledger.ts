@@ -19,7 +19,10 @@
  * Vinstdelning (avtal 'profit_after_costs'): butikens andel räknas per butik, månad och
  * avtal på orderna MED inköpspris (profit-split.ts) och fördelas på just de orderna i
  * proportion till varje orders egen vinst (belopp − inköp − kortavgift, kan vara negativ),
- * så att varje titel bär sin egen delning (allocateSignedProportional). Order utan pris bär ingen
+ * där inköpet är andelens underlag `shareCostOre` (pris mot kund från
+ * CUSTOMER_PRICE_SHARE_FROM, annars vårt inköpspris), så att varje titel bär sin egen
+ * delning (allocateSignedProportional). Vår vinst räknas alltid på `costOre` (vårt verkliga
+ * inköpspris), så skillnaden mot pris mot kund stannar hos oss. Order utan pris bär ingen
  * andel; `profitSplits` visar hur många de är, och butiksrapporten stoppas då.
  * Återbetalningar (`refunds`) dras från försäljningen i återbetalningens månad.
  *
@@ -73,6 +76,12 @@ export interface LedgerEntry {
   readonly netRevenueOre: number;
   /** Inköp (0 om pris saknas – se `priced`). */
   readonly costOre: number;
+  /**
+   * Inköpet som butikens andel vid vinstdelning räknas på (profit-split.ts `shareCostOre`):
+   * pris mot kund från CUSTOMER_PRICE_SHARE_FROM när prisperioden har ett, annars = `costOre`.
+   * Bara vinstdelningen läser det; vår vinst räknas alltid på `costOre`.
+   */
+  readonly shareCostOre: number;
   readonly cardFeeOre: number;
   readonly commissionOre: number;
   /** Orderns andel av butikens månadshyra (även för order utan pris). */
@@ -112,8 +121,16 @@ export interface StoreMonthSplit {
   readonly unpricedOrders: number;
   /** Titlarna som saknar inköpspris, sorterade. */
   readonly unpricedTitleIds: readonly string[];
-  /** Uträkningen på orderna med inköpspris. */
+  /**
+   * Uträkningen på orderna med inköpspris, så som butiken ser den: inköpet är det andelen
+   * räknas på (pris mot kund från CUSTOMER_PRICE_SHARE_FROM, profit-split.ts).
+   */
   readonly result: ProfitSplitResult;
+  /**
+   * Vårt verkliga inköp för samma order (Σ inköpspris). Lika med `result.purchasesOre` utan
+   * pris mot kund. Bara för våra egna vyer: lämnas aldrig ut till butiken.
+   */
+  readonly ourPurchasesOre: number;
 }
 
 /** Hyra för en butik-månad som saknade order (på dagar med hyra) att fördelas på. */
@@ -305,6 +322,7 @@ function computeLedger(input: ProfitabilityInput): Ledger {
       vatOre: econ.vatOre,
       netRevenueOre: econ.netRevenueOre,
       costOre: econ.costOre ?? 0,
+      shareCostOre: econ.shareCostOre ?? 0,
       cardFeeOre: econ.cardFeeOre,
       commissionOre: econ.commissionOre,
       rentOre: 0,
@@ -468,10 +486,13 @@ function allocateProfitSplits(
     const priced = g.list.filter((e) => e.priced);
     let sales = 0;
     let purchases = 0;
+    let ourPurchases = 0;
     let fees = 0;
     for (const e of priced) {
       sales += e.grossOre;
-      purchases += e.costOre;
+      // Andelens underlag: pris mot kund från CUSTOMER_PRICE_SHARE_FROM (profit-split.ts).
+      purchases += e.shareCostOre;
+      ourPurchases += e.costOre;
       fees += e.cardFeeOre;
     }
     const result = profitSplit({
@@ -487,10 +508,11 @@ function allocateProfitSplits(
       // Butikens andel fördelas efter varje orders egen vinst (belopp − inköp − kortavgift),
       // så att varje titel visar sin egen delning: 50 % av 35 kr vinst ger 17,50 kr kvar.
       // En order med förlust får en negativ andel (butiken bär sin del av förlusten).
-      // Summan per butik och månad är densamma som förut.
+      // Summan per butik och månad är densamma som förut. Inköpet är andelens underlag
+      // (`shareCostOre`), samma som i uträkningen.
       const shares = allocateSignedProportional(
         result.storeShareOre,
-        priced.map((e) => e.grossOre - e.costOre - e.cardFeeOre),
+        priced.map((e) => e.grossOre - e.shareCostOre - e.cardFeeOre),
         priced.map((e) => e.grossOre),
       );
       for (let i = 0; i < priced.length; i++) priced[i]!.commissionOre = shares[i]!;
@@ -506,6 +528,7 @@ function allocateProfitSplits(
       unpricedOrders: unpriced.length,
       unpricedTitleIds: [...new Set(unpriced.map((e) => e.order.titleId))].sort(),
       result,
+      ourPurchasesOre: ourPurchases,
     });
   }
   out.sort((x, y) =>

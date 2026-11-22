@@ -44,7 +44,10 @@ export interface PriceRecord {
   readonly id: string;
   readonly titleId: string;
   readonly unitCostOre: number;
-  /** Pris mot kund per pack (öre), null = inte angivet. Bara för visning. */
+  /**
+   * Pris mot kund per pack (öre), null = inte angivet. Butikens andel vid vinstdelning räknas
+   * på det från CUSTOMER_PRICE_SHARE_FROM (src/domain/profit-split.ts).
+   */
   readonly customerPriceOre: number | null;
   readonly validFrom: IsoDate;
   readonly note: string | null;
@@ -84,7 +87,8 @@ export interface TitleRow {
   readonly currentFrom: IsoDate | null;
   /**
    * Pris mot kund per pack på prisperioden som gäller (leverantörens prislista), null =
-   * inte angivet. Bara för visning: inget på raden räknas på det.
+   * inte angivet. Butikens andel vid vinstdelning räknas på det från CUSTOMER_PRICE_SHARE_FROM
+   * (radens andel och vår del); inköpssnittet och vår vinst före andelen på vårt pris.
    */
   readonly customerPriceOre?: number | null;
   readonly averagePriceOre: number | null;

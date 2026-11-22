@@ -54,7 +54,8 @@ export interface StoreShareColumns {
 
 /**
  * Tabellen över alla titlar: vårt pris (inköpspriset), pris mot kund, snittpris, vad som
- * blir kvar och status. Pris mot kund visas bara: allt annat räknas på vårt pris.
+ * blir kvar och status. Butikens andel vid vinstdelning räknas på pris mot kund från
+ * CUSTOMER_PRICE_SHARE_FROM (profit-split.ts); allt annat räknas på vårt pris.
  *
  * "Kvar per order" och "Kvar av pris" är hela beloppet, före butikens andel (ägarens regel:
  * hela beloppet som standard; ingen hyra dras heller). Med `share` (vald butik eller "Visa

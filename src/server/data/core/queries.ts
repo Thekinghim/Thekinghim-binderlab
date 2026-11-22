@@ -444,12 +444,18 @@ export async function queryMasterData(
 // Ekonomi (bara ägare, admin och läsare; RLS ger påfyllaren tomma resultat)
 // ---------------------------------------------------------------------------
 
+/**
+ * Inköpspriserna med pris mot kund. Pris mot kund läses bara av butikens andel vid
+ * vinstdelning från CUSTOMER_PRICE_SHARE_FROM (src/domain/profit-split.ts); allt annat räknar
+ * på unit_cost_ore.
+ */
 export async function queryPrices(tx: Tx, orgId: string): Promise<PurchasePrice[]> {
   return tx
     .select({
       titleId: s.purchasePrices.titleId,
       unitCostOre: s.purchasePrices.unitCostOre,
       validFrom: s.purchasePrices.validFrom,
+      customerPriceOre: s.purchasePrices.customerPriceOre,
     })
     .from(s.purchasePrices)
     .where(eq(s.purchasePrices.organizationId, orgId))

@@ -43,6 +43,13 @@ export interface PurchasePrice {
   readonly titleId: string;
   readonly unitCostOre: Ore;
   readonly validFrom: IsoDate;
+  /**
+   * Pris mot kund per pack (leverantörens högre listpris), samma prisperiod. Läses BARA av
+   * butikens andel vid vinstdelning från `CUSTOMER_PRICE_SHARE_FROM` (profit-split.ts):
+   * andelen räknas då på detta pris i stället för vårt inköpspris. Saknas/null = inget pris
+   * mot kund (andelen räknas på `unitCostOre`).
+   */
+  readonly customerPriceOre?: Ore | null;
 }
 
 /**

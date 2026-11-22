@@ -17,7 +17,7 @@ import { DomainError } from "./errors";
 import { applyBp, assertBp, assertNonNegativeInteger, mulDivRound, BP_SCALE } from "./money";
 import { AgreementIndex, PlacementIndex } from "./placements";
 import { PriceIndex } from "./prices";
-import { isProfitSplit } from "./profit-split";
+import { isProfitSplit, shareCostOre } from "./profit-split";
 import type { EconomicsSources, IsoDate, OrderLine, Settings, StoreAgreement } from "./types";
 
 /** Största tillåtna momssats (100 %). */
@@ -43,6 +43,11 @@ export interface OrderEconomics {
   readonly costOre: number | null;
   /** Från när inköpspriset gällde (för spårbarhet). */
   readonly costValidFrom: IsoDate | null;
+  /**
+   * Inköpet som butikens andel vid vinstdelning räknas på (profit-split.ts `shareCostOre`:
+   * pris mot kund från CUSTOMER_PRICE_SHARE_FROM, annars = `costOre`). `null` utan pris.
+   */
+  readonly shareCostOre: number | null;
   readonly cardFeeOre: number;
   readonly commissionOre: number;
   /** Provisionssatsen som användes (0 om inget avtal eller ingen provision). */
@@ -166,6 +171,7 @@ export function computeOrderEconomics(order: OrderLine, ctx: EconomicsContext): 
     netRevenueOre: net,
     costOre: price ? price.unitCostOre : null,
     costValidFrom: price ? price.validFrom : null,
+    shareCostOre: shareCostOre(price, order.businessDate),
     cardFeeOre: cardFee,
     commissionOre: commission,
     commissionBp,

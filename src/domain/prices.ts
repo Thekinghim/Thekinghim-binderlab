@@ -26,6 +26,9 @@ function validatePrice(p: PurchasePrice): void {
   }
   assertIsoDate(p.validFrom, `Giltig från för titel ${p.titleId}`);
   assertNonNegativeInteger(p.unitCostOre, `Inköpspriset för titel ${p.titleId}`);
+  if (p.customerPriceOre !== undefined && p.customerPriceOre !== null) {
+    assertNonNegativeInteger(p.customerPriceOre, `Priset mot kund för titel ${p.titleId}`);
+  }
 }
 
 /**

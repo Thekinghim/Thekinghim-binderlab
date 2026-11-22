@@ -53,7 +53,7 @@ import type { GroupBy, IsoDate, Period, ProfitabilityInput } from "./types";
 import { vmbApplies } from "./vmb";
 
 /** Version av beräkningsreglerna. Sparas med rapporter (`reports.calc_version`). */
-export const CALC_VERSION = "1.4.0";
+export const CALC_VERSION = "1.5.0";
 
 /** Nyckel för ej fördelad hyra. */
 export const UNALLOCATED_KEY = "unallocated";

@@ -93,7 +93,9 @@ function customerPriceOf(value: unknown): number | null | undefined {
 
 /**
  * Pris mot kund för titeln, på prisperioden som gäller i dag (null = ta bort). Rör inte
- * inköpspriset och ingen beräkning: bara sidan Inköpspriser läses om. Ägare och admin.
+ * inköpspriset. Butikens andel vid vinstdelning räknas på pris mot kund från
+ * CUSTOMER_PRICE_SHARE_FROM (src/domain/profit-split.ts), så andelar, avräkningar och vår
+ * del läses om som efter ett ändrat inköpspris. Ägare och admin.
  */
 export async function setCustomerPrice(input: {
   titleId: string;
@@ -110,7 +112,10 @@ export async function setCustomerPrice(input: {
         : Number(input.customerPriceOre),
     today: ctx.today,
   });
-  if (result.ok) revalidatePath("/inkopspriser");
+  if (result.ok) {
+    revalidatePath("/inkopspriser");
+    await revalidateSettlementData();
+  }
   return result;
 }
 

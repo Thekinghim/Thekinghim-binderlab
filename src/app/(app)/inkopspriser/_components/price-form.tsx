@@ -99,7 +99,8 @@ type Busy = "correct" | "today" | "dated" | "customer";
  * idag" (äldre försäljning behåller sitt pris). Ett eget datum finns under "Annat datum…".
  *
  * Pris mot kund (valfritt) sparas ihop med vårt pris, eller för sig med "Spara pris mot
- * kund" (då på perioden som gäller i dag). Det visas bara; vinsten räknas på vårt pris.
+ * kund" (då på perioden som gäller i dag). Vår vinst räknas på vårt pris; butikens andel vid
+ * vinstdelning räknas på pris mot kund från CUSTOMER_PRICE_SHARE_FROM (profit-split.ts).
  */
 export function PriceForm({
   titleId,

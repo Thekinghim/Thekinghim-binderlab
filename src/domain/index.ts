@@ -108,10 +108,12 @@ export {
 
 export { rentByStoreMonth, type RentSegment, type StoreMonthRent } from "./rent";
 export {
+  CUSTOMER_PRICE_SHARE_FROM,
   DEFAULT_PROFIT_SHARE_BP,
   VMB_VAT_PERCENT,
   isProfitSplit,
   profitSplit,
+  shareCostOre,
   vmbVatOfMargin,
   type ProfitSplitInput,
   type ProfitSplitResult,
