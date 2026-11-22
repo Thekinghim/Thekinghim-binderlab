@@ -364,7 +364,6 @@
     border: 1px solid transparent;
     border-radius: var(--v2-r-sm);
     min-width: 0;
-    min-height: 76px;
     justify-content: flex-end;
   }
   .v2-auto-det .fc.e {

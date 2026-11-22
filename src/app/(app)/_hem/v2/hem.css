@@ -1091,7 +1091,14 @@
   gap: 10px;
   min-width: 0;
 }
-.hem2 .x-tn > span {
+/* Packbilden (storlek s) i en fast bredd för den bredaste packen (151): namnen står i linje. */
+.hem2 .x-pkb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+}
+.hem2 .x-tn > span:not(.x-pkb) {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1625,7 +1632,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  height: 80px;
+  height: 100px;
   display: flex;
   align-items: center;
   gap: 12px;

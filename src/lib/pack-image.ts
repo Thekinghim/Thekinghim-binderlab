@@ -3,7 +3,7 @@
  * (docs/design/v2/prototyp.html). Ingen träff = en neutral platta med initialer i samma
  * format (PackImage), så att rutnäten inte hoppar; titeln står alltid bredvid.
  *
- * Bilderna är 240 px höga (2× största visade storlek, 72 px på 2×-skärm ≈ 144 px, med marginal).
+ * Bilderna är 240 px höga: 2× största visade storlek (xl, 120 px), alltså skarpa på 2×-skärm.
  */
 
 /** Nycklarna som har en bild i public/packs/<nyckel>.webp, med bildens mått (px). */
@@ -12,22 +12,32 @@ export const PACK_IMAGES = {
   "30th-celebration": [131, 240],
   "ascended-heroes": [131, 240],
   "black-bolt": [131, 240],
+  "chaos-rising": [132, 240],
+  "cosmic-eclipse": [131, 240],
   "delta-reign": [132, 240],
   "destined-rivals": [131, 240],
   "fusion-strike": [131, 240],
+  "journey-together": [132, 240],
+  "lorcana-into-the-inklands": [139, 240],
   "mega-dream-ex-jp": [130, 240],
   "mega-evolution": [131, 240],
   "mega-inferno-jp": [119, 240],
   "mega-storm-emeralda-jp": [119, 240],
-  "mystery-pack-premium": [129, 240],
   "mystery-pack": [129, 240],
+  "mystery-pack-premium": [129, 240],
+  "obsidian-flames": [131, 240],
+  "op01-romance-dawn": [147, 240],
   "op13-en": [145, 240],
   "op13-jp": [119, 240],
+  "paldea-evolved": [131, 240],
+  "paradox-rift": [136, 240],
   "perfect-order": [132, 240],
   "phantasmal-flames": [132, 240],
   "prismatic-evolutions": [131, 240],
   "scarlet-violet-151": [177, 240],
   "surging-sparks": [131, 240],
+  "temporal-forces": [133, 240],
+  "twilight-masquerade": [132, 240],
   "white-flare": [131, 240],
 } as const satisfies Record<string, readonly [number, number]>;
 
@@ -52,6 +62,16 @@ const RULES: ReadonlyArray<readonly [string, PackKey]> = [
   ["delta", "delta-reign"],
   ["perfect order", "perfect-order"],
   ["mega evolution", "mega-evolution"],
+  ["journey together", "journey-together"],
+  ["obsidian", "obsidian-flames"],
+  ["paldea evolved", "paldea-evolved"],
+  ["paradox", "paradox-rift"],
+  ["temporal", "temporal-forces"],
+  ["twilight", "twilight-masquerade"],
+  ["chaos rising", "chaos-rising"],
+  ["cosmic eclipse", "cosmic-eclipse"],
+  ["inklands", "lorcana-into-the-inklands"],
+  ["romance dawn", "op01-romance-dawn"],
 ];
 
 /** Titelns bildnyckel, eller null när det inte finns någon bild. */

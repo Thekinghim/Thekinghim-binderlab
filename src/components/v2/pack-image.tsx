@@ -3,8 +3,13 @@ import Image from "next/image";
 import { cn } from "@/lib/cn";
 import { PACK_IMAGES, packInitials, packKey } from "@/lib/pack-image";
 
-/** Höjder som i prototypen: xs 22, m 40, md 54 (standard), l 60, xl 72 px. */
-const HEIGHT = { xs: 22, m: 40, md: 54, l: 60, xl: 72 } as const;
+/**
+ * Höjder (px). Packen ska gå att känna igen direkt, så bilderna är större än i prototypen:
+ * xs 40 (rader med många bilder, t.ex. automaternas remsor), s 48 (tabeller och listor),
+ * m 64 (kort och titellistor), md 84 (standard, fackraderna i Fyll på), l 96 och xl 120
+ * (framhävda ställen). Bilderna är 240 px höga, alltså skarpa på 2×-skärm även i xl.
+ */
+const HEIGHT = { xs: 40, s: 48, m: 64, md: 84, l: 96, xl: 120 } as const;
 export type PackSize = keyof typeof HEIGHT;
 
 /** Packens format (bredd ÷ höjd) för plattan utan bild: samma som de flesta bilderna. */
@@ -40,7 +45,7 @@ export function PackImage({
         className={cn("v2-pk v2-pk-none", className)}
         style={{ height, width, fontSize: Math.max(8, Math.round(height / 4.5)) }}
       >
-        {size === "xs" ? null : packInitials(title)}
+        {packInitials(title)}
       </span>
     );
   }
@@ -67,7 +72,7 @@ export function PackImage({
 export function PackList({ titles, label }: { titles: readonly string[]; label?: string }) {
   return (
     <span className="inline-flex items-start gap-2.5 align-middle">
-      {label ? <span className="flex-none leading-[26px]">{label}</span> : null}
+      {label ? <span className="flex-none leading-10">{label}</span> : null}
       <span className="flex flex-wrap gap-x-3 gap-y-1">
         {titles.map((t) => (
           <span key={t} className="inline-flex items-center gap-1.5">
