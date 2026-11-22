@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 
 import {
   customerStateOn,
@@ -9,7 +8,7 @@ import {
   planOn,
 } from "@/analytics/subscriptions/billing";
 import { MobileFold } from "@/components/ui/mobile-fold";
-import { SectionHeader } from "@/components/ui/section-header";
+import { Card, CardBody } from "@/components/v2/card";
 import { addMonths, monthOf, type IsoDate } from "@/domain";
 import { formatInt } from "@/lib/format";
 import type { SessionUser } from "@/server/access";
@@ -45,12 +44,10 @@ export async function SubscriptionSection({
   user,
   organizationId,
   today,
-  index,
 }: {
   user: SessionUser;
   organizationId: string;
   today: IsoDate;
-  index: number;
 }) {
   const [sub, operator] = await Promise.all([
     safeLoad(user, organizationId),
@@ -82,101 +79,98 @@ export async function SubscriptionSection({
         : CUSTOMER_STATE[state];
 
   return (
-    <section
+    <Card
       id="abonnemang"
-      aria-labelledby="abonnemang-rubrik"
-      className="rise flex scroll-mt-28 flex-col gap-8 max-md:gap-3"
-      style={{ "--i": index } as CSSProperties}
+      className="scroll-mt-24"
+      title="Abonnemang"
+      actions={aside ? <span className="lk">{aside.replace(/\.$/, "")}</span> : undefined}
     >
-      <SectionHeader id="abonnemang-rubrik" size="md" title={title} aside={aside} />
-      {operator ? (
-        <p>
-          <Link href="/plattform" className="text-fg underline max-md:tap">
-            Öppna Plattform →
-          </Link>{" "}
-          <span className="text-muted">Alla kunder, planer, MRR och fakturaunderlag.</span>
+      <CardBody className="flex flex-col gap-3">
+        <p className="st-p">
+          <b>{title}</b>
         </p>
-      ) : null}
-      {sub && months.length > 0 ? (
-        <MobileFold
-          summary="Visa underlag"
-          meta={
-            now && now.totals.length > 0
-              ? `${monthLabel(current)}: ${now.totals.map((t) => formatMoney(t.netOre, t.currency)).join(" + ")} exkl. moms`
-              : undefined
-          }
-        >
-          <div className="flex max-w-3xl flex-col gap-4">
-            <p className="text-muted">
-              {mrr
-                ? `${formatInt(machinesOn(sub.machines, today))} automater i drift i dag, ${formatMoney(mrr.amountOre, mrr.currency)} per månad exkl. moms.`
-                : "Inget debiteras i dag."}{" "}
-              Varje automat räknas per dag den är i drift. Underlaget visar vad som faktureras;
-              inget dras automatiskt.
-            </p>
-            <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-              <table className="w-full border-collapse text-base">
-                <caption className="sr-only">Fakturaunderlag per månad</caption>
-                <thead>
-                  <tr className="border-b border-line-strong text-left">
-                    <th scope="col" className="label h-9 pr-3 font-normal text-subtle">
-                      Månad
-                    </th>
-                    <th scope="col" className="label h-9 px-3 text-right font-normal text-subtle">
-                      Automater
-                    </th>
-                    <th
-                      scope="col"
-                      className="label hidden h-9 px-3 text-right font-normal text-subtle md:table-cell"
-                    >
-                      Exkl. moms
-                    </th>
-                    <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
-                      Att betala
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bases.map((b) => {
-                    // Valutor blandas aldrig: byter planen valuta mitt i månaden visas båda.
-                    const money = (pick: (t: (typeof b.totals)[number]) => number) =>
-                      b.totals.length === 0
-                        ? "–"
-                        : b.totals.map((t) => formatMoney(pick(t), t.currency, 2)).join(" + ");
-                    return (
-                      <tr key={b.month} className="border-b border-line">
-                        <td className="py-2.5 pr-3 text-fg">
-                          {monthLabel(b.month)}
-                          {b.month === current ? (
-                            <span className="block text-sm text-subtle">preliminärt</span>
-                          ) : null}
-                        </td>
-                        <td className="tnum px-3 py-2.5 text-right">
-                          {formatInt(b.activeMachines)}
-                          <span className="block text-sm text-subtle">
-                            {formatInt(b.billableMachineDays)} dagar
-                          </span>
-                        </td>
-                        <td className="tnum hidden px-3 py-2.5 text-right md:table-cell">
-                          {money((t) => t.netOre)}
-                        </td>
-                        <td className="tnum py-2.5 pl-3 text-right">{money((t) => t.totalOre)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {now ? (
-              <p className="text-sm text-muted">
-                {VAT_LABEL[now.vat.mode]}
-                {sub.customer.vatNumber ? ` · momsnr ${sub.customer.vatNumber}` : ""}.
-                {now.vat.note ? ` ${now.vat.note}` : ""}
+        {operator ? (
+          <p className="st-p">
+            <Link href="/plattform" className="font-[550] text-v2-ink underline">
+              Öppna Plattform →
+            </Link>{" "}
+            Alla kunder, planer, MRR och fakturaunderlag.
+          </p>
+        ) : null}
+        {sub && months.length > 0 ? (
+          <MobileFold
+            summary="Visa underlag"
+            meta={
+              now && now.totals.length > 0
+                ? `${monthLabel(current)}: ${now.totals.map((t) => formatMoney(t.netOre, t.currency)).join(" + ")} exkl. moms`
+                : undefined
+            }
+          >
+            <div className="flex flex-col gap-3">
+              <p className="st-p">
+                {mrr
+                  ? `${formatInt(machinesOn(sub.machines, today))} automater i drift i dag, ${formatMoney(mrr.amountOre, mrr.currency)} per månad exkl. moms.`
+                  : "Inget debiteras i dag."}{" "}
+                Varje automat räknas per dag den är i drift. Underlaget visar vad som faktureras;
+                inget dras automatiskt.
               </p>
-            ) : null}
-          </div>
-        </MobileFold>
-      ) : null}
-    </section>
+              <div className="v2-table-wrap -mx-[18px] border-y border-v2-line2">
+                <table className="v2-table">
+                  <caption className="sr-only">Fakturaunderlag per månad</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Månad</th>
+                      <th scope="col" className="num">
+                        Automater
+                      </th>
+                      <th scope="col" className="num ph-hide">
+                        Exkl. moms
+                      </th>
+                      <th scope="col" className="num">
+                        Att betala
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bases.map((b) => {
+                      // Valutor blandas aldrig: byter planen valuta mitt i månaden visas båda.
+                      const money = (pick: (t: (typeof b.totals)[number]) => number) =>
+                        b.totals.length === 0
+                          ? "–"
+                          : b.totals.map((t) => formatMoney(pick(t), t.currency, 2)).join(" + ");
+                      return (
+                        <tr key={b.month}>
+                          <td>
+                            {monthLabel(b.month)}
+                            {b.month === current ? (
+                              <span className="block text-v2-xs text-v2-mute">preliminärt</span>
+                            ) : null}
+                          </td>
+                          <td className="num">
+                            {formatInt(b.activeMachines)}
+                            <span className="block text-v2-xs text-v2-mute">
+                              {formatInt(b.billableMachineDays)} dagar
+                            </span>
+                          </td>
+                          <td className="num ph-hide">{money((t) => t.netOre)}</td>
+                          <td className="num">{money((t) => t.totalOre)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {now ? (
+                <p className="st-p">
+                  {VAT_LABEL[now.vat.mode]}
+                  {sub.customer.vatNumber ? ` · momsnr ${sub.customer.vatNumber}` : ""}.
+                  {now.vat.note ? ` ${now.vat.note}` : ""}
+                </p>
+              ) : null}
+            </div>
+          </MobileFold>
+        ) : null}
+      </CardBody>
+    </Card>
   );
 }

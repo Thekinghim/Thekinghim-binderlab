@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 
 import { LanguageChoice } from "@/components/shell/simple-shell";
-import { SectionHeader } from "@/components/ui/section-header";
+import { Card, CardBody } from "@/components/v2/card";
+import { KeyValues } from "@/components/v2/key-values";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { getServerEnv } from "@/lib/env";
 import { loadContext } from "@/server/data/core";
 
-import { MerHead } from "../_components/mer-head";
 import { PasswordForm } from "../_components/password-form";
 import { ROLE_LABEL } from "../anvandare/model";
 
@@ -24,39 +26,38 @@ export default async function AccountPage() {
     // Felkonfigurerad miljö: bara byte med nuvarande lösenord.
   }
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <MerHead
-        eyebrow="Mitt konto"
-        title={ctx.user.displayName ?? ctx.user.email}
-        // Ett namn är inget tal ("wille1452" ska inte bli "wille1 452").
-        count={false}
-        meta={[
-          { label: "E-post", value: ctx.user.email },
-          { label: "Roll", value: ROLE_LABEL[ctx.role] },
-          { label: "Organisation", value: ctx.organization.name },
-        ]}
-      />
-      <section
-        aria-labelledby="losenord"
-        className="rise flex max-w-2xl flex-col gap-6"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        <SectionHeader id="losenord" size="md" title="Byt lösenord." />
-        <PasswordForm canEmailLink={canEmailLink} />
-      </section>
-      <section
-        aria-labelledby="sprak"
-        className="rise flex max-w-md flex-col gap-4"
-        style={{ "--i": 2 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="sprak"
-          size="md"
-          title="Language / Språk."
-          aside="Gäller hela appen för dig."
-        />
-        <LanguageChoice />
-      </section>
-    </div>
+    <V2Page title="Mitt konto" sub={<b>{ctx.user.displayName ?? ctx.user.email}</b>}>
+      <SubNav />
+      <div className="v2-cols">
+        <div className="v2-stack">
+          <Card title={<span id="losenord">Byt lösenord</span>}>
+            <CardBody>
+              <PasswordForm canEmailLink={canEmailLink} />
+            </CardBody>
+          </Card>
+        </div>
+        <div className="v2-stack">
+          <Card title="Kontot">
+            <CardBody>
+              <KeyValues
+                items={[
+                  { label: "E-post", value: ctx.user.email },
+                  { label: "Roll", value: ROLE_LABEL[ctx.role] },
+                  { label: "Organisation", value: ctx.organization.name },
+                ]}
+              />
+            </CardBody>
+          </Card>
+          <Card
+            title={<span id="sprak">Language / Språk</span>}
+            actions={<span className="lk">Gäller hela appen för dig</span>}
+          >
+            <CardBody>
+              <LanguageChoice />
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </V2Page>
   );
 }

@@ -6,7 +6,6 @@ import { useId, useState, useTransition } from "react";
 import { useToast } from "@/components/ui/toast";
 import { useT } from "@/i18n/client";
 import { LOCALES, LOCALE_NAME, type Locale } from "@/i18n/locale";
-import { cn } from "@/lib/cn";
 
 import { setInvitationOptions, setMemberLocale, setMemberViewMode } from "./actions";
 
@@ -67,7 +66,7 @@ export function ViewSettings({
     });
 
   return (
-    <div className="col-span-2 flex flex-col gap-2 rounded-md border border-line bg-surface px-3 py-2 sm:flex-row sm:items-center sm:justify-between md:col-span-4">
+    <div className="col-span-2 flex flex-col gap-1 rounded-v2 bg-v2-hover px-3 py-1 sm:flex-row sm:items-center sm:justify-between md:col-span-4">
       <label htmlFor={`${id}-enkel`} className="flex min-h-11 cursor-pointer items-center gap-3">
         <input
           id={`${id}-enkel`}
@@ -84,25 +83,18 @@ export function ViewSettings({
         />
         <span
           aria-hidden
-          className={cn(
-            "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2",
-            simple ? "border-inverse bg-inverse" : "border-line-strong bg-raised",
-          )}
+          data-on={simple}
+          className="st-switch peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2"
         >
-          <span
-            className={cn(
-              "absolute size-5 rounded-full transition-transform",
-              simple ? "translate-x-6 bg-on-inverse" : "translate-x-1 bg-muted",
-            )}
-          />
+          <span />
         </span>
         <span className="flex min-w-0 flex-col">
-          <span className="text-base text-fg">{t.team.simpleView}</span>
-          <span className="text-xs text-subtle">{t.team.simpleViewHint}</span>
+          <span className="text-v2-md font-[550] text-v2-ink">{t.team.simpleView}</span>
+          <span className="text-v2-xs text-v2-mute">{t.team.simpleViewHint}</span>
         </span>
       </label>
       <label htmlFor={`${id}-sprak`} className="flex min-h-11 items-center gap-2">
-        <span className="label text-subtle">{t.team.language}</span>
+        <span className="text-v2-sm text-v2-mute">{t.team.language}</span>
         <select
           id={`${id}-sprak`}
           value={lang}
@@ -112,8 +104,7 @@ export function ViewSettings({
             setLang(l);
             save({ locale: l });
           }}
-          className="h-11 rounded-sm border border-line-control bg-bg px-3 text-fg"
-          style={{ fontSize: 16 }}
+          className="v2-select w-auto"
         >
           {LOCALES.map((l) => (
             <option key={l} value={l}>

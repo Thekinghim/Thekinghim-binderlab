@@ -159,8 +159,8 @@ export function Evidence({
           <li key={c.id} className="flex min-w-0 flex-col gap-2 border-t border-line py-4">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
               <span className="label text-muted">
-                <span className="tnum text-fg">{String(i + 1).padStart(2, "0")}</span>
-                <span className="text-faint"> / </span>
+                <span className="text-fg tabular-nums">{i + 1}</span>
+                <span className="text-faint"> · </span>
                 {r?.label ?? c.label}
               </span>
               <span className="meta flex items-center gap-2 text-subtle">
@@ -206,7 +206,7 @@ export function Evidence({
                       <summary className="meta w-fit cursor-pointer text-subtle hover:text-fg">
                         Visa resultatet som modellen fick
                       </summary>
-                      <pre className="meta mt-2 max-h-80 overflow-auto rounded-sm border border-line bg-bg p-3 break-words whitespace-pre-wrap text-muted">
+                      <pre className="meta mt-2 max-h-80 overflow-auto rounded-v2 border border-v2-line bg-v2-hover p-3 font-sans break-words whitespace-pre-wrap text-muted">
                         {JSON.stringify(r.result, null, 2)}
                       </pre>
                     </details>

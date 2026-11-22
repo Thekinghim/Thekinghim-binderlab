@@ -42,7 +42,7 @@ export function RunSelfCheckButton() {
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="text-sm text-signal-fg">
+        <p role="alert" className="text-v2-sm text-v2-crit-text">
           {error}
         </p>
       ) : null}

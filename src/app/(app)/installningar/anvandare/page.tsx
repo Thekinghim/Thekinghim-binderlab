@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 
 import { wallClockIn } from "@/components/shell/period-state";
-import { SectionHeader } from "@/components/ui/section-header";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 
-import { MerHead } from "../_components/mer-head";
+import { FoldCard } from "../_components/fold-card";
+import "../_components/settings.css";
 import { getServerEnv } from "@/lib/env";
 import { formatDate } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
@@ -95,50 +97,51 @@ export default async function UsersPage({
     null,
   );
 
+  const counts = roleMeta(data.members);
+
   return (
-    <div className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <MerHead
-        eyebrow="Användare"
-        title={headline(members.length, invitations.length)}
-        meta={roleMeta(data.members)}
-        actions={
-          <InviteDialog
-            organizationName={ctx.organization.name}
-            roles={assignableRoles(data.role)}
-            devMailbox={getServerEnv().AUTH_PROVIDER === "dev"}
-            initialOpen={openInvite}
-          />
-        }
-      />
+    <V2Page
+      title="Användare"
+      sub={
+        <>
+          <b>{headline(members.length, invitations.length)}</b>{" "}
+          {counts.map((c) => `${c.value} ${c.label.toLowerCase()}`).join(" · ")}.
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-stack">
+        <MembersView
+          organizationName={ctx.organization.name}
+          actorRole={data.role}
+          assignable={assignableRoles(data.role)}
+          members={members}
+          invitations={invitations}
+          membersAside={membersAside(
+            newest ? { name: memberName(newest), date: date(newest.createdAt) } : null,
+          )}
+          invitationsAside={invitationsAside(firstExpiry ? date(firstExpiry) : null)}
+          actions={
+            <InviteDialog
+              organizationName={ctx.organization.name}
+              roles={assignableRoles(data.role)}
+              devMailbox={getServerEnv().AUTH_PROVIDER === "dev"}
+              initialOpen={openInvite}
+            />
+          }
+        />
 
-      <MembersView
-        organizationName={ctx.organization.name}
-        actorRole={data.role}
-        assignable={assignableRoles(data.role)}
-        members={members}
-        invitations={invitations}
-        membersAside={membersAside(
-          newest ? { name: memberName(newest), date: date(newest.createdAt) } : null,
-        )}
-        invitationsAside={invitationsAside(firstExpiry ? date(firstExpiry) : null)}
-      />
-
-      <details
-        className="rise mt-14 border-t border-line pt-6"
-        style={{ "--i": 3 } as React.CSSProperties}
-      >
-        <summary className="cursor-pointer list-none">
-          <SectionHeader id="roller" title="Roller." aside="Vem ser vad." size="md" />
-        </summary>
-        <dl className="mt-6 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
-          {ROLE_ORDER.map((role) => (
-            <div key={role} className="flex flex-col gap-1.5 border-t border-line pt-3">
-              <dt className="label text-fg">{ROLE_LABEL[role]}</dt>
-              <dd className="text-sm text-muted">{ROLE_SUMMARY[role]}</dd>
-            </div>
-          ))}
-        </dl>
-      </details>
-    </div>
+        <FoldCard id="roller" title="Roller" aside="Vem ser vad">
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-4 px-[18px] py-4 sm:grid-cols-2 lg:grid-cols-4">
+            {ROLE_ORDER.map((role) => (
+              <div key={role} className="flex flex-col gap-1">
+                <dt className="text-v2-md font-[550] text-v2-ink">{ROLE_LABEL[role]}</dt>
+                <dd className="text-v2-sm text-v2-mute">{ROLE_SUMMARY[role]}</dd>
+              </div>
+            ))}
+          </dl>
+        </FoldCard>
+      </div>
+    </V2Page>
   );
 }

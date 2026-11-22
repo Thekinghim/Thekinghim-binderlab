@@ -4,8 +4,12 @@ import Link from "next/link";
 import { AppRefreshButton } from "@/components/pwa/app-refresh-button";
 import { wallClockIn } from "@/components/shell/period-state";
 import { MobileFold } from "@/components/ui/mobile-fold";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { Badge } from "@/components/v2/badge";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
+import { Table } from "@/components/v2/table";
 import { DEFAULT_VAT_LIMIT_ORE, settingsCheckHeadline, vatAckValid } from "@/analytics/self-check";
 import { EN_DASH, NBSP, formatDate, formatInt } from "@/lib/format";
 import { operatorGaps, operatorParty } from "@/server/contracts/operator";
@@ -18,12 +22,13 @@ import { requireUser } from "@/server/session";
 import { CompanyForm } from "./_components/company-form";
 import { CustomerDemos, type CustomerDemoRow } from "./_components/customer-demos";
 import { ExportDataButton } from "./_components/export-data";
-import { MerHead } from "./_components/mer-head";
+import { FoldCard } from "./_components/fold-card";
 import { OwnerSharesForm } from "./_components/owner-shares-form";
 import { SettingsForm } from "./_components/settings-form";
 import { SettingsNotices, VatAcknowledgedLine } from "./_components/settings-notices";
 import { SettingsLog } from "./_components/settings-log";
 import { SubscriptionSection } from "./_components/subscription-section";
+import "./_components/settings.css";
 import { loadSettingsIssuesFor, loadSettingsPageFor } from "./_lib/data";
 import {
   accountUse,
@@ -47,7 +52,7 @@ function dayDate(date: string): Date {
 }
 
 function SubLabel({ children }: { children: string }) {
-  return <h3 className="label text-subtle">{children}</h3>;
+  return <h3 className="st-h3">{children}</h3>;
 }
 
 /**
@@ -109,365 +114,319 @@ export default async function SettingsPage() {
     : null;
   const companyGaps = operatorGaps(operatorParty(ctx.organization.name, company));
 
+  const subParts = [
+    headline.title.replace(/\.$/, ""),
+    `räkenskapsår ${fiscalYearLabel(settings.fiscalYearStartMonth)}`,
+    lastSettingsChange
+      ? `ändrat ${when(lastSettingsChange.occurredAt).replace(/\.$/, "")} av ${lastSettingsChange.actor}`
+      : null,
+  ].filter(Boolean);
+
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 max-md:gap-6 md:gap-12 md:px-8 md:pt-12">
-      <MerHead
-        eyebrow="Inställningar"
-        title={check ? check.title : headline.title}
-        line={check ? headline.title : undefined}
-        tone={check && !check.ok ? "bad" : undefined}
-        // Mobil: räkenskapsåret står i formuläret, ändringarna i loggen.
-        metaOnMobile={false}
-        meta={[
-          { label: "Räkenskapsår", value: fiscalYearLabel(settings.fiscalYearStartMonth) },
-          {
-            label: "Senast ändrat",
-            value: lastSettingsChange
-              ? `${when(lastSettingsChange.occurredAt)} · ${lastSettingsChange.actor}`
-              : "Aldrig",
-          },
-        ]}
-      />
-
-      {issues && issues.length > 0 ? (
-        <SettingsNotices notices={issues.map((i) => ({ kind: i.kind, text: i.text }))} />
-      ) : null}
-
-      <nav
-        aria-label="Fler inställningar"
-        // Mobil: två rader i en lista i stället för knappar.
-        className="rise flex flex-wrap gap-2 max-md:flex-col max-md:gap-0 max-md:border-t max-md:border-line"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        {[
-          {
-            href: "/installningar/anvandare",
-            label: "Användare",
-          },
-          {
-            href: "/installningar/konto",
-            label: "Mitt konto",
-          },
-          {
-            href: "/installningar/kontroll",
-            label: "Kontroll",
-          },
-        ].map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            className="lift group inline-flex h-9 items-center gap-3 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg hover:bg-hover max-md:h-12 max-md:justify-between max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:border-line max-md:bg-transparent max-md:px-0"
-          >
-            {l.label}
-            <span aria-hidden className="text-faint transition-colors group-hover:text-fg">
-              →
-            </span>
-          </Link>
-        ))}
-      </nav>
-
-      <section
-        id="kortavgift"
-        aria-labelledby="avgifter"
-        className="rise flex scroll-mt-28 flex-col gap-8 max-md:gap-3"
-        style={{ "--i": 2 } as React.CSSProperties}
-      >
-        <span id="moms" className="sr-only" aria-hidden />
-        <SectionHeader id="avgifter" size="md" title="Avgifter och moms." />
-        {/* Mobil: formulären är hopfällda med nuvarande värden på raden. */}
-        <MobileFold
-          summary="Ändra"
-          meta={`Kortavgift ${formatBp(settings.cardFeeBp)} · moms ${formatBp(settings.vatRateBp)}`}
-        >
-          <div className="max-w-2xl">
-            <SettingsForm
-              key={`${settings.cardFeeBp}-${settings.vatRateBp}-${settings.fiscalYearStartMonth}-${settings.vatLimitOre}`}
-              cardFeeBp={settings.cardFeeBp}
-              vatRateBp={settings.vatRateBp}
-              fiscalYearStartMonth={settings.fiscalYearStartMonth}
-              vatLimitOre={settings.vatLimitOre}
-              cardFeeDefaultFrom={data.cardFeeDefaultFrom}
-              cardFeeRates={data.settings?.cardFeeRates ?? []}
-              today={ctx.today}
-            />
-          </div>
-        </MobileFold>
-        {vatAckValid(
-          settings.vatOkAt,
-          fiscalYearAround(ctx.today, settings.fiscalYearStartMonth).start,
-        ) && settings.vatRateBp === 0 ? (
-          <VatAcknowledgedLine since={when(settings.vatOkAt!)} />
+    <V2Page
+      title="Inställningar"
+      sub={
+        <>
+          {check?.ok ? <b>{check.title} </b> : null}
+          {subParts.join(" · ")}.
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-stack">
+        {issues && issues.length > 0 ? (
+          <SettingsNotices notices={issues.map((i) => ({ kind: i.kind, text: i.text }))} />
         ) : null}
-      </section>
 
-      <section
-        id="foretaget"
-        aria-labelledby="foretaget-rubrik"
-        className="rise flex scroll-mt-28 flex-col gap-8 max-md:gap-3"
-        style={{ "--i": 3 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="foretaget-rubrik"
-          size="md"
-          title={companyGaps.length === 0 ? "Företaget." : "Företaget saknar uppgifter."}
-          aside={
-            companyGaps.length === 0
-              ? "Står i kontrakten och i butiksrapporten."
-              : `Tomt i kontrakten: ${companyGaps.join(", ")}.`
-          }
-        />
-        <MobileFold
-          summary="Ändra"
-          meta={
-            companyGaps.length === 0 ? "Allt ifyllt" : `${formatInt(companyGaps.length)} saknas`
-          }
-        >
-          <div className="max-w-2xl">
-            <CompanyForm
-              organizationName={ctx.organization.name}
-              initial={{
-                companyName: company.companyName ?? "",
-                orgNumber: company.orgNumber ?? "",
-                companyAddress: company.companyAddress ?? "",
-                contactName: company.contactName ?? "",
-                contactEmail: company.contactEmail ?? "",
-                contactPhone: company.contactPhone ?? "",
-                vatNumber: data.reportBasis.vatNumber ?? "",
-                reportVatMode: data.reportBasis.reportVatMode,
-                reportVmb: data.reportBasis.reportVmb,
-                reportOwnsMachines: data.reportBasis.reportOwnsMachines,
-              }}
-            />
+        <div className="v2-cols">
+          <div className="v2-stack">
+            <Card
+              id="kortavgift"
+              className="scroll-mt-24"
+              title="Avgifter och moms"
+              actions={
+                <span className="lk tnum max-md:hidden">
+                  Kortavgift {formatBp(settings.cardFeeBp)} · moms {formatBp(settings.vatRateBp)}
+                </span>
+              }
+            >
+              <span id="moms" className="sr-only" aria-hidden />
+              <CardBody className="flex flex-col gap-4">
+                {/* Mobil: formuläret är hopfällt med nuvarande värden på raden. */}
+                <MobileFold
+                  summary="Ändra"
+                  meta={`Kortavgift ${formatBp(settings.cardFeeBp)} · moms ${formatBp(settings.vatRateBp)}`}
+                >
+                  <SettingsForm
+                    key={`${settings.cardFeeBp}-${settings.vatRateBp}-${settings.fiscalYearStartMonth}-${settings.vatLimitOre}`}
+                    cardFeeBp={settings.cardFeeBp}
+                    vatRateBp={settings.vatRateBp}
+                    fiscalYearStartMonth={settings.fiscalYearStartMonth}
+                    vatLimitOre={settings.vatLimitOre}
+                    cardFeeDefaultFrom={data.cardFeeDefaultFrom}
+                    cardFeeRates={data.settings?.cardFeeRates ?? []}
+                    today={ctx.today}
+                  />
+                </MobileFold>
+                {vatAckValid(
+                  settings.vatOkAt,
+                  fiscalYearAround(ctx.today, settings.fiscalYearStartMonth).start,
+                ) && settings.vatRateBp === 0 ? (
+                  <VatAcknowledgedLine since={when(settings.vatOkAt!)} />
+                ) : null}
+              </CardBody>
+            </Card>
+
+            <Card
+              id="foretaget"
+              className="scroll-mt-24"
+              title={companyGaps.length === 0 ? "Företaget" : "Företaget saknar uppgifter"}
+            >
+              <CardBody className="flex flex-col gap-4">
+                <p className="st-p">
+                  {companyGaps.length === 0
+                    ? "Står i kontrakten och i butiksrapporten."
+                    : `Tomt i kontrakten: ${companyGaps.join(", ")}.`}
+                </p>
+                <MobileFold
+                  summary="Ändra"
+                  meta={
+                    companyGaps.length === 0
+                      ? "Allt ifyllt"
+                      : `${formatInt(companyGaps.length)} saknas`
+                  }
+                >
+                  <CompanyForm
+                    organizationName={ctx.organization.name}
+                    initial={{
+                      companyName: company.companyName ?? "",
+                      orgNumber: company.orgNumber ?? "",
+                      companyAddress: company.companyAddress ?? "",
+                      contactName: company.contactName ?? "",
+                      contactEmail: company.contactEmail ?? "",
+                      contactPhone: company.contactPhone ?? "",
+                      vatNumber: data.reportBasis.vatNumber ?? "",
+                      reportVatMode: data.reportBasis.reportVatMode,
+                      reportVmb: data.reportBasis.reportVmb,
+                      reportOwnsMachines: data.reportBasis.reportOwnsMachines,
+                    }}
+                  />
+                </MobileFold>
+              </CardBody>
+            </Card>
+
+            <Card
+              id="agarandelar"
+              className="scroll-mt-24"
+              title="Ägarandelar"
+              actions={
+                currentGroup ? (
+                  <span className="lk">Sedan {day(currentGroup.validFrom).replace(/\.$/, "")}</span>
+                ) : undefined
+              }
+            >
+              <CardBody className="flex flex-col gap-4">
+                <p className="st-p">
+                  <b>{currentGroup ? shareSummary(currentGroup) : "Inga ägarandelar inlagda."}</b>
+                </p>
+                <MobileFold summary="Visa och ändra" meta={formatInt(groups.length)}>
+                  <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2">
+                    <div className="flex min-w-0 flex-col gap-3">
+                      <SubLabel>Fördelningar</SubLabel>
+                      {groups.length === 0 ? (
+                        <p className="st-p">
+                          Inga ägarandelar.{isOwner ? null : " Ägaren lägger in dem."}
+                        </p>
+                      ) : (
+                        <ol className="flex flex-col gap-2">
+                          {groups.map((g) => (
+                            <li
+                              key={g.validFrom}
+                              className="flex flex-col gap-2 rounded-v2 border border-v2-line2 px-3 py-2.5"
+                            >
+                              <p className="flex flex-wrap items-center gap-2 text-v2-sm text-v2-mute tabular-nums">
+                                <span>
+                                  {day(g.validFrom)}
+                                  {NBSP}
+                                  {EN_DASH}
+                                  {g.validTo ? `${NBSP}${day(g.validTo)}` : " tills vidare"}
+                                </span>
+                                {g.current ? <Badge tone="success">Gäller nu</Badge> : null}
+                                {g.future ? <Badge tone="info">Kommande</Badge> : null}
+                              </p>
+                              <ul className="flex flex-col gap-1 text-v2-md">
+                                {g.shares.map((s) => (
+                                  <li
+                                    key={s.id}
+                                    className="flex items-baseline justify-between gap-4"
+                                  >
+                                    <span className="text-v2-ink">{s.holderName}</span>
+                                    <span className="text-v2-ink tabular-nums">
+                                      {formatBp(s.shareBp)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+                    <div className="flex min-w-0 flex-col gap-3">
+                      <SubLabel>Ny fördelning</SubLabel>
+                      {isOwner ? (
+                        <OwnerSharesForm
+                          initial={(currentGroup?.shares ?? []).map((s) => ({
+                            holderName: s.holderName,
+                            shareBp: s.shareBp,
+                            memberUserId: s.memberUserId,
+                          }))}
+                          members={data.members
+                            .slice()
+                            .sort(
+                              (a, b) =>
+                                Number(b.userId === ctx.user.id) - Number(a.userId === ctx.user.id),
+                            )}
+                          today={today}
+                        />
+                      ) : (
+                        <p className="st-p">Bara ägaren ändrar ägarandelarna.</p>
+                      )}
+                    </div>
+                  </div>
+                </MobileFold>
+              </CardBody>
+            </Card>
+
+            {customerDemos ? (
+              <Card
+                id="demo"
+                className="scroll-mt-24"
+                title="Demo för kunder"
+                actions={
+                  <span className="lk">
+                    {customerDemos.length === 0
+                      ? "Panelen utan era siffror"
+                      : `${formatInt(customerDemos.length)} st`}
+                  </span>
+                }
+              >
+                <CardBody>
+                  <MobileFold summary="Visa" meta={formatInt(customerDemos.length)}>
+                    <CustomerDemos demos={customerDemos} />
+                  </MobileFold>
+                </CardBody>
+              </Card>
+            ) : null}
           </div>
-        </MobileFold>
-      </section>
 
-      <SubscriptionSection
-        user={user}
-        organizationId={ctx.organization.id}
-        today={today}
-        index={3}
-      />
+          <div className="v2-stack">
+            <Card title="Fler inställningar">
+              <nav aria-label="Fler inställningar" className="flex flex-col">
+                {[
+                  {
+                    href: "/installningar/anvandare",
+                    label: "Användare",
+                    sub: "Bjud in, byt roll, enkel vy",
+                  },
+                  { href: "/installningar/konto", label: "Mitt konto", sub: "Lösenord" },
+                  {
+                    href: "/installningar/kontroll",
+                    label: "Kontroll",
+                    sub: "Stämmer siffrorna?",
+                  },
+                ].map((l) => (
+                  <Link key={l.href} href={l.href} className="st-link">
+                    <span className="min-w-0">
+                      {l.label}
+                      <small>{l.sub}</small>
+                    </span>
+                    <span aria-hidden className="arr">
+                      →
+                    </span>
+                  </Link>
+                ))}
+              </nav>
+            </Card>
 
-      <section
-        aria-labelledby="agarandelar"
-        className="rise flex flex-col gap-8 max-md:gap-3"
-        style={{ "--i": 4 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="agarandelar"
-          size="md"
-          title={currentGroup ? shareSummary(currentGroup) : "Inga ägarandelar inlagda."}
-          aside={
-            currentGroup ? `Sedan ${day(currentGroup.validFrom).replace(/\.$/, "")}.` : undefined
-          }
-        />
-        <MobileFold summary="Visa och ändra" meta={formatInt(groups.length)}>
-          <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
-            <div className="flex min-w-0 flex-col gap-4 lg:col-span-7">
-              <SubLabel>Fördelningar</SubLabel>
-              {groups.length === 0 ? (
-                <StateMessage
-                  kind="empty"
-                  compact
-                  message="Inga ägarandelar."
-                  detail={isOwner ? undefined : "Ägaren lägger in dem."}
-                />
-              ) : (
-                <ol className="flex flex-col">
-                  {groups.map((g) => (
-                    <li
-                      key={g.validFrom}
-                      className="flex flex-col gap-2 border-t border-line py-3 last:border-b"
-                    >
-                      <p className="meta tnum text-muted">
-                        {day(g.validFrom)}
-                        {NBSP}
-                        {EN_DASH}
-                        {g.validTo ? `${NBSP}${day(g.validTo)}` : " tills vidare"}
-                        {g.current ? <span className="label ml-2 text-fg">Gäller nu</span> : null}
-                        {g.future ? <span className="label ml-2 text-subtle">Kommande</span> : null}
-                      </p>
-                      <ul className="flex flex-col gap-1">
-                        {g.shares.map((s) => (
-                          <li key={s.id} className="flex items-baseline justify-between gap-4">
-                            <span className="text-fg">{s.holderName}</span>
-                            <span className="tnum text-fg">{formatBp(s.shareBp)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-            <div className="flex min-w-0 flex-col gap-4 lg:col-span-5">
-              <SubLabel>Ny fördelning</SubLabel>
-              {isOwner ? (
-                <OwnerSharesForm
-                  initial={(currentGroup?.shares ?? []).map((s) => ({
-                    holderName: s.holderName,
-                    shareBp: s.shareBp,
-                    memberUserId: s.memberUserId,
-                  }))}
-                  members={data.members
-                    .slice()
-                    .sort(
-                      (a, b) => Number(b.userId === ctx.user.id) - Number(a.userId === ctx.user.id),
-                    )}
-                  today={today}
-                />
-              ) : (
-                <StateMessage kind="denied" compact message="Bara ägaren ändrar ägarandelarna." />
-              )}
-            </div>
+            <SubscriptionSection user={user} organizationId={ctx.organization.id} today={today} />
+
+            <Card
+              id="din-data"
+              className="scroll-mt-24"
+              title="Din data"
+              actions={
+                <span className="lk">
+                  {exports[0]
+                    ? `Senast ${when(exports[0].createdAt).replace(/\.$/, "")}`
+                    : "Allt i en ZIP-fil"}
+                </span>
+              }
+            >
+              <CardBody className="flex flex-col gap-3">
+                <p className="st-p">
+                  Order, automater, butiker, titlar, priser, lager och avräkningar som CSV-filer.
+                  Öppnas i Excel. Högst 3 gånger per timme.
+                  {exports[0]?.createdBy ? ` Senast av ${exports[0].createdBy}.` : null}
+                </p>
+                {isOwnerRole ? (
+                  <ExportDataButton />
+                ) : (
+                  <p className="st-p">Bara ägaren kan exportera all data.</p>
+                )}
+              </CardBody>
+            </Card>
+
+            <Card id="appen" className="scroll-mt-24" title="Appen">
+              <CardBody className="flex flex-col gap-3">
+                <p className="st-p">
+                  Ser något gammalt ut? Hämtar senaste versionen och laddar om sidan. Fungerar även
+                  för appen på hemskärmen.
+                </p>
+                <div>
+                  <AppRefreshButton />
+                </div>
+              </CardBody>
+            </Card>
           </div>
-        </MobileFold>
-      </section>
-
-      {customerDemos ? (
-        <section
-          id="demo"
-          aria-labelledby="demo-rubrik"
-          className="rise flex scroll-mt-28 flex-col gap-8 max-md:gap-3"
-          style={{ "--i": 5 } as React.CSSProperties}
-        >
-          <SectionHeader
-            id="demo-rubrik"
-            size="md"
-            title="Demo för kunder."
-            aside={
-              customerDemos.length === 0
-                ? "Visa panelen utan era siffror."
-                : `${formatInt(customerDemos.length)} st.`
-            }
-          />
-          <MobileFold summary="Visa" meta={formatInt(customerDemos.length)}>
-            <div className="max-w-3xl">
-              <CustomerDemos demos={customerDemos} />
-            </div>
-          </MobileFold>
-        </section>
-      ) : null}
-
-      <section
-        id="din-data"
-        aria-labelledby="din-data-rubrik"
-        className="rise flex scroll-mt-28 flex-col gap-4 max-md:gap-3"
-        style={{ "--i": 6 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="din-data-rubrik"
-          size="md"
-          title="Din data."
-          aside={
-            exports[0]
-              ? `Senast ${when(exports[0].createdAt)}${exports[0].createdBy ? ` · ${exports[0].createdBy}` : ""}.`
-              : "Allt i en ZIP-fil."
-          }
-        />
-        <p className="max-w-2xl text-sm text-muted">
-          Order, automater, butiker, titlar, priser, lager och avräkningar som CSV-filer. Öppnas i
-          Excel. Högst 3 gånger per timme.
-        </p>
-        {isOwnerRole ? (
-          <ExportDataButton />
-        ) : (
-          <StateMessage kind="denied" compact message="Bara ägaren kan exportera all data." />
-        )}
-      </section>
-
-      <section
-        id="appen"
-        aria-labelledby="appen-rubrik"
-        className="rise flex scroll-mt-28 flex-col gap-4 max-md:gap-3"
-        style={{ "--i": 7 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="appen-rubrik"
-          size="md"
-          title="Appen."
-          aside="Om något ser gammalt ut."
-        />
-        <p className="max-w-2xl text-sm text-muted">
-          Hämtar senaste versionen och laddar om sidan. Fungerar även för appen på hemskärmen.
-        </p>
-        <AppRefreshButton />
-      </section>
-
-      <details
-        className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 7 } as React.CSSProperties}
-      >
-        <summary className="cursor-pointer list-none">
-          <SectionHeader
-            id="konton"
-            size="md"
-            title="Konton."
-            aside={`${formatInt(data.accounts.length)} st.`}
-          />
-        </summary>
-        <div className="mt-6">
-          {data.accounts.length === 0 ? (
-            <StateMessage kind="empty" compact message="Inga bokföringskonton är inlagda." />
-          ) : (
-            <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-              <table className="w-full border-collapse text-base">
-                <caption className="sr-only">Bokföringskonton</caption>
-                <thead>
-                  <tr className="border-b border-line-strong">
-                    <th scope="col" className="label h-9 pr-3 text-left font-normal text-subtle">
-                      Konto
-                    </th>
-                    <th scope="col" className="label h-9 px-3 text-left font-normal text-subtle">
-                      Används för
-                    </th>
-                    <th
-                      scope="col"
-                      className="label hidden h-9 px-3 text-left font-normal text-subtle md:table-cell"
-                    >
-                      Namn i BAS
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.accounts.map((a) => (
-                    <tr key={a.id} className="border-b border-line">
-                      <td className="tnum py-2.5 pr-3 text-fg">{a.basAccount}</td>
-                      <td className="px-3 py-2.5 text-fg">
-                        {accountUse(a.key)}
-                        <span className="block text-sm text-subtle md:hidden">{a.name}</span>
-                      </td>
-                      <td className="hidden px-3 py-2.5 text-muted md:table-cell">{a.name}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
-      </details>
 
-      <details
-        className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 8 } as React.CSSProperties}
-      >
-        <summary className="cursor-pointer list-none">
-          <SectionHeader
-            id="andringslogg"
-            size="md"
-            title="Ändringslogg."
-            aside={logAside(log, when)}
+        <FoldCard id="konton" title="Konton" aside={`${formatInt(data.accounts.length)} st`}>
+          <Table
+            caption="Bokföringskonton"
+            rows={data.accounts}
+            rowKey={(a) => a.id}
+            empty="Inga bokföringskonton är inlagda."
+            columns={[
+              { key: "konto", header: "Konto", width: "96px", cell: (a) => a.basAccount },
+              {
+                key: "anv",
+                header: "Används för",
+                cell: (a) => (
+                  <>
+                    {accountUse(a.key)}
+                    <span className="block text-v2-xs text-v2-mute md:hidden">{a.name}</span>
+                  </>
+                ),
+              },
+              {
+                key: "bas",
+                header: "Namn i BAS",
+                hideOnPhone: true,
+                cell: (a) => <span className="text-v2-mute">{a.name}</span>,
+              },
+            ]}
           />
-        </summary>
-        <div className="mt-6">
+        </FoldCard>
+
+        <FoldCard id="andringslogg" title="Ändringslogg" aside={logAside(log, when)}>
           {log.length === 0 ? (
-            <StateMessage kind="empty" compact message="Inga ändringar ännu." />
+            <Empty title="Inga ändringar ännu." />
           ) : (
             <SettingsLog entries={log} timeZone={tz} now={ctx.now} />
           )}
-        </div>
-      </details>
-    </div>
+        </FoldCard>
+      </div>
+    </V2Page>
   );
 }

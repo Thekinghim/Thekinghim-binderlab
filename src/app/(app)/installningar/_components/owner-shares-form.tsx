@@ -173,9 +173,11 @@ export function OwnerSharesForm({
         >
           Lägg till ägare
         </Button>
-        <p className="meta tnum text-muted" aria-live="polite">
+        <p className="text-v2-sm text-v2-mute tabular-nums" aria-live="polite">
           Summa{" "}
-          <span className={sum === 10_000 ? "text-fg" : "text-signal-fg"}>{formatBp(sum)}</span>
+          <span className={sum === 10_000 ? "text-v2-ink" : "text-v2-crit-text"}>
+            {formatBp(sum)}
+          </span>
           {sum === 10_000 ? "" : " av 100 %"}
         </p>
       </div>
@@ -192,7 +194,7 @@ export function OwnerSharesForm({
         wrapperClassName="sm:max-w-[calc(50%-8px)]"
       />
       <FormError message={error} />
-      <div className="flex justify-end border-t border-line pt-4">
+      <div className="flex justify-end border-t border-v2-line2 pt-4">
         <Button type="submit" variant="primary" loading={pending}>
           Spara ägarandelar
         </Button>

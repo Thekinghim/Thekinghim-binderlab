@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/v2/button";
+import { Notice } from "@/components/v2/notice";
 import { useToast } from "@/components/ui/toast";
 
 import { setVatAcknowledged } from "../_actions/settings";
@@ -45,36 +46,30 @@ export function SettingsNotices({ notices }: { notices: readonly SettingsNotice[
     });
 
   return (
-    <ul className="rise flex flex-col gap-3" aria-label="Att kolla" data-settings-notices>
+    <ul className="flex flex-col gap-2" aria-label="Att kolla" data-settings-notices>
       {notices.map((n) => (
-        <li
-          key={n.kind}
-          data-settings-notice={n.kind}
-          className="flex flex-col gap-3 rounded-sm border border-signal-line bg-surface px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-6"
-        >
-          <p className="min-w-0 text-base text-fg">{n.text}</p>
-          {n.kind === "vat" ? (
-            <Button
-              variant="secondary"
-              className="min-h-11 shrink-0 max-md:w-full"
-              loading={pending}
-              onClick={acknowledge}
-            >
-              Revisorn har koll
-            </Button>
-          ) : (
-            <a
-              href="#kortavgift"
-              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg hover:bg-hover max-md:w-full"
-            >
-              Ändra kortavgiften
-            </a>
-          )}
+        <li key={n.kind} data-settings-notice={n.kind}>
+          <Notice
+            tone="warning"
+            action={
+              n.kind === "vat" ? (
+                <Button touch pending={pending} onClick={acknowledge}>
+                  Revisorn har koll
+                </Button>
+              ) : (
+                <a href="#kortavgift" className="v2-btn touch">
+                  Ändra kortavgiften
+                </a>
+              )
+            }
+          >
+            {n.text}
+          </Notice>
         </li>
       ))}
       {error ? (
-        <li role="alert" className="text-sm text-signal-fg">
-          {error}
+        <li role="alert">
+          <Notice tone="critical">{error}</Notice>
         </li>
       ) : null}
     </ul>
@@ -100,17 +95,19 @@ export function VatAcknowledgedLine({ since }: { since: string }) {
       router.refresh();
     });
   return (
-    <div className="flex max-w-2xl flex-col gap-2" data-vat-acknowledged>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <p className="text-sm text-muted">
-          Revisorn har koll på momsen sedan {since.replace(/\.$/, "")}. Ingen varning i år.
-        </p>
-        <Button variant="secondary" className="min-h-11" loading={pending} onClick={warnAgain}>
-          Varna igen
-        </Button>
-      </div>
+    <div className="flex flex-col gap-2" data-vat-acknowledged>
+      <Notice
+        tone="info"
+        action={
+          <Button touch pending={pending} onClick={warnAgain}>
+            Varna igen
+          </Button>
+        }
+      >
+        Revisorn har koll på momsen sedan {since.replace(/\.$/, "")}. Ingen varning i år.
+      </Notice>
       {error ? (
-        <p role="alert" className="text-sm text-signal-fg">
+        <p role="alert" className="text-v2-sm text-v2-crit-text">
           {error}
         </p>
       ) : null}

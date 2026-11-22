@@ -253,12 +253,12 @@ export function AwishCard({
   return (
     <Panel className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h3 className="text-lg font-medium">Awish</h3>
+        <h3 className="text-v2-md font-[650] text-v2-ink">Awish · hämtas automatiskt</h3>
         <p className="flex items-center gap-2 text-sm text-muted">
           {line.status === "ok" ? (
             <span
               aria-hidden
-              className="live-dot inline-block size-2 shrink-0 rounded-full bg-up text-up"
+              className="live-dot inline-block size-2 shrink-0 rounded-full bg-v2-profit text-v2-profit"
             />
           ) : (
             <StatusGlyph status={line.status} />
@@ -343,7 +343,7 @@ export function AwishCard({
       {saved ? (
         <div className="flex flex-col gap-3 border-t border-line pt-4">
           <div className="flex flex-col gap-1">
-            <h4 className="text-sm font-medium">Skicka påfyllningar till Awish</h4>
+            <h4 className="text-v2-sm font-[650] text-v2-ink">Skicka påfyllningar till Awish</h4>
             <p className={cn("text-xs text-subtle", web.hasPassword && fold)}>
               Logga in med ditt Awish-konto, så sätter Binderlab automatens antal i Awish när du
               fyller på. Då slipper du skriva antalet på Awish.

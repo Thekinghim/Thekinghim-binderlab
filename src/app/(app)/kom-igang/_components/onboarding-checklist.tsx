@@ -2,7 +2,8 @@ import Link from "next/link";
 
 import { wallClockIn } from "@/components/shell/period-state";
 import { Panel } from "@/components/ui/frame";
-import { StatusGlyph, StatusTag } from "@/components/ui/status-tag";
+import { StatusGlyph } from "@/components/ui/status-tag";
+import { Badge } from "@/components/v2/badge";
 import { cn } from "@/lib/cn";
 import { formatDateTime, formatDuration, formatInt, NBSP } from "@/lib/format";
 import type { OnboardingStatus, OnboardingStep } from "@/server/onboarding/model";
@@ -50,7 +51,7 @@ export function OnboardingChecklist({
   }
   const now = new Date(status.now);
   return (
-    <ol aria-label="Steg" className={cn("flex flex-col border-b border-line", className)}>
+    <ol aria-label="Steg" className={cn("st-list", className)}>
       {status.steps.map((step) => (
         <StepRow
           key={step.id}
@@ -91,35 +92,45 @@ function StepRow({
   return (
     <li
       aria-labelledby={titleId}
-      className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-4 gap-y-4 border-t border-line py-6 md:grid-cols-[3rem_minmax(0,1fr)] lg:grid-cols-12 lg:gap-x-8"
+      className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-3 !py-4 lg:grid-cols-[2rem_minmax(0,1fr)_auto] lg:gap-x-6"
     >
-      <div className="flex flex-col gap-2 lg:col-span-1">
-        <span className={cn("label tnum", done ? "text-subtle" : "text-fg")}>{step.number}</span>
+      <div className="pt-px">
+        <span
+          aria-hidden
+          className={cn(
+            "inline-flex size-6 items-center justify-center rounded-full text-v2-xs font-[650] tabular-nums",
+            done
+              ? "bg-v2-profit-soft text-v2-profit-text"
+              : "bg-v2-hover text-v2-ink shadow-[0_0_0_1px_var(--v2-line)]",
+          )}
+        >
+          {step.number}
+        </span>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-2 lg:col-span-7">
+      <div className="flex min-w-0 flex-col gap-1">
         <h3
           id={titleId}
           className={cn(
-            "text-md font-medium text-balance hyphens-none",
-            done ? "text-muted" : "text-fg",
+            "text-v2-md font-[650] text-balance hyphens-none",
+            done ? "text-v2-mute" : "text-v2-ink",
           )}
         >
           {step.title}
           {!step.required ? <span className="text-subtle"> Rekommenderas.</span> : null}
         </h3>
-        <p className="max-w-2xl text-sm text-muted">{step.why}</p>
-        <p className="text-sm text-subtle">
+        <p className="max-w-2xl text-v2-sm text-v2-mute">{step.why}</p>
+        <p className="text-v2-sm text-v2-faint">
           <span className="sr-only">Läge: </span>
           {step.detail}
           {step.waitingFor ? ` ${step.waitingFor}` : ""}
         </p>
       </div>
 
-      <div className="col-start-2 flex min-w-0 flex-col items-start gap-3 lg:col-span-4 lg:col-start-auto lg:items-end lg:text-right">
+      <div className="col-start-2 flex min-w-0 flex-row flex-wrap items-center gap-2 lg:col-start-auto lg:flex-col lg:items-end lg:text-right">
         <StepState step={step} />
         {done && step.doneAt ? (
-          <p className="meta tnum text-subtle">
+          <p className="text-v2-xs text-v2-mute tabular-nums">
             <time dateTime={step.doneAt}>{when(step.doneAt, timeZone, now)}</time>
             {showElapsed && step.sinceStartMs !== null && step.id !== "organisation"
               ? ` · efter ${formatDuration(step.sinceStartMs)}`
@@ -141,9 +152,9 @@ function StepRow({
 }
 
 function StepState({ step }: { step: OnboardingStep }) {
-  if (step.state === "done") return <StatusTag status="ok">{STATE_TEXT.done}</StatusTag>;
-  if (step.state === "waiting") return <StatusTag status="offline">{STATE_TEXT.waiting}</StatusTag>;
-  return <StatusTag status="warning">{STATE_TEXT.todo}</StatusTag>;
+  if (step.state === "done") return <Badge tone="success">{STATE_TEXT.done}</Badge>;
+  if (step.state === "waiting") return <Badge>{STATE_TEXT.waiting}</Badge>;
+  return <Badge tone="warning">{STATE_TEXT.todo}</Badge>;
 }
 
 function StepLink({
@@ -157,8 +168,6 @@ function StepLink({
   disabled?: boolean;
   children: string;
 }) {
-  const base =
-    "inline-flex h-9 items-center gap-1.5 rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument";
   if (disabled) {
     // Väntar på ett tidigare steg: ingen länk, streckad kant bär läget. role="link" med
     // aria-disabled så att skärmläsaren läser den som en länk som inte går att följa.
@@ -166,7 +175,7 @@ function StepLink({
       <span
         role="link"
         aria-disabled="true"
-        className={cn(base, "cursor-not-allowed border-dashed border-line-strong text-disabled")}
+        className="v2-btn touch cursor-not-allowed border border-dashed border-v2-line text-v2-faint shadow-none"
       >
         {children}
         <span className="sr-only"> (väntar på ett tidigare steg)</span>
@@ -174,19 +183,9 @@ function StepLink({
     );
   }
   return (
-    <Link
-      href={href}
-      className={cn(
-        base,
-        emphasis === "primary"
-          ? "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover"
-          : "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover",
-      )}
-    >
+    <Link href={href} className={cn("v2-btn touch", emphasis === "primary" && "act")}>
       {children}
-      <span aria-hidden className="font-mono">
-        →
-      </span>
+      <span aria-hidden>→</span>
     </Link>
   );
 }
@@ -215,7 +214,7 @@ function CompactChecklist({
           <p className="label text-muted">
             <span className="text-fg">Kom igång</span>
             <span aria-hidden className="text-faint">
-              {" / "}
+              {" · "}
             </span>
             <span className="sr-only">: </span>
             {`${formatInt(status.requiredDone)} av ${formatInt(status.requiredTotal)} nödvändiga`}
@@ -230,7 +229,10 @@ function CompactChecklist({
         </div>
 
         <div className="flex flex-col gap-2">
-          <h2 id="kom-igang-kort" className="text-lg font-medium text-balance hyphens-none text-fg">
+          <h2
+            id="kom-igang-kort"
+            className="text-v2-lg font-[650] text-balance hyphens-none text-v2-ink"
+          >
             {next ? (
               <>
                 {`${next.number} ${next.title}`}

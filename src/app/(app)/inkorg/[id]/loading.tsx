@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { SettingsLoading } from "@/app/(app)/installningar/_components/page-loading";
 
 /** Medan ärendet hämtas: rubriken och formuläret som skeleton. */
 export default function IncidentLoading() {
-  return <RouteLoading label="Laddar ärendet" blocks={["table"]} />;
+  return <SettingsLoading label="Laddar ärendet" main={[6]} side={[3, 3]} />;
 }

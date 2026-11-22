@@ -6,9 +6,11 @@ import { useState, useTransition } from "react";
 import type { MemberRole } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
 import { useToast } from "@/components/ui/toast";
+import { Badge } from "@/components/v2/badge";
+import { Button as V2Button } from "@/components/v2/button";
+import { Card } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
 import { useT } from "@/i18n/client";
 
 import { changeMemberRole, removeMember, resendInvitation, revokeInvitation } from "./actions";
@@ -54,7 +56,7 @@ type Dialog =
   | null;
 
 const ROW =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-t border-line py-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:py-2 md:min-h-14";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-t border-v2-line2 px-[14px] py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:min-h-14 md:px-[18px] md:py-2.5";
 
 export function MembersView({
   organizationName,
@@ -64,8 +66,11 @@ export function MembersView({
   invitations,
   membersAside,
   invitationsAside,
+  actions,
 }: {
   organizationName: string;
+  /** Knappen i Medlemmar-kortets rubrikrad (Bjud in). */
+  actions?: React.ReactNode;
   /** Grå del av sektionsrubrikerna (model.ts → membersAside, invitationsAside). */
   membersAside: string;
   invitationsAside: string;
@@ -162,158 +167,158 @@ export function MembersView({
     dialog?.kind === "role" && dialog.member.isSelf && !canManageMembers(nextRole);
 
   return (
-    <div className="flex flex-col">
-      <section
-        aria-labelledby="medlemmar"
-        className="rise mt-12"
-        style={{ "--i": 1, order: 2 } as React.CSSProperties}
+    <div className="v2-stack">
+      <Card
+        title={<span id="medlemmar">Medlemmar</span>}
+        actions={
+          <span className="flex items-center gap-3">
+            <span className="lk max-md:hidden">{membersAside.replace(/\.$/, "")}</span>
+            {actions}
+          </span>
+        }
+        className="order-2"
       >
-        <SectionHeader id="medlemmar" title="Medlemmar." aside={membersAside} size="md" />
-        <div className="mt-6">
-          <div
-            aria-hidden
-            className="label hidden h-9 grid-cols-[minmax(0,1fr)_160px_140px_auto] items-center gap-x-4 text-subtle md:grid"
-          >
-            <span>Person</span>
-            <span>Roll</span>
-            <span>Medlem sedan</span>
-            <span className="w-[168px]" />
-          </div>
-          <ul className="border-b border-line">
-            {members.map((m) => (
-              <li key={m.id} className={ROW}>
-                <div className="flex min-w-0 flex-col">
-                  <span className="flex min-w-0 items-center gap-2 text-base text-fg">
-                    <span className="truncate">{m.name}</span>
-                    {m.isSelf ? (
-                      <span className="label shrink-0 rounded-xs border border-line-strong px-1 text-muted">
-                        Du
-                      </span>
+        <div
+          aria-hidden
+          className="hidden h-[34px] grid-cols-[minmax(0,1fr)_160px_140px_auto] items-center gap-x-4 border-b border-v2-line bg-v2-hover px-[18px] text-v2-xs font-[550] text-v2-mute md:grid"
+        >
+          <span>Person</span>
+          <span>Roll</span>
+          <span>Medlem sedan</span>
+          <span className="w-[168px]" />
+        </div>
+        <ul aria-labelledby="medlemmar">
+          {members.map((m) => (
+            <li key={m.id} className={ROW}>
+              <div className="flex min-w-0 flex-col">
+                <span className="flex min-w-0 items-center gap-2 text-v2-md font-[550] text-v2-ink">
+                  <span className="truncate">{m.name}</span>
+                  {m.isSelf ? <Badge className="shrink-0">Du</Badge> : null}
+                </span>
+                <span className="text-v2-sm [overflow-wrap:anywhere] text-v2-mute">{m.email}</span>
+              </div>
+              <span className="text-v2-md text-v2-ink md:order-none">
+                <span className="sr-only">Roll: </span>
+                {ROLE_LABEL[m.role]}
+              </span>
+              <span className="hidden text-v2-sm text-v2-mute tabular-nums md:block">
+                <span className="sr-only">Medlem sedan </span>
+                {m.since}
+              </span>
+              <div className="col-span-2 flex min-h-7 items-center gap-1.5 md:col-span-1 md:w-[168px] md:justify-end">
+                {m.canChangeRole || m.canRemove ? (
+                  <>
+                    {m.canChangeRole ? (
+                      <V2Button
+                        size="sm"
+                        touch
+                        aria-label={`Byt roll för ${m.name}`}
+                        onClick={() => open({ kind: "role", member: m })}
+                      >
+                        Byt roll
+                      </V2Button>
                     ) : null}
+                    {m.canRemove ? (
+                      <V2Button
+                        size="sm"
+                        touch
+                        variant="quiet"
+                        aria-label={m.isSelf ? "Lämna organisationen" : `Ta bort ${m.name}`}
+                        onClick={() => open({ kind: "remove", member: m })}
+                      >
+                        {m.isSelf ? "Lämna" : "Ta bort"}
+                      </V2Button>
+                    ) : null}
+                  </>
+                ) : m.reason ? (
+                  <span className="text-v2-xs text-v2-mute md:text-right">{m.reason}</span>
+                ) : null}
+              </div>
+              {m.canSetView ? (
+                <ViewSettings
+                  target={{ kind: "member", membershipId: m.id }}
+                  name={m.name}
+                  viewMode={m.viewMode}
+                  locale={m.locale}
+                />
+              ) : m.viewMode === "simple" ? (
+                <span className="col-span-2 text-v2-xs text-v2-mute md:col-span-4">
+                  {`${t.team.simpleView} · ${t.team.simpleViewHint}`}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card
+        title={<span id="inbjudningar">Väntar</span>}
+        actions={<span className="lk">{invitationsAside.replace(/\.$/, "")}</span>}
+        className={invitations.length > 0 ? "order-1" : "order-3"}
+      >
+        {invitations.length === 0 ? (
+          <Empty title="Ingen väntar." />
+        ) : (
+          <ul aria-labelledby="inbjudningar">
+            {invitations.map((i) => (
+              <li key={i.id} className={ROW}>
+                <div className="flex min-w-0 flex-col">
+                  <span className="text-v2-md font-[550] [overflow-wrap:anywhere] text-v2-ink">
+                    {i.email}
                   </span>
-                  <span className="meta [overflow-wrap:anywhere] text-subtle">{m.email}</span>
+                  <span className="truncate text-v2-sm text-v2-mute">
+                    Skickad {i.sent} av {i.invitedBy}
+                  </span>
                 </div>
-                <span className="text-base text-fg md:order-none">
+                <span className="text-v2-md text-v2-ink">
                   <span className="sr-only">Roll: </span>
-                  {ROLE_LABEL[m.role]}
+                  {ROLE_LABEL[i.role]}
                 </span>
-                <span className="meta tnum hidden text-muted md:block">
-                  <span className="sr-only">Medlem sedan </span>
-                  {m.since}
+                <span className="hidden text-v2-sm text-v2-mute tabular-nums md:block">
+                  Går ut {i.expires}
                 </span>
-                <div className="col-span-2 flex min-h-7 items-center gap-1 md:col-span-1 md:w-[168px] md:justify-end">
-                  {m.canChangeRole || m.canRemove ? (
-                    <>
-                      {m.canChangeRole ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="-ml-2.5 md:ml-0"
-                          aria-label={`Byt roll för ${m.name}`}
-                          onClick={() => open({ kind: "role", member: m })}
-                        >
-                          Byt roll
-                        </Button>
-                      ) : null}
-                      {m.canRemove ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={m.isSelf ? "Lämna organisationen" : `Ta bort ${m.name}`}
-                          onClick={() => open({ kind: "remove", member: m })}
-                        >
-                          {m.isSelf ? "Lämna" : "Ta bort"}
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : m.reason ? (
-                    <span className="text-xs text-subtle md:text-right">{m.reason}</span>
-                  ) : null}
-                </div>
-                {m.canSetView ? (
-                  <ViewSettings
-                    target={{ kind: "member", membershipId: m.id }}
-                    name={m.name}
-                    viewMode={m.viewMode}
-                    locale={m.locale}
-                  />
-                ) : m.viewMode === "simple" ? (
-                  <span className="col-span-2 text-xs text-subtle md:col-span-4">
-                    {`${t.team.simpleView} · ${t.team.simpleViewHint}`}
+                <div className="col-span-2 flex min-h-7 items-center gap-1.5 md:col-span-1 md:w-[168px] md:justify-end">
+                  <span className="mr-auto text-v2-sm text-v2-mute tabular-nums md:hidden">
+                    Går ut {i.expires}
                   </span>
+                  {i.canManage ? (
+                    <>
+                      <V2Button
+                        size="sm"
+                        touch
+                        pending={busyInvite === i.id}
+                        aria-label={`Skicka ny länk till ${i.email}`}
+                        onClick={() => resend(i)}
+                      >
+                        Skicka igen
+                      </V2Button>
+                      <V2Button
+                        size="sm"
+                        touch
+                        variant="quiet"
+                        aria-label={`Återkalla inbjudan till ${i.email}`}
+                        onClick={() => open({ kind: "revoke", invitation: i })}
+                      >
+                        Återkalla
+                      </V2Button>
+                    </>
+                  ) : (
+                    <span className="text-v2-xs text-v2-mute">Ägarinbjudan</span>
+                  )}
+                </div>
+                {i.canManage ? (
+                  <ViewSettings
+                    target={{ kind: "invitation", invitationId: i.id }}
+                    name={i.email}
+                    viewMode={i.viewMode}
+                    locale={i.locale}
+                  />
                 ) : null}
               </li>
             ))}
           </ul>
-        </div>
-      </section>
-
-      <section
-        aria-labelledby="inbjudningar"
-        className="rise mt-12"
-        style={{ "--i": 2, order: invitations.length > 0 ? 1 : 3 } as React.CSSProperties}
-      >
-        <SectionHeader id="inbjudningar" title="Väntar." aside={invitationsAside} size="md" />
-        <div className="mt-6">
-          {invitations.length === 0 ? (
-            <StateMessage kind="empty" compact message="Ingen väntar." />
-          ) : (
-            <ul className="border-b border-line">
-              {invitations.map((i) => (
-                <li key={i.id} className={ROW}>
-                  <div className="flex min-w-0 flex-col">
-                    <span className="text-base [overflow-wrap:anywhere] text-fg">{i.email}</span>
-                    <span className="meta truncate text-subtle">
-                      Skickad {i.sent} av {i.invitedBy}
-                    </span>
-                  </div>
-                  <span className="text-base text-fg">
-                    <span className="sr-only">Roll: </span>
-                    {ROLE_LABEL[i.role]}
-                  </span>
-                  <span className="meta tnum hidden text-muted md:block">Går ut {i.expires}</span>
-                  <div className="col-span-2 flex min-h-7 items-center gap-1 md:col-span-1 md:w-[168px] md:justify-end">
-                    <span className="meta tnum mr-auto text-muted md:hidden">
-                      Går ut {i.expires}
-                    </span>
-                    {i.canManage ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={busyInvite === i.id}
-                          aria-label={`Skicka ny länk till ${i.email}`}
-                          onClick={() => resend(i)}
-                        >
-                          Skicka igen
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`Återkalla inbjudan till ${i.email}`}
-                          onClick={() => open({ kind: "revoke", invitation: i })}
-                        >
-                          Återkalla
-                        </Button>
-                      </>
-                    ) : (
-                      <span className="text-xs text-subtle">Ägarinbjudan</span>
-                    )}
-                  </div>
-                  {i.canManage ? (
-                    <ViewSettings
-                      target={{ kind: "invitation", invitationId: i.id }}
-                      name={i.email}
-                      viewMode={i.viewMode}
-                      locale={i.locale}
-                    />
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+        )}
+      </Card>
 
       <Modal
         open={dialog?.kind === "role"}
@@ -342,12 +347,12 @@ export function MembersView({
               }}
             />
             {demotesSelf ? (
-              <p className="text-sm text-muted">
+              <p className="text-v2-sm text-v2-mute">
                 Du förlorar tillgången till Inställningar när du sparar.
               </p>
             ) : null}
             <FormError message={error} />
-            <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-2 border-t border-v2-line2 pt-4 sm:flex-row sm:justify-end">
               <Button type="button" onClick={close}>
                 Avbryt
               </Button>

@@ -5,7 +5,7 @@ import { useTransition } from "react";
 
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Segmented } from "@/components/ui/segmented";
-import { StateMessage } from "@/components/ui/state-message";
+import { Empty } from "@/components/v2/empty";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { formatInt, MISSING } from "@/lib/format";
 
@@ -132,8 +132,8 @@ export function ImportRows({
   return (
     <section aria-label="Radlogg" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="label text-muted">
-          Radlogg · {formatInt(detail.rows.length)}
+        <p className="text-v2-sm text-v2-mute tabular-nums">
+          {formatInt(detail.rows.length)}
           {detail.truncated ? "+" : ""} rader
         </p>
         <Segmented<ImportRowFilter>
@@ -157,7 +157,7 @@ export function ImportRows({
       </div>
       <div aria-busy={pending || undefined} className={pending ? "opacity-60" : undefined}>
         {detail.rows.length === 0 ? (
-          <StateMessage kind="empty" message={emptyText} compact />
+          <Empty title={emptyText} />
         ) : (
           <DataTable
             surface="bg"
@@ -174,12 +174,12 @@ export function ImportRows({
         )}
       </div>
       {detail.truncated ? (
-        <p className="text-xs text-subtle">
+        <p className="text-v2-xs text-v2-mute">
           Visar de första {formatInt(detail.rows.length)} raderna. Exportera eller filtrera för att
           se färre.
         </p>
       ) : null}
-      <p className="text-xs text-subtle">
+      <p className="text-v2-xs text-v2-mute">
         Dubbletter sparas inte rad för rad, bara som antal. Ej betalda rader räknas men loggas inte.
       </p>
     </section>

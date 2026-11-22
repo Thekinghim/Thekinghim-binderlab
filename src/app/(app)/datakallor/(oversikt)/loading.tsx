@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { SettingsLoading } from "@/app/(app)/installningar/_components/page-loading";
 
-/** Medan sidan hämtar och räknar: rubriken och innehållet som skeleton. */
+/** Medan sidan hämtar och räknar: rubriken och korten som skeleton. */
 export default function DatakallorLoading() {
-  return <RouteLoading label="Laddar datakällor" blocks={["kpi", "table"]} />;
+  return <SettingsLoading label="Laddar datakällor" main={[4, 2]} side={[3, 3]} />;
 }

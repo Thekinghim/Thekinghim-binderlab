@@ -1,17 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { CSSProperties } from "react";
 
 import type { CheckResult, CheckStatus } from "@/analytics/self-check";
 import { wallClockIn } from "@/components/shell/period-state";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
-import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { Badge, type BadgeTone } from "@/components/v2/badge";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
+import { cn } from "@/lib/cn";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { requireRoute, requireViewer } from "@/server/data/core";
 import { loadSelfCheckFor } from "@/server/self-check/service";
 
-import { MerHead } from "../_components/mer-head";
+import "../_components/settings.css";
 import { RunSelfCheckButton } from "./run-button";
 
 export const metadata: Metadata = { title: "Kontroll" };
@@ -19,11 +23,11 @@ export const metadata: Metadata = { title: "Kontroll" };
 // "Kör kontrollen nu" kör alla kontroller i en server action (normalt några sekunder).
 export const maxDuration = 60;
 
-const CHECK_TAG: Record<CheckStatus, { status: Status; label: string }> = {
-  pass: { status: "ok", label: "Stämmer" },
-  warn: { status: "warning", label: "Varning" },
-  fail: { status: "critical", label: "Fel" },
-  skip: { status: "neutral", label: "Inget att kontrollera" },
+const CHECK_TAG: Record<CheckStatus, { tone: BadgeTone; label: string }> = {
+  pass: { tone: "success", label: "Stämmer" },
+  warn: { tone: "warning", label: "Varning" },
+  fail: { tone: "critical", label: "Fel" },
+  skip: { tone: "neutral", label: "Inget att kontrollera" },
 };
 
 const RUN_LABEL = {
@@ -33,43 +37,38 @@ const RUN_LABEL = {
   error: "Kunde inte köras",
 } as const;
 
-function rise(i: number): CSSProperties {
-  return { "--i": i } as CSSProperties;
-}
+const RUN_TONE = {
+  ok: "success",
+  warning: "warning",
+  failed: "critical",
+  error: "critical",
+} as const;
 
 function CheckCard({ check }: { check: CheckResult }) {
   const tag = CHECK_TAG[check.status];
   const shown = check.findings;
   return (
-    <li
-      className="flex flex-col gap-3 border-t border-line py-5 first:border-t-0 md:py-6"
-      data-check={check.id}
-      data-status={check.status}
-    >
+    <li className="flex flex-col gap-2" data-check={check.id} data-status={check.status}>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h3 className="text-lg font-medium text-fg">{check.title}</h3>
-        <StatusTag status={tag.status}>{tag.label}</StatusTag>
+        <h3 className="text-v2-md font-[650] text-v2-ink">{check.title}</h3>
+        <Badge tone={tag.tone}>{tag.label}</Badge>
       </div>
-      <p className="max-w-[72ch] text-base text-muted">{check.summary}</p>
+      <p className="st-p max-w-[72ch]">{check.summary}</p>
       {shown.length > 0 ? (
-        <ul className="flex max-w-[80ch] flex-col gap-1.5 text-sm">
+        <ul className="flex max-w-[80ch] flex-col gap-1.5 text-v2-sm">
           {shown.map((f, i) => (
-            <li key={i} className="flex gap-2">
+            <li key={i} className="flex items-baseline gap-2">
               <span
                 aria-hidden
-                className={
-                  f.level === "fail"
-                    ? "mt-1.5 inline-block size-2 shrink-0 bg-signal"
-                    : "mt-1.5 inline-block size-2 shrink-0 border border-line-control"
-                }
+                className={cn("v2-dot shrink-0", f.level === "fail" ? "critical" : "warning")}
               />
-              <span className="min-w-0 break-words text-fg">
+              <span className="min-w-0 break-words text-v2-ink">
                 <span className="sr-only">{f.level === "fail" ? "Fel: " : "Varning: "}</span>
                 {f.text}
                 {f.link && f.link !== check.link ? (
                   <>
                     {" "}
-                    <Link href={f.link} className="text-muted underline underline-offset-2">
+                    <Link href={f.link} className="text-v2-mute underline underline-offset-2">
                       Rätta
                     </Link>
                   </>
@@ -77,20 +76,14 @@ function CheckCard({ check }: { check: CheckResult }) {
               </span>
             </li>
           ))}
-          {check.more > 0 ? <li className="text-muted">Och {check.more} till.</li> : null}
+          {check.more > 0 ? <li className="text-v2-mute">Och {check.more} till.</li> : null}
         </ul>
       ) : null}
       {check.status === "fail" || check.status === "warn" ? (
-        <div>
-          <Link
-            href={check.link}
-            className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg hover:bg-hover max-md:min-h-11"
-          >
-            Till {check.linkLabel}
-            <span aria-hidden className="text-faint">
-              →
-            </span>
-          </Link>
+        <div className="pt-1">
+          <ButtonLink href={check.link} touch>
+            Till {check.linkLabel} <span aria-hidden>→</span>
+          </ButtonLink>
         </div>
       ) : null}
     </li>
@@ -119,87 +112,84 @@ export default async function SelfCheckPage() {
       : failedChecks > 0
         ? `${failedChecks} av ${latest.checks.length} kontroller hittade fel.`
         : `Alla ${latest.checks.length} kontroller stämmer.`;
+  const bad = latest ? failedChecks > 0 || latest.status === "error" : false;
+  const by = (r: { trigger: string; ranBy: string | null }) =>
+    r.trigger === "manual" ? (r.ranBy ?? "för hand") : "schemalagd";
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 max-md:gap-6 md:gap-12 md:px-8 md:pt-12">
-      <MerHead
-        eyebrow="Kontroll"
-        title={title}
-        tone={latest ? (failedChecks > 0 || latest.status === "error" ? "bad" : "good") : undefined}
-        line="Binderlab kontrollerar sina egna siffror varje morgon kl. 05:37. Kontrollen läser bara, den ändrar ingenting."
-        meta={
-          latest
-            ? [
-                {
-                  label: "Senast",
-                  value: `${when(latest.ranAt)} · ${latest.trigger === "manual" ? (latest.ranBy ?? "för hand") : "schemalagd"}`,
-                },
-                { label: "Tid", value: formatDuration(latest.durationMs) },
-              ]
-            : undefined
-        }
-        actions={<RunSelfCheckButton />}
-      />
+    <V2Page
+      title="Kontroll"
+      sub={
+        <>
+          <b className={bad ? "text-v2-crit-text" : undefined}>{title}</b>{" "}
+          {latest
+            ? `Senast ${when(latest.ranAt)} · ${by(latest)} · ${formatDuration(latest.durationMs)}.`
+            : "Körs varje morgon kl. 05:37."}
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-cols">
+        <div className="v2-stack">
+          {latest?.error ? (
+            <Notice tone="critical" title="Kontrollen kunde inte köras.">
+              {latest.error}
+            </Notice>
+          ) : null}
 
-      {latest?.error ? (
-        <div className="rise" style={rise(1)}>
-          <StateMessage kind="error" message="Kontrollen kunde inte köras." detail={latest.error} />
+          {latest && latest.checks.length > 0 ? (
+            <Card
+              title={<span id="kontroller">Kontrollerna</span>}
+              actions={<Badge tone={RUN_TONE[latest.status]}>{RUN_LABEL[latest.status]}</Badge>}
+            >
+              <ul className="st-list" aria-labelledby="kontroller">
+                {latest.checks.map((c) => (
+                  <CheckCard key={c.id} check={c} />
+                ))}
+              </ul>
+            </Card>
+          ) : !latest ? (
+            <Card>
+              <Empty title="Ingen kontroll än.">
+                Den första körs i morgon bitti, eller nu med knappen.
+              </Empty>
+            </Card>
+          ) : null}
         </div>
-      ) : null}
 
-      {latest && latest.checks.length > 0 ? (
-        <section aria-labelledby="kontroller" className="rise flex flex-col gap-4" style={rise(2)}>
-          <SectionHeader
-            id="kontroller"
-            size="md"
-            title="Kontrollerna."
-            aside={`${RUN_LABEL[latest.status]}.`}
-          />
-          <ul className="flex flex-col">
-            {latest.checks.map((c) => (
-              <CheckCard key={c.id} check={c} />
-            ))}
-          </ul>
-        </section>
-      ) : !latest ? (
-        <div className="rise" style={rise(1)}>
-          <StateMessage
-            kind="empty"
-            code="Inte körd"
-            message="Ingen kontroll än."
-            detail="Den första körs i morgon bitti, eller nu med knappen ovan."
-          />
+        <div className="v2-stack">
+          <Card title="Kör kontrollen">
+            <CardBody className="flex flex-col gap-3">
+              <p className="st-p">
+                Binderlab kontrollerar sina egna siffror varje morgon kl. 05:37. Kontrollen läser
+                bara, den ändrar ingenting.
+              </p>
+              <RunSelfCheckButton />
+            </CardBody>
+          </Card>
+
+          {data.history.length > 1 ? (
+            <Card title={<span id="tidigare">Tidigare körningar</span>}>
+              <ul className="st-list text-v2-sm" aria-labelledby="tidigare">
+                {data.history.slice(1).map((r) => (
+                  <li
+                    key={r.id}
+                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+                  >
+                    <span className="text-v2-ink tabular-nums">
+                      {when(r.ranAt)}
+                      <span className="text-v2-mute"> · {by(r)}</span>
+                    </span>
+                    <Badge tone={RUN_TONE[r.status]}>
+                      {r.status === "failed" ? `${r.failed} fel` : RUN_LABEL[r.status]}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
         </div>
-      ) : null}
-
-      {data.history.length > 1 ? (
-        <section aria-labelledby="tidigare" className="rise flex flex-col gap-4" style={rise(3)}>
-          <SectionHeader id="tidigare" size="md" title="Tidigare körningar." />
-          <ul className="flex flex-col text-sm">
-            {data.history.slice(1).map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line py-2.5"
-              >
-                <span className="text-fg">
-                  {when(r.ranAt)}
-                  <span className="text-muted">
-                    {" "}
-                    · {r.trigger === "manual" ? (r.ranBy ?? "för hand") : "schemalagd"}
-                  </span>
-                </span>
-                <StatusTag
-                  status={
-                    r.status === "ok" ? "ok" : r.status === "warning" ? "warning" : "critical"
-                  }
-                >
-                  {r.status === "failed" ? `${r.failed} fel` : RUN_LABEL[r.status]}
-                </StatusTag>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </div>
+      </div>
+    </V2Page>
   );
 }

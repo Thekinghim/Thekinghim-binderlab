@@ -264,7 +264,7 @@ export function UploadPanel({
                 }
               : { label: "Välj en annan fil", onClick: () => reset(true) }
           }
-          className="rounded-md border border-line bg-surface"
+          className="rounded-v2-lg border border-v2-line bg-v2-panel"
         />
       ) : null}
 
@@ -391,7 +391,7 @@ export function UploadPanel({
               {phase.result.importId ? (
                 <Link
                   href={`/datakallor/importer/${phase.result.importId}`}
-                  className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg hover:border-line-control hover:bg-hover max-md:min-h-11"
+                  className="v2-btn touch"
                 >
                   Visa importen
                 </Link>

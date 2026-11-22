@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
 
-import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StatusTag } from "@/components/ui/status-tag";
+import { FoldCard } from "@/app/(app)/installningar/_components/fold-card";
+import "@/app/(app)/installningar/_components/settings.css";
+import { Badge } from "@/components/v2/badge";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { KeyValues } from "@/components/v2/key-values";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatInt, formatRelative } from "@/lib/format";
 import { getAssistantConfig } from "@/server/assistant/config";
 import {
@@ -127,137 +132,104 @@ export default async function AssistentPage({
       : { message: config.message, detail: "Rätta värdet och starta om servern." };
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <MerHead
-        eyebrow="Assistent"
-        title={title}
-        line={aside}
-        meta={[
-          { label: "Modell", value: modelLabel },
-          ...(recent.length > 0
-            ? [
-                {
-                  label: "Kontrollerade",
-                  value: `${formatInt(verified)}/${formatInt(recent.length)}`,
-                },
-              ]
-            : []),
-        ]}
-      />
+    <V2Page
+      title="Assistent"
+      sub={
+        <>
+          <b>{title}</b> {aside ? `${aside} ` : null}
+          {`Modell ${modelLabel}`}
+          {recent.length > 0
+            ? ` · ${formatInt(verified)} av ${formatInt(recent.length)} kontrollerade`
+            : ""}
+          .
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-cols">
+        <div className="v2-stack">
+          <Card title={<span id="fraga">Fråga</span>}>
+            <CardBody>
+              <AssistantChat
+                ready={ready}
+                local={local}
+                modelLabel={modelLabel}
+                examples={ctx.canSeeEconomy ? ECONOMY_EXAMPLES : REFILLER_EXAMPLES}
+                notConfigured={notConfigured}
+                initialQuestion={prefill}
+                initialConversationId={earlier.length > 0 ? samtal : null}
+                initialTurns={earlier.map((e) => ({ question: e.question, answer: e.answer }))}
+              />
+            </CardBody>
+          </Card>
 
-      <section
-        aria-labelledby="fraga"
-        className="rise flex flex-col gap-6"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        <h2 id="fraga" className="sr-only">
-          Samtal
-        </h2>
-        <AssistantChat
-          ready={ready}
-          local={local}
-          modelLabel={modelLabel}
-          examples={ctx.canSeeEconomy ? ECONOMY_EXAMPLES : REFILLER_EXAMPLES}
-          notConfigured={notConfigured}
-          initialQuestion={prefill}
-          initialConversationId={earlier.length > 0 ? samtal : null}
-          initialTurns={earlier.map((e) => ({ question: e.question, answer: e.answer }))}
-        />
-      </section>
-
-      {advisor ? (
-        <section
-          aria-labelledby="forslag"
-          className="rise flex flex-col gap-4"
-          style={{ "--i": 2 } as React.CSSProperties}
-        >
-          <SectionHeader
-            id="forslag"
-            size="sm"
-            title="Förslag."
-            aside={
-              advisor.lastRun
-                ? `Senaste körning ${formatRelative(new Date(advisor.lastRun.createdAt))}.`
-                : "Varje morgon."
-            }
-          />
-          <Suggestions
-            items={advisor.suggestions}
-            manualLeft={advisor.manualLeft}
-            canGenerate={ready && !local}
-            emptyText={
-              advisor.staleCount > 0
-                ? "Priser eller inställningar har ändrats. Nya förslag kommer i morgon bitti."
-                : "Inga förslag just nu."
-            }
-          />
-        </section>
-      ) : null}
-
-      <details
-        className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 3 } as React.CSSProperties}
-      >
-        <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4">
-          <h2 className="text-md font-medium text-fg">Mer</h2>
-          <span className="meta text-subtle">
-            {`${formatInt(tools.length)} verktyg · ${formatInt(asked)} frågor`}
-          </span>
-        </summary>
-        <div className="mt-6 flex flex-col gap-10">
-          <section aria-labelledby="verktyg" className="flex flex-col gap-6">
-            <SectionHeader id="verktyg" size="sm" title="Verktyg." />
-            <dl className="grid grid-cols-1 gap-x-8 lg:grid-cols-2">
-              {tools.map((t) => (
-                <div key={t.name} className="flex min-w-0 flex-col gap-1 border-t border-line py-3">
-                  <dt className="flex flex-wrap items-baseline gap-x-3">
-                    <span className="text-base text-fg">{t.title}</span>
-                    <span className="meta text-subtle">{t.name}</span>
-                  </dt>
-                  <dd className="text-sm text-muted">{TOOL_ABOUT[t.name] ?? ""}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-
-          <section aria-labelledby="logg" className="flex flex-col gap-6">
-            <SectionHeader
-              id="logg"
-              size="sm"
-              title="Dina frågor."
-              aside={
-                recent.length === 0
-                  ? "Inga ännu."
-                  : `Senast ${formatRelative(new Date(recent[0]!.createdAt))}.`
+          {advisor ? (
+            <Card
+              title={<span id="forslag">Förslag</span>}
+              actions={
+                <span className="lk">
+                  {advisor.lastRun
+                    ? `Körd ${formatRelative(new Date(advisor.lastRun.createdAt))}`
+                    : "Varje morgon"}
+                </span>
               }
-            />
+            >
+              <CardBody>
+                <Suggestions
+                  items={advisor.suggestions}
+                  manualLeft={advisor.manualLeft}
+                  canGenerate={ready && !local}
+                  emptyText={
+                    advisor.staleCount > 0
+                      ? "Priser eller inställningar har ändrats. Nya förslag kommer i morgon bitti."
+                      : "Inga förslag just nu."
+                  }
+                />
+              </CardBody>
+            </Card>
+          ) : null}
+
+          <Card
+            title={<span id="logg">Dina frågor</span>}
+            actions={
+              <span className="lk">
+                {recent.length === 0
+                  ? `${formatInt(asked)} frågor`
+                  : `Senast ${formatRelative(new Date(recent[0]!.createdAt))}`}
+              </span>
+            }
+          >
             {recent.length > 0 ? (
-              <ol className="flex flex-col">
+              <ol className="st-list">
                 {recent.map((r) => (
-                  <li key={r.id} className="border-t border-line">
+                  <li key={r.id} className="!py-0">
                     <details className="group">
-                      <summary className="flex cursor-pointer flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                        <span className="min-w-0 text-base break-words text-fg">{r.question}</span>
+                      <summary className="flex min-h-11 cursor-pointer list-none flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6 [&::-webkit-details-marker]:hidden">
+                        <span className="min-w-0 text-v2-md font-[550] break-words text-v2-ink">
+                          {r.question}
+                        </span>
                         <span className="flex shrink-0 items-center gap-3">
-                          <StatusTag status={STATUS_LABEL[r.status].status}>
+                          <Badge
+                            tone={STATUS_LABEL[r.status].status === "ok" ? "success" : "warning"}
+                          >
                             {STATUS_LABEL[r.status].text}
-                          </StatusTag>
-                          <span className="meta tnum text-subtle">
+                          </Badge>
+                          <span className="text-v2-xs text-v2-mute tabular-nums">
                             {formatRelative(new Date(r.createdAt))}
                           </span>
                         </span>
                       </summary>
-                      <div className="flex flex-col gap-4 pb-6">
+                      <div className="flex flex-col gap-4 pb-4">
                         {r.answer ? (
                           <AnswerText text={r.answer} unverified={r.verification.unverified} />
                         ) : (
-                          <p className="text-sm text-muted">{r.error ?? "Inget svar."}</p>
+                          <p className="st-p">{r.error ?? "Inget svar."}</p>
                         )}
                         {r.status === "answered" || r.status === "unverified" ? (
                           <VerificationLine verification={r.verification} />
                         ) : null}
                         <div className="flex flex-col gap-1">
-                          <span className="label text-muted">Underlag · {r.model}</span>
+                          <span className="v2-lab">Underlag · {r.model}</span>
                           <Evidence calls={r.toolCalls.map((c) => ({ ...c, done: c }))} />
                         </div>
                       </div>
@@ -265,52 +237,70 @@ export default async function AssistentPage({
                   </li>
                 ))}
               </ol>
-            ) : null}
-          </section>
+            ) : (
+              <Empty title="Inga frågor ännu.">Det du frågar sparas här, bara för dig.</Empty>
+            )}
+          </Card>
+        </div>
 
-          <section
+        <div className="v2-stack">
+          <Card
             id="installning"
-            aria-labelledby="installning-rubrik"
-            className="flex scroll-mt-28 flex-col gap-6"
+            className="scroll-mt-24"
+            title={<span id="installning-rubrik">{ready ? "Ansluten" : "Inte ansluten"}</span>}
+            actions={<Badge tone={ready ? "success" : "neutral"}>{ready ? "På" : "Av"}</Badge>}
           >
-            <SectionHeader
-              id="installning-rubrik"
-              size="sm"
-              title={ready ? "Ansluten." : "Inte ansluten."}
-              aside={
-                ready
+            <CardBody className="flex flex-col gap-3">
+              <p className="st-p">
+                {ready
                   ? local
                     ? "Lokal testmodell utan AI (bara i utveckling)."
                     : `Claude API med ${config.model}.`
-                  : "Nyckeln sätts i miljövariablerna, aldrig i appen."
-              }
-            />
-            {/* Variabelnamnen är för driften: bakom "Visa detaljer", inte i sidans första läsning. */}
-            <details className="group max-w-3xl text-sm">
-              <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xs font-mono text-xs text-muted transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
-                <span aria-hidden className="text-faint group-open:rotate-90">
-                  ›
-                </span>
-                Visa detaljer för driften
-              </summary>
-              <dl className="meta mt-3 grid grid-cols-1 gap-y-2 text-muted sm:grid-cols-[auto_1fr] sm:gap-x-8">
-                <dt className="text-subtle">ASSISTANT_PROVIDER</dt>
-                <dd className="text-fg">
-                  {ready ? config.provider : (process.env.ASSISTANT_PROVIDER ?? "anthropic")}
-                </dd>
-                <dt className="text-subtle">ANTHROPIC_API_KEY</dt>
-                <dd className="text-fg">
-                  {process.env.ANTHROPIC_API_KEY?.trim() ? "satt" : "saknas"}
-                </dd>
-                <dt className="text-subtle">ANTHROPIC_MODEL</dt>
-                <dd className="text-fg">
-                  {process.env.ANTHROPIC_MODEL?.trim() || "claude-opus-5-5 (standard)"}
-                </dd>
-              </dl>
-            </details>
-          </section>
+                  : "Nyckeln sätts i miljövariablerna, aldrig i appen."}
+              </p>
+              {/* Variabelnamnen är för driften: bakom "Visa detaljer", inte i sidans första läsning. */}
+              <details className="group text-v2-sm">
+                <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 text-v2-mute transition-colors hover:text-v2-ink [&::-webkit-details-marker]:hidden">
+                  <span aria-hidden className="text-v2-faint group-open:rotate-90">
+                    ›
+                  </span>
+                  Visa detaljer för driften
+                </summary>
+                <KeyValues
+                  className="mt-1"
+                  items={[
+                    {
+                      label: "ASSISTANT_PROVIDER",
+                      value: ready
+                        ? config.provider
+                        : (process.env.ASSISTANT_PROVIDER ?? "anthropic"),
+                    },
+                    {
+                      label: "ANTHROPIC_API_KEY",
+                      value: process.env.ANTHROPIC_API_KEY?.trim() ? "satt" : "saknas",
+                    },
+                    {
+                      label: "ANTHROPIC_MODEL",
+                      value: process.env.ANTHROPIC_MODEL?.trim() || "claude-opus-5-5 (standard)",
+                    },
+                  ]}
+                />
+              </details>
+            </CardBody>
+          </Card>
+
+          <FoldCard id="verktyg" title="Verktyg" aside={`${formatInt(tools.length)} st`}>
+            <ul className="st-list">
+              {tools.map((t) => (
+                <li key={t.name} className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-v2-md font-[550] text-v2-ink">{t.title}</span>
+                  <span className="text-v2-sm text-v2-mute">{TOOL_ABOUT[t.name] ?? ""}</span>
+                </li>
+              ))}
+            </ul>
+          </FoldCard>
         </div>
-      </details>
-    </div>
+      </div>
+    </V2Page>
   );
 }

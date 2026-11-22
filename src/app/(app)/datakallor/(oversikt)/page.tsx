@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
 
 import { OpenOnHash } from "@/components/ui/open-on-hash";
-import { SectionHeader } from "@/components/ui/section-header";
+import { Badge } from "@/components/v2/badge";
+import { Card, CardBody } from "@/components/v2/card";
+import { Section } from "@/components/v2/section";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatInt } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
-import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
+import { FoldCard } from "@/app/(app)/installningar/_components/fold-card";
+import "@/app/(app)/installningar/_components/settings.css";
 
 import { AwishCard } from "../_components/awish-card";
 import { ImportLog } from "../_components/import-log";
@@ -21,6 +25,16 @@ import { loadAwishPanelFor } from "@/server/awish/manage";
 import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
 import { AwishExpiry } from "@/app/(app)/_awish/awish-expiry";
+
+function CsvLink() {
+  return (
+    <p className="st-p">
+      <a href="#ladda-upp" className="text-v2-ink underline underline-offset-4">
+        Har du automater från ett annat märke? Ladda upp försäljning som CSV →
+      </a>
+    </p>
+  );
+}
 
 export const metadata: Metadata = { title: "Datakällor" };
 /** "Synka nu" och "Testa anslutningen" (server actions på sidan) anropar Awish. */
@@ -52,107 +66,95 @@ export default async function DatakallorPage() {
   const tone = headline.tone === "ok" ? "good" : headline.tone === "neutral" ? undefined : "bad";
   const awishLive = Boolean(awish.source?.credentials) && headline.tone === "ok";
 
+  const orders = data.sources.reduce((n, s) => n + s.orders, 0);
+  const lastWhen = lastImport
+    ? formatWhen(lastImport.finishedAt ?? lastImport.createdAt, data.timeZone, nowDate)
+    : null;
+
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 max-md:gap-8 md:gap-14 md:px-8 md:pt-12">
-      <MerHead
-        eyebrow="Datakällor"
-        title={headline.title}
-        line={headline.aside || undefined}
-        tone={tone}
-        live={awishLive}
-        count={data.queue.length > 0}
-        // Mobil: orderantalet står i rubriken; raderna visas bara när något ska kopplas.
-        metaOnMobile={data.queue.length > 0}
-        meta={[
-          { label: "Order", value: formatInt(data.sources.reduce((n, s) => n + s.orders, 0)) },
-          { label: "Att koppla", value: formatInt(data.queue.length) },
-        ]}
-      />
-
-      {data.queue.length > 0 ? (
-        <section
-          aria-labelledby="okanda-automater"
-          className="rise flex flex-col gap-6"
-          style={{ "--i": 1 } as CSSProperties}
-        >
-          <SectionHeader
+    <V2Page
+      title="Datakällor"
+      sub={
+        <>
+          {awishLive ? (
+            <span className="v2-dot mr-1.5 bg-v2-profit align-middle" aria-hidden />
+          ) : null}
+          <b className={tone === "bad" ? "text-v2-crit-text" : undefined}>{headline.title}</b>{" "}
+          {headline.aside ? `${headline.aside} · ` : ""}
+          {formatInt(orders)} order
+          {data.queue.length > 0 ? ` · ${formatInt(data.queue.length)} att koppla` : ""}
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-stack">
+        {data.queue.length > 0 ? (
+          <Section
             id="okanda-automater"
-            title="Koppla automater."
-            aside={queuedOrders > 0 ? `${formatInt(queuedOrders)} order väntar.` : undefined}
-          />
-          <MachineQueue queue={data.queue} machines={data.machines} timeZone={data.timeZone} />
-        </section>
-      ) : null}
+            title="Koppla automater"
+            sub={queuedOrders > 0 ? `${formatInt(queuedOrders)} order väntar.` : undefined}
+          >
+            <MachineQueue queue={data.queue} machines={data.machines} timeZone={data.timeZone} />
+          </Section>
+        ) : null}
 
-      <section
-        aria-labelledby="awish"
-        className="rise flex flex-col gap-6"
-        style={{ "--i": 2 } as CSSProperties}
-      >
-        <SectionHeader
-          id="awish"
-          title="Awish."
-          aside={demo ? "Avstängt i demon." : "Hämtas automatiskt."}
-        />
         {demo ? (
           // Demo för kunder: inga anrop till Awish med demons data (även spärrat på servern).
-          <p className="max-w-2xl text-base text-muted">{DEMO_MESSAGES.integrations}</p>
+          <Card title={<span id="awish">Awish</span>} actions={<Badge>Avstängt i demon</Badge>}>
+            <CardBody className="flex flex-col gap-3">
+              <p className="st-p">{DEMO_MESSAGES.integrations}</p>
+              <CsvLink />
+            </CardBody>
+          </Card>
         ) : (
-          <>
+          <section aria-labelledby="awish" className="flex flex-col gap-3">
+            <h2 id="awish" className="sr-only">
+              Awish
+            </h2>
             <AwishExpiry notice={awishExpiry} link={false} className="mb-0 max-md:mb-0" />
             <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
-          </>
+            <CsvLink />
+          </section>
         )}
-        <p className="text-sm text-muted">
-          <a
-            href="#ladda-upp"
-            className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg max-md:tap"
-          >
-            Har du automater från ett annat märke? Ladda upp försäljning som CSV →
-          </a>
-        </p>
-      </section>
 
-      <OpenOnHash id="ladda-upp" />
-      <details
-        id="ladda-upp"
-        className="rise scroll-mt-28 rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 3 } as CSSProperties}
-      >
-        <summary className="cursor-pointer list-none">
-          <SectionHeader
-            id="kallor"
-            size="md"
-            title="Mer."
-            aside={`Källor, fil, importer${lastImport ? ` · senast ${formatWhen(lastImport.finishedAt ?? lastImport.createdAt, data.timeZone, nowDate)}` : ""}.`}
-          />
-        </summary>
-        <div className="mt-6 flex flex-col gap-10">
-          <section aria-label="Källor" className="flex flex-col gap-4">
-            <h3 className="label text-subtle">Källor</h3>
-            <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} />
-          </section>
-          <section aria-label="Ladda upp fil" className="flex flex-col gap-4">
-            <h3 className="label text-subtle">
-              Ladda upp fil
-              {lastFile
-                ? ` · senaste ${formatWhen(lastFile.finishedAt ?? lastFile.createdAt, data.timeZone, nowDate)}, ${formatInt(lastFile.rowsNew)} nya av ${plural(lastFile.rowsTotal, "rad", "rader")}`
-                : ""}
-            </h3>
+        <OpenOnHash id="ladda-upp" />
+        <FoldCard
+          id="ladda-upp"
+          title="Ladda upp fil"
+          aside={
+            lastFile
+              ? `Senaste ${formatWhen(lastFile.finishedAt ?? lastFile.createdAt, data.timeZone, nowDate)}, ${formatInt(lastFile.rowsNew)} nya av ${plural(lastFile.rowsTotal, "rad", "rader")}`
+              : "CSV från Awish eller ett annat märke"
+          }
+        >
+          <CardBody>
             <UploadPanel sources={fileSources} timeZone={data.timeZone} />
-          </section>
-          {data.queue.length === 0 ? (
-            <p className="text-sm text-muted">
-              Alla automater kopplade
-              {data.lastMapped ? ` · senast ${data.lastMapped.machineCode}` : ""}.
-            </p>
-          ) : null}
-          <section aria-label="Importer" className="flex flex-col gap-4">
-            <h3 className="label text-subtle">Importer</h3>
+          </CardBody>
+        </FoldCard>
+
+        <Section
+          id="kallor"
+          title="Källor"
+          sub={
+            data.queue.length === 0
+              ? `Alla automater kopplade${data.lastMapped ? ` · senast ${data.lastMapped.machineCode}` : ""}.`
+              : undefined
+          }
+        >
+          <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} />
+        </Section>
+
+        <Card
+          id="importlogg"
+          className="scroll-mt-24"
+          title="Importer"
+          actions={lastWhen ? <span className="lk">Senast {lastWhen}</span> : undefined}
+        >
+          <CardBody>
             <ImportLog imports={data.imports} timeZone={data.timeZone} now={data.now} />
-          </section>
-        </div>
-      </details>
-    </div>
+          </CardBody>
+        </Card>
+      </div>
+    </V2Page>
   );
 }

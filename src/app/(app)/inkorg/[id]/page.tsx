@@ -2,11 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { SectionHeader } from "@/components/ui/section-header";
 import { MobileFold } from "@/components/ui/mobile-fold";
-import { StatusTag } from "@/components/ui/status-tag";
+import { Badge } from "@/components/v2/badge";
+import { Card, CardBody } from "@/components/v2/card";
+import { KeyValues } from "@/components/v2/key-values";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatCsvNumber, formatDate } from "@/lib/format";
 import { isoDateToShellDate, requireRoute } from "@/server/data/core";
+
+import "@/app/(app)/installningar/_components/settings.css";
 
 import { formatWhen } from "../../drift/_lib/display";
 import { ClosedMonthsBanner } from "../../_manad/closed-note";
@@ -48,135 +53,144 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
   const titleName =
     data.titles.find((t) => t.id === (data.order?.titleId ?? i.titleId))?.name ?? null;
 
+  const statusTone =
+    i.status === "resolved" ? "success" : i.status === "open" ? "warning" : "neutral";
+
   return (
-    <div className="mx-auto flex w-full max-w-[960px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow={`Inkorg / ${machine?.code ?? "Ärende"}`}
-        title={`${KIND_LABEL[i.kind] ?? i.kind}, ${formatWhen(i.startedAt, ctx.timeZone, now)}.`}
-        aside={
-          i.refundedOre > 0
+    <V2Page
+      title={KIND_LABEL[i.kind] ?? i.kind}
+      date={formatWhen(i.startedAt, ctx.timeZone, now)}
+      sub={
+        <>
+          <Badge tone={statusTone}>{STATUS_LABEL[i.status]}</Badge>{" "}
+          {machine?.code ? <b>{machine.code} · </b> : null}
+          {i.refundedOre > 0
             ? `${kronorOfOre(i.refundedOre)} återbetalt${i.refundedOn ? ` ${formatDate(isoDateToShellDate(i.refundedOn))}` : ""}.`
             : i.status === "resolved"
               ? `Löst ${formatWhen(i.endedAt, ctx.timeZone, now)}.`
-              : "Ingen återbetalning registrerad."
-        }
-        meta={[
-          { label: "Status", value: STATUS_LABEL[i.status] },
-          { label: "Automat", value: machine?.code ?? "–" },
-          { label: "Order", value: data.order?.externalId ?? "–" },
-        ]}
-      />
-      {fromStore && data.store ? (
-        <div className="flex flex-col gap-2">
-          {tel ? (
-            <a
-              href={tel}
-              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-sm border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover md:w-fit"
-            >
-              <span>{`Ring ${data.store.name}`}</span>
-              <span className="whitespace-nowrap tabular-nums">{data.store.phone}</span>
-            </a>
-          ) : (
-            <p className="text-sm text-muted">
-              {`${data.store.name} har inget telefonnummer. `}
-              {ctx.canEdit ? (
-                <Link
-                  href={`/butiker/${data.store.id}`}
-                  className="rounded-xs text-fg underline underline-offset-4 max-md:tap"
-                >
-                  Lägg in numret under Butiker
-                </Link>
-              ) : null}
-            </p>
-          )}
-          <p className="text-sm text-muted">
-            Butiken ser i sin portal när ärendet är Pågår eller Löst.
-          </p>
+              : "Ingen återbetalning registrerad."}
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-cols">
+        <div className="v2-stack">
+          {fromStore && data.store ? (
+            <Card title="Felanmälan från butiken">
+              <CardBody className="flex flex-col gap-3">
+                {tel ? (
+                  <a href={tel} className="v2-btn act lg w-full md:w-fit">
+                    <span>{`Ring ${data.store.name}`}</span>
+                    <span className="whitespace-nowrap tabular-nums">{data.store.phone}</span>
+                  </a>
+                ) : (
+                  <p className="st-p">
+                    {`${data.store.name} har inget telefonnummer. `}
+                    {ctx.canEdit ? (
+                      <Link
+                        href={`/butiker/${data.store.id}`}
+                        className="text-v2-ink underline underline-offset-4"
+                      >
+                        Lägg in numret under Butiker
+                      </Link>
+                    ) : null}
+                  </p>
+                )}
+                <p className="st-p">Butiken ser i sin portal när ärendet är Pågår eller Löst.</p>
+              </CardBody>
+            </Card>
+          ) : null}
+          <Card title="Ärendet">
+            <CardBody>
+              {/* Ett löst ärende: sammanfattningen räcker på mobilen, formuläret fälls ut. */}
+              <MobileFold summary="Ändra ärendet" defaultOpen={i.status !== "resolved"}>
+                <ClosedMonthsBanner className="mb-4" />
+                <IncidentForm
+                  initial={{
+                    id: i.id,
+                    machineId: i.machineId,
+                    kind: i.kind,
+                    occurredAt: utcToLocalInput(i.startedAt, ctx.timeZone),
+                    orderId: i.orderId ?? "",
+                    titleId: i.titleId ?? "",
+                    description: i.description ?? "",
+                    customerContact: i.customerContact ?? "",
+                    status: i.status,
+                    assigneeId: i.assigneeId ?? "",
+                    actionTaken: i.actionTaken ?? "",
+                    refunded: i.refundedOre > 0 ? formatCsvNumber(i.refundedOre / 100) : "",
+                    refundedOn: i.refundedOn ?? ctx.today,
+                  }}
+                  machines={data.machines.map((m) => ({ id: m.id, label: `${m.code} ${m.name}` }))}
+                  titles={data.titles}
+                  members={data.members}
+                  timeZone={ctx.timeZone}
+                  currentOrder={
+                    data.order
+                      ? {
+                          id: data.order.id,
+                          externalId: data.order.externalId,
+                          orderedAt: data.order.orderedAt,
+                          amountOre: data.order.amountOre,
+                          titleId: data.order.titleId,
+                          titleName,
+                        }
+                      : null
+                  }
+                  readOnly={!ctx.canEdit}
+                />
+              </MobileFold>
+            </CardBody>
+          </Card>
         </div>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-3">
-        <StatusTag
-          status={i.status === "resolved" ? "ok" : i.status === "open" ? "warning" : "neutral"}
-        >
-          {STATUS_LABEL[i.status]}
-        </StatusTag>
-        <Link
-          href={`/drift/automat/${i.machineId}`}
-          className="rounded-xs text-sm text-muted hover:text-fg max-md:tap"
-        >
-          Automatens tidslinje →
-        </Link>
-        <Link href="/inkorg" className="rounded-xs text-sm text-muted hover:text-fg max-md:tap">
-          Alla ärenden →
-        </Link>
+        <div className="v2-stack">
+          <Card title="Översikt">
+            <CardBody className="flex flex-col gap-3">
+              <KeyValues
+                items={[
+                  {
+                    label: "Status",
+                    value: <Badge tone={statusTone}>{STATUS_LABEL[i.status]}</Badge>,
+                  },
+                  { label: "Automat", value: machine?.code ?? "–" },
+                  { label: "Order", value: data.order?.externalId ?? "–" },
+                ]}
+              />
+            </CardBody>
+            <nav aria-label="Vidare" className="flex flex-col border-t border-v2-line">
+              <Link href={`/drift/automat/${i.machineId}`} className="st-link">
+                Automatens tidslinje
+                <span aria-hidden className="arr">
+                  →
+                </span>
+              </Link>
+              <Link href="/inkorg" className="st-link">
+                Alla ärenden
+                <span aria-hidden className="arr">
+                  →
+                </span>
+              </Link>
+            </nav>
+          </Card>
+          {data.history.length > 0 ? (
+            <Card
+              title={<span id="historik">Ändringar</span>}
+              actions={<span className="lk">Ur ändringsloggen</span>}
+            >
+              <ul className="st-list text-v2-sm" aria-labelledby="historik">
+                {data.history.map((h, n) => (
+                  <li key={`${h.at}-${n}`} className="flex flex-wrap justify-between gap-3">
+                    <span className="text-v2-ink">{`${ACTION[h.action] ?? h.action}${h.actor ? ` av ${h.actor}` : ""}`}</span>
+                    <span className="text-v2-mute tabular-nums">
+                      {formatWhen(h.at, ctx.timeZone, now)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+        </div>
       </div>
-      {/* Ett löst ärende: sammanfattningen ovan räcker på mobilen, formuläret fälls ut. */}
-      <MobileFold
-        summary="Ändra ärendet"
-        defaultOpen={i.status !== "resolved"}
-        className="max-md:-mt-4"
-      >
-        <ClosedMonthsBanner className="mb-4" />
-        <IncidentForm
-          initial={{
-            id: i.id,
-            machineId: i.machineId,
-            kind: i.kind,
-            occurredAt: utcToLocalInput(i.startedAt, ctx.timeZone),
-            orderId: i.orderId ?? "",
-            titleId: i.titleId ?? "",
-            description: i.description ?? "",
-            customerContact: i.customerContact ?? "",
-            status: i.status,
-            assigneeId: i.assigneeId ?? "",
-            actionTaken: i.actionTaken ?? "",
-            refunded: i.refundedOre > 0 ? formatCsvNumber(i.refundedOre / 100) : "",
-            refundedOn: i.refundedOn ?? ctx.today,
-          }}
-          machines={data.machines.map((m) => ({ id: m.id, label: `${m.code} ${m.name}` }))}
-          titles={data.titles}
-          members={data.members}
-          timeZone={ctx.timeZone}
-          currentOrder={
-            data.order
-              ? {
-                  id: data.order.id,
-                  externalId: data.order.externalId,
-                  orderedAt: data.order.orderedAt,
-                  amountOre: data.order.amountOre,
-                  titleId: data.order.titleId,
-                  titleName,
-                }
-              : null
-          }
-          readOnly={!ctx.canEdit}
-        />
-      </MobileFold>
-      {data.history.length > 0 ? (
-        <section
-          aria-labelledby="historik"
-          className="rise flex flex-col gap-4"
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          <SectionHeader
-            id="historik"
-            eyebrow="Historik"
-            title="Ändringar."
-            size="sm"
-            aside="Ur ändringsloggen."
-          />
-          <ul className="flex flex-col divide-y divide-line border-y border-line text-sm">
-            {data.history.map((h, n) => (
-              <li key={`${h.at}-${n}`} className="flex flex-wrap justify-between gap-3 py-2">
-                <span className="text-fg">{`${ACTION[h.action] ?? h.action}${h.actor ? ` av ${h.actor}` : ""}`}</span>
-                <span className="meta text-subtle">{formatWhen(h.at, ctx.timeZone, now)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </div>
+    </V2Page>
   );
 }

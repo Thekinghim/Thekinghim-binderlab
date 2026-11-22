@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { SettingsLoading } from "@/app/(app)/installningar/_components/page-loading";
 
-/** Medan importen och radloggen hämtas: rubriken och tabellen som skeleton. */
+/** Medan importen och radloggen hämtas: rubriken och korten som skeleton. */
 export default function ImportLoading() {
-  return <RouteLoading label="Laddar importen" blocks={["kpi", "table"]} />;
+  return <SettingsLoading label="Laddar importen" main={[3, 6]} side={[4]} />;
 }

@@ -113,7 +113,7 @@ export function PreviewView({
         <p className="label text-subtle">
           {committed ? "Importerad" : "Förhandsvisning · inget är sparat ännu"}
         </p>
-        <h3 className="text-lg font-medium text-balance">
+        <h3 className="text-v2-lg font-[650] text-balance">
           <span className="text-fg">{headlineOf(result)}</span>{" "}
           <span className="text-subtle">{asideOf(result)}</span>
         </h3>
