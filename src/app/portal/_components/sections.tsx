@@ -1,5 +1,5 @@
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { Card, CardBody } from "@/components/v2/card";
+import { Notice } from "@/components/v2/notice";
 import { splitRows } from "@/app/rapport/_components/store-report";
 import { formatInt } from "@/lib/format";
 import {
@@ -21,23 +21,22 @@ import {
 import { visibleSteps } from "@/server/portal/model";
 
 import { EvidenceDetails } from "./evidence";
+import { Lead } from "./page-head";
 import { dateText, kr, krExact, monthNameText, pct } from "./text";
 
 /** Avsnitt som både översikten och rapportvyn använder. Allt ur StoreReport (@/reports). */
 
+/** Raden överst i kortet Mest sålda titlar. */
 export function TitlesHeader({ report }: { report: StoreReport }) {
   const top = report.topTitles[0];
   return (
-    <SectionHeader
-      index={3}
-      eyebrow="Mest sålda titlar"
-      title={top ? `${top.name} sålde mest.` : "Mest sålda titlar."}
-      aside={
+    <Lead
+      strong={top ? `${top.name} sålde mest.` : "Mest sålda titlar."}
+      rest={
         top
           ? `${formatInt(top.orders)} pack, ${pct(top.shareBp)} av försäljningen i ${monthNameText(report.month)}.`
           : undefined
       }
-      size="md"
     />
   );
 }
@@ -71,65 +70,61 @@ export function WeeksBlock({ report, today }: { report: StoreReport; today?: str
     current && current.orders === 0
       ? report.weeks.filter((w) => w.range.end < current.range.start && w.orders > 0).at(-1)
       : undefined;
+  const lead = best ? `Bästa veckan: ${nbsp(best.label)}.` : "Försäljning per vecka.";
+  const rest = best
+    ? `${kr(best.revenueOre)} på ${formatInt(best.orders)} pack.`
+    : latest
+      ? `${nbsp(latest.label)}: ${kr(latest.revenueOre)} på ${formatInt(latest.orders)} pack.`
+      : current
+        ? `Vecka ${current.week} pågår: ${kr(current.revenueOre)} på ${formatInt(current.orders)} pack hittills.`
+        : undefined;
   return (
-    <>
-      <SectionHeader
-        index="03.2"
-        eyebrow="Per vecka"
-        title={best ? `Bästa veckan: ${nbsp(best.label)}.` : "Försäljning per vecka."}
-        aside={
-          best
-            ? `${kr(best.revenueOre)} på ${formatInt(best.orders)} pack.`
-            : latest
-              ? `${nbsp(latest.label)}: ${kr(latest.revenueOre)} på ${formatInt(latest.orders)} pack.`
-              : current
-                ? `Vecka ${current.week} pågår: ${kr(current.revenueOre)} på ${formatInt(current.orders)} pack hittills.`
-                : undefined
-        }
-        size="md"
-      />
-      <table className="w-full text-base">
-        <caption className="sr-only">Försäljning per vecka</caption>
-        <thead>
-          <tr className="border-b border-line-strong">
-            <th scope="col" className="label h-9 text-left font-normal text-subtle">
-              Vecka
-            </th>
-            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
-              Pack
-            </th>
-            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
-              Försäljning
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {report.weeks.map((w) => {
-            const future = isFuture(w);
-            return (
-              <tr key={w.key} className="h-11 border-b border-line">
-                <th scope="row" className="text-left font-normal text-fg">
-                  {nbsp(w.label)}
-                  {future ? (
-                    <span className="meta text-subtle"> · kommer</span>
-                  ) : w === current ? (
-                    <span className="meta text-subtle"> · pågår</span>
-                  ) : w.partial ? (
-                    <span className="meta text-subtle"> · del</span>
-                  ) : null}
-                </th>
-                <td className="tnum pl-3 text-right text-muted">
-                  {future ? <span aria-label="Inte än">–</span> : formatInt(w.orders)}
-                </td>
-                <td className="tnum pl-3 text-right whitespace-nowrap text-fg">
-                  {future ? <span aria-label="Inte än">–</span> : kr(w.revenueOre)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </>
+    <Card title="Per vecka">
+      <CardBody>
+        <Lead strong={lead} rest={rest} />
+      </CardBody>
+      <div className="v2-table-wrap border-t border-v2-line">
+        <table className="v2-table">
+          <caption className="sr-only">Försäljning per vecka</caption>
+          <thead>
+            <tr>
+              <th scope="col">Vecka</th>
+              <th scope="col" className="num">
+                Pack
+              </th>
+              <th scope="col" className="num">
+                Försäljning
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.weeks.map((w) => {
+              const future = isFuture(w);
+              return (
+                <tr key={w.key}>
+                  <th scope="row" className="text-left font-[450] text-v2-ink">
+                    {nbsp(w.label)}
+                    {future ? (
+                      <span className="text-v2-faint"> · kommer</span>
+                    ) : w === current ? (
+                      <span className="text-v2-faint"> · pågår</span>
+                    ) : w.partial ? (
+                      <span className="text-v2-faint"> · del</span>
+                    ) : null}
+                  </th>
+                  <td className="num text-v2-mute">
+                    {future ? <span aria-label="Inte än">–</span> : formatInt(w.orders)}
+                  </td>
+                  <td className="num">
+                    {future ? <span aria-label="Inte än">–</span> : kr(w.revenueOre)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }
 
@@ -156,71 +151,59 @@ export function CompensationSection({
   // Hyran nämns bara när avtalet har hyra (de flesta har ingen).
   const rent = c.rentOre !== 0 || c.rentParts.length > 0;
   return (
-    <section
-      className="flex flex-col gap-10 border-t border-line py-16"
-      aria-labelledby="ersattning"
-    >
-      <SectionHeader
-        id="ersattning"
-        index={4}
-        eyebrow="Er ersättning"
-        title={`${krExact(c.totalOre)} till ${report.store.name}.`}
-        aside={hasAgreement ? withPeriod(c.modelText) : "Inget avtal är registrerat för månaden."}
-        meta={[
-          { label: "Provision", value: krExact(c.commissionOre) },
-          ...(rent ? [{ label: "Hyra", value: krExact(c.rentOre) }] : []),
-          { label: "Totalt", value: krExact(c.totalOre) },
-        ]}
-      />
-      {!hasAgreement ? (
-        <StateMessage
-          kind="not-configured"
-          message="Operatören har inte registrerat ert avtal i Binderlab, så ingen ersättning räknas."
-          detail="Kontakta operatören om ni har ett avtal."
+    <Card title="Er ersättning" id="ersattning">
+      <CardBody className="flex flex-col gap-3">
+        <Lead
+          strong={`${krExact(c.totalOre)} till ${report.store.name}.`}
+          rest={hasAgreement ? withPeriod(c.modelText) : "Inget avtal är registrerat för månaden."}
         />
-      ) : (
-        <ol className="flex flex-col border-t border-line-strong">
+        {!hasAgreement ? (
+          <Notice tone="info" title="Inget avtal registrerat">
+            Operatören har inte registrerat ert avtal i Binderlab, så ingen ersättning räknas.
+            Kontakta operatören om ni har ett avtal.
+          </Notice>
+        ) : null}
+      </CardBody>
+      {hasAgreement ? (
+        <ol className="pt-steps border-t border-v2-line">
           {steps.map((s, i) => (
-            <li
-              key={`${s.kind}-${i}`}
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-6 gap-y-1 border-b border-line py-4 md:grid-cols-[10rem_minmax(0,1fr)_auto]"
-            >
-              <span className="label text-subtle">{STEP_LABEL[s.kind]}</span>
-              <div className="col-span-2 flex min-w-0 flex-col gap-1 md:col-span-1">
-                <span className="text-base text-fg">{s.label}</span>
-                <span className="text-sm text-muted">{s.calculation}</span>
-                <EvidenceDetails evidence={s.evidence} summary="Underlag" className="mt-1" />
-              </div>
-              <span className="tnum col-start-2 row-start-1 text-right text-md text-fg md:col-start-3">
-                {krExact(s.amountOre)}
-              </span>
+            <li key={`${s.kind}-${i}`} className="pt-step">
+              <span className="k">{STEP_LABEL[s.kind]}</span>
+              <span className="l">{s.label}</span>
+              <span className="c">{s.calculation}</span>
+              <span className="v">{krExact(s.amountOre)}</span>
+              <EvidenceDetails
+                evidence={s.evidence}
+                summary="Underlag"
+                className="col-span-2 mt-1"
+              />
             </li>
           ))}
-          <li className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-6 py-4 md:grid-cols-[10rem_minmax(0,1fr)_auto]">
-            <span className="label text-fg">{total}</span>
-            <span className="hidden text-sm text-muted md:block">
+          <li className="pt-step total">
+            <span className="l">{total}</span>
+            <span className="c">
               Provision {krExact(c.commissionOre)}
               {rent ? ` + hyra ${krExact(c.rentOre)}` : null}
             </span>
-            <span className="tnum text-right text-xl font-medium text-fg">
-              {krExact(c.totalOre)}
-            </span>
+            <span className="v">{krExact(c.totalOre)}</span>
           </li>
         </ol>
-      )}
-      {c.rentParts.length > 0 ? (
-        <p className="max-w-2xl text-sm text-muted">
-          Hyran räknas per dag när avtalet ändras mitt i månaden:{" "}
-          {c.rentParts
-            .map(
-              (p) =>
-                `${krExact(p.monthlyRentOre)} per månad ${dateText(p.start)}–${dateText(p.end)} (${formatInt(p.days)} av ${formatInt(c.daysInMonth)} dagar)`,
-            )
-            .join("; ")}
-          .
-        </p>
       ) : null}
-    </section>
+      {c.rentParts.length > 0 ? (
+        <CardBody className="border-t border-v2-line">
+          <p className="pt-note">
+            Hyran räknas per dag när avtalet ändras mitt i månaden:{" "}
+            {c.rentParts
+              .map(
+                (p) =>
+                  `${krExact(p.monthlyRentOre)} per månad ${dateText(p.start)}–${dateText(p.end)} (${formatInt(p.days)} av ${formatInt(c.daysInMonth)} dagar)`,
+              )
+              .join("; ")}
+            .
+          </p>
+        </CardBody>
+      ) : null}
+    </Card>
   );
 }
 
@@ -232,55 +215,55 @@ function SplitSection({ report }: { report: StoreReport }) {
   const c = report.compensation;
   const rows = splitRows(c, isRev2(asStoreBasis(report.basis)));
   return (
-    <section
-      className="flex flex-col gap-10 border-t border-line py-16"
-      aria-labelledby="ersattning"
-    >
-      <SectionHeader
-        id="ersattning"
-        index={4}
-        eyebrow="Er andel"
-        title={
-          c.pending
-            ? "Er andel räknas i månadsrapporten."
-            : `${krExact(c.totalOre)} till ${report.store.name}.`
-        }
-        aside={`Avtal: ${withPeriod(c.modelText)}`}
-      />
-      <table className="w-full max-w-2xl text-base">
-        <caption className="sr-only">Vinstdelningen för månaden</caption>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.key} className="h-11 border-b border-line">
-              <th
-                scope="row"
-                className={`text-left font-normal ${r.strong ? "font-medium text-fg" : "text-muted"}`}
-              >
-                {r.label}
-              </th>
-              <td className="tnum pl-3 text-right whitespace-nowrap text-fg">
-                {r.amountOre === null ? (
-                  <span className="text-muted">i månadsrapporten</span>
-                ) : (
-                  krExact(r.amountOre)
-                )}
-              </td>
-            </tr>
-          ))}
+    <Card title="Er andel" id="ersattning">
+      <CardBody>
+        <Lead
+          strong={
+            c.pending
+              ? "Er andel räknas i månadsrapporten."
+              : `${krExact(c.totalOre)} till ${report.store.name}.`
+          }
+          rest={`Avtal: ${withPeriod(c.modelText)}`}
+        />
+      </CardBody>
+      <div className="v2-table-wrap border-t border-v2-line">
+        <table className="v2-table">
+          <caption className="sr-only">Vinstdelningen för månaden</caption>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <th
+                  scope="row"
+                  className={`text-left ${r.strong ? "font-[650] text-v2-ink" : "font-[450] text-v2-mute"}`}
+                >
+                  {r.label}
+                </th>
+                <td className="num">
+                  {r.amountOre === null ? (
+                    <span className="text-v2-mute">i månadsrapporten</span>
+                  ) : (
+                    krExact(r.amountOre)
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
           {c.pending ? null : (
-            <tr className="h-12">
-              <th scope="row" className="text-left font-medium text-fg">
-                {totalText(report, "Er andel")}
-              </th>
-              <td className="tnum pl-3 text-right text-xl font-medium whitespace-nowrap text-fg">
-                {krExact(c.totalOre)}
-              </td>
-            </tr>
+            <tfoot>
+              <tr>
+                <th scope="row" className="text-left font-[650]">
+                  {totalText(report, "Er andel")}
+                </th>
+                <td className="num text-v2-lg">{krExact(c.totalOre)}</td>
+              </tr>
+            </tfoot>
           )}
-        </tbody>
-      </table>
-      <EvidenceDetails evidence={c.evidence} summary="Så räknas er andel" />
-    </section>
+        </table>
+      </div>
+      <CardBody className="border-t border-v2-line">
+        <EvidenceDetails evidence={c.evidence} summary="Så räknas er andel" />
+      </CardBody>
+    </Card>
   );
 }
 
@@ -314,69 +297,64 @@ export function BasisSection({ report }: { report: StoreReport }) {
   const rows = invoiceRows(basis, report);
   const empty = rows.length === 0 ? invoiceEmptyText(basis, report) : null;
   return (
-    <section className="flex flex-col gap-8 border-t border-line py-16" aria-labelledby="underlag">
-      <h2 id="underlag" className="label text-subtle">
-        Underlag för bokföringen
-      </h2>
-      <dl className="grid gap-x-8 gap-y-8 md:grid-cols-3">
-        <div className="flex min-w-0 flex-col gap-2">
-          <dt className="label text-subtle">Ersättningen betalas av</dt>
-          <dd className="flex flex-col gap-1">
-            {payerLines(basis, report.machines.length).map((line, i) => (
-              <span
-                key={`${i}-${line}`}
-                className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}
-              >
-                {line}
-              </span>
-            ))}
-          </dd>
-        </div>
-        <div className="flex min-w-0 flex-col gap-2">
-          <dt className="label text-subtle">Mottagare</dt>
-          <dd className="flex flex-col gap-1">
-            {recipientLines(basis, report.store.name).map((line, i) => (
-              <span
-                key={`${i}-${line}`}
-                className={i === 0 ? "text-fg" : "tnum text-sm text-muted"}
-              >
-                {line}
-              </span>
-            ))}
-          </dd>
-        </div>
-        {empty ? (
-          <div className="flex min-w-0 flex-col gap-2">
-            <dt className="label text-subtle">{invoiceTitle(basis)}</dt>
-            <dd className="text-sm text-muted">{empty}</dd>
-          </div>
-        ) : rows.length > 0 ? (
-          <div className="flex min-w-0 flex-col gap-2">
-            <dt className="label text-subtle">{invoiceTitle(basis)}</dt>
-            <dd className="flex flex-col">
-              {rows.map((row) => (
+    <Card title="Underlag för bokföringen" id="underlag">
+      <CardBody className="flex flex-col gap-4">
+        <dl className="grid gap-x-8 gap-y-5 md:grid-cols-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <dt className="v2-lab">Ersättningen betalas av</dt>
+            <dd className="flex flex-col gap-0.5">
+              {payerLines(basis, report.machines.length).map((line, i) => (
                 <span
-                  key={row.key}
-                  className={
-                    row.strong
-                      ? "flex items-baseline justify-between gap-4 border-t border-line pt-1 font-medium text-fg"
-                      : "flex items-baseline justify-between gap-4 pb-1 text-sm text-muted"
-                  }
+                  key={`${i}-${line}`}
+                  className={i === 0 ? "font-[550]" : "tnum text-v2-sm text-v2-mute"}
                 >
-                  <span>{row.label}</span>
-                  <span className="tnum whitespace-nowrap">{krExact(row.amountOre)}</span>
+                  {line}
                 </span>
               ))}
             </dd>
           </div>
-        ) : null}
-      </dl>
-      <p className="max-w-2xl text-sm text-muted">
-        {basisNotes(basis, report, report.store.name).join(" ")}
-      </p>
-      {isRev2(basis) ? (
-        <p className="max-w-2xl text-sm text-muted">{salesNote(report, report.store.name)}</p>
-      ) : null}
-    </section>
+          <div className="flex min-w-0 flex-col gap-1">
+            <dt className="v2-lab">Mottagare</dt>
+            <dd className="flex flex-col gap-0.5">
+              {recipientLines(basis, report.store.name).map((line, i) => (
+                <span
+                  key={`${i}-${line}`}
+                  className={i === 0 ? "font-[550]" : "tnum text-v2-sm text-v2-mute"}
+                >
+                  {line}
+                </span>
+              ))}
+            </dd>
+          </div>
+          {empty ? (
+            <div className="flex min-w-0 flex-col gap-1">
+              <dt className="v2-lab">{invoiceTitle(basis)}</dt>
+              <dd className="text-v2-sm text-v2-mute">{empty}</dd>
+            </div>
+          ) : rows.length > 0 ? (
+            <div className="flex min-w-0 flex-col gap-1">
+              <dt className="v2-lab">{invoiceTitle(basis)}</dt>
+              <dd className="flex flex-col">
+                {rows.map((row) => (
+                  <span
+                    key={row.key}
+                    className={
+                      row.strong
+                        ? "flex items-baseline justify-between gap-4 border-t border-v2-line2 pt-1 font-[650]"
+                        : "flex items-baseline justify-between gap-4 pb-1 text-v2-sm text-v2-mute"
+                    }
+                  >
+                    <span>{row.label}</span>
+                    <span className="tnum whitespace-nowrap">{krExact(row.amountOre)}</span>
+                  </span>
+                ))}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+        <p className="pt-note">{basisNotes(basis, report, report.store.name).join(" ")}</p>
+        {isRev2(basis) ? <p className="pt-note">{salesNote(report, report.store.name)}</p> : null}
+      </CardBody>
+    </Card>
   );
 }

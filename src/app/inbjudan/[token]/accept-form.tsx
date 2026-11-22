@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useActionState, useState, useTransition, type FormEvent, type ReactNode } from "react";
 
 import { FormError } from "@/app/logga-in/form-error";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { AuthInput } from "@/app/logga-in/auth-field";
+import { Button } from "@/components/v2/button";
 import { useT } from "@/i18n/client";
 import type { Messages } from "@/i18n/sv";
 import { logout } from "@/server/actions/auth";
@@ -64,7 +64,7 @@ export function AcceptForm({
   };
 
   return (
-    <form action={action} onSubmit={check} noValidate className="flex flex-col gap-5">
+    <form action={action} onSubmit={check} noValidate className="flex flex-col gap-4">
       <input type="hidden" name="token" value={token} />
       {tokenHash ? <input type="hidden" name="token_hash" value={tokenHash} /> : null}
       {linkType ? <input type="hidden" name="type" value={linkType} /> : null}
@@ -76,7 +76,7 @@ export function AcceptForm({
       ) : null}
       {asksPassword ? (
         <PasswordFields optional={!passwordRequired}>
-          <Input
+          <AuthInput
             label={t.invite.choosePassword}
             name="password"
             type="password"
@@ -90,7 +90,7 @@ export function AcceptForm({
             }
             autoFocus={passwordRequired}
           />
-          <Input
+          <AuthInput
             label={t.invite.repeatPassword}
             name="confirm"
             type="password"
@@ -105,16 +105,13 @@ export function AcceptForm({
         </PasswordFields>
       ) : null}
       <FormError message={shown.field || !shown.error ? undefined : t.serverError(shown.error)} />
-      <Button type="submit" variant="primary" loading={pending} className="h-12 w-full text-lg">
+      <Button type="submit" variant="act" size="lg" pending={pending} className="w-full">
         {mode === "create" ? t.invite.createAndJoin : t.invite.join(organizationName)}
       </Button>
       {loginHref ? (
-        <p className="text-sm text-muted">
+        <p className="text-v2-sm text-v2-mute">
           {state.accountExists ? t.invite.accountExistsShort : t.invite.haveAccount}
-          <Link
-            href={loginHref}
-            className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg max-md:tap"
-          >
+          <Link href={loginHref} className="v2-auth-link">
             {t.invite.loginAndJoin}
           </Link>
         </p>
@@ -129,10 +126,10 @@ function PasswordFields({ optional, children }: { optional: boolean; children: R
   if (!optional) return <>{children}</>;
   return (
     <details className="group flex flex-col">
-      <summary className="cursor-pointer text-sm text-muted hover:text-fg">
+      <summary className="cursor-pointer text-v2-sm font-[550] text-v2-mute hover:text-v2-ink">
         {t.invite.optionalPassword}
       </summary>
-      <div className="mt-4 flex flex-col gap-5">{children}</div>
+      <div className="mt-4 flex flex-col gap-4">{children}</div>
     </details>
   );
 }
@@ -167,17 +164,18 @@ export function SwitchAccount({
   const t = useT();
   const [pending, startTransition] = useTransition();
   return (
-    <div className="flex flex-col gap-5">
-      <p className="text-base text-muted">
+    <div className="flex flex-col gap-4">
+      <p className="text-v2-md text-v2-mute">
         {t.invite.signedInAs}
-        <span className="text-fg">{currentEmail}</span>
+        <span className="font-[550] text-v2-ink">{currentEmail}</span>
         {t.invite.invitationFor}
-        <span className="text-fg">{invitedEmail}</span>.
+        <span className="font-[550] text-v2-ink">{invitedEmail}</span>.
       </p>
       <Button
-        variant="primary"
+        variant="act"
+        size="lg"
         className="w-full"
-        loading={pending}
+        pending={pending}
         onClick={() =>
           startTransition(async () => {
             await logout();

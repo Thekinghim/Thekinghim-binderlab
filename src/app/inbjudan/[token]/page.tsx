@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AuthFrame } from "@/app/logga-in/auth-frame";
+import { KeyValues } from "@/components/v2/key-values";
 import { messages, type Locale, type Messages } from "@/i18n";
 import { getCookieLocale, getRequestLocale } from "@/i18n/request";
 import { getServerEnv } from "@/lib/env";
@@ -34,31 +35,16 @@ function invalidCopy(
   return { aside: t.invite.missingAside, body: t.invite.missingBody };
 }
 
-function Eyebrow({ t }: { t: Messages }) {
-  return (
-    <>
-      <span className="tnum text-fg">01</span>
-      <span aria-hidden className="text-faint">
-        /
-      </span>
-      <span>{t.invite.eyebrow}</span>
-    </>
-  );
-}
-
 function Facts({ rows }: { rows: { label: string; value: ReactNode }[] }) {
   return (
-    <dl className="flex flex-col border-y border-line">
-      {rows.map((r, i) => (
-        <div
-          key={r.label}
-          className={`flex items-baseline justify-between gap-4 py-2 ${i > 0 ? "border-t border-line" : ""}`}
-        >
-          <dt className="label shrink-0 text-subtle">{r.label}</dt>
-          <dd className="meta min-w-0 truncate text-right text-fg">{r.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <KeyValues
+      className="rounded-v2 bg-v2-hover px-3"
+      items={rows.map((r) => ({
+        key: r.label,
+        label: r.label,
+        value: <span className="block truncate">{r.value}</span>,
+      }))}
+    />
   );
 }
 
@@ -92,18 +78,10 @@ export default async function InvitationPage({
   if (lookup.status !== "valid") {
     const copy = invalidCopy(t, lookup.status);
     return (
-      <AuthFrame
-        eyebrow={<Eyebrow t={t} />}
-        title={t.invite.invalidTitle}
-        aside={copy.aside}
-        locale={locale}
-      >
-        <div className="flex flex-col gap-5">
-          <p className="text-base text-muted">{copy.body}</p>
-          <Link
-            href={user ? "/" : "/logga-in"}
-            className="inline-flex h-11 w-fit items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg hover:border-line-control hover:bg-hover"
-          >
+      <AuthFrame title={t.invite.invalidTitle} aside={copy.aside} locale={locale}>
+        <div className="flex flex-col gap-4">
+          <p className="text-v2-md text-v2-mute">{copy.body}</p>
+          <Link href={user ? "/" : "/logga-in"} className="v2-btn lg w-full">
             {user ? t.invite.openApp : t.invite.toLogin}
           </Link>
         </div>
@@ -128,12 +106,9 @@ export default async function InvitationPage({
     body = <SwitchAccount currentEmail={user.email} invitedEmail={lookup.email} />;
   } else if (provider === "dev" && (await devAccountExists(lookup.email))) {
     body = (
-      <div className="flex flex-col gap-5">
-        <p className="text-base text-muted">{t.invite.accountExists}</p>
-        <Link
-          href={loginHref}
-          className="inline-flex h-11 w-full items-center justify-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
-        >
+      <div className="flex flex-col gap-4">
+        <p className="text-v2-md text-v2-mute">{t.invite.accountExists}</p>
+        <Link href={loginHref} className="v2-btn lg act w-full">
           {t.invite.loginAndJoin}
         </Link>
       </div>
@@ -171,7 +146,6 @@ export default async function InvitationPage({
 
   return (
     <AuthFrame
-      eyebrow={<Eyebrow t={t} />}
       title={t.invite.title}
       aside={
         lookup.storeName
@@ -180,9 +154,10 @@ export default async function InvitationPage({
       }
       systemStatus={false}
       locale={locale}
+      wide
     >
-      <div className="flex flex-col gap-8">
-        <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col">
           <Facts
             rows={[
               { label: t.invite.organization, value: lookup.organizationName },

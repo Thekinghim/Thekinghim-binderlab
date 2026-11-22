@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { Wordmark } from "@/components/brand/wordmark";
-import { ThemeToggle } from "@/components/shell/theme-toggle";
+import { V2Logo } from "@/components/v2/shell/nav-icon";
 import { describeSigningLink } from "@/server/contracts/signing";
 
 import { SignForm, SignedReceipt } from "./sign-form";
+
+import "@/app/logga-in/auth.css";
 
 export const metadata: Metadata = {
   title: "Signera avtal",
@@ -24,18 +25,21 @@ const CLOSED: Record<"missing" | "expired" | "used" | "changed", { title: string
     changed: { title: "Avtalet har ändrats.", body: "Be om en ny länk." },
   };
 
+/** V2-ramen (som inloggningen): loggan överst och ett vitt kort mitt på den grå ytan. */
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-dvh overflow-x-clip bg-bg">
-      <div className="mx-auto flex min-h-dvh w-full max-w-[720px] flex-col px-4 md:px-8">
-        <header className="flex h-16 items-center justify-between">
-          <Wordmark size="md" />
-          <ThemeToggle />
-        </header>
-        <main id="main" className="flex flex-1 flex-col pt-6 pb-16 md:pt-16">
-          {children}
-        </main>
-      </div>
+    <div data-ui="v2" className="v2-auth">
+      <header className="v2-auth-top">
+        <span className="v2-auth-brand">
+          <V2Logo size={28} />
+          Binderlab
+        </span>
+      </header>
+      <main id="main" className="v2-auth-main">
+        <div className="v2-card v2-auth-card wide v2-enter">
+          <div className="v2-card-body">{children}</div>
+        </div>
+      </main>
     </div>
   );
 }
@@ -51,10 +55,12 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
   if (lookup.status === "signed") {
     return (
       <Frame>
-        <p className="label text-subtle">{lookup.organizationName}</p>
-        <h1 className="mt-2 mb-8 text-2xl font-medium text-fg">
-          {lookup.contractTitle} · {lookup.storeName}
-        </h1>
+        <div className="v2-auth-hd">
+          <h1>
+            {lookup.contractTitle} · {lookup.storeName}
+          </h1>
+          <p>{lookup.organizationName}</p>
+        </div>
         <SignedReceipt
           token={token}
           signerName={lookup.signerName}
@@ -68,9 +74,9 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
     const copy = CLOSED[lookup.status];
     return (
       <Frame>
-        <div className="rise flex flex-col gap-3">
-          <h1 className="text-2xl font-medium text-fg">{copy.title}</h1>
-          <p className="text-base text-muted">
+        <div className="v2-auth-hd">
+          <h1>{copy.title.replace(/\.$/, "")}</h1>
+          <p>
             {copy.body}
             {lookup.status !== "missing" && lookup.organizationName
               ? ` Kontakta ${lookup.organizationName}.`
@@ -89,27 +95,23 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
 
   return (
     <Frame>
-      <div className="rise flex flex-col gap-2">
-        <p className="label text-subtle">
-          {lookup.organizationName} · Avtal {lookup.reference}
-        </p>
-        <h1 className="text-2xl font-medium text-balance text-fg">
+      <div className="v2-auth-hd">
+        <h1>
           {lookup.contractTitle} för {lookup.storeName}
         </h1>
-        <p className="text-sm text-muted">Länken gäller till {until}.</p>
+        <p>
+          {lookup.organizationName} · Avtal {lookup.reference} · Länken gäller till {until}.
+        </p>
       </div>
 
       {lookup.terms ? (
-        <ul
-          className="rise mt-6 flex flex-col gap-1.5 border-y border-line py-4 text-base text-fg"
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
+        <ul className="flex flex-col gap-1.5 rounded-v2 bg-v2-hover px-3.5 py-3 text-v2-md text-v2-ink">
           {lookup.terms
             .split("\n")
             .filter((line) => line.trim() !== "")
             .map((line) => (
               <li key={line} className="flex gap-2">
-                <span aria-hidden className="text-subtle">
+                <span aria-hidden className="text-v2-faint">
                   ·
                 </span>
                 <span>{line}</span>
@@ -118,7 +120,7 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
         </ul>
       ) : null}
 
-      <div className="mt-8">
+      <div className="mt-2">
         <SignForm
           token={token}
           documentSha256={lookup.documentSha256}

@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/v2/button";
 
 import { confirmMagicLink } from "../actions";
 import { LinkFailed, LinkPending, useLinkFragment } from "../link-landing";
@@ -59,8 +59,10 @@ export function ConfirmForm({
           <input type="hidden" name="type" value={type} />
         </>
       )}
-      {tokens?.email ? <p className="meta wrap-anywhere text-muted">{tokens.email}</p> : null}
-      <Button type="submit" variant="primary" loading={pending} className="h-12 w-full text-lg">
+      {tokens?.email ? (
+        <p className="text-v2-sm wrap-anywhere text-v2-mute">{tokens.email}</p>
+      ) : null}
+      <Button type="submit" variant="act" size="lg" pending={pending} className="w-full">
         Logga in
       </Button>
     </form>

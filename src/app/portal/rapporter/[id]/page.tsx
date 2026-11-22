@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PrintButton } from "@/components/report/print-button";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { KpiTile } from "@/components/v2/kpi-tile";
+import { Notice } from "@/components/v2/notice";
 import { formatInt } from "@/lib/format";
 import {
   assertStoreReportSafe,
@@ -24,6 +26,7 @@ import {
   TitlesHeader,
   WeeksBlock,
 } from "../../_components/sections";
+import { PortalPage } from "../../_components/page-head";
 import { dateTimeText, kr, monthText, pct } from "../../_components/text";
 
 export const metadata: Metadata = { title: "Butiksrapport" };
@@ -52,147 +55,163 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
   const whole = isWholeMonth(range);
   const name = whole ? monthText(month) : periodText(range);
 
-  return (
-    <div className="flex flex-col py-10 md:py-12">
-      <nav
-        aria-label="Sökväg"
-        className="label flex flex-wrap items-center justify-between gap-3 pb-8 text-subtle"
-        data-print="hide"
+  const created = `Skapad ${dateTimeText(detail.generatedAt, ctx.store.timezone)}`;
+  const actions = (
+    <>
+      <ButtonLink href="/portal/rapporter" touch data-print="hide">
+        <span aria-hidden>←</span> Rapporter
+      </ButtonLink>
+      {detail.storagePath && !legacy ? (
+        <a
+          href={`/portal/rapporter/${detail.reportId}/pdf`}
+          className="v2-btn touch"
+          data-print="hide"
+        >
+          Ladda ned PDF
+        </a>
+      ) : null}
+      {report ? (
+        <span data-print="hide">
+          <PrintButton />
+        </span>
+      ) : null}
+    </>
+  );
+
+  if (!report) {
+    return (
+      <PortalPage
+        title={`${whole ? "Månadsrapport" : "Butiksrapport"} ${name}`}
+        sub={`${created}.`}
+        actions={actions}
       >
-        <span className="flex items-center gap-2">
-          <Link href="/portal/rapporter" className="rounded-xs text-muted hover:text-fg">
-            Rapporter
-          </Link>
-          <span aria-hidden className="text-faint">
-            /
-          </span>
-          <span>{name}</span>
-        </span>
-        <span className="flex items-center gap-2">
-          {detail.storagePath && !legacy ? (
-            <a
-              href={`/portal/rapporter/${detail.reportId}/pdf`}
-              className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg normal-case transition-colors duration-fast ease-instrument hover:bg-hover"
-            >
-              Ladda ned PDF
-            </a>
-          ) : null}
-          {report ? <PrintButton /> : null}
-        </span>
-      </nav>
+        <Notice
+          tone="warning"
+          title="Rapportens innehåll kan inte visas i portalen."
+          action={<ButtonLink href="/portal">Till översikten</ButtonLink>}
+        >
+          Rapporten sparades i ett format som portalen inte visar. Be operatören skicka den till er
+          per e-post.
+        </Notice>
+      </PortalPage>
+    );
+  }
 
-      {!report ? (
-        <div className="flex flex-col gap-8">
-          <SectionHeader
-            as="h1"
-            title={`${whole ? "Månadsrapport" : "Butiksrapport"} ${name}.`}
-            aside={`Skapad ${dateTimeText(detail.generatedAt, ctx.store.timezone)}.`}
-            size="xl"
-          />
-          <StateMessage
-            kind="not-configured"
-            message="Rapportens innehåll kan inte visas i portalen."
-            detail="Rapporten sparades i ett format som portalen inte visar. Be operatören skicka den till er per e-post."
-            action={{ label: "Till översikten", href: "/portal" }}
-          />
+  const tiles = [
+    { key: "sales", label: "Försäljning", value: kr(report.sales.revenueOre) },
+    { key: "orders", label: "Sålda pack", value: formatInt(report.sales.orders) },
+    ...(details
+      ? [
+          {
+            key: "avg",
+            label: "Snittköp",
+            value: report.sales.averageOrderOre === null ? "–" : kr(report.sales.averageOrderOre),
+          },
+        ]
+      : []),
+    { key: "comp", label: "Ersättning", value: kr(report.compensation.totalOre) },
+  ];
+
+  return (
+    <PortalPage
+      title={isWholeMonth(report.period) ? "Månadsrapport" : "Butiksrapport"}
+      date={isWholeMonth(report.period) ? monthText(report.month) : periodText(report.period)}
+      sub={
+        <>
+          <b>{`${kr(report.sales.revenueOre)} i försäljning.`}</b> {storeSummary(report, details)}{" "}
+          {created}.
+        </>
+      }
+      actions={actions}
+    >
+      <article className="flex flex-col gap-3.5 max-md:gap-3">
+        <div className="v2-band-wrap">
+          <div
+            className="v2-band"
+            style={{ "--cols": tiles.length } as React.CSSProperties}
+            aria-label="Rapportens siffror"
+          >
+            {tiles.map((t) => (
+              <KpiTile key={t.key} label={t.label} value={t.value} />
+            ))}
+          </div>
         </div>
-      ) : (
-        <article className="flex flex-col">
-          <section className="flex flex-col gap-10 pb-16">
-            <SectionHeader
-              as="h1"
-              index={1}
-              eyebrow={
-                isWholeMonth(report.period)
-                  ? `Månadsrapport · ${monthText(report.month)}`
-                  : `Butiksrapport · ${periodText(report.period)}`
-              }
-              title={`${kr(report.sales.revenueOre)} i försäljning.`}
-              aside={storeSummary(report, details)}
-              size="xl"
-              meta={[
-                { label: "Sålda pack", value: formatInt(report.sales.orders) },
-                ...(details
-                  ? [
-                      {
-                        label: "Snittköp",
-                        value:
-                          report.sales.averageOrderOre === null
-                            ? "–"
-                            : kr(report.sales.averageOrderOre),
-                      },
-                    ]
-                  : []),
-                { label: "Ersättning", value: kr(report.compensation.totalOre) },
-                { label: "Skapad", value: dateTimeText(detail.generatedAt, ctx.store.timezone) },
-              ]}
-            />
-            {report.greeting ? (
-              <p className="max-w-2xl border-t border-line pt-6 text-md text-muted">
-                {report.greeting}
-              </p>
+
+        {report.greeting || report.comparison.text ? (
+          <Card>
+            <CardBody className="flex flex-col gap-2">
+              {report.greeting ? <p className="text-v2-md">{report.greeting}</p> : null}
+              <p className="pt-note">{report.comparison.text}</p>
+            </CardBody>
+          </Card>
+        ) : null}
+
+        <div className="v2-cols">
+          <div className="v2-stack">
+            {details ? (
+              <Card title="Mest sålda titlar">
+                <CardBody>
+                  <TitlesHeader report={report} />
+                </CardBody>
+                {report.topTitles.length === 0 ? (
+                  <Empty
+                    className="border-t border-v2-line"
+                    title="Inga sålda titlar under perioden."
+                  />
+                ) : (
+                  <div className="v2-table-wrap border-t border-v2-line">
+                    <table className="v2-table">
+                      <caption className="sr-only">Mest sålda titlar</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Titel</th>
+                          <th scope="col" className="num">
+                            Pack
+                          </th>
+                          <th scope="col" className="num">
+                            Andel
+                          </th>
+                          <th scope="col" className="num">
+                            Försäljning
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.topTitles.map((t) => (
+                          <tr key={t.titleId}>
+                            <th scope="row" className="pr-4 text-left font-[450]">
+                              {t.name}
+                            </th>
+                            <td className="num text-v2-mute">{formatInt(t.orders)}</td>
+                            <td className="num text-v2-mute">{pct(t.shareBp)}</td>
+                            <td className="num">{kr(t.revenueOre)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
             ) : null}
-            <p className="max-w-2xl text-base text-muted">{report.comparison.text}</p>
-          </section>
-
-          <CompensationSection
-            report={report}
-            hasAgreement={report.compensation.model !== "none"}
-          />
-
-          <BasisSection report={report} />
-
-          {details ? (
-            <section className="grid gap-x-8 gap-y-12 border-t border-line py-16 lg:grid-cols-12">
-              <div className="flex min-w-0 flex-col gap-8 lg:col-span-7">
-                <TitlesHeader report={report} />
-                <table className="w-full text-base">
-                  <caption className="sr-only">Mest sålda titlar</caption>
-                  <thead>
-                    <tr className="border-b border-line-strong">
-                      <th scope="col" className="label h-9 text-left font-normal text-subtle">
-                        Titel
-                      </th>
-                      <th scope="col" className="label h-9 text-right font-normal text-subtle">
-                        Pack
-                      </th>
-                      <th scope="col" className="label h-9 text-right font-normal text-subtle">
-                        Andel
-                      </th>
-                      <th scope="col" className="label h-9 text-right font-normal text-subtle">
-                        Försäljning
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.topTitles.map((t) => (
-                      <tr key={t.titleId} className="h-11 border-b border-line">
-                        <th scope="row" className="pr-4 text-left font-normal text-fg">
-                          {t.name}
-                        </th>
-                        <td className="tnum text-right text-muted">{formatInt(t.orders)}</td>
-                        <td className="tnum text-right text-muted">{pct(t.shareBp)}</td>
-                        <td className="tnum text-right text-fg">{kr(t.revenueOre)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex min-w-0 flex-col gap-8 lg:col-span-5">
-                <WeeksBlock report={report} />
-              </div>
-            </section>
-          ) : (
-            <>
-              <section className="flex min-w-0 flex-col gap-8 border-t border-line py-16 lg:pr-[33%]">
-                <WeeksBlock report={report} />
-              </section>
-              <p className="border-t border-line pt-6 text-base text-muted">{TITLES_ON_REQUEST}</p>
-            </>
-          )}
-        </article>
-      )}
-    </div>
+            <WeeksBlock report={report} />
+            {details ? null : (
+              <Card>
+                <CardBody>
+                  <p className="pt-note">{TITLES_ON_REQUEST}</p>
+                </CardBody>
+              </Card>
+            )}
+          </div>
+          <div className="v2-stack">
+            <CompensationSection
+              report={report}
+              hasAgreement={report.compensation.model !== "none"}
+            />
+          </div>
+        </div>
+        <BasisSection report={report} />
+      </article>
+    </PortalPage>
   );
 }
 

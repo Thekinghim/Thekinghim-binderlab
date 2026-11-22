@@ -73,7 +73,7 @@ export const SignaturePad = forwardRef<
       role="img"
       aria-label={label}
       data-has-ink={hasInk ? "1" : "0"}
-      className="block h-44 w-full cursor-crosshair touch-none rounded-sm border border-line-strong"
+      className="block h-44 w-full cursor-crosshair touch-none rounded-v2 border border-v2-faint"
       // Alltid vitt papper, även i mörkt tema (färgskalan har ingen vit).
       style={{ backgroundColor: "#fff" }}
       onPointerDown={(e) => {

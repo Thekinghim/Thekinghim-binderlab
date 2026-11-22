@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
 import { formatInt } from "@/lib/format";
 import { loadPortalReports } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
 
+import { PortalPage } from "../_components/page-head";
 import { dateTimeText, monthText } from "../_components/text";
 import { isWholeMonth, periodText } from "@/reports/text";
 
@@ -29,79 +31,66 @@ export default async function PortalReportsPage() {
   const latest = reports[0];
 
   return (
-    <div className="flex flex-col gap-10 py-10 md:py-12">
-      <SectionHeader
-        as="h1"
-        index={1}
-        eyebrow="Rapporter"
-        size="xl"
-        title={
-          reports.length === 0
-            ? "Inga rapporter än."
-            : `${formatInt(reports.length)} ${reports.length === 1 ? "månadsrapport" : "månadsrapporter"}.`
-        }
-        aside={
-          latest
+    <PortalPage
+      title="Rapporter"
+      sub={
+        <>
+          <b>
+            {reports.length === 0
+              ? "Inga rapporter än."
+              : `${formatInt(reports.length)} ${reports.length === 1 ? "månadsrapport" : "månadsrapporter"}.`}
+          </b>{" "}
+          {latest
             ? `Senaste gäller ${monthText(latest.periodStart.slice(0, 7))} och skapades ${dateTimeText(latest.generatedAt, ctx.store.timezone)}.`
-            : `Operatören skickar en rapport efter varje månad. Den visas här när den är klar.`
-        }
-      />
-      {reports.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message="Ingen månadsrapport har skapats för butiken än."
-          detail="Översikten visar försäljningen och ersättningen löpande under tiden."
-          action={{ label: "Till översikten", href: "/portal" }}
-        />
-      ) : (
-        <ul className="flex flex-col border-t border-line-strong">
-          {reports.map((r) => (
-            <li
-              key={r.reportId}
-              className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line py-4"
-            >
-              <div className="flex min-w-0 flex-col gap-1">
-                {r.hasReport ? (
-                  <Link
-                    href={`/portal/rapporter/${r.reportId}`}
-                    className="rounded-xs text-md text-fg underline-offset-4 hover:underline"
-                  >
-                    {portalReportTitle(r.periodStart, r.periodEnd)}
-                  </Link>
-                ) : (
-                  <span className="text-md text-fg">
-                    {portalReportTitle(r.periodStart, r.periodEnd)}
-                  </span>
-                )}
-                <span className="meta text-subtle">
-                  Skapad {dateTimeText(r.generatedAt, ctx.store.timezone)}
-                </span>
-              </div>
-              <div className="flex items-baseline gap-4">
-                {r.hasReport ? (
-                  <Link
-                    href={`/portal/rapporter/${r.reportId}`}
-                    className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline"
-                  >
-                    Visa rapporten
-                  </Link>
-                ) : null}
-                {r.hasPdf ? (
-                  <a
-                    href={`/portal/rapporter/${r.reportId}/pdf`}
-                    className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline"
-                  >
-                    Ladda ned PDF
-                  </a>
-                ) : null}
-                {!r.hasReport && !r.hasPdf ? (
-                  <span className="meta text-subtle">Innehållet kan inte visas här</span>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+            : `Operatören skickar en rapport efter varje månad. Den visas här när den är klar.`}
+        </>
+      }
+    >
+      <Card title="Butiksrapporter">
+        {reports.length === 0 ? (
+          <Empty
+            title="Ingen månadsrapport har skapats för butiken än."
+            action={<ButtonLink href="/portal">Till översikten</ButtonLink>}
+          >
+            Översikten visar försäljningen och ersättningen löpande under tiden.
+          </Empty>
+        ) : (
+          <ul className="pt-list">
+            {reports.map((r) => (
+              <li key={r.reportId} className="pt-item">
+                <div className="t">
+                  {r.hasReport ? (
+                    <Link
+                      href={`/portal/rapporter/${r.reportId}`}
+                      className="rounded-v2-sm font-[550] underline-offset-4 hover:underline"
+                    >
+                      {portalReportTitle(r.periodStart, r.periodEnd)}
+                    </Link>
+                  ) : (
+                    <b>{portalReportTitle(r.periodStart, r.periodEnd)}</b>
+                  )}
+                  <small>Skapad {dateTimeText(r.generatedAt, ctx.store.timezone)}</small>
+                </div>
+                <div className="a">
+                  {r.hasReport ? (
+                    <ButtonLink href={`/portal/rapporter/${r.reportId}`} size="sm" touch>
+                      Visa rapporten
+                    </ButtonLink>
+                  ) : null}
+                  {r.hasPdf ? (
+                    <a href={`/portal/rapporter/${r.reportId}/pdf`} className="v2-btn sm touch">
+                      Ladda ned PDF
+                    </a>
+                  ) : null}
+                  {!r.hasReport && !r.hasPdf ? (
+                    <span className="text-v2-xs text-v2-mute">Innehållet kan inte visas här</span>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </PortalPage>
   );
 }

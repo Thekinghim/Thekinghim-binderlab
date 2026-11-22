@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Nytt lösenord" };
  */
 export default function NewPasswordPage() {
   return (
-    <AuthFrame eyebrow={<span>Inloggning</span>} title="Nytt lösenord.">
+    <AuthFrame title="Nytt lösenord">
       <NewPasswordForm />
     </AuthFrame>
   );

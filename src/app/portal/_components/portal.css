@@ -1,0 +1,445 @@
+/*
+ * Butiksportalen i V2 (data-ui="v2" på portalens rot, src/styles/v2.css): en rad med loggan,
+ * butiken och utloggning, flikarna under (som SubNav), sidans rubrik som på Hem/Pengar och vita
+ * kort på den grå ytan. Bara V2:s tokens; allt under .v2-portal / .pt-*.
+ */
+
+@layer components {
+  .v2-portal {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  .pt-wrap {
+    width: 100%;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 22px;
+  }
+
+  /* ---- Huvudet ---- */
+  .pt-head {
+    background: var(--v2-panel);
+    box-shadow: 0 1px 0 var(--v2-line);
+  }
+  .pt-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 56px;
+  }
+  .pt-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    font-size: var(--v2-t-md);
+    font-weight: 650;
+    color: var(--v2-ink);
+    border-radius: var(--v2-r-md);
+  }
+  .pt-brand .pt-store {
+    font-weight: 450;
+    color: var(--v2-mute);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pt-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+  .pt-email {
+    max-width: 240px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pt-head .v2-subnav {
+    border-bottom: 0;
+    margin: 0 -10px;
+  }
+  .pt-head .v2-subnav a {
+    height: 44px;
+  }
+  .pt-storesel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 10px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .pt-storesel .v2-select {
+    width: auto;
+    max-width: 100%;
+    height: 32px;
+  }
+
+  /* ---- Sidans rubrik (som .v2-top/.v2-sub) ---- */
+  .pt-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding-top: 20px;
+  }
+  .pt-top h1 {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    font-size: var(--v2-t-xl);
+    line-height: 28px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .pt-top h1 .date {
+    color: var(--v2-mute);
+    font-size: var(--v2-t-md);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+  .pt-top .acts {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pt-sub {
+    margin-top: 2px;
+    font-size: var(--v2-t-md);
+    line-height: 20px;
+    color: var(--v2-mute);
+    text-wrap: pretty;
+  }
+  .pt-sub b {
+    color: var(--v2-ink);
+    font-weight: 550;
+  }
+  .pt-body {
+    padding-top: 16px;
+    padding-bottom: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* Raden överst i ett kort: siffran i klartext (förr sektionens rubrik). */
+  .pt-lead {
+    font-size: var(--v2-t-md);
+    line-height: 20px;
+    color: var(--v2-mute);
+    text-wrap: pretty;
+  }
+  .pt-lead b {
+    color: var(--v2-ink);
+    font-weight: 650;
+  }
+  .pt-note {
+    font-size: var(--v2-t-sm);
+    line-height: 18px;
+    color: var(--v2-mute);
+    text-wrap: pretty;
+  }
+
+  /* Listrader i kort (avräkningar, rapporter, automater, anmälningar) */
+  .pt-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .pt-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--v2-line2);
+  }
+  .pt-item:last-child {
+    border-bottom: 0;
+  }
+  .pt-item .t {
+    flex: 1 1 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .pt-item .t b {
+    font-weight: 550;
+    color: var(--v2-ink);
+  }
+  .pt-item .t small {
+    font-size: var(--v2-t-xs);
+    line-height: 16px;
+    color: var(--v2-mute);
+  }
+  .pt-item .a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+  .pt-amount {
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .pt-link {
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-mute);
+    border-radius: var(--v2-r-sm);
+    transition: color 0.15s ease;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .pt-link:hover {
+      color: var(--v2-ink);
+    }
+  }
+
+  /* Ersättningen steg för steg */
+  .pt-steps {
+    display: flex;
+    flex-direction: column;
+  }
+  .pt-step {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 16px;
+    align-items: baseline;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--v2-line2);
+  }
+  .pt-step .k {
+    font-size: var(--v2-t-xs);
+    font-weight: 550;
+    color: var(--v2-mute);
+  }
+  .pt-step .l {
+    grid-column: 1;
+    font-weight: 550;
+  }
+  .pt-step .c {
+    grid-column: 1;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .pt-step .v {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    font-weight: 550;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+  }
+  .pt-step.total {
+    background: var(--v2-hover);
+    border-bottom: 0;
+  }
+  .pt-step.total .l {
+    font-weight: 650;
+  }
+  .pt-step.total .v {
+    font-size: var(--v2-t-lg);
+    font-weight: 650;
+  }
+
+  /* "Så räknas det" (EvidenceDetails) */
+  .pt-ev > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-mute);
+    cursor: pointer;
+    list-style: none;
+    border-radius: var(--v2-r-sm);
+    transition: color 0.15s ease;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .pt-ev > summary::-webkit-details-marker {
+    display: none;
+  }
+  .pt-ev > summary .chev {
+    color: var(--v2-faint);
+    transition: transform 0.16s var(--v2-ease);
+  }
+  .pt-ev[open] > summary .chev {
+    transform: rotate(90deg);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .pt-ev > summary:hover {
+      color: var(--v2-ink);
+    }
+  }
+  .pt-ev > .in {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: var(--v2-r-md);
+    background: var(--v2-hover);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .pt-evrow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 16px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--v2-line);
+    background: var(--v2-panel);
+  }
+
+  /* Radrubriker (th scope=row) i V2-tabellerna: som celler, inte som rubrikraden. */
+  .v2-portal .v2-table :is(tbody, tfoot) th {
+    height: auto;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    background: none;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-ink);
+    white-space: normal;
+  }
+  .v2-portal .v2-table tbody th {
+    border-bottom: 1px solid var(--v2-line2);
+  }
+  .v2-portal .v2-table tbody tr:last-child th {
+    border-bottom: 0;
+  }
+  .v2-portal .v2-table tfoot th {
+    border-top: 1px solid var(--v2-line);
+    border-bottom: 0;
+  }
+
+  /* Felanmälan: val av fel som stora rutor */
+  .pt-choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 8px 12px;
+    border-radius: var(--v2-r-md);
+    box-shadow: 0 0 0 1px var(--v2-line);
+    background: var(--v2-panel);
+    font-size: var(--v2-t-md);
+    cursor: pointer;
+    transition:
+      box-shadow 0.15s ease,
+      background-color 0.15s ease;
+  }
+  .pt-choice:has(:focus-visible) {
+    outline: 2px solid var(--v2-ink);
+    outline-offset: 2px;
+  }
+  .pt-choice[data-on="true"] {
+    box-shadow: 0 0 0 2px var(--v2-ink);
+    background: var(--v2-hover);
+  }
+  .pt-choice .r {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1.5px var(--v2-faint);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pt-choice[data-on="true"] .r {
+    box-shadow: inset 0 0 0 5px var(--v2-ink);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .pt-choice:not([data-on="true"]):hover {
+      background: var(--v2-hover);
+    }
+  }
+
+  .pt-foot {
+    margin-top: auto;
+    padding-top: 8px;
+    padding-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 4px 16px;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-faint);
+  }
+
+  @media (max-width: 1100px) {
+    .pt-evrow {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+      padding-top: 4px;
+      padding-bottom: 4px;
+    }
+    .pt-evrow > .pt-ev > summary {
+      min-height: 40px;
+    }
+  }
+  @media (max-width: 900px) {
+    .pt-wrap {
+      padding: 0 12px;
+    }
+    .pt-bar {
+      min-height: 52px;
+      padding: 0 4px;
+    }
+    .pt-email {
+      display: none;
+    }
+    .pt-head .v2-subnav {
+      margin: 0 -12px;
+      padding: 0 6px;
+    }
+    .pt-top {
+      padding: 16px 4px 0;
+    }
+    .pt-top h1 {
+      font-size: 22px;
+    }
+    .pt-top .acts {
+      width: 100%;
+    }
+    .pt-sub {
+      padding: 0 4px;
+    }
+    .pt-body {
+      padding-top: 12px;
+      gap: 12px;
+    }
+    .pt-item,
+    .pt-step,
+    .pt-evrow {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+    .pt-foot {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+  }
+
+  @media print {
+    .v2-portal {
+      background: #fff;
+    }
+    .pt-head,
+    .pt-foot {
+      display: none;
+    }
+  }
+}

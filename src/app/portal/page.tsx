@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
 import { addMonths } from "@/domain";
 import { formatInt } from "@/lib/format";
 import type { StoreReport } from "@/reports";
@@ -12,6 +13,7 @@ import { requirePortalContext } from "@/server/portal/session";
 
 import { EvidenceDetails } from "./_components/evidence";
 import { PortalKpis, RankChart, TrendChart, type PortalKpi } from "./_components/overview-charts";
+import { Lead, PortalPage } from "./_components/page-head";
 import { CompensationSection, TitlesHeader, WeeksBlock } from "./_components/sections";
 import { deltaText, kr, monthNameText, monthShortText, monthText, pct } from "./_components/text";
 
@@ -97,183 +99,148 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
         ]),
   ];
 
-  return (
-    <div className="flex flex-col">
-      <MonthBar month={month} older={older} newer={newer} months={months} partial={partial} />
+  const titlesCard = details ? (
+    <Card title="Mest sålda titlar">
+      <CardBody className="flex flex-col gap-4">
+        <TitlesHeader report={report} />
+        {report.topTitles.length === 0 ? (
+          <Empty title={`Inga sålda pack i ${monthName} ännu.`} />
+        ) : (
+          <>
+            <RankChart
+              data={report.topTitles.map((t) => ({
+                label: t.name,
+                name: t.name,
+                value: t.revenueOre / 100,
+                note: `${formatInt(t.orders)} st · ${pct(t.shareBp)}`,
+              }))}
+              labelHeading="Titel"
+              valueHeading="Försäljning"
+              summary={`Mest sålda titlar i ${monthName}: ${report.topTitles
+                .slice(0, 3)
+                .map((t) => `${t.name} ${kr(t.revenueOre)}`)
+                .join(", ")}.`}
+            />
+            {report.topTitles[0] ? (
+              <EvidenceDetails
+                evidence={report.topTitles[0].evidence}
+                summary={`Så räknas andelen för ${report.topTitles[0].name}`}
+              />
+            ) : null}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  ) : null;
 
-      <section className="flex flex-col gap-10 pt-10 pb-16 md:pt-12" aria-labelledby="oversikt">
-        <SectionHeader
-          as="h1"
-          id="oversikt"
-          index={1}
-          eyebrow={`Försäljning · ${monthText(month)}`}
-          title={title}
-          aside={aside}
-          size="xl"
-          meta={[
-            {
-              label: "Period",
-              value: partial
-                ? `1–${Number(overview.today.slice(8))} ${monthShortText(month)}`
-                : monthText(month),
-            },
-            { label: "Sålda pack", value: formatInt(sales.orders) },
-            { label: "Automater", value: formatInt(report.machines.length) },
-          ]}
-        />
-        <div className="flex flex-col gap-4">
-          <PortalKpis
-            kpis={kpis}
-            comparison={
-              partial
-                ? "Pågående månad: ingen jämförelse förrän den är slut"
-                : `Jämfört med ${monthText(prevMonth)}`
-            }
-          />
-          <div className="grid gap-x-8 gap-y-4 md:grid-cols-3">
-            <EvidenceDetails evidence={sales.evidence} summary="Så räknas försäljningen" />
-            <EvidenceDetails evidence={comparison.evidence} summary="Så räknas jämförelsen" />
-            <EvidenceDetails evidence={compensation.evidence} summary="Så räknas ersättningen" />
-          </div>
+  return (
+    <PortalPage
+      id="oversikt"
+      title="Översikt"
+      date={`${monthText(month)}${partial ? " · pågår" : ""}`}
+      sub={
+        <>
+          <b>{title}</b> {aside}
+        </>
+      }
+      actions={<MonthNav month={month} older={older} newer={newer} months={months} />}
+    >
+      <PortalKpis
+        kpis={kpis}
+        comparison={
+          partial
+            ? "Pågående månad: ingen jämförelse förrän den är slut"
+            : `Jämfört med ${monthText(prevMonth)}`
+        }
+      />
+      <section className="v2-card" aria-label={`Försäljning · ${monthText(month)}`}>
+        <CardBody>
+          <p className="pt-note">
+            {partial
+              ? `Period 1–${Number(overview.today.slice(8))} ${monthShortText(month)}. Pågående månad: ingen jämförelse förrän den är slut.`
+              : `Period ${monthText(month)}. Jämfört med ${monthText(prevMonth)}.`}{" "}
+            {formatInt(sales.orders)} sålda pack, {formatInt(report.machines.length)}{" "}
+            {report.machines.length === 1 ? "automat" : "automater"}.
+            {partial ? null : <> {report.conclusion.text}</>}
+          </p>
+        </CardBody>
+        <div className="pt-evrow">
+          <EvidenceDetails evidence={sales.evidence} summary="Så räknas försäljningen" />
+          <EvidenceDetails evidence={comparison.evidence} summary="Så räknas jämförelsen" />
+          <EvidenceDetails evidence={compensation.evidence} summary="Så räknas ersättningen" />
         </div>
-        {partial ? null : <p className="max-w-3xl text-md text-muted">{report.conclusion.text}</p>}
       </section>
 
-      <TrendSection trend={trend} month={month} />
-
-      {details ? (
-        <section
-          className="grid gap-x-8 gap-y-12 border-t border-line py-16 lg:grid-cols-12"
-          aria-label="Mest sålda och veckor"
-        >
-          <div className="flex min-w-0 flex-col gap-8 lg:col-span-7">
-            <TitlesHeader report={report} />
-            {report.topTitles.length === 0 ? (
-              <StateMessage kind="empty" message={`Inga sålda pack i ${monthName} ännu.`} />
-            ) : (
-              <>
-                <RankChart
-                  data={report.topTitles.map((t) => ({
-                    label: t.name,
-                    name: t.name,
-                    value: t.revenueOre / 100,
-                    note: `${formatInt(t.orders)} st · ${pct(t.shareBp)}`,
-                  }))}
-                  labelHeading="Titel"
-                  valueHeading="Försäljning"
-                  summary={`Mest sålda titlar i ${monthName}: ${report.topTitles
-                    .slice(0, 3)
-                    .map((t) => `${t.name} ${kr(t.revenueOre)}`)
-                    .join(", ")}.`}
-                />
-                {report.topTitles[0] ? (
-                  <EvidenceDetails
-                    evidence={report.topTitles[0].evidence}
-                    summary={`Så räknas andelen för ${report.topTitles[0].name}`}
-                  />
-                ) : null}
-              </>
-            )}
-          </div>
-          <div className="flex min-w-0 flex-col gap-8 lg:col-span-5">
-            <WeeksBlock report={report} today={partial ? overview.today : undefined} />
-          </div>
-        </section>
-      ) : (
-        // Utan detaljer: bara veckorna (summor), inga titlar.
-        <section
-          className="flex min-w-0 flex-col gap-8 border-t border-line py-16 lg:pr-[33%]"
-          aria-label="Försäljning per vecka"
-        >
+      <div className="v2-cols">
+        <div className="v2-stack">
+          <TrendSection trend={trend} month={month} />
+          {titlesCard}
           <WeeksBlock report={report} today={partial ? overview.today : undefined} />
-        </section>
-      )}
-
-      <CompensationSection report={report} hasAgreement={hasAgreement} />
-
-      <MachinesSection
-        report={report}
-        machinesToday={machinesToday}
-        placedDays={overview.placedDaysSoFar}
-        partial={partial}
-      />
-    </div>
+        </div>
+        <div className="v2-stack">
+          <CompensationSection report={report} hasAgreement={hasAgreement} />
+          <MachinesSection
+            report={report}
+            machinesToday={machinesToday}
+            placedDays={overview.placedDaysSoFar}
+            partial={partial}
+          />
+        </div>
+      </div>
+    </PortalPage>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function MonthBar({
+function MonthNav({
   month,
   older,
   newer,
   months,
-  partial,
 }: {
   month: string;
   older: string | null;
   newer: string | null;
   months: string[];
-  partial: boolean;
 }) {
-  const link =
-    "inline-flex h-8 items-center gap-1 rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover";
-  const off =
-    "inline-flex h-8 items-center gap-1 rounded-sm border border-dashed border-line-strong px-2.5 text-sm text-disabled";
   return (
-    <nav
-      aria-label="Välj månad"
-      className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-3"
-    >
-      <p className="label text-subtle">
-        <span className="text-fg">{monthText(month)}</span>
-        {partial ? " · pågår" : " · hel månad"}
-      </p>
-      <div className="flex items-center gap-2">
-        {older ? (
-          <Link href={`/portal?manad=${older}`} className={link} rel="prev">
-            <span aria-hidden>←</span> {monthShortText(older)}
-          </Link>
-        ) : (
-          <span className={off} aria-disabled>
-            <span aria-hidden>←</span> Tidigare
-          </span>
-        )}
-        {newer ? (
-          <Link href={`/portal?manad=${newer}`} className={link} rel="next">
-            {monthShortText(newer)} <span aria-hidden>→</span>
-          </Link>
-        ) : (
-          <span className={off} aria-disabled>
-            Senare <span aria-hidden>→</span>
-          </span>
-        )}
-        {months.length > 2 ? (
-          <form action="/portal" className="flex items-center">
-            <label htmlFor="manad" className="sr-only">
-              Månad
-            </label>
-            <select
-              id="manad"
-              name="manad"
-              defaultValue={month}
-              className="h-8 rounded-sm border border-line-control bg-bg px-2 text-sm text-fg"
-            >
-              {months.map((m) => (
-                <option key={m} value={m}>
-                  {monthText(m)}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              className="ml-2 inline-flex h-8 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg hover:bg-hover max-md:min-h-11"
-            >
-              Visa
-            </button>
-          </form>
-        ) : null}
-      </div>
+    <nav aria-label="Välj månad" className="flex flex-wrap items-center gap-2">
+      {older ? (
+        <ButtonLink href={`/portal?manad=${older}`} rel="prev" touch>
+          <span aria-hidden>←</span> {monthShortText(older)}
+        </ButtonLink>
+      ) : (
+        <span className="v2-btn touch" aria-disabled>
+          <span aria-hidden>←</span> Tidigare
+        </span>
+      )}
+      {newer ? (
+        <ButtonLink href={`/portal?manad=${newer}`} rel="next" touch>
+          {monthShortText(newer)} <span aria-hidden>→</span>
+        </ButtonLink>
+      ) : (
+        <span className="v2-btn touch" aria-disabled>
+          Senare <span aria-hidden>→</span>
+        </span>
+      )}
+      {months.length > 2 ? (
+        <form action="/portal" className="flex items-center gap-2">
+          <label htmlFor="manad" className="sr-only">
+            Månad
+          </label>
+          <select id="manad" name="manad" defaultValue={month} className="v2-select h-8 w-auto">
+            {months.map((m) => (
+              <option key={m} value={m}>
+                {monthText(m)}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="v2-btn touch">
+            Visa
+          </button>
+        </form>
+      ) : null}
     </nav>
   );
 }
@@ -295,94 +262,82 @@ function TrendSection({ trend, month }: { trend: readonly PortalTrendMonth[]; mo
     trend.findIndex((t) => t.month === month),
   );
   return (
-    <section
-      className="flex flex-col gap-10 border-t border-line py-16"
-      aria-labelledby="utveckling"
-    >
-      <SectionHeader
-        id="utveckling"
-        index={2}
-        eyebrow={`Utveckling · ${formatInt(trend.length)} mån`}
-        title={
-          complete.length > 0
-            ? `${kr(total)} på ${formatInt(complete.length)} hela ${complete.length === 1 ? "månad" : "månader"}.`
-            : "Första månaden pågår."
-        }
-        aside={
-          best && complete.length > 1
-            ? `Bästa månaden var ${monthText(best.month)} med ${kr(best.revenueOre)}.${compKnown ? ` Ersättning till er: ${kr(totalComp)}.` : ""}`
-            : complete.length === 1
-              ? compKnown
-                ? `Ersättning till er: ${kr(totalComp)}.`
-                : "Er andel står i månadsrapporten."
-              : "Staplarna fylls på månad för månad."
-        }
-      />
-      {trend.length > 1 ? (
-        <TrendChart
-          data={trend.map((t) => ({
-            label: monthShortText(t.month),
-            name: `${monthText(t.month)}${t.partial ? " (pågår)" : ""}`,
-            value: t.revenueOre / 100,
-          }))}
-          selectedIndex={selectedIndex}
-          mean={meanOfComplete}
-          summary={`Försäljning per månad, ${monthText(trend[0]!.month)} till ${monthText(
-            trend[trend.length - 1]!.month,
-          )}.`}
+    <Card title={`Utveckling · ${formatInt(trend.length)} mån`} id="utveckling">
+      <CardBody className="flex flex-col gap-4">
+        <Lead
+          strong={
+            complete.length > 0
+              ? `${kr(total)} på ${formatInt(complete.length)} hela ${complete.length === 1 ? "månad" : "månader"}.`
+              : "Första månaden pågår."
+          }
+          rest={
+            best && complete.length > 1
+              ? `Bästa månaden var ${monthText(best.month)} med ${kr(best.revenueOre)}.${compKnown ? ` Ersättning till er: ${kr(totalComp)}.` : ""}`
+              : complete.length === 1
+                ? compKnown
+                  ? `Ersättning till er: ${kr(totalComp)}.`
+                  : "Er andel står i månadsrapporten."
+                : "Staplarna fylls på månad för månad."
+          }
         />
-      ) : (
-        <StateMessage
-          kind="empty"
-          code="1 månad"
-          message="Utvecklingen visas när det finns mer än en månad att jämföra."
-        />
-      )}
+        {trend.length > 1 ? (
+          <TrendChart
+            data={trend.map((t) => ({
+              label: monthShortText(t.month),
+              name: `${monthText(t.month)}${t.partial ? " (pågår)" : ""}`,
+              value: t.revenueOre / 100,
+            }))}
+            selectedIndex={selectedIndex}
+            mean={meanOfComplete}
+            summary={`Försäljning per månad, ${monthText(trend[0]!.month)} till ${monthText(
+              trend[trend.length - 1]!.month,
+            )}.`}
+          />
+        ) : (
+          <p className="pt-note">Utvecklingen visas när det finns mer än en månad att jämföra.</p>
+        )}
+      </CardBody>
       <TrendTable trend={trend} />
-    </section>
+    </Card>
   );
 }
 
 function TrendTable({ trend }: { trend: readonly PortalTrendMonth[] }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-base">
+    <div className="v2-table-wrap border-t border-v2-line">
+      <table className="v2-table">
         <caption className="sr-only">Försäljning och ersättning per månad</caption>
         <thead>
-          <tr className="border-b border-line-strong">
-            <th scope="col" className="label h-9 text-left font-normal text-subtle">
-              Månad
-            </th>
-            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
+          <tr>
+            <th scope="col">Månad</th>
+            <th scope="col" className="num">
               Pack
             </th>
-            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
+            <th scope="col" className="num">
               Försäljning
             </th>
-            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
+            <th scope="col" className="num">
               Ersättning
             </th>
           </tr>
         </thead>
         <tbody>
           {[...trend].reverse().map((t) => (
-            <tr key={t.month} className="h-11 border-b border-line">
-              <th scope="row" className="text-left font-normal text-fg">
+            <tr key={t.month}>
+              <th scope="row" className="text-left font-[450]">
                 <Link
                   href={`/portal?manad=${t.month}`}
-                  className="rounded-xs underline-offset-4 hover:underline max-md:tap"
+                  className="rounded-v2-sm font-[550] underline-offset-4 hover:underline"
                 >
                   {monthText(t.month)}
                 </Link>
-                {t.partial ? <span className="meta text-subtle"> · pågår</span> : null}
+                {t.partial ? <span className="text-v2-faint"> · pågår</span> : null}
               </th>
-              <td className="tnum pl-3 text-right whitespace-nowrap text-muted">
-                {formatInt(t.orders)}
-              </td>
-              <td className="tnum pl-3 text-right whitespace-nowrap text-fg">{kr(t.revenueOre)}</td>
-              <td className="tnum pl-3 text-right whitespace-nowrap text-fg">
+              <td className="num text-v2-mute">{formatInt(t.orders)}</td>
+              <td className="num">{kr(t.revenueOre)}</td>
+              <td className="num">
                 {t.compensationPending ? (
-                  <span className="text-muted" title="Står i månadsrapporten">
+                  <span className="text-v2-mute" title="Står i månadsrapporten">
                     –
                   </span>
                 ) : (
@@ -411,54 +366,47 @@ function MachinesSection({
   const todayIds = new Set(machinesToday.map((m) => m.machineId));
   const best = report.machines[0];
   return (
-    <section
-      className="flex flex-col gap-10 border-t border-line py-16"
-      aria-labelledby="automater"
+    <Card
+      title="Automaterna"
+      id="automater"
+      actions={
+        <ButtonLink href="/portal/felanmalan" size="sm" variant="act" touch>
+          Felanmäl en automat
+        </ButtonLink>
+      }
     >
-      <SectionHeader
-        id="automater"
-        index={5}
-        eyebrow="Automaterna"
-        title={`${formatInt(machinesToday.length)} ${machinesToday.length === 1 ? "automat står" : "automater står"} i butiken i dag.`}
-        aside={
-          best && report.machines.length > 1
-            ? `${best.name} sålde mest i ${monthNameText(report.month)}: ${kr(best.revenueOre)}.`
-            : "Något som inte fungerar? Felanmäl automaten direkt här."
-        }
-        actions={
-          <Link
-            href="/portal/felanmalan"
-            className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:border-inverse-hover hover:bg-inverse-hover max-md:min-h-11"
-          >
-            Felanmäl en automat
-          </Link>
-        }
-      />
+      <CardBody>
+        <Lead
+          strong={`${formatInt(machinesToday.length)} ${machinesToday.length === 1 ? "automat står" : "automater står"} i butiken i dag.`}
+          rest={
+            best && report.machines.length > 1
+              ? `${best.name} sålde mest i ${monthNameText(report.month)}: ${kr(best.revenueOre)}.`
+              : "Något som inte fungerar? Felanmäl automaten direkt här."
+          }
+        />
+      </CardBody>
       {report.machines.length === 0 ? (
-        <StateMessage kind="empty" message="Inga automater stod i butiken under månaden." />
+        <Empty
+          className="border-t border-v2-line"
+          title="Inga automater stod i butiken under månaden."
+        />
       ) : (
-        <ul className="flex flex-col border-t border-line-strong">
+        <ul className="pt-list border-t border-v2-line">
           {report.machines.map((m) => {
             const days = placedDays[m.machineId] ?? m.placedDays;
             return (
-              <li
-                key={m.machineId}
-                className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line py-4"
-              >
-                <div className="flex min-w-0 flex-col gap-1">
-                  <span className="text-base text-fg">{m.name}</span>
-                  <span className="meta text-subtle">
+              <li key={m.machineId} className="pt-item">
+                <div className="t">
+                  <b>{m.name}</b>
+                  <small>
                     {formatInt(days)} {days === 1 ? "dag" : "dagar"} i butiken
                     {partial ? " hittills" : ""} · {formatInt(m.orders)} pack
-                  </span>
+                  </small>
                 </div>
-                <div className="flex items-baseline gap-4">
-                  <span className="tnum text-md text-fg">{kr(m.revenueOre)}</span>
+                <div className="a">
+                  <span className="pt-amount">{kr(m.revenueOre)}</span>
                   {todayIds.has(m.machineId) ? (
-                    <Link
-                      href={`/portal/felanmalan?automat=${m.machineId}`}
-                      className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline"
-                    >
+                    <Link href={`/portal/felanmalan?automat=${m.machineId}`} className="pt-link">
                       Felanmäl
                     </Link>
                   ) : null}
@@ -468,6 +416,6 @@ function MachinesSection({
           })}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

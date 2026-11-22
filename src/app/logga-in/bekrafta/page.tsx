@@ -24,7 +24,7 @@ export default async function ConfirmPage({
 }) {
   const params = await searchParams;
   return (
-    <AuthFrame eyebrow={<span>Inloggning</span>} title="Logga in.">
+    <AuthFrame title="Logga in">
       <ConfirmForm
         tokenHash={first(params.token_hash)}
         code={first(params.code)}
