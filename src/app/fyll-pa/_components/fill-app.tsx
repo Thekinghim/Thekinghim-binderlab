@@ -73,7 +73,14 @@ import {
   type RefreshOutcome,
 } from "../_lib/refresh";
 import { FILL_BASE, machineIdFrom, shownMachineId, type FillNav } from "../_lib/route";
-import { initialSelection, inSlotOrder, tapQty, tapTile, type MachineLink } from "../_lib/tiles";
+import {
+  initialSelection,
+  inSlotOrder,
+  shortAtHome,
+  tapQty,
+  tapTile,
+  type MachineLink,
+} from "../_lib/tiles";
 import { useFreshData } from "../_lib/use-fresh-data";
 import { BringScreen } from "./bring-list";
 import {
@@ -917,7 +924,7 @@ export function FillApp({
         ) : null}
         {shown.length > 0 ? (
           <Button
-            className="self-start"
+            className="min-h-11 self-start"
             onClick={() => {
               setBring({ chosen: null, placeId: null });
               window.scrollTo({ top: 0 });
@@ -1175,7 +1182,7 @@ function NetPill({
       aria-live="polite"
       className={
         v2
-          ? cn("v2-net", !online && "off")
+          ? cn("v2-net", !online && "off", online && waiting === 0 && "calm")
           : cn(
               "label inline-flex min-h-8 items-center gap-2 rounded-full border px-3",
               online ? "border-line text-subtle" : "border-signal-line text-signal-fg",
@@ -1186,17 +1193,34 @@ function NetPill({
         aria-hidden
         className={cn(
           "inline-block size-1.5 rounded-full bg-current",
+          v2 && "dt",
           syncing && "live-dot",
           online && waiting === 0 && "text-muted",
         )}
       />
-      {online
-        ? waiting > 0
-          ? t.fill.sending(waiting)
-          : t.fill.online
-        : waiting > 0
-          ? t.fill.offlineQueued(waiting)
-          : t.fill.offline}
+      {v2 ? (
+        // V2 på telefonen: bara pricken när allt är som vanligt (har nät, inget i kön); texten
+        // står kvar för skärmläsare. Utan nät eller med kö syns texten alltid.
+        <span className={cn("tx", online && waiting === 0 && "quiet")}>
+          {online
+            ? waiting > 0
+              ? t.fill.sending(waiting)
+              : t.fill.online
+            : waiting > 0
+              ? t.fill.offlineQueued(waiting)
+              : t.fill.offline}
+        </span>
+      ) : online ? (
+        waiting > 0 ? (
+          t.fill.sending(waiting)
+        ) : (
+          t.fill.online
+        )
+      ) : waiting > 0 ? (
+        t.fill.offlineQueued(waiting)
+      ) : (
+        t.fill.offline
+      )}
     </span>
   );
 }
@@ -1692,7 +1716,12 @@ function MachineScreen({
           <ul className="tiles">
             {tiles.map((r) => (
               <li key={r.titleId}>
-                <SlotTile row={r} value={qty[r.titleId] ?? 0} onTap={() => tap(r)} />
+                <SlotTile
+                  row={r}
+                  value={qty[r.titleId] ?? 0}
+                  hasSource={hasSource}
+                  onTap={() => tap(r)}
+                />
               </li>
             ))}
           </ul>
@@ -1748,7 +1777,11 @@ function MachineScreen({
           <SlotSheet
             row={sheetRow}
             open={sheet.open}
-            onClose={() => setSheet((s) => (s ? { ...s, open: false } : s))}
+            onClose={() => {
+              // "Fel antal i automaten?" stängs med arket (annars spärrar det appens uppdatering).
+              setCounting((c) => (c === sheetRow.titleId ? null : c));
+              setSheet((s) => (s ? { ...s, open: false } : s));
+            }}
             value={qty[sheetRow.titleId] ?? 0}
             onChange={(v) => set(sheetRow.titleId, v, maxFill(sheetRow))}
             sourceName={sourceName}
@@ -1770,6 +1803,11 @@ function MachineScreen({
           total={total}
           busy={busy}
           restart={restartHint}
+          short={
+            hasSource
+              ? m.rows.reduce((n, r) => n + shortAtHome(r, qty[r.titleId] ?? 0, true), 0)
+              : 0
+          }
           onYes={() => void finish()}
           onClose={() => setConfirming(false)}
         />

@@ -8,6 +8,7 @@ import { Badge } from "@/components/v2/badge";
 import { Button } from "@/components/v2/button";
 import { CallLink, MapsLink } from "@/components/v2/call-link";
 import { Chips } from "@/components/v2/chips";
+import { mapsSearchUrl, telHref } from "@/components/v2/links";
 import { PackImage } from "@/components/v2/pack-image";
 import { Sheet } from "@/components/v2/sheet";
 import { Stepper } from "@/components/v2/stepper";
@@ -27,6 +28,7 @@ import {
 import {
   bringCount,
   listChip,
+  shortAtHome,
   stepperBounds,
   tileView,
   urgentPacks,
@@ -56,8 +58,9 @@ function dotTone(m: FillMachine): "critical" | "warning" | undefined {
 /**
  * Rubriken i Fyll på (V2): tillbaka, "Automat 09 · Rutor och Rollspel" (ett tryck byter automat,
  * eller ruttens stegrad "Stopp 2 av 5"), EN rad under ("Sala · 33 % fylld · Awish läst 09:46")
- * med ett litet märke när automaten är offline eller strömmen är av, och en rad med Kör dit,
- * Ring, Uppdatera och nätet. Inget stort adresskort.
+ * med ett litet märke när automaten är offline eller strömmen är av. Uppdatera och nätet står
+ * till höger på rubrikraden. Kör dit och Ring: i ett litet "Mer"-ark på telefonen (facken börjar
+ * direkt under rubriken), som en rad länkar på datorn. Inget stort adresskort.
  */
 export function MachineTop({
   m,
@@ -86,6 +89,7 @@ export function MachineTop({
   tools?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [more, setMore] = useState(false);
   const place = store?.name ?? m.place;
   const title = m.name && m.name !== place ? `${m.name} · ${place}` : place;
   const sub = [
@@ -96,6 +100,27 @@ export function MachineTop({
     .filter(Boolean)
     .join(" · ");
   const power = powerText(store);
+  const hasLinks =
+    store !== null &&
+    (mapsSearchUrl({
+      address: store.address,
+      city: store.city,
+      lat: store.lat,
+      lng: store.lng,
+    }) !== null ||
+      telHref(store.phone) !== null);
+  const links = store ? (
+    <>
+      <MapsLink
+        address={store.address}
+        city={store.city}
+        lat={store.lat}
+        lng={store.lng}
+        size="lg"
+      />
+      <CallLink phone={store.phone} name={store.contactName} size="lg" />
+    </>
+  ) : null;
   const chip =
     link === "offline" ? (
       <Badge tone="critical" dot>
@@ -171,6 +196,36 @@ export function MachineTop({
             </p>
           ) : null}
         </div>
+        {tools || hasLinks ? (
+          <span className="tools">
+            {tools}
+            {hasLinks ? (
+              <Sheet
+                open={more}
+                onOpenChange={setMore}
+                title={title}
+                description={[store?.address, store?.city].filter(Boolean).join(", ") || undefined}
+                trigger={
+                  <button type="button" className="more" aria-label="Kör dit och ring">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <circle cx="5" cy="12" r="1.8" />
+                      <circle cx="12" cy="12" r="1.8" />
+                      <circle cx="19" cy="12" r="1.8" />
+                    </svg>
+                  </button>
+                }
+              >
+                <div className="v2-mt-more">{links}</div>
+              </Sheet>
+            ) : null}
+          </span>
+        ) : null}
       </div>
       {route ? (
         <div className="rstep">
@@ -185,24 +240,30 @@ export function MachineTop({
           </Button>
         </div>
       ) : null}
-      <div className="mt2">
-        <span className="links">
-          {store ? (
-            <>
-              <MapsLink
-                address={store.address}
-                city={store.city}
-                lat={store.lat}
-                lng={store.lng}
-                size="sm"
-                className="plain"
-              />
-              <CallLink phone={store.phone} name={store.contactName} size="sm" className="plain" />
-            </>
-          ) : null}
-        </span>
-        {tools ? <span className="tools">{tools}</span> : null}
-      </div>
+      {hasLinks ? (
+        <div className="mt2">
+          <span className="links">
+            {store ? (
+              <>
+                <MapsLink
+                  address={store.address}
+                  city={store.city}
+                  lat={store.lat}
+                  lng={store.lng}
+                  size="sm"
+                  className="plain"
+                />
+                <CallLink
+                  phone={store.phone}
+                  name={store.contactName}
+                  size="sm"
+                  className="plain"
+                />
+              </>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -329,19 +390,25 @@ export function SayCard({
 /**
  * En ruta per fack (ägarens val A): stor packbild (blek när facket är slut och inget är valt),
  * titeln, en stapel med "nytt/kapacitet" (grön när facket blir fullt), "Slut" när facket är tomt.
- * Vald: mörk kant och "+N". Ett tryck fyller facket eller öppnar arket (tiles.ts).
+ * Vald: mörk kant och "+N". Finns inte allt valt i lagret man fyller från: ett orange märke
+ * "Utan uttag" (samma varning som förut stod på raden). Ett tryck fyller facket eller öppnar
+ * arket (tiles.ts).
  */
 export function SlotTile({
   row: r,
   value,
+  hasSource,
   onTap,
 }: {
   row: FillRow;
   value: number;
+  /** Det finns ett eget lager att ta packen från (då visas "Utan uttag" när det inte räcker). */
+  hasSource: boolean;
   onTap: () => void;
 }) {
   const v = tileView(r, value);
   const cap = r.capacity;
+  const short = value > 0 ? shortAtHome(r, value, hasSource) : 0;
   const label = [
     r.name,
     cap !== null
@@ -349,13 +416,14 @@ export function SlotTile({
       : `${formatInt(v.shown)} i automaten`,
     v.out ? "slut" : null,
     value > 0 ? `fyller på ${formatInt(value)}` : null,
+    short > 0 ? `${formatInt(short)} utan uttag` : null,
   ]
     .filter(Boolean)
     .join(", ");
   return (
     <button
       type="button"
-      className={cn("tile", value > 0 && "on", v.full && "full")}
+      className={cn("tile", value > 0 && "on", v.full && "full", short > 0 && "short")}
       aria-label={label}
       aria-pressed={value > 0}
       onClick={onTap}
@@ -387,6 +455,12 @@ export function SlotTile({
       {v.out ? (
         <span className="chips" aria-hidden="true">
           <Badge tone="critical">Slut</Badge>
+        </span>
+      ) : short > 0 ? (
+        <span className="chips" aria-hidden="true">
+          <Badge tone="warning" title={`${formatInt(short)} utan uttag`}>
+            Utan uttag
+          </Badge>
         </span>
       ) : null}
     </button>
@@ -594,6 +668,7 @@ export function ConfirmSheet({
   total,
   busy,
   restart,
+  short = 0,
   onYes,
   onClose,
 }: {
@@ -602,6 +677,8 @@ export function ConfirmSheet({
   busy: boolean;
   /** Butiken stänger av strömmen: påminn redan här. */
   restart: boolean;
+  /** Pack som inte finns i lagret man fyller från (registreras utan uttag). */
+  short?: number;
   onYes: () => void;
   onClose: () => void;
 }) {
@@ -623,6 +700,11 @@ export function ConfirmSheet({
         </>
       }
     >
+      {short > 0 ? (
+        <p className="text-v2-sm text-v2-warn-text" role="note">
+          {`${formatInt(short)} av dem finns inte i lagret och registreras utan uttag.`}
+        </p>
+      ) : null}
       {restart ? <p className="text-v2-sm text-v2-mute">{t.fill.restartScreen}</p> : null}
     </Sheet>
   );

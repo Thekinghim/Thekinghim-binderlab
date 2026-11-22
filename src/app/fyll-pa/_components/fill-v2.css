@@ -53,6 +53,16 @@
     margin-left: 2px;
   }
   @media (max-width: 900px) {
+    /* Telefon: "Awish läst 11:42" på en egen rad under "Fyll på" (annars kapas tiden). */
+    .v2-fill-app .top h1 {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0;
+      line-height: 1.2;
+    }
+    .v2-fill-app .top h1 .crumb {
+      font-size: var(--v2-t-sm);
+    }
     /* Telefon: 44 px att trycka på, inom sidans kant. */
     .v2-fill-app .top .back {
       width: 44px;
@@ -127,8 +137,9 @@
   }
   .v2-fill-app .after {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 8px 12px;
     margin-top: 10px;
     font-size: var(--v2-t-md);
     color: var(--v2-mute);
@@ -137,18 +148,9 @@
     color: var(--v2-ink);
     font-weight: 650;
   }
+  /* Långa butiksnamn bryts (stapeln hamnar under) i stället för att gå utanför kortet. */
   .v2-fill-app .after .msg {
-    white-space: nowrap;
-  }
-  @media (max-width: 900px) {
-    /* Långa butiksnamn bryts i stället för att göra sidan bredare än telefonen. */
-    .v2-fill-app .after {
-      flex-wrap: wrap;
-    }
-    .v2-fill-app .after .msg {
-      white-space: normal;
-      min-width: 0;
-    }
+    min-width: 0;
   }
   .v2-fill-app .bar {
     flex: 1;
@@ -261,13 +263,18 @@
     color: var(--v2-ink);
     font: inherit;
   }
+  /* Långa namn ("Automat 04 · Köpcentrum Kvarnen") får två rader innan de kortas. */
   .v2-fill-machine .mt-t .nmt,
   .v2-fill-machine .mt-t span.nm {
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
   }
+
   .v2-fill-machine .mt-t .pickb {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
@@ -287,12 +294,65 @@
     color: var(--v2-mute);
     font-variant-numeric: tabular-nums;
   }
-  .v2-fill-machine .mt2 {
+  /* Uppdatera, nätet och "Mer" (Kör dit, Ring) till höger på rubrikraden. */
+  .v2-fill-machine .mt1 > .tools {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 4px;
+    margin-left: auto;
+    flex: none;
+  }
+  .v2-fill-machine .mt1 .refresh {
+    height: 44px;
+    min-width: 44px;
+    padding: 0;
+    border-color: transparent;
+    background: none;
+    color: var(--v2-mute);
+  }
+  .v2-fill-machine .mt1 .refresh:active {
+    background: var(--v2-sel);
+  }
+  .v2-fill-machine .mt1 .refresh .lbl {
+    display: none;
+  }
+  .v2-fill-machine .mt1 .more {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--v2-r-md);
+    color: var(--v2-mute);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  .v2-fill-machine .mt1 .more:active {
+    background: var(--v2-sel);
+  }
+  .v2-mt-more {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 4px;
+  }
+  .v2-mt-more .v2-btn {
+    justify-content: center;
+  }
+  /* Telefonen: Kör dit och Ring ligger i "Mer"; datorn: en rad länkar, ingen "Mer". */
+  .v2-fill-machine .mt2 {
+    display: none;
+    align-items: center;
     gap: 8px;
     min-height: 44px;
+  }
+  @media (min-width: 901px) {
+    .v2-fill-machine .mt2 {
+      display: flex;
+    }
+    .v2-fill-machine .mt1 .more {
+      display: none;
+    }
   }
   .v2-fill-machine .mt2 .links {
     display: flex;
@@ -301,7 +361,8 @@
     min-width: 0;
   }
   .v2-fill-machine .mt2 .links .v2-btn.plain {
-    padding: 0;
+    min-width: 44px;
+    padding: 0 4px;
     height: 44px;
     border: 0;
     background: none;
@@ -310,20 +371,6 @@
     text-decoration: underline;
     text-decoration-color: var(--v2-line3);
     text-underline-offset: 4px;
-  }
-  .v2-fill-machine .mt2 .tools {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: auto;
-    flex: none;
-  }
-  .v2-fill-machine .mt2 .refresh {
-    height: 44px;
-    min-width: 44px;
-  }
-  .v2-fill-machine .mt2 .refresh .lbl {
-    display: none;
   }
   .v2-fill-app .rstep {
     display: flex;
@@ -337,6 +384,7 @@
 
   /* Nätet ("Har nät"): vanlig text, inte versaler eller kodtypsnitt. */
   .v2-net {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -350,7 +398,7 @@
     color: var(--v2-mute);
     white-space: nowrap;
   }
-  .v2-net > span {
+  .v2-net > .dt {
     color: var(--v2-profit);
   }
   .v2-net.off {
@@ -358,8 +406,30 @@
     background: var(--v2-crit-soft);
     color: var(--v2-crit-text);
   }
-  .v2-net.off > span {
+  .v2-net.off > .dt {
     color: var(--v2-crit-icon);
+  }
+  /* Telefonen: har nät och inget i kön = bara en grön prick (texten för skärmläsare). */
+  @media (max-width: 900px) {
+    .v2-net.calm {
+      justify-content: center;
+      width: 16px;
+      padding: 0;
+      border: 0;
+      background: none;
+    }
+    .v2-net.calm > .dt {
+      width: 8px;
+      height: 8px;
+    }
+    .v2-net .quiet {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
   }
 
   /* Facken som rutor */
@@ -380,6 +450,8 @@
   }
   .v2-fill-machine .tapline .fillall {
     min-height: 44px;
+    /* 44 px att trycka på, men raden tar bara 36 px (facken börjar högre upp). */
+    margin-block: -4px;
     padding: 0 0 0 8px;
     border-radius: var(--v2-r-md);
     font-size: var(--v2-t-md);
@@ -451,6 +523,11 @@
   .v2-fill-machine .tile.on {
     border-color: var(--v2-ink);
     box-shadow: 0 0 0 1px var(--v2-ink);
+  }
+  /* Inte allt finns i lagret man fyller från: orange +N (och märket "Utan uttag"). */
+  .v2-fill-machine .tile.short .plus {
+    background: var(--v2-warn);
+    color: var(--v2-warn-on);
   }
   .v2-fill-machine .tile:focus-visible {
     outline: 2px solid var(--v2-info-icon);

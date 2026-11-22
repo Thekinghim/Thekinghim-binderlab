@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { fillMachines, pairKey, slotTitleOrder, type FillInput, type FillRow } from "./model";
+import {
+  fillAllQty,
+  fillMachines,
+  pairKey,
+  slotTitleOrder,
+  type FillInput,
+  type FillRow,
+} from "./model";
 import {
   bringCount,
   initialSelection,
   inSlotOrder,
   listChip,
   setQty,
+  shortAtHome,
   stepperBounds,
   tapQty,
   tapTile,
@@ -67,14 +75,34 @@ describe("tryck på en ruta", () => {
     expect(tapTile(initialSelection(), r, true)).toEqual({ selection: { t1: 6 }, sheet: false });
   });
 
-  it("högst packen i lagret man fyller från", () => {
+  it("fyller till fullt även när lagret hemma inte räcker (resten utan uttag)", () => {
     const m = machineWith([{ title_id: "t1", units: 4, capacity: 10, channels: 1, empty: 0 }], 2);
-    expect(tapTile({}, m.rows[0]!, true)).toEqual({ selection: { t1: 2 }, sheet: false });
+    const r = m.rows[0]!;
+    expect(r.suggested).toBe(2);
+    expect(tapTile({}, r, true)).toEqual({ selection: { t1: 6 }, sheet: false });
+    expect(shortAtHome(r, 6, true)).toBe(4);
   });
 
-  it("inget i lagret: inget väljs, arket öppnas (där går det att fylla ändå)", () => {
+  it("inget i lagret hemma: facket fylls ändå, allt utan uttag (som Fyll fack förut)", () => {
     const m = machineWith([{ title_id: "t1", units: 4, capacity: 10, channels: 1, empty: 0 }], 0);
-    expect(tapTile({}, m.rows[0]!, true)).toEqual({ selection: {}, sheet: true });
+    const r = m.rows[0]!;
+    expect(tapTile({}, r, true)).toEqual({ selection: { t1: 6 }, sheet: false });
+    expect(shortAtHome(r, 6, true)).toBe(6);
+    expect(shortAtHome(r, 6, false)).toBe(0);
+  });
+
+  it("ett tryck ger samma antal som Fyll alla (vanliga titlar)", () => {
+    const rows = [
+      row({ titleId: "a", now: 4, capacity: 10, home: 0 }),
+      row({ titleId: "b", now: 0, capacity: 20, home: 3 }),
+      row({ titleId: "c", now: 12, capacity: 12, home: 9 }),
+    ];
+    for (const r of rows) expect(tapQty(r, true)).toBe(fillAllQty(r, 0));
+  });
+
+  it("utan känd kapacitet: förslaget med eget lager", () => {
+    const r = row({ titleId: "t1", now: 1, capacity: null, home: 3, suggested: 3 });
+    expect(tapQty(r, true)).toBe(3);
   });
 
   it("utan eget lager: kapacitet − nu utan tak", () => {
@@ -96,8 +124,19 @@ describe("tryck på en ruta", () => {
   it("mystery pack: en hel omgång när facket är tomt och lagret har en, annars arket", () => {
     const empty = row({ titleId: "m", now: 0, capacity: 20, batchSize: 14, suggested: 14 });
     expect(tapTile({}, empty, true)).toEqual({ selection: { m: 14 }, sheet: false });
+    // Ingen färdig omgång i lagret: inget väljs, arket öppnas ("Har du packat?", en omgång).
     const short = row({ titleId: "m", now: 0, capacity: 20, batchSize: 14, home: 3, suggested: 0 });
-    expect(tapTile({}, short, true).sheet).toBe(true);
+    expect(tapTile({}, short, true)).toEqual({ selection: {}, sheet: true });
+    // Lagret man fyller från avgör, inte ett förslag räknat på ett annat lager.
+    const stale = row({
+      titleId: "m",
+      now: 0,
+      capacity: 20,
+      batchSize: 14,
+      home: 0,
+      suggested: 14,
+    });
+    expect(tapTile({}, stale, true)).toEqual({ selection: {}, sheet: true });
     const left = row({ titleId: "m", now: 5, capacity: 20, batchSize: 14, suggested: 0 });
     expect(tapTile({}, left, true).sheet).toBe(true);
   });

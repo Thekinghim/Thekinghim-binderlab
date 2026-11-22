@@ -3,18 +3,30 @@
  * funktioner (testas i tiles.test.ts); sidan (fill-app.tsx, fill-v2.tsx) ritar dem.
  *
  * - Allt börjar på 0: inget är förvalt (`initialSelection`).
- * - Ett tryck på en ruta som inte är vald fyller facket (`tapQty`): samma antal som förslaget
- *   (kapacitet − nu, högst packen i lagret man fyller från; mystery packs en hel omgång när
- *   facket är tomt och lagret har en). Utan eget lager: kapacitet − nu utan tak från lagret.
- *   Går inget att fylla (fullt, inget i lagret, mystery-facket har pack) öppnas arket i
- *   stället, där stegaren, varningarna och "Fel antal i automaten?" finns.
+ * - Ett tryck på en ruta som inte är vald fyller facket till fullt (`tapQty`), som den gamla
+ *   knappen "Fyll fack" och "Fyll alla": kapacitet − nu, utan tak från lagret hemma (det som
+ *   saknas hemma registreras utan uttag, och rutan visar "Utan uttag"). Mystery packs som
+ *   förut: en hel omgång när facket är tomt och lagret har en färdig omgång; annars öppnas arket
+ *   med "Inga färdiga … Har du packat?" och "Fyll på en omgång". Utan känd kapacitet:
+ *   förslaget (med eget lager) eller det automaten vill ha. Går inget att fylla (fullt,
+ *   mystery-facket har pack) öppnas arket, där stegaren, varningarna och "Fel antal i
+ *   automaten?" finns.
  * - Ett tryck på en vald ruta öppnar arket (`tapTile`).
  * - Stegaren i arket går från 0 till `maxFill` (samma tak som förut).
  * - Listan: "Ta med N pack" (det automaten vill ha, utan tak från lagret), upp till sex packbilder
  *   för titlar som är slut eller snart slut, och ett märke (Offline, Slut, Fyll på i dag).
  */
 
-import { maxFill, packsWanted, type FillMachine, type FillRow } from "./model";
+import { mysteryBatch } from "@/domain";
+
+import {
+  fillAllQty,
+  maxFill,
+  packsWanted,
+  suggestFill,
+  type FillMachine,
+  type FillRow,
+} from "./model";
 
 /** Valt antal per titel (titelns id → pack). Saknas = 0. */
 export type Selection = Readonly<Record<string, number>>;
@@ -24,15 +36,28 @@ export function initialSelection(): Selection {
   return {};
 }
 
-type TapRow = Pick<FillRow, "now" | "capacity" | "sold" | "suggested"> &
+type TapRow = Pick<FillRow, "now" | "capacity" | "sold" | "suggested" | "home"> &
   Partial<Pick<FillRow, "batchSize">>;
 
 /**
  * Antalet ett tryck väljer för en ruta som inte är vald; 0 = inget att fylla (arket öppnas).
- * `hasSource`: det finns ett eget lager att ta packen från (då gäller lagrets saldo som tak).
+ * Med känd kapacitet samma som den gamla knappen "Fyll fack" och "Fyll alla" (kapacitet − nu,
+ * utan tak från lagret hemma). Mystery packs: en omgång bara när facket är tomt och lagret man
+ * fyller från (`row.home`) har en färdig omgång. Okänd kapacitet: förslaget när det finns ett
+ * eget lager (`hasSource`), annars det automaten vill ha.
  */
 export function tapQty(row: TapRow, hasSource: boolean): number {
-  const q = hasSource ? row.suggested : packsWanted(row);
+  const batch = mysteryBatch(row.batchSize ?? null);
+  const q =
+    batch !== null
+      ? hasSource
+        ? suggestFill(row.now, row.capacity, row.home, row.sold, batch)
+        : packsWanted(row)
+      : row.capacity !== null
+        ? fillAllQty(row, 0)
+        : hasSource
+          ? row.suggested
+          : packsWanted(row);
   return Math.max(0, Math.min(Math.trunc(q), maxFill(row)));
 }
 
@@ -87,6 +112,15 @@ export function inSlotOrder<R extends Pick<FillRow, "titleId">>(
       return sa - sb;
     })
     .map((x) => x.r);
+}
+
+/**
+ * Pack av det valda som inte finns i lagret man fyller från (registreras "utan uttag");
+ * 0 utan eget lager eller när lagret räcker.
+ */
+export function shortAtHome(row: Pick<FillRow, "home">, value: number, hasSource: boolean): number {
+  if (!hasSource) return 0;
+  return Math.max(0, Math.trunc(value) - Math.max(0, row.home));
 }
 
 /** Det rutan visar. */
