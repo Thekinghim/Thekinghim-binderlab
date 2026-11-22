@@ -4,7 +4,9 @@
  * vara tomt men inte negativt, och att butikernas portal aldrig ser det.
  *
  * Fixturen har priser från 1 jan. 2025 och december 2024 är stängd. Att inga siffror
- * ändras av priset: kundpris-orord.test.ts.
+ * före 1 nov. 2026 ändras av priset: kundpris-orord.test.ts. Att butikens andel vid
+ * vinstdelning räknas på priset från 1 nov. 2026, och att en stängd månad från det datumet
+ * är låst också för pris mot kund: kundpris-andel.test.ts.
  */
 
 import { sql } from "drizzle-orm";
@@ -189,7 +191,7 @@ describe("setCustomerPriceFor", () => {
     ).toEqual({ ok: false, error: PRICE_MESSAGES.customerNeedsCost });
   });
 
-  it("får ändras i en stängd månad: inga siffror påverkas, och inköpspriset är fortfarande låst", async () => {
+  it("får ändras i en stängd månad före 1 nov. 2026: inga siffror påverkas, och inköpspriset är fortfarande låst", async () => {
     // closedTitle: enda priset (1 nov. 2024) gäller i den stängda december 2024.
     const base = { organizationId: fx.orgId, titleId: fx.closedTitleId };
     expect(
@@ -523,14 +525,16 @@ describe("butikernas portal och databasens funktioner", () => {
     ]);
   });
 
-  it("ingen funktion, vy eller policy i databasen läser kolumnen", async () => {
+  it("ingen funktion, vy eller policy i databasen läser kolumnen, utom spärren för stängda månader", async () => {
+    // Spärren jämför bara gammalt och nytt värde (20261226000000_kundpris_andel.sql); ingen
+    // funktion räknar med priset eller lämnar ut det.
     const functions = await rows<{ name: string }>(
       db(),
       sql`select n.nspname || '.' || p.proname as name
           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
           where n.nspname in ('public', 'private') and p.prosrc ilike '%customer_price_ore%'`,
     );
-    expect(functions).toEqual([]);
+    expect(functions).toEqual([{ name: "private.purchase_prices_period_guard" }]);
     const views = await rows<{ name: string }>(
       db(),
       sql`select schemaname || '.' || viewname as name from pg_views

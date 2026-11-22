@@ -328,3 +328,46 @@ describe("Inköpspriser: hyran är en del av butikens andel (som Lönsamhet)", (
     });
   });
 });
+
+describe("förhandsvisningen räknar med det inskrivna priset mot kund", () => {
+  // En order 5 nov. 2026 för 200 kr, vårt pris 100 kr, inget sparat pris mot kund.
+  const input: TitleEconomicsInput = {
+    orders: [order({ titleId: "t-a", businessDate: "2026-11-05", amountOre: 20_000 })],
+    prices: [price("t-a", 10_000, "2026-01-01")],
+    agreements: [agreement("s-1", "2026-01-01", null, SPLIT_50)],
+    placements: [placement("m-1", "s-1", "2026-01-01", null)],
+    settings: { vatRateBp: 0, cardFeeBp: 0 },
+    period: { start: "2026-11-01", end: "2026-11-30" },
+    asOf: "2026-11-30",
+  };
+
+  it("utan pris mot kund: hälften var", () => {
+    expect(splitWithPrice(input, "t-a", 10_000)).toEqual({
+      orders: 1,
+      leftBeforeOre: 10_000,
+      storeShareOre: 5_000,
+      leftOre: 5_000,
+    });
+  });
+
+  it("inskrivet pris mot kund 120 kr: butikens andel 40 kr, vår del 60 kr", () => {
+    expect(splitWithPrice(input, "t-a", 10_000, 12_000)).toEqual({
+      orders: 1,
+      leftBeforeOre: 10_000,
+      storeShareOre: 4_000,
+      leftOre: 6_000,
+    });
+  });
+
+  it("samma som när priset mot kund är sparat", () => {
+    const saved = {
+      ...input,
+      prices: [{ ...price("t-a", 10_000, "2026-01-01"), customerPriceOre: 12_000 }],
+    };
+    expect(splitWithPrice(saved, "t-a", 10_000)).toEqual(
+      splitWithPrice(input, "t-a", 10_000, 12_000),
+    );
+    // Ett tömt fält (null) tar bort det sparade priset i förhandsvisningen.
+    expect(splitWithPrice(saved, "t-a", 10_000, null).storeShareOre).toBe(5_000);
+  });
+});

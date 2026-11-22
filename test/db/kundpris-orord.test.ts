@@ -1,7 +1,12 @@
 /**
- * Pris mot kund ändrar ingen siffra (20261216000000_kundpris.sql): vinst, marginal,
- * butikernas andel, rapporter, bokföring och lagervärde är identiska med och utan pris mot
- * kund. Ägarens beslut: visa båda priserna, räkna som i dag (på vårt pris).
+ * Pris mot kund ändrar ingen siffra utan vinstdelning och före 1 nov. 2026
+ * (20261216000000_kundpris.sql): vinst, marginal, butikernas andel, rapporter, bokföring och
+ * lagervärde är identiska med och utan pris mot kund. Seeden har inga avtal med
+ * vinstdelning, och oktober ligger före datumet. Från 1 nov. 2026 räknas butikens andel vid
+ * vinstdelning på pris mot kund (CUSTOMER_PRICE_SHARE_FROM): kundpris-andel.test.ts.
+ *
+ * Beräkningsindatan bär nu priset på prisraderna (`customerPriceOre`, läses bara av
+ * vinstdelningen); det fältet lämnas utanför jämförelsen, allt annat jämförs.
  *
  * Seeden körs i en egen organisation (som consistency.test.ts) och sidorna läses med
  * appens egna laddare: beräkningsindata och lönsamheten per titel, automat och butik, Hem,
@@ -133,7 +138,9 @@ let storeIds: string[] = [];
 
 /** JSON med sorterade nycklar, så att två svar kan jämföras tecken för tecken. */
 function stable(value: unknown): string {
-  return JSON.stringify(value, (_key, v: unknown) => {
+  return JSON.stringify(value, (key, v: unknown) => {
+    // Prisradens pris mot kund i indatan (se filhuvudet): bara vinstdelningen läser det.
+    if (key === "customerPriceOre") return undefined;
     if (typeof v === "bigint") return v.toString();
     if (v instanceof Map) return Object.fromEntries([...v.entries()].sort());
     if (v instanceof Set) return [...v.values()].sort();
@@ -268,7 +275,7 @@ afterAll(() => {
   session.current = null;
 });
 
-describe("pris mot kund ändrar ingen siffra", () => {
+describe("pris mot kund ändrar ingen siffra utan vinstdelning och före 1 nov. 2026", () => {
   it("1. utan pris mot kund: utgångsläget läses (och har order, inköp och butiker)", async () => {
     // Seeden har pris mot kund på 30th Celebration: det töms, så att läget är som före bygget.
     expect((await customerPrices()).filter((c) => c !== null)).toEqual([14_500, 14_500]);

@@ -124,7 +124,9 @@ export default async function PurchasePricesPage({
   const activeTitleIds = input.titles.filter((t) => !t.archived).map((t) => t.id);
   const economics = currentPriceEconomics({ ...input.current, titleIds: activeTitleIds });
   const unpriced = profitability(input.current, "title").unpriced;
-  // Pris mot kund läggs på raderna efter beräkningen: det visas bara, inget räknas på det.
+  // Pris mot kund läggs på raderna för visning. Beräkningen ovan läser det redan: från
+  // CUSTOMER_PRICE_SHARE_FROM räknas butikens andel vid vinstdelning på pris mot kund
+  // (vårt pris om inget finns); vår del räknas fortfarande på vårt pris.
   const allRows = withCustomerPrices(
     titleRows(economics, input.titles, unpriced.byTitle),
     data.prices,

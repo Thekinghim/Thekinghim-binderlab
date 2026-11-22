@@ -15,11 +15,22 @@
  *
  * Avrundning: halva öre bort från noll, EN gång per butik, månad och avtal (inte per order).
  * Liggaren fördelar butikens del på orderna (ledger.ts) så att alla vyer summerar rätt.
+ *
+ * Inköpet som andelen räknas på (ägarens beslut, gäller försäljning från och med
+ * `CUSTOMER_PRICE_SHARE_FROM`): per order PRIS MOT KUND för den prisperiod som gällde
+ * orderns dag (purchase_prices.customer_price_ore), annars vårt inköpspris när perioden
+ * saknar pris mot kund. Före datumet: vårt inköpspris, som förut (`shareCostOre`).
+ * Allt i uträkningen ovan (marginal, VMB-moms, vinst, förlustgolv) räknas då på det priset:
+ * det är den uträkningen butiken ser i rapporten och avräkningen, och vårt eget inköpspris
+ * syns aldrig för butiken. VÅR vinst räknas fortfarande på vårt verkliga inköpspris i
+ * liggaren (intäkt − inköp − avgifter − butikens andel …), så skillnaden (pris mot kund −
+ * vårt pris) × pack stannar hos oss. `operatorShareOre` här är bara resten av underlaget
+ * (vinst − butikens andel), inte vår verkliga del.
  */
 
 import { DomainError } from "./errors";
 import { applyBp, assertBp, assertNonNegativeInteger } from "./money";
-import type { LossTreatment, StoreAgreement } from "./types";
+import type { IsoDate, LossTreatment, PurchasePrice, StoreAgreement } from "./types";
 import { VMB_RATE_PERCENT, vmbVatOfMargin } from "./vmb";
 
 export { vmbVatOfMargin };
@@ -29,6 +40,30 @@ export const VMB_VAT_PERCENT = VMB_RATE_PERCENT;
 
 /** Standardvillkor för nya avtal: 50 % av vinsten efter kostnader, förlust ger 0. */
 export const DEFAULT_PROFIT_SHARE_BP = 5_000;
+
+/**
+ * Första försäljningsdagen då butikens andel vid vinstdelning räknas på pris mot kund
+ * (se filhuvudet). Den ENDA platsen datumet står på i koden; databasens spärr för stängda
+ * månader har samma datum (private.customer_price_share_from(), testat mot denna).
+ */
+export const CUSTOMER_PRICE_SHARE_FROM: IsoDate = "2026-11-01";
+
+/**
+ * Inköpet per pack som butikens andel vid vinstdelning räknas på för en order den dagen:
+ * pris mot kund från `CUSTOMER_PRICE_SHARE_FROM` när prisperioden har ett, annars vårt
+ * inköpspris. `null` när ordern saknar inköpspris (då saknas också underlaget).
+ */
+export function shareCostOre(
+  price: Pick<PurchasePrice, "unitCostOre" | "customerPriceOre"> | null,
+  businessDate: IsoDate,
+): number | null {
+  if (!price) return null;
+  const customer = price.customerPriceOre;
+  if (businessDate >= CUSTOMER_PRICE_SHARE_FROM && customer !== undefined && customer !== null) {
+    return customer;
+  }
+  return price.unitCostOre;
+}
 
 /** Sant om avtalet är en vinstdelning. */
 export function isProfitSplit(agreement: StoreAgreement | null | undefined): boolean {
@@ -40,7 +75,10 @@ export interface ProfitSplitInput {
   readonly salesInclVatOre: number;
   /** Σ återbetalningar till kunder i butiken (dras från försäljningen). Standard 0. */
   readonly refundsOre?: number;
-  /** Σ inköpspris för de sålda packen. */
+  /**
+   * Σ inköp för de sålda packen som andelen räknas på (`shareCostOre`: pris mot kund från
+   * `CUSTOMER_PRICE_SHARE_FROM`, annars vårt inköpspris).
+   */
   readonly purchasesOre: number;
   /** Σ kortavgifter. */
   readonly cardFeesOre: number;
@@ -62,15 +100,19 @@ export interface ProfitSplitResult {
   readonly vmbVatOre: number;
   /** Avtalets val: VMB dras före delningen (saknas i ögonblicksbilder före 1.3.0 = sant). */
   readonly vmbBeforeSplit?: boolean;
+  /** Inköpet som andelen räknas på (pris mot kund från `CUSTOMER_PRICE_SHARE_FROM`). */
   readonly purchasesOre: number;
   readonly cardFeesOre: number;
-  /** Vinst efter kostnader (kan vara negativ). */
+  /** Vinst efter kostnader, underlaget för andelen (kan vara negativ). */
   readonly profitOre: number;
   readonly shareBp: number;
   readonly lossTreatment: LossTreatment;
   /** Butikens del (0 vid förlust med 'zero', negativ vid förlust med 'proportional'). */
   readonly storeShareOre: number;
-  /** Operatörens del = vinst − butikens del. */
+  /**
+   * Resten av underlaget = vinst − butikens del. Med pris mot kund är vår verkliga del
+   * större (skillnaden mot vårt inköpspris): den räknas i liggaren, inte här.
+   */
   readonly operatorShareOre: number;
 }
 

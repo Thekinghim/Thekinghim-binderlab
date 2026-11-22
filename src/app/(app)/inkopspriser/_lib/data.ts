@@ -9,8 +9,9 @@
  * månader (BL004, purchase_prices_period_guard) och varje ändring loggas i audit_log av
  * triggern private.audit().
  *
- * Pris mot kund (customer_price_ore) läses och skrivs bara här. Det är bara för visning:
- * ingen beräkning läser det (se customer-price-isolation.test.ts).
+ * Pris mot kund (customer_price_ore) läses och skrivs här. Den enda beräkning som läser det
+ * är butikens andel vid vinstdelning från CUSTOMER_PRICE_SHARE_FROM (src/domain/profit-split.ts,
+ * se customer-price-isolation.test.ts).
  */
 
 import "server-only";
@@ -621,7 +622,7 @@ export async function correctPurchasePriceFor(
 }
 
 // ---------------------------------------------------------------------------
-// Pris mot kund (bara för visning)
+// Pris mot kund (butikens andel vid vinstdelning räknas på det, se profit-split.ts)
 // ---------------------------------------------------------------------------
 
 const customerPriceInput = z.object({
@@ -636,8 +637,9 @@ export type CustomerPriceInput = z.input<typeof customerPriceInput>;
 
 /**
  * Sätter (eller tar bort) pris mot kund på prisperioden som gäller i dag, utan att röra
- * inköpspriset. Påverkar ingen beräkning och får därför ändras också i en stängd månad
- * (databasvakten bevakar bara belopp och datum). Loggas av triggern. Bara ägare och admin.
+ * inköpspriset. Butikens andel vid vinstdelning räknas på det från CUSTOMER_PRICE_SHARE_FROM,
+ * så databasvakten låser det för dagar från det datumet i en stängd månad (BL004); före
+ * datumet påverkar det inga siffror och får ändras. Loggas av triggern. Bara ägare och admin.
  */
 export async function setCustomerPriceFor(
   user: SessionUser | null,

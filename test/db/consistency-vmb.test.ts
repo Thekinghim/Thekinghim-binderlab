@@ -345,9 +345,15 @@ describe("vyknappen Med VMB på (seedad databas, vinstdelning 50/50)", () => {
       const splitRefunds = splits.reduce((n, s) => n + s.result.refundsOre, 0);
       const vmb = page.model.totals.vmbVatOre;
       const ours = page.result.profitAfterRefundsOre;
+      // Från 1 nov. 2026 räknas andelens inköp på pris mot kund (seedens 30th Celebration har
+      // det): skillnaden mot vårt inköp stannar hos oss (CUSTOMER_PRICE_SHARE_FROM).
+      const customerDiff = ledger.entries
+        .filter((e) => e.priced && !before.includes(e))
+        .reduce((n, e) => n + e.shareCostOre - e.costOre, 0);
       expect(ours - storeShare).toBe(
         beforeProfit +
           rounding +
+          customerDiff +
           (splitVmb - (vmb - beforeVmb)) +
           (splitRefunds - page.result.refundOre),
       );
@@ -357,9 +363,12 @@ describe("vyknappen Med VMB på (seedad databas, vinstdelning 50/50)", () => {
       const beforeAtSplitRule =
         before.reduce((n, e) => n + e.grossOre - e.costOre - e.cardFeeOre, 0) -
         vmbVatOfMargin(beforeMargin);
-      expect(Math.abs(ours - beforeAtSplitRule - storeShare)).toBeLessThanOrEqual(
-        2 * splits.length,
-      );
+      // Skillnaden mot pris mot kund stannar hos oss, men vår VMB-moms räknas på vår verkliga
+      // marginal: av skillnaden blir 80 % kvar efter VMB-momsen (20 % av marginalen).
+      const customerAfterVmb = customerDiff - vmbVatOfMargin(customerDiff);
+      expect(
+        Math.abs(ours - beforeAtSplitRule - customerAfterVmb - storeShare),
+      ).toBeLessThanOrEqual(2 * splits.length + 1);
     });
   });
 

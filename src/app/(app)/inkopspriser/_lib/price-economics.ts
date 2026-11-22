@@ -50,7 +50,15 @@ function currentPrices(prices: readonly PurchasePrice[], asOf: IsoDate): Purchas
     const sorted = list.slice().sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1));
     const current = sorted.filter((p) => p.validFrom <= asOf).at(-1);
     if (!current) out.push(...sorted);
-    else out.push({ titleId, unitCostOre: current.unitCostOre, validFrom: sorted[0]!.validFrom });
+    else
+      out.push({
+        titleId,
+        unitCostOre: current.unitCostOre,
+        // Pris mot kund följer med: butikens andel vid vinstdelning räknas på det från
+        // CUSTOMER_PRICE_SHARE_FROM (src/domain/profit-split.ts).
+        customerPriceOre: current.customerPriceOre ?? null,
+        validFrom: sorted[0]!.validFrom,
+      });
   }
   return out;
 }
@@ -89,17 +97,32 @@ export function currentPriceEconomics(input: TitleEconomicsInput): TitleEconomic
  * Titelns kvar per order i perioden om `unitCostOre` hade gällt all dess försäljning (som
  * "Rätta priset"). Övriga titlar räknas med dagens pris, som i tabellen (de påverkar
  * butikens vinstdelning).
+ *
+ * `customerPriceOre` är det pris mot kund som skrivits i formuläret (null = inget pris);
+ * utelämnat gäller det sparade priset för perioden. Från CUSTOMER_PRICE_SHARE_FROM räknas
+ * butikens andel vid vinstdelning på det, så förhandsvisningen måste få det inskrivna.
  */
 export function splitWithPrice(
   input: TitleEconomicsInput,
   titleId: string,
   unitCostOre: number,
+  customerPriceOverride?: number | null,
 ): PerOrderSplit {
   let from: IsoDate = input.period.start;
   for (const o of input.orders) if (o.businessDate < from) from = o.businessDate;
+  // Det nya inköpspriset tar över periodens pris mot kund (som när priset sparas), så att
+  // butikens andel vid vinstdelning räknas som efter sparandet.
+  const asOf = input.asOf ?? input.period.end;
+  const customerPriceOre =
+    customerPriceOverride !== undefined
+      ? customerPriceOverride
+      : (input.prices
+          .filter((p) => p.titleId === titleId && p.validFrom <= asOf)
+          .sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1))
+          .at(-1)?.customerPriceOre ?? null);
   const prices = [
     ...input.prices.filter((p) => p.titleId !== titleId),
-    { titleId, unitCostOre, validFrom: from },
+    { titleId, unitCostOre, customerPriceOre, validFrom: from },
   ];
   const e = currentPriceEconomics({ ...input, prices, titleIds: [titleId] }).find(
     (r) => r.titleId === titleId,

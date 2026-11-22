@@ -11,7 +11,8 @@
  *    (liggaren) + 20 % av ändringen i orderns marginal (belopp − inköp), aldrig under 0.
  *    Vinstdelning (avtal 'profit_after_costs'): butikens nya andel = nuvarande andel +
  *    andel × (ny ordervinst − nuvarande ordervinst), där ordervinst = belopp − VMB-moms
- *    (20 % av max(0, belopp − inköp)) − inköp − avgift. Uppskattning per order: månadens
+ *    (20 % av max(0, belopp − inköp)) − inköp − avgift och inköpet är andelens underlag
+ *    (pris mot kund från CUSTOMER_PRICE_SHARE_FROM, liggarens `shareCostOre`). Uppskattning per order: månadens
  *    förlustgolv räknas inte om.
  * 2. Volymen ändras med en antagen priselasticitet e (i hundradelar: −150 = −1,5):
  *      volymfaktor = 1 + e × N / snittpris = (100 × Σ belopp + e × N × antal) / (100 × Σ belopp)
@@ -214,7 +215,10 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
       // Samma regel som avtalet (profitSplit): VMB före delningen bara när avtalet säger det.
       const splitVmb = (margin: number) =>
         agreement!.vmbBeforeSplit === true ? vmbVatOfMargin(margin) : 0;
-      const orderProfit = (g: number, fee: number) => g - splitVmb(g - e.costOre) - e.costOre - fee;
+      // Andelens underlag: inköpet som andelen räknas på (pris mot kund från
+      // CUSTOMER_PRICE_SHARE_FROM, liggarens shareCostOre), inte vårt eget inköpspris.
+      const orderProfit = (g: number, fee: number) =>
+        g - splitVmb(g - e.shareCostOre) - e.shareCostOre - fee;
       afterShare =
         e.commissionOre +
         applyBp(
