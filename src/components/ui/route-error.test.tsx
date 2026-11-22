@@ -81,8 +81,14 @@ describe("sidorna i genomgång C", () => {
     const file = join(APP, segment, "not-found.tsx");
     expect(existsSync(file)).toBe(true);
     const src = readFileSync(file, "utf8");
-    expect(src).toContain("<RouteNotFound");
-    expect(src).toMatch(/title="[^"]+ finns inte\."/);
+    // Den gamla 404-uppbyggnaden (RouteNotFound) eller en V2-sida (V2Page, portalens
+    // PortalPage) vars h1 säger att det inte finns, med en väg tillbaka (ButtonLink).
+    if (src.includes("<RouteNotFound")) {
+      expect(src).toMatch(/title="[^"]+ finns inte\."/);
+    } else {
+      expect(src).toMatch(/<(V2Page|PortalPage)\s+title="[^"]+ finns inte"/);
+      expect(src).toMatch(/<ButtonLink href="\/[^"]*"/);
+    }
   });
 });
 
