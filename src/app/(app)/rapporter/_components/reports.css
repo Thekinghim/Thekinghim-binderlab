@@ -1,0 +1,74 @@
+/*
+ * Rapporter i V2: vita kort på #F1F1F1 (--v2-*, src/styles/v2.css). Bara under .v2-reports.
+ * Själva rapporten i förhandsvisningen är utskriften (samma som PDF:en) och ändras inte här,
+ * bara ytan runt den.
+ */
+
+.v2-reports {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .v2-reports {
+    gap: 12px;
+  }
+}
+
+/* Vy-flikarna och läget (månad, utkast) på en rad */
+.v2-reports .rp-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.v2-reports .rp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  font-variant-numeric: tabular-nums;
+}
+.v2-reports .rp-meta b {
+  margin-left: 4px;
+  font-weight: 550;
+  color: var(--v2-ink);
+}
+
+/* Rubrikraden i korten: en grå rad till höger, under rubriken på telefon */
+.v2-reports .v2-card-hd {
+  flex-wrap: wrap;
+}
+.v2-reports .rp-hd-note {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Förhandsvisningen: arket på V2:s grå yta i stället för det mörka skrivbordet */
+.v2-reports .rp-preview {
+  --bl-desk: var(--v2-bg);
+  --bl-desk-edge: var(--v2-line);
+  padding: 18px;
+  background: var(--v2-bg);
+  overflow-x: auto;
+}
+@media (max-width: 900px) {
+  .v2-reports .rp-preview {
+    padding: 10px;
+  }
+}
+
+/* Arkivet: DataTable med luft mot kortets kant */
+.v2-reports .rp-table {
+  padding: 8px 18px 6px;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .v2-reports .rp-table {
+    padding: 8px 12px 6px;
+  }
+}

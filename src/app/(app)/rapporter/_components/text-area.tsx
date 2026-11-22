@@ -3,8 +3,7 @@ import type { TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * Flerradigt fält med samma form som Input i @/components/ui/field: mono-etikett,
- * kontrollkant på bg, hjälptext under. (Designsystemet saknar ett textområde.)
+ * Flerradigt fält i V2 (.v2-field och .v2-textarea): etikett över, hjälptext under.
  */
 export function TextArea({
   id,
@@ -14,21 +13,16 @@ export function TextArea({
   ...rest
 }: TextareaHTMLAttributes<HTMLTextAreaElement> & { id: string; label: string; hint?: string }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <label htmlFor={id} className="label text-muted">
-        {label}
-      </label>
+    <div className="v2-field">
+      <label htmlFor={id}>{label}</label>
       <textarea
         id={id}
         aria-describedby={hint ? `${id}-msg` : undefined}
-        className={cn(
-          "min-h-24 w-full min-w-0 resize-y rounded-sm border border-line-control bg-bg px-3 py-2 text-base text-fg transition-[border-color] duration-fast ease-instrument placeholder:text-subtle hover:border-muted",
-          className,
-        )}
+        className={cn("v2-textarea", className)}
         {...rest}
       />
       {hint ? (
-        <p id={`${id}-msg`} className="text-xs text-subtle">
+        <p id={`${id}-msg`} className="hint">
           {hint}
         </p>
       ) : null}

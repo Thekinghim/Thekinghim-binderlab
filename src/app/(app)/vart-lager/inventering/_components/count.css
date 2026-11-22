@@ -1,0 +1,254 @@
+/*
+ * Inventering i V2: vita kort på #F1F1F1, Polaris-färger (--v2-*, src/styles/v2.css),
+ * Google Sans och tabulära siffror. Bara under .v2-count. Knappar, fält och notiser kommer
+ * från V2-klasserna (.v2-btn, .v2-input, .v2-notice).
+ */
+
+.v2-count {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .v2-count {
+    gap: 12px;
+  }
+}
+
+/* Rubriken för steget ("Vilket lager räknar du?", "Räkna hemma.") */
+.v2-count .hd {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 2px;
+}
+.v2-count .hd :is(h1, h2) {
+  font-size: var(--v2-t-lg);
+  line-height: 22px;
+  font-weight: 650;
+  color: var(--v2-ink);
+  text-wrap: balance;
+}
+.v2-count .hd p {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tillbaka och vyn på samma rad */
+.v2-count .bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.v2-count .back {
+  margin-left: -8px;
+  align-self: flex-start;
+  color: var(--v2-mute);
+}
+
+/* En i taget / Lista: radioknappar i V2:s segmentränna */
+.v2-count .seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--v2-r-md);
+  background: var(--v2-line);
+}
+.v2-count .seg button {
+  min-height: 38px;
+  min-width: 44px;
+  padding: 0 14px;
+  border-radius: var(--v2-r-sm);
+  font-size: var(--v2-t-sm);
+  font-weight: 550;
+  color: var(--v2-mute);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+.v2-count .seg button[aria-checked="true"] {
+  background: var(--v2-panel);
+  color: var(--v2-ink);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.04),
+    0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+/* Rader i ett kort: lager att välja, produkter i listan, skillnader */
+.v2-count .rows {
+  display: flex;
+  flex-direction: column;
+}
+.v2-count .rows > li + li {
+  border-top: 1px solid var(--v2-line2);
+}
+.v2-count .pick {
+  display: flex;
+  width: 100%;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+.v2-count .pick:active {
+  background: var(--v2-hover);
+}
+@media (hover: hover) and (pointer: fine) {
+  .v2-count .pick:hover {
+    background: var(--v2-hover);
+  }
+}
+.v2-count .pick b {
+  display: block;
+  font-size: var(--v2-t-md);
+  font-weight: 650;
+  color: var(--v2-ink);
+  overflow-wrap: anywhere;
+}
+.v2-count .pick small {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-count .pick .flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.v2-count .pick .chev {
+  flex: none;
+  color: var(--v2-faint);
+}
+
+.v2-count .line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  min-height: 56px;
+}
+.v2-count .line .nm {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.v2-count .line .nm b {
+  font-size: var(--v2-t-md);
+  font-weight: 550;
+  color: var(--v2-ink);
+  overflow-wrap: anywhere;
+}
+.v2-count .line .nm small {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  font-variant-numeric: tabular-nums;
+}
+.v2-count .line .nm small.bad {
+  color: var(--v2-crit-text);
+}
+.v2-count .line .v2-input {
+  width: 96px;
+  height: 44px;
+  flex: none;
+  font-size: 16px;
+}
+.v2-count .line .df {
+  flex: none;
+  font-size: var(--v2-t-md);
+  font-weight: 650;
+  color: var(--v2-ink);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 900px) {
+  .v2-count .pick,
+  .v2-count .line {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* En produkt i taget */
+.v2-count .one {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.v2-count .one h2 {
+  font-size: var(--v2-t-xl);
+  line-height: 28px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--v2-ink);
+  overflow-wrap: anywhere;
+}
+.v2-count .one .thinks {
+  display: flex;
+  min-height: 44px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: var(--v2-t-md);
+  color: var(--v2-mute);
+  font-variant-numeric: tabular-nums;
+}
+.v2-count .one label {
+  margin-top: 4px;
+  font-size: var(--v2-t-sm);
+  font-weight: 550;
+  color: var(--v2-ink);
+}
+.v2-count .one .v2-input.big {
+  height: 56px;
+  text-align: center;
+  font-size: 28px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.v2-count .one .err {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-crit-text);
+}
+
+/* Knapprader: full bredd på telefon, 44 px höga */
+.v2-count .acts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.v2-count .acts .v2-btn,
+.v2-count .two .v2-btn {
+  width: 100%;
+}
+.v2-count .two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.v2-count .note {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  font-variant-numeric: tabular-nums;
+  padding: 0 2px;
+}
+.v2-count .stale ul {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.v2-count .stale p {
+  margin-top: 4px;
+}

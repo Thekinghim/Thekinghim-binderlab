@@ -27,9 +27,9 @@ export async function FillPage({
   if (!["owner", "admin", "refiller"].includes(ctx.role)) {
     return (
       <div className="flex flex-col gap-4 px-4 pt-[calc(24px+env(safe-area-inset-top))]">
-        <p className="label text-subtle">{t.fill.title}</p>
-        <h1 className="text-2xl font-medium text-fg">{t.fill.onlyRefillers}</h1>
-        <Link href="/" className="text-md text-muted underline underline-offset-4">
+        <p className="text-v2-sm font-[550] text-v2-mute">{t.fill.title}</p>
+        <h1 className="text-v2-xl font-[650] text-v2-ink">{t.fill.onlyRefillers}</h1>
+        <Link href="/" className="text-v2-md text-v2-mute underline underline-offset-4">
           {t.fill.toApp}
         </Link>
       </div>

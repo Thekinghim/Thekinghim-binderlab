@@ -104,14 +104,14 @@ export function RecipeEditor({
 
   return (
     <form
-      className="flex flex-col gap-5"
+      className="mys-edit"
       onSubmit={(e) => {
         e.preventDefault();
         save();
       }}
     >
       <label className="flex items-center justify-between gap-3">
-        <span className="text-base text-fg">Pack per omgång</span>
+        <span className="text-v2-md font-[550] text-v2-ink">Pack per omgång</span>
         <input
           type="number"
           inputMode="numeric"
@@ -120,31 +120,28 @@ export function RecipeEditor({
           value={batchSize}
           onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => setBatchSize(Math.trunc(Number(e.target.value)) || 0)}
-          className="tnum h-11 w-24 rounded-sm border border-line-control bg-bg px-3 text-right text-lg text-fg"
+          className="v2-input num !w-24"
         />
       </label>
 
       {rows.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-line rounded-md border border-line-strong">
+        <ul className="mys-contents rowsed">
           {rows.map((r, i) => (
-            <li
-              key={r.titleId}
-              className="flex flex-col gap-2 px-3 py-3 md:flex-row md:items-center"
-            >
+            <li key={r.titleId}>
               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="truncate text-base text-fg">
+                <span className="truncate text-v2-md text-v2-ink">
                   {names.get(r.titleId) ?? "Okänd titel"}
                 </span>
-                <span className="meta tnum shrink-0 text-subtle">
+                <span className="tnum shrink-0 text-v2-xs text-v2-mute">
                   {formatMarginBp(shareBp(r.quantity, batchSize), 0)}
                 </span>
               </span>
-              <span className="flex items-center gap-2">
+              <span className="ctl">
                 <button
                   type="button"
                   aria-label={`En mindre ${names.get(r.titleId) ?? ""}`}
                   onClick={() => update(i, { quantity: Math.max(1, r.quantity - 1) })}
-                  className="flex size-11 items-center justify-center rounded-sm border border-line-strong text-fg active:bg-hover"
+                  className="v2-btn ico"
                 >
                   <Icon name="minus" size={16} />
                 </button>
@@ -156,13 +153,13 @@ export function RecipeEditor({
                   value={r.quantity}
                   onFocus={(e) => e.currentTarget.select()}
                   onChange={(e) => update(i, { quantity: Math.trunc(Number(e.target.value)) || 0 })}
-                  className="tnum h-11 w-14 [appearance:textfield] rounded-sm border border-line-control bg-bg text-center text-lg text-fg [&::-webkit-inner-spin-button]:appearance-none"
+                  className="v2-input"
                 />
                 <button
                   type="button"
                   aria-label={`En till ${names.get(r.titleId) ?? ""}`}
                   onClick={() => update(i, { quantity: r.quantity + 1 })}
-                  className="flex size-11 items-center justify-center rounded-sm border border-line-strong text-fg active:bg-hover"
+                  className="v2-btn ico"
                 >
                   <Icon name="plus" size={16} />
                 </button>
@@ -170,12 +167,7 @@ export function RecipeEditor({
                   type="button"
                   aria-pressed={r.hit}
                   onClick={() => update(i, { hit: !r.hit })}
-                  className={cn(
-                    "label h-11 rounded-sm border px-3",
-                    r.hit
-                      ? "border-signal-line bg-signal-soft text-signal-fg"
-                      : "border-dashed border-line-strong text-subtle",
-                  )}
+                  className="v2-btn lg hit"
                 >
                   HIT
                 </button>
@@ -183,7 +175,7 @@ export function RecipeEditor({
                   type="button"
                   aria-label={`Ta bort ${names.get(r.titleId) ?? ""}`}
                   onClick={() => setRows((list) => list.filter((_, j) => j !== i))}
-                  className="ml-auto flex size-11 items-center justify-center rounded-sm text-muted hover:bg-hover hover:text-fg"
+                  className="v2-btn quiet ico ml-auto"
                 >
                   <Icon name="close" size={16} />
                 </button>
@@ -195,7 +187,7 @@ export function RecipeEditor({
 
       {rows.length < MAX_ITEMS ? (
         <div className="flex flex-col gap-2">
-          <label htmlFor={`sok-${titleId}`} className="label text-subtle">
+          <label htmlFor={`sok-${titleId}`} className="text-v2-sm font-[550] text-v2-ink">
             Lägg till titel
           </label>
           <input
@@ -211,41 +203,37 @@ export function RecipeEditor({
                 add(hits[0].id);
               }
             }}
-            className="h-11 rounded-sm border border-line-control bg-bg px-3 text-base text-fg"
+            className="v2-input"
           />
           {hits.length > 0 ? (
-            <ul className="flex flex-col rounded-md border border-line-strong">
+            <ul className="hits">
               {hits.map((c) => (
                 <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => add(c.id)}
-                    className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-base text-fg hover:bg-hover"
-                  >
-                    <Icon name="plus" size={12} className="text-subtle" />
+                  <button type="button" onClick={() => add(c.id)}>
+                    <Icon name="plus" size={12} className="text-v2-faint" />
                     {c.name}
                   </button>
                 </li>
               ))}
             </ul>
           ) : query.trim() ? (
-            <p className="meta text-subtle">Ingen titel heter så.</p>
+            <p className="text-v2-sm text-v2-mute">Ingen titel heter så.</p>
           ) : null}
         </div>
       ) : null}
 
       <label className="flex flex-col gap-2">
-        <span className="label text-subtle">Notering (valfri)</span>
+        <span className="text-v2-sm font-[550] text-v2-ink">Notering (valfri)</span>
         <input
           type="text"
           maxLength={500}
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          className="h-11 rounded-sm border border-line-control bg-bg px-3 text-base text-fg"
+          className="v2-input"
         />
       </label>
 
-      <p className={cn("text-base", check.ok ? "text-up" : "text-fg")} aria-live="polite">
+      <p className={cn("sumline", check.ok && "ok")} aria-live="polite">
         <span className="tnum font-medium">
           {formatInt(check.sum)}
           {NBSP}av{NBSP}
@@ -257,25 +245,12 @@ export function RecipeEditor({
       {draftCalc ? <Calculator calc={draftCalc} draft /> : null}
 
       <div className="flex flex-wrap gap-2">
-        <button
-          type="submit"
-          disabled={!check.ok || pending}
-          className={cn(
-            "flex h-12 min-w-40 items-center justify-center gap-2 rounded-md border px-5 text-base font-medium",
-            !check.ok || pending
-              ? "border-dashed border-line-strong text-disabled"
-              : "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
-          )}
-        >
+        <button type="submit" disabled={!check.ok || pending} className="v2-btn act lg min-w-40">
           <Icon name="check" size={16} />
           {pending ? "Sparar…" : "Spara innehållet"}
         </button>
         {onDone && recipe ? (
-          <button
-            type="button"
-            onClick={onDone}
-            className="h-12 rounded-md border border-line-strong px-5 text-base text-fg hover:bg-hover"
-          >
+          <button type="button" onClick={onDone} className="v2-btn lg">
             Avbryt
           </button>
         ) : null}

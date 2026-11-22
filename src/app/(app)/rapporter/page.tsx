@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { ReportView } from "@/app/rapport/_components/report-view";
 import { monthLabel, monthName, sek } from "@/app/rapport/_components/shared";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatDate, formatInt } from "@/lib/format";
 import { MISSING_PRICES_MESSAGE, periodText } from "@/reports";
 import { loadMasterData, loadSyncInfo, requireRoute } from "@/server/data/core";
@@ -24,6 +26,8 @@ import { pickView, ViewTabs } from "./_components/view-tabs";
 import { when } from "./_components/when";
 import { ownerReportChoices } from "./_lib/owner-choices";
 import { bookkeepingOverlap } from "./_lib/overlap";
+
+import "./_components/reports.css";
 
 export const metadata: Metadata = { title: "Rapporter" };
 
@@ -45,7 +49,7 @@ function one(v: string | string[] | undefined): string | null {
  * läsaren (delägaren) ser förhandsvisning, arkiv och filer. Påfyllaren skickas vidare.
  */
 export default async function RapporterPage({ searchParams }: { searchParams: SearchParams }) {
-  await requireRoute("rapporter");
+  const ctx = await requireRoute("rapporter");
   const sp = await searchParams;
   const viewer = await currentReportViewer();
   const data = await loadReportsPage(viewer, {
@@ -151,35 +155,47 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
   };
   const activeRecipients = data.recipients.filter((r) => r.active).length;
 
+  const builderKey = `${data.type}-${data.month}-${data.range?.start ?? ""}-${data.range?.end ?? ""}-${data.storeId ?? ""}`;
+
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <div className="rise flex flex-col gap-6" style={{ "--i": 0 } as React.CSSProperties}>
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow="Rapporter"
-          title={title}
-          aside={aside}
-          meta={[
-            { label: data.range ? "Period" : "Månad", value: shown },
-            { label: "Utkast", value: formatInt(drafts + otherDrafts.length) },
-          ]}
-        />
-        <ViewTabs
-          label="Vy"
-          value={view}
-          hrefFor={hrefFor}
-          tabs={[
-            { value: "aktuell", label: "Aktuell" },
-            { value: "arkiv", label: "Arkiv", count: data.archive.length },
-            ...(shareMode
-              ? []
-              : [{ value: "mottagare" as const, label: "Mottagare", count: activeRecipients }]),
-          ]}
-        />
+    <V2Page
+      title="Rapporter"
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      sub={
+        <>
+          <b>{title}</b>
+          {aside ? <span>{aside}</span> : null}
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-reports">
+        <div className="rp-bar">
+          <ViewTabs
+            label="Vy"
+            value={view}
+            hrefFor={hrefFor}
+            tabs={[
+              { value: "aktuell", label: "Aktuell" },
+              { value: "arkiv", label: "Arkiv", count: data.archive.length },
+              ...(shareMode
+                ? []
+                : [{ value: "mottagare" as const, label: "Mottagare", count: activeRecipients }]),
+            ]}
+          />
+          <p className="rp-meta">
+            <span>
+              {data.range ? "Period" : "Månad"} <b>{shown}</b>
+            </span>
+            <span>
+              Utkast <b>{formatInt(drafts + otherDrafts.length)}</b>
+            </span>
+          </p>
+        </div>
+
         {shareMode && view === "aktuell" && preview && data.canEdit ? (
           <ShareFlow
-            key={`${data.type}-${data.month}-${data.range?.start ?? ""}-${data.range?.end ?? ""}-${data.storeId ?? ""}`}
+            key={builderKey}
             target={{
               type: data.type,
               month: data.month,
@@ -199,181 +215,174 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
             portal={data.storeHasPortal}
           />
         ) : null}
-      </div>
 
-      {view === "aktuell" ? (
-        <>
-          <section
-            aria-labelledby="ny-rapport"
-            className="rise flex flex-col gap-6"
-            style={{ "--i": 1 } as React.CSSProperties}
-          >
-            <SectionHeader
-              id="ny-rapport"
-              size="md"
-              title={`${TYPE_LABEL[data.type]}, ${scope}.`}
-              aside={[
-                preview?.type === "butik"
-                  ? `Ersättning ${sek(preview.report.compensation.totalOre)}.`
-                  : null,
-                data.current
-                  ? `Senast ${when(data.current.generatedAt, viewer.organization.timezone)}.`
-                  : "Inget utkast ännu.",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            />
-            {staleDay ? (
-              <p role="status" className="meta text-signal-fg">
-                Data från Awish senast {formatDate(dayDate(staleDay), { year: "auto" })}. Senare
-                order saknas.
-                {data.canEdit ? (
-                  <Link
-                    href="/datakallor"
-                    className="ml-2 text-fg underline-offset-4 hover:underline"
-                  >
-                    Datakällor →
-                  </Link>
+        {view === "aktuell" ? (
+          <>
+            <section aria-labelledby="ny-rapport" className="v2-card">
+              <div className="v2-card-hd">
+                <h2 id="ny-rapport">{`${TYPE_LABEL[data.type]}, ${scope}.`}</h2>
+                <span className="rp-hd-note">
+                  {[
+                    preview?.type === "butik"
+                      ? `Ersättning ${sek(preview.report.compensation.totalOre)}.`
+                      : null,
+                    data.current
+                      ? `Senast ${when(data.current.generatedAt, viewer.organization.timezone)}.`
+                      : "Inget utkast ännu.",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                </span>
+              </div>
+              <div className="v2-card-body flex flex-col gap-4">
+                {staleDay ? (
+                  <div role="status">
+                    <Notice
+                      tone="warning"
+                      title={`Data från Awish senast ${formatDate(dayDate(staleDay), { year: "auto" })}.`}
+                      action={
+                        data.canEdit ? (
+                          <ButtonLink href="/datakallor" size="sm" touch>
+                            Datakällor
+                          </ButtonLink>
+                        ) : null
+                      }
+                    >
+                      Senare order saknas.
+                    </Notice>
+                  </div>
                 ) : null}
-              </p>
-            ) : null}
-            <ReportBuilder
-              key={`${data.type}-${data.month}-${data.range?.start ?? ""}-${data.range?.end ?? ""}-${data.storeId ?? ""}`}
-              type={data.type}
-              month={data.month}
-              range={data.range}
-              rangeProblem={data.rangeError}
-              today={data.today}
-              months={data.months.map((m) => ({ value: m, label: monthLabel(m) }))}
-              stores={data.stores}
-              storeId={data.storeId}
-              owners={ownerReportChoices(master.owners ?? [], master.stores, data.stores)}
-              canEdit={data.canEdit}
-              canCreate={preview !== null}
-              currentId={data.current?.id ?? null}
-              overlap={bookkeepingOverlap({
-                type: data.type,
-                range: data.range,
-                month: data.month,
-                today: data.today,
-                archive: data.archive,
-              })}
-            />
-          </section>
-
-          {data.current ? (
-            <section
-              aria-labelledby="granska"
-              className="rise flex flex-col gap-6"
-              style={{ "--i": 2 } as React.CSSProperties}
-            >
-              <SectionHeader
-                id="granska"
-                size="md"
-                title={
-                  data.current.status === "sent"
-                    ? "Rapporten är skickad."
-                    : data.current.legacy
-                      ? "Rapporten har den gamla mallen."
-                      : data.current.status === "approved"
-                        ? shareMode
-                          ? "Godkänd, redo att dela."
-                          : "Godkänd, redo att skicka."
-                        : data.currentStale
-                          ? "Utkastet är gammalt."
-                          : "Utkastet väntar på granskning."
-                }
-                aside={shareMode ? undefined : `${formatInt(data.eligible.length)} mottagare.`}
-              />
-              <ServiceLines status={services} hideMail={shareMode} />
-              <ReviewPanel
-                key={data.current.id}
-                report={data.current}
-                stale={data.currentStale}
-                recipients={data.eligible}
-                canEdit={data.canEdit}
-                mailConfigured={services.mail.kind === "resend" && services.mail.configured}
-                shareMode={shareMode}
-                timeZone={viewer.organization.timezone}
-              />
+                <ReportBuilder
+                  key={builderKey}
+                  type={data.type}
+                  month={data.month}
+                  range={data.range}
+                  rangeProblem={data.rangeError}
+                  today={data.today}
+                  months={data.months.map((m) => ({ value: m, label: monthLabel(m) }))}
+                  stores={data.stores}
+                  storeId={data.storeId}
+                  owners={ownerReportChoices(master.owners ?? [], master.stores, data.stores)}
+                  canEdit={data.canEdit}
+                  canCreate={preview !== null}
+                  currentId={data.current?.id ?? null}
+                  overlap={bookkeepingOverlap({
+                    type: data.type,
+                    range: data.range,
+                    month: data.month,
+                    today: data.today,
+                    archive: data.archive,
+                  })}
+                />
+              </div>
             </section>
-          ) : null}
 
-          <section
-            aria-labelledby="forhandsvisning"
-            className="rise flex flex-col gap-6"
-            style={{ "--i": 3 } as React.CSSProperties}
-          >
-            <SectionHeader
-              id="forhandsvisning"
-              size="md"
-              title={preview ? `Förhandsvisning, ${shown}.` : "Ingen förhandsvisning."}
-            />
-            {preview ? (
-              <div className="min-w-0 overflow-hidden rounded-md border border-line">
-                <div className="bl-desk p-4 md:p-6">
+            {data.current ? (
+              <section aria-labelledby="granska" className="v2-card">
+                <div className="v2-card-hd">
+                  <h2 id="granska">
+                    {data.current.status === "sent"
+                      ? "Rapporten är skickad."
+                      : data.current.legacy
+                        ? "Rapporten har den gamla mallen."
+                        : data.current.status === "approved"
+                          ? shareMode
+                            ? "Godkänd, redo att dela."
+                            : "Godkänd, redo att skicka."
+                          : data.currentStale
+                            ? "Utkastet är gammalt."
+                            : "Utkastet väntar på granskning."}
+                  </h2>
+                  {shareMode ? null : (
+                    <span className="rp-hd-note">{`${formatInt(data.eligible.length)} mottagare.`}</span>
+                  )}
+                </div>
+                <div className="v2-card-body flex flex-col gap-4">
+                  <ServiceLines status={services} hideMail={shareMode} />
+                  <ReviewPanel
+                    key={data.current.id}
+                    report={data.current}
+                    stale={data.currentStale}
+                    recipients={data.eligible}
+                    canEdit={data.canEdit}
+                    mailConfigured={services.mail.kind === "resend" && services.mail.configured}
+                    shareMode={shareMode}
+                    timeZone={viewer.organization.timezone}
+                  />
+                </div>
+              </section>
+            ) : null}
+
+            <section aria-labelledby="forhandsvisning" className="v2-card">
+              <div className="v2-card-hd">
+                <h2 id="forhandsvisning">
+                  {preview ? `Förhandsvisning, ${shown}.` : "Ingen förhandsvisning."}
+                </h2>
+              </div>
+              {preview ? (
+                <div className="rp-preview">
                   <ReportView snapshot={preview} layout="spread" level="embedded" />
                 </div>
-              </div>
-            ) : (
-              <StateMessage
-                kind="empty"
-                compact
-                message={data.previewError ?? "Inget underlag för valet."}
-                action={
-                  data.previewError?.startsWith(MISSING_PRICES_MESSAGE)
-                    ? { label: "Lägg in inköpspriser", href: "/inkopspriser?saknar=pris" }
-                    : { label: "Välj en annan månad", href: "#ny-rapport" }
-                }
-              />
-            )}
+              ) : (
+                <Empty
+                  title={data.previewError ?? "Inget underlag för valet."}
+                  action={
+                    data.previewError?.startsWith(MISSING_PRICES_MESSAGE) ? (
+                      <ButtonLink href="/inkopspriser?saknar=pris" variant="act" touch>
+                        Lägg in inköpspriser
+                      </ButtonLink>
+                    ) : (
+                      <ButtonLink href="#ny-rapport" touch>
+                        Välj en annan månad
+                      </ButtonLink>
+                    )
+                  }
+                />
+              )}
+            </section>
+          </>
+        ) : null}
+
+        {view === "arkiv" ? (
+          <section aria-labelledby="arkiv" className="v2-card">
+            <div className="v2-card-hd">
+              <h2 id="arkiv">
+                {`${formatInt(data.archive.length)} ${data.archive.length === 1 ? "rapport" : "rapporter"}.`}
+              </h2>
+              {data.archive.length === 0 ? null : (
+                <span className="rp-hd-note">
+                  {`${formatInt(sentAll)} ${sentAll === 1 ? "skickad" : "skickade"}, ${formatInt(draftAll)} utkast.`}
+                </span>
+              )}
+            </div>
+            <div className="rp-table">
+              <ArchiveTable rows={data.archive} timeZone={viewer.organization.timezone} />
+            </div>
           </section>
-        </>
-      ) : null}
+        ) : null}
 
-      {view === "arkiv" ? (
-        <section
-          aria-labelledby="arkiv"
-          className="rise flex flex-col gap-6"
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          <SectionHeader
-            id="arkiv"
-            size="md"
-            title={`${formatInt(data.archive.length)} ${data.archive.length === 1 ? "rapport" : "rapporter"}.`}
-            aside={
-              data.archive.length === 0
-                ? undefined
-                : `${formatInt(sentAll)} ${sentAll === 1 ? "skickad" : "skickade"}, ${formatInt(draftAll)} utkast.`
-            }
-          />
-          <ArchiveTable rows={data.archive} timeZone={viewer.organization.timezone} />
-        </section>
-      ) : null}
-
-      {view === "mottagare" ? (
-        <section
-          aria-labelledby="mottagare"
-          className="rise flex flex-col gap-6"
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          <SectionHeader
-            id="mottagare"
-            size="md"
-            title={`${formatInt(activeRecipients)} aktiva mottagare.`}
-            aside={data.ownersConfigured ? undefined : "Ägarandelar saknas för delägarrapporten."}
-          />
-          <RecipientsPanel
-            recipients={data.recipients}
-            stores={data.allStores}
-            canEdit={data.canEdit}
-            expected={data.expected.map((e) => ({
-              id: e.recipient.id,
-              delivered: e.delivered,
-            }))}
-          />
-        </section>
-      ) : null}
-    </div>
+        {view === "mottagare" ? (
+          <section aria-labelledby="mottagare" className="v2-card">
+            <div className="v2-card-hd">
+              <h2 id="mottagare">{`${formatInt(activeRecipients)} aktiva mottagare.`}</h2>
+              {data.ownersConfigured ? null : (
+                <span className="rp-hd-note">Ägarandelar saknas för delägarrapporten.</span>
+              )}
+            </div>
+            <div className="v2-card-body">
+              <RecipientsPanel
+                recipients={data.recipients}
+                stores={data.allStores}
+                canEdit={data.canEdit}
+                expected={data.expected.map((e) => ({
+                  id: e.recipient.id,
+                  delivered: e.delivered,
+                }))}
+              />
+            </div>
+          </section>
+        ) : null}
+      </div>
+    </V2Page>
   );
 }

@@ -15,38 +15,27 @@ export function ContentsCard({ recipe, className }: { recipe: Recipe; className?
   const f = useFormat();
   const odds = recipeOdds(recipe);
   return (
-    <div className={cn("flex flex-col rounded-md border border-line-strong bg-surface", className)}>
-      <ul className="flex flex-col divide-y divide-line">
+    <div className={cn("mys-contents", className)}>
+      <ul>
         {odds.items.map((i) => (
-          <li
-            key={i.titleId}
-            className="grid grid-cols-[minmax(0,1fr)_auto_3.5rem] items-center gap-3 px-4 py-2.5"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-base text-fg">{i.name}</span>
-              {i.hit ? (
-                <span className="label shrink-0 rounded-xs border border-signal-line px-1.5 py-0.5 text-signal-fg">
-                  {t.mystery.hit}
-                </span>
-              ) : null}
+          <li key={i.titleId}>
+            <span className="nm">
+              <span>{i.name}</span>
+              {i.hit ? <span className="v2-badge warning">{t.mystery.hit}</span> : null}
             </span>
-            <span className="tnum text-base whitespace-nowrap text-muted">
-              {t.mystery.of(i.quantity, recipe.batchSize)}
-            </span>
-            <span className="tnum text-right text-base text-fg">{f.marginBp(i.bp, 0)}</span>
+            <span className="of">{t.mystery.of(i.quantity, recipe.batchSize)}</span>
+            <span className="pc">{f.marginBp(i.bp, 0)}</span>
           </li>
         ))}
       </ul>
-      <p className="flex items-baseline justify-between gap-3 border-t border-line-strong px-4 py-3">
-        <span className="text-base text-fg">
-          {odds.hits > 0 ? t.mystery.hitChance : t.mystery.noHit}
-        </span>
+      <p className="sum">
+        <span>{odds.hits > 0 ? t.mystery.hitChance : t.mystery.noHit}</span>
         {odds.hits > 0 ? (
-          <span className="tnum text-lg font-medium text-fg">
-            {f.marginBp(odds.hitBp, 0)}
-            <span className="text-base font-normal text-muted">
+          <span>
+            <b>{f.marginBp(odds.hitBp, 0)}</b>
+            <small>
               {NBSP}({t.mystery.of(odds.hits, recipe.batchSize)})
-            </span>
+            </small>
           </span>
         ) : null}
       </p>

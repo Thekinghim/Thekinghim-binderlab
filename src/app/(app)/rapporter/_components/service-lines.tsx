@@ -1,4 +1,4 @@
-import { StateMessage } from "@/components/ui/state-message";
+import { Notice } from "@/components/v2/notice";
 import type { MailerStatus } from "@/server/mail/report-mailer";
 import type { PdfStatus } from "@/server/pdf/render";
 
@@ -55,16 +55,16 @@ export function ServiceLines({
   }
   if (lines.length === 0) return null;
   return (
-    <div className="flex flex-col divide-y divide-line rounded-md border border-dashed border-line-strong">
+    <div className="flex flex-col gap-2">
       {lines.map((l) => (
-        <StateMessage
-          key={l.key}
-          kind="not-configured"
-          compact
-          message={l.message}
-          detail={l.detail}
-          diagnostics={l.settings ? [{ label: "Inställningar", value: l.settings }] : undefined}
-        />
+        <Notice key={l.key} tone="info" title={l.message}>
+          {l.detail}
+          {l.settings ? (
+            <span className="mt-0.5 block text-v2-xs break-all opacity-80">
+              Inställningar: {l.settings}
+            </span>
+          ) : null}
+        </Notice>
       ))}
     </div>
   );

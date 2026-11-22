@@ -1,18 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { CSSProperties } from "react";
+import type { ReactNode } from "react";
 
 import { Icon } from "@/components/ui/icon";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatters, messages, type Messages } from "@/i18n";
 import { getT } from "@/i18n/server";
 import { requireRoute } from "@/server/data/core";
 
 import { currentViewer } from "../../lager/_lib/session";
-import { PageHead } from "../_components/page-head";
 import { ContentsCard } from "./_components/contents-card";
 import { CostNotice } from "./_components/cost-notice";
+import { SimpleFrame } from "./_components/simple-frame";
 import { StockLine } from "./_components/stock-line";
+import "./_components/mystery.css";
 import { krAuto } from "./_lib/kr";
 import { loadMysteryOverviewFor, type MysteryOverview, type MysteryTitle } from "./_lib/data";
 import {
@@ -69,29 +74,58 @@ export default async function MysteryPacksPage() {
         ? t.mystery.missingRecipe(missingRecipe)
         : t.mystery.pressPack;
 
-  return (
-    <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <PageHead eyebrow={t.mystery.title} title={t.mystery.headline(totalHome)} aside={aside} />
+  const body = (
+    <div className="v2-mystery">
       {view.titles.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message={t.mystery.empty}
-          detail={simple ? t.mystery.emptySimple : t.mystery.emptyDetail}
-          // Enkel vy: "Ägaren lägger in mystery packs", så ingen knapp dit.
-          {...(view.canEdit && !simple
-            ? { action: { label: t.mystery.openPrices, href: "/inkopspriser" } }
-            : {})}
-        />
+        <Empty
+          title={t.mystery.empty}
+          className="v2-card"
+          action={
+            // Enkel vy: "Ägaren lägger in mystery packs", så ingen knapp dit.
+            view.canEdit && !simple ? (
+              <ButtonLink href="/inkopspriser" variant="act" touch>
+                {t.mystery.openPrices}
+              </ButtonLink>
+            ) : null
+          }
+        >
+          <p>{simple ? t.mystery.emptySimple : t.mystery.emptyDetail}</p>
+        </Empty>
       ) : (
-        <ul className="flex flex-col gap-6">
-          {view.titles.map((title, i) => (
-            <li key={title.id} className="rise" style={{ "--i": i + 1 } as CSSProperties}>
+        <ul className="mys-list">
+          {view.titles.map((title) => (
+            <li key={title.id} className="min-w-0">
               <TitleCard view={view} title={title} t={t} canSetCost={canSetCost} />
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+  const headline = t.mystery.headline(totalHome);
+
+  // Enkel vy: skalets eget huvud på personens språk (V2Page är svensk), samma innehåll.
+  if (simple) {
+    return (
+      <SimpleFrame headline={headline} aside={aside}>
+        {body}
+      </SimpleFrame>
+    );
+  }
+  return (
+    <V2Page
+      title={t.mystery.title}
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      sub={
+        <>
+          <span>{headline}</span>
+          {aside ? <span>{aside}</span> : null}
+        </>
+      }
+    >
+      <SubNav />
+      {body}
+    </V2Page>
   );
 }
 
@@ -126,21 +160,29 @@ function TitleCard({
     cost?.perPackOre !== undefined &&
     cost.perPackOre !== t.currentCostOre;
 
+  const action: ReactNode =
+    t.recipe && view.canPack ? (
+      <ButtonLink href={packHref(t.id, t.toPack?.packs)} variant="act" touch>
+        <Icon name="plus" size={14} />
+        {m.mystery.pack}
+      </ButtonLink>
+    ) : !t.recipe && view.canEdit ? (
+      <ButtonLink href={`/vart-lager/mystery/${t.id}#innehall`} variant="act" touch>
+        Lägg in innehållet
+      </ButtonLink>
+    ) : null;
+
   return (
-    <section
-      aria-labelledby={`mp-${t.id}`}
-      className="flex flex-col gap-4 rounded-md border border-line p-4 md:p-6"
+    <Card
+      title={
+        <Link href={`/vart-lager/mystery/${t.id}`} id={`mp-${t.id}`}>
+          {t.name}
+        </Link>
+      }
+      actions={action ?? undefined}
     >
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 flex-col gap-1">
-          <h2 id={`mp-${t.id}`} className="text-2xl font-medium text-fg">
-            <Link
-              href={`/vart-lager/mystery/${t.id}`}
-              className="inline-flex min-h-11 items-center hover:underline"
-            >
-              {t.name}
-            </Link>
-          </h2>
+      <CardBody className="mys-body">
+        <div className="mys-lines">
           <StockLine
             titleId={t.id}
             places={view.places}
@@ -152,63 +194,39 @@ function TitleCard({
             merged={merged}
             t={m}
           />
-          {cap ? <p className="text-base text-fg">{cap}</p> : null}
+          {cap ? <p>{cap}</p> : null}
           {sentence ? (
-            <p
-              className={
-                sentence.tone === "act"
-                  ? "text-base font-medium text-signal-fg"
-                  : "text-base text-muted"
-              }
-            >
-              {sentence.text}
+            <p className={sentence.tone === "act" ? "act" : "mute"}>{sentence.text}</p>
+          ) : null}
+        </div>
+
+        {t.recipe ? (
+          <ContentsCard recipe={t.recipe} />
+        ) : (
+          <p className="mys-mute">{m.mystery.noContents}</p>
+        )}
+
+        {cost ? (
+          <>
+            <p className="mys-mute tnum">
+              {cost.perPackOre !== null
+                ? m.mystery.contentsCost(kr(cost.perPackOre))
+                : m.mystery.missingPrice(cost.missing.join(", "))}
+              {m.mystery.currentCost(t.currentCostOre !== null ? kr(t.currentCostOre) : null)}
             </p>
-          ) : null}
-        </div>
-        {t.recipe && view.canPack ? (
-          <Link
-            href={packHref(t.id, t.toPack?.packs)}
-            className="flex h-14 shrink-0 items-center justify-center gap-2 rounded-md border border-inverse bg-inverse px-6 text-lg font-medium text-on-inverse active:bg-inverse-hover md:h-12"
-          >
-            <Icon name="plus" size={18} />
-            {m.mystery.pack}
-          </Link>
-        ) : !t.recipe && view.canEdit ? (
-          <Link
-            href={`/vart-lager/mystery/${t.id}#innehall`}
-            className="flex h-14 shrink-0 items-center justify-center gap-2 rounded-md border border-inverse bg-inverse px-6 text-lg font-medium text-on-inverse md:h-12"
-          >
-            Lägg in innehållet
-          </Link>
+            {differs && cost.perPackOre !== null ? (
+              <CostNotice
+                titleId={t.id}
+                name={t.name}
+                currentOre={t.currentCostOre}
+                calculatedOre={cost.perPackOre}
+                canUpdate={canSetCost}
+                href={`/vart-lager/mystery/${t.id}#kalkyl`}
+              />
+            ) : null}
+          </>
         ) : null}
-      </div>
-
-      {t.recipe ? (
-        <ContentsCard recipe={t.recipe} />
-      ) : (
-        <p className="text-base text-muted">{m.mystery.noContents}</p>
-      )}
-
-      {cost ? (
-        <div className="flex flex-col gap-3">
-          <p className="tnum text-base text-muted">
-            {cost.perPackOre !== null
-              ? m.mystery.contentsCost(kr(cost.perPackOre))
-              : m.mystery.missingPrice(cost.missing.join(", "))}
-            {m.mystery.currentCost(t.currentCostOre !== null ? kr(t.currentCostOre) : null)}
-          </p>
-          {differs && cost.perPackOre !== null ? (
-            <CostNotice
-              titleId={t.id}
-              name={t.name}
-              currentOre={t.currentCostOre}
-              calculatedOre={cost.perPackOre}
-              canUpdate={canSetCost}
-              href={`/vart-lager/mystery/${t.id}#kalkyl`}
-            />
-          ) : null}
-        </div>
-      ) : null}
-    </section>
+      </CardBody>
+    </Card>
   );
 }

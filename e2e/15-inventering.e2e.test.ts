@@ -283,7 +283,7 @@ describe("Inventering (iPhone SE)", () => {
     await page.getByRole("heading", { name: "Räkna hemma." }).waitFor();
     await page.getByText(`0 av ${target.titles} räknade`).waitFor();
     await page.getByText(`Produkt 1 av ${target.titles}`).waitFor();
-    const firstName = (await page.locator("main h2").first().innerText()).trim();
+    const firstName = (await page.locator("main form h2").first().innerText()).trim();
     const [first] = await sql<Title[]>`
       select id, name from public.titles
       where organization_id = ${target.orgId}::uuid and name = ${firstName}`;
@@ -484,7 +484,7 @@ describe("Inventering (iPhone SE)", () => {
     await page.getByRole("button", { name: /^Kontoret/ }).click();
     await page.getByRole("heading", { name: "Count at Kontoret." }).waitFor();
     await page.getByText(`Product 1 of ${target.titles}`).waitFor();
-    const firstName = (await page.locator("main h2").first().innerText()).trim();
+    const firstName = (await page.locator("main form h2").first().innerText()).trim();
     const [first] = await sql<Title[]>`
       select id, name from public.titles
       where organization_id = ${target.orgId}::uuid and name = ${firstName}`;

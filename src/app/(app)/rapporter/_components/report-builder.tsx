@@ -189,7 +189,7 @@ export function ReportBuilder({
               />
             </div>
             {draftError || rangeProblem ? (
-              <p role="alert" className="text-sm text-signal-fg">
+              <p role="alert" className="text-sm text-v2-crit-text">
                 {draftError ?? rangeProblem}
               </p>
             ) : null}
@@ -230,8 +230,8 @@ export function ReportBuilder({
           </button>
         ) : null}
         {overlap ? (
-          <p role="status" className="flex items-center gap-2 text-sm text-signal-fg">
-            <span aria-hidden className="size-2 shrink-0 bg-signal" />
+          <p role="status" className="flex items-center gap-2 text-sm text-v2-crit-text">
+            <span aria-hidden className="size-2 shrink-0 rounded-full bg-v2-crit-icon" />
             {overlap}
           </p>
         ) : null}
