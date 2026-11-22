@@ -27,6 +27,8 @@ import {
   launchBrowser,
   openPage,
   screenshot,
+  until,
+  type Locator,
   type Browser,
   type BrowserContext,
   type Page,
@@ -141,11 +143,17 @@ afterAll(async () => {
   await sql?.end();
 });
 
+/** Väntar tills elementet finns exakt en gång (strömmad sida: den nya delen kan ligga dold en stund). */
+async function single(locator: Locator): Promise<void> {
+  await locator.first().waitFor();
+  await until(async () => (await locator.count()) === 1, "elementet finns en gång");
+}
+
 describe("Butiksägare (dator)", () => {
   it("Ny butiksägare: kontrollsiffran prövas, uppgifterna sparas normaliserade", async () => {
     const page = await signedIn("desktop");
     await page.goto("/butiker?vy=agare");
-    await page.getByText("Inga butiksägare än.").waitFor();
+    await single(page.getByText("Inga butiksägare än."));
     await page.getByRole("button", { name: "Ny butiksägare", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("Bolagets namn").fill(OWNER_NAME);
@@ -214,7 +222,8 @@ describe("Butiksägare (dator)", () => {
     ]);
 
     await page.goto("/butiker?vy=agare");
-    await page.getByText("2 butiksägare.").waitFor();
+    // Medan sidan strömmas in kan listan en kort stund finnas två gånger: vänta på en.
+    await single(page.getByText("2 butiksägare."));
     const card = page.locator(`[data-owner="${OWNER_NAME}"]`);
     expect(text(await card.innerText())).toContain("559900-1236 · 2 butiker");
     await screenshot(page, "agare-01-butiksagare-1280");
@@ -266,7 +275,7 @@ describe("Butiksägare (375 px)", () => {
   it("listan, butikens ägare och Hem med ägarfiltret får plats", async () => {
     const page = await signedIn("mobile");
     await page.goto("/butiker?vy=agare");
-    await page.locator(`[data-owner="${OWNER_NAME}"]`).waitFor();
+    await single(page.locator(`[data-owner="${OWNER_NAME}"]`));
     await expectNoSideScroll(page);
     await screenshot(page, "agare-01-butiksagare-375");
 

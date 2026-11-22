@@ -258,8 +258,13 @@ describe("Inventering (iPhone SE)", () => {
           document.documentElement.scrollWidth <= Math.min(window.innerWidth, window.screen.width),
       ),
     ).toBe(true);
-    const box = await entry.boundingBox();
-    expect(box && box.height >= 44 && box.width >= 44).toBe(true);
+    // Knappen glider upp när sidan visas (rise): mät när den står still.
+    await expect
+      .poll(async () => {
+        const box = await entry.boundingBox();
+        return box !== null && box.height >= 44 && box.width >= 44;
+      })
+      .toBe(true);
     await screenshot(page, "15-inventering-0-vart-lager");
     await entry.click();
     await page.waitForURL((url) => url.pathname === "/vart-lager/inventering");
