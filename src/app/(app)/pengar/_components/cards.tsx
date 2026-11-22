@@ -53,11 +53,13 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
   // staplarna (de står i staplarnas text) och var n:e etikett.
   const dense = r.bars.length > 10;
   const step = r.labelStep;
-  // 6–10 staplar: beloppen över staplarna i tusental ("117 tkr"), så att de inte krockar.
+  // Fler än 5 staplar: beloppen kort, som axeln ("117k", "4 572"), så att de inte krockar.
   const amt = (ore: number) =>
-    r.bars.length > 5 && Math.abs(ore) >= 1_000_000
-      ? `${formatInt(Math.round(ore / 100_000))}${NBSP}tkr`
-      : kr(ore);
+    r.bars.length <= 5
+      ? kr(ore)
+      : Math.abs(ore) >= 1_000_000
+        ? `${formatInt(Math.round(ore / 100_000))}k`
+        : formatInt(Math.round(ore / 100));
   return (
     <Card
       title={`Resultat · ${r.periodLabel}`}
@@ -182,7 +184,7 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
                 <div className={cn("g4-wls", dense && "dense")} aria-hidden="true">
                   {r.bars.map((b, i) => (
                     <span key={b.key}>
-                      {i % step === 0 ? b.label : ""}
+                      {i % step === 0 ? <AxisLabel label={b.label} /> : ""}
                       {b.partialText ? <small>{b.partialText}</small> : null}
                       {b.paceOre !== null ? (
                         <small className="tk">takt {kr(b.paceOre).replace(/\s?kr$/, "")}</small>
@@ -549,5 +551,17 @@ export function EmptyMoney() {
         När automaterna har sålt visas resultat, vinst per automat och det som ska betalas här.
       </Empty>
     </Card>
+  );
+}
+
+/** Stapelns etikett; ett år ("jan ’26") står på en egen rad under månaden. */
+function AxisLabel({ label }: { label: string }) {
+  const at = label.indexOf(" ’");
+  if (at < 0) return <>{label}</>;
+  return (
+    <>
+      {label.slice(0, at)}
+      <small>{label.slice(at + 1)}</small>
+    </>
   );
 }
