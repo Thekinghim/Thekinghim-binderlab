@@ -26,7 +26,11 @@ describe("packKey", () => {
     ["Paldea Evolved", "paldea-evolved"],
     ["Paradox Rift", "paradox-rift"],
     ["Temporal Forces", "temporal-forces"],
-    ["Twilight Masquerade", null],
+    ["Twilight Masquerade", "twilight-masquerade"],
+    ["Chaos Rising", "chaos-rising"],
+    ["Cosmic Eclipse", "cosmic-eclipse"],
+    ["Lorcana: Into the Inklands", "lorcana-into-the-inklands"],
+    ["One Piece: Romance Dawn", "op01-romance-dawn"],
   ] as const)("%s → %s", (title, key) => {
     expect(packKey(title)).toBe(key);
   });

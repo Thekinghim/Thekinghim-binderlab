@@ -12,17 +12,21 @@ export const PACK_IMAGES = {
   "30th-celebration": [131, 240],
   "ascended-heroes": [131, 240],
   "black-bolt": [131, 240],
+  "chaos-rising": [132, 240],
+  "cosmic-eclipse": [131, 240],
   "delta-reign": [132, 240],
   "destined-rivals": [131, 240],
   "fusion-strike": [131, 240],
   "journey-together": [132, 240],
+  "lorcana-into-the-inklands": [139, 240],
   "mega-dream-ex-jp": [130, 240],
   "mega-evolution": [131, 240],
   "mega-inferno-jp": [119, 240],
   "mega-storm-emeralda-jp": [119, 240],
-  "mystery-pack-premium": [129, 240],
   "mystery-pack": [129, 240],
+  "mystery-pack-premium": [129, 240],
   "obsidian-flames": [131, 240],
+  "op01-romance-dawn": [147, 240],
   "op13-en": [145, 240],
   "op13-jp": [119, 240],
   "paldea-evolved": [131, 240],
@@ -33,6 +37,7 @@ export const PACK_IMAGES = {
   "scarlet-violet-151": [177, 240],
   "surging-sparks": [131, 240],
   "temporal-forces": [133, 240],
+  "twilight-masquerade": [132, 240],
   "white-flare": [131, 240],
 } as const satisfies Record<string, readonly [number, number]>;
 
@@ -62,6 +67,11 @@ const RULES: ReadonlyArray<readonly [string, PackKey]> = [
   ["paldea evolved", "paldea-evolved"],
   ["paradox", "paradox-rift"],
   ["temporal", "temporal-forces"],
+  ["twilight", "twilight-masquerade"],
+  ["chaos rising", "chaos-rising"],
+  ["cosmic eclipse", "cosmic-eclipse"],
+  ["inklands", "lorcana-into-the-inklands"],
+  ["romance dawn", "op01-romance-dawn"],
 ];
 
 /** Titelns bildnyckel, eller null när det inte finns någon bild. */
