@@ -48,6 +48,8 @@ const PARTNER = "delagare-enkel@binderlab.local";
 const PARTNER_PASSWORD = "enkel-vy-e2e-losenord";
 
 const MYSTERY = "R2 Mystery Pack";
+/** Raden för testets mystery pack i Fyll på (andra testfiler kan ha egna mystery packs i samma automat). */
+const ownRow = (page: Page) => page.locator(":is(li, .row)", { hasText: MYSTERY });
 const PART_A = "R2 Del A";
 const PART_B = "R2 Del B";
 const PLAIN = "R2 Vanlig titel";
@@ -386,8 +388,10 @@ describe("Fyll på: 'Packade du en omgång?'", () => {
   it("delägaren (engelska) får frågan, och Cancel sparar ingenting", async () => {
     const page = await partnerPage();
     await openMachine(page);
-    await page.getByText(/^None ready .*Did you pack\?$/).waitFor();
-    await page.getByRole("button", { name: "Refill one batch (14)" }).click();
+    await ownRow(page)
+      .getByText(/^None ready .*Did you pack\?$/)
+      .waitFor();
+    await ownRow(page).getByRole("button", { name: "Refill one batch (14)" }).click();
     await page.getByRole("button", { name: /^Done/ }).click();
     const ask = page.getByRole("group", { name: "Did you pack a batch?" });
     await ask.waitFor();
@@ -406,9 +410,11 @@ describe("Fyll på: 'Packade du en omgång?'", () => {
   it("ägaren svarar Ja: lagret står på 0 (inte −14) och delarna är dragna", async () => {
     const page = await ownerPage();
     await openMachine(page);
-    await page.getByText(`Inga färdiga ${inCentral}. Har du packat?`).waitFor();
+    await ownRow(page).getByText(`Inga färdiga ${inCentral}. Har du packat?`).waitFor();
     await shot(page, "r2-t1-fyll-pa-tomt-mystery-fack");
-    await page.getByRole("button", { name: /^Fyll på en omgång \(14\sst\)$/ }).click();
+    await ownRow(page)
+      .getByRole("button", { name: /^Fyll på en omgång \(14\sst\)$/ })
+      .click();
     await page.getByRole("button", { name: /^Klar/ }).click();
     // V2: Klar frågar först (Ja, jag har fyllt på), sedan kommer frågan i ett ark.
     const confirm = page.getByRole("button", { name: "Ja, jag har fyllt på" });
