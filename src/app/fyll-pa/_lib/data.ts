@@ -8,12 +8,14 @@ import "server-only";
 
 import { and, count, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 
+import { connectivityView } from "@/analytics/health";
 import { isMine } from "@/analytics/team";
 import { retiredPairs } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { addDays } from "@/domain";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
+import { loadConnectivity, loadMachinePower } from "@/server/alerts/inputs";
 import { querySlotPeriods } from "@/server/data/assortment";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { queryRefillSources, type RefillSources } from "@/server/data/core/places";
@@ -139,6 +141,16 @@ function cleanFill(raw: unknown): AwishFillEntry[] | null {
   return out;
 }
 
+/** Awish kanal → titel ({"A3": title_id}), bara strängar. */
+function cleanChannels(raw: unknown): Record<string, string> | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string" && v) out[k] = v;
+  }
+  return out;
+}
+
 export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): Promise<FillData> {
   await requireRoleFor(viewer.user, viewer.organization.id, FIELD_REFILL_ROLES);
   const orgId = viewer.organization.id;
@@ -197,6 +209,7 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
           machineId: s.stockLocations.machineId,
           syncedAt: s.stockLocations.awishSyncedAt,
           fill: s.stockLocations.awishFill,
+          channels: s.stockLocations.awishChannels,
         })
         .from(s.stockLocations)
         .where(
@@ -291,6 +304,7 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
           storeName: storeOf.get(m.id) ?? null,
           syncedAt: loc?.syncedAt ? loc.syncedAt.toISOString() : null,
           fill: cleanFill(loc?.fill ?? null),
+          channels: cleanChannels(loc?.channels ?? null),
           mine: isMine(responsibles.get(m.id), me),
         };
       }),
@@ -334,4 +348,29 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       ),
     };
   });
+}
+
+/** Automatens läge i Fyll på: offline, eller strömmen av enligt butikens tider just nu. */
+export type FillLink = "offline" | "power_off";
+
+/**
+ * Automater som är offline eller har strömmen av just nu (automatens id → läget), för
+ * märket i Fyll på. Bara de; online och okänt saknas. Som användaren efter rollkontroll.
+ */
+export async function loadFillLinksFor(
+  viewer: Viewer,
+  now: Date = new Date(),
+): Promise<Record<string, FillLink>> {
+  await requireRoleFor(viewer.user, viewer.organization.id, FIELD_REFILL_ROLES);
+  const orgId = viewer.organization.id;
+  const today = businessToday(now, viewer.organization.timezone);
+  const [connectivity, power] = await withUserDbFor(viewer.user, (tx) =>
+    Promise.all([loadConnectivity(tx, orgId), loadMachinePower(tx, orgId, today)]),
+  );
+  const out: Record<string, FillLink> = {};
+  for (const c of connectivity) {
+    const view = connectivityView({ ...c, power: power.get(c.machineId) ?? null }, now);
+    if (view.state === "offline" || view.state === "power_off") out[c.machineId] = view.state;
+  }
+  return out;
 }

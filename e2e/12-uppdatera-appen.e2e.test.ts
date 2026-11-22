@@ -30,6 +30,7 @@ import {
   type BrowserContext,
   type Page,
 } from "./support/browser";
+import { fillFirstTile } from "./support/fill";
 import { e2e, login } from "./support/session";
 
 const DEVICES = ["iPhone SE (3rd gen)", "iPhone 15"] as const;
@@ -157,11 +158,8 @@ describe.each(DEVICES)("Uppdatera appen på %s", (device) => {
       // 2. Mitt i en påfyllning: ändrat antal, appen öppnas igen. Ingen omladdning.
       await cards.first().click();
       await page.waitForURL((url) => /^\/fyll-pa\/[0-9a-f-]{36}$/.test(url.pathname));
-      // Första knappen som går att trycka på: ett fack som redan står på 0 (t.ex. en titel
-      // som en annan testfil lagt i automaten) har knappen avstängd.
-      const fewer = page.locator('button[aria-label^="En mindre "]:not([disabled])').first();
-      await fewer.waitFor();
-      await fewer.click();
+      // V2: allt börjar på 0. Ett tryck på första rutan som går att fylla ändrar ett antal.
+      await fillFirstTile(page);
       const c = `e2e-c-${run}`;
       await deploy(context, c);
       await mark(page);

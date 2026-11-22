@@ -4,9 +4,11 @@ import "./fill-v2.css";
 
 import { useMemo, useState, type ReactNode } from "react";
 
+import { Badge } from "@/components/v2/badge";
 import { Button } from "@/components/v2/button";
 import { CallLink, MapsLink } from "@/components/v2/call-link";
 import { Chips } from "@/components/v2/chips";
+import { mapsSearchUrl, telHref } from "@/components/v2/links";
 import { PackImage } from "@/components/v2/pack-image";
 import { Sheet } from "@/components/v2/sheet";
 import { Stepper } from "@/components/v2/stepper";
@@ -17,13 +19,21 @@ import { formatInt, NBSP } from "@/lib/format";
 import type { FillStore } from "../_lib/data";
 import {
   fullFastNote,
-  maxFill,
   mysteryNote,
   mysteryShortAtHome,
   type FillMachine,
   type FillRow,
   type PackAsk,
 } from "../_lib/model";
+import {
+  bringCount,
+  listChip,
+  shortAtHome,
+  stepperBounds,
+  tileView,
+  urgentPacks,
+  type MachineLink,
+} from "../_lib/tiles";
 
 /* -------------------------------------------------------------------------- */
 /* Hjälpare                                                                   */
@@ -42,40 +52,181 @@ function dotTone(m: FillMachine): "critical" | "warning" | undefined {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Automaten överst: väljaren, butiken och vad som ska med                    */
+/* Automaten överst: kompakt rubrik (ägarens val A)                           */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Kortet överst i Fyll på (V2): automaten med "Byt automat" (eller ruttens stegrad), butikens
- * namn, strömtider, adress med Kör dit och Ring, och till höger "20 % fylld · 2 fack tomma" och
- * "Ta med 64 pack" (förslaget ur modellen).
+ * Rubriken i Fyll på (V2): tillbaka, "Automat 09 · Rutor och Rollspel" (ett tryck byter automat,
+ * eller ruttens stegrad "Stopp 2 av 5"), EN rad under ("Sala · 33 % fylld · Awish läst 09:46")
+ * med ett litet märke när automaten är offline eller strömmen är av. Uppdatera och nätet står
+ * till höger på rubrikraden. Kör dit och Ring: i ett litet "Mer"-ark på telefonen (facken börjar
+ * direkt under rubriken), som en rad länkar på datorn. Inget stort adresskort.
  */
-export function MachineHead({
+export function MachineTop({
   m,
   store,
   machines,
   onPick,
+  onBack,
+  backLabel,
   route,
   syncLabel,
+  link,
+  tools,
 }: {
   m: FillMachine;
   store: FillStore | null;
   machines: readonly FillMachine[];
   onPick: (id: string) => void;
+  onBack: () => void;
+  backLabel: string;
   /** Ruttläget: "Stopp 2 av 5" i stället för väljaren. */
   route: { index: number; total: number; onPrev?: () => void; onNext?: () => void } | null;
   syncLabel?: string;
+  /** Offline, eller strömmen av just nu (maskinhälsan). */
+  link?: MachineLink | null;
+  /** Uppdatera och nätet, till höger på raden under. */
+  tools?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const power = powerText(store);
-  const facts = [
+  const [more, setMore] = useState(false);
+  const place = store?.name ?? m.place;
+  const title = m.name && m.name !== place ? `${m.name} · ${place}` : place;
+  const sub = [
+    store?.city,
     m.fillPct !== null ? `${formatInt(m.fillPct)}${NBSP}% fylld` : null,
-    m.emptySlots > 0
-      ? `${formatInt(m.emptySlots)} ${m.emptySlots === 1 ? "fack tomt" : "fack tomma"}`
-      : null,
-  ].filter(Boolean);
+    syncLabel,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const power = powerText(store);
+  const hasLinks =
+    store !== null &&
+    (mapsSearchUrl({
+      address: store.address,
+      city: store.city,
+      lat: store.lat,
+      lng: store.lng,
+    }) !== null ||
+      telHref(store.phone) !== null);
+  const links = store ? (
+    <>
+      <MapsLink
+        address={store.address}
+        city={store.city}
+        lat={store.lat}
+        lng={store.lng}
+        size="lg"
+      />
+      <CallLink phone={store.phone} name={store.contactName} size="lg" />
+    </>
+  ) : null;
+  const chip =
+    link === "offline" ? (
+      <Badge tone="critical" dot>
+        Offline
+      </Badge>
+    ) : link === "power_off" ? (
+      <Badge dot title={power ?? undefined}>
+        Strömmen av
+      </Badge>
+    ) : null;
   return (
-    <section className="pn pick" aria-label="Automat">
+    <header className="mtop">
+      <div className="mt1">
+        <button type="button" className="back" onClick={onBack} aria-label={backLabel}>
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <div className="mt-t">
+          <h1>
+            {route ? (
+              <span className="nm">{title}</span>
+            ) : (
+              <Sheet
+                open={open}
+                onOpenChange={setOpen}
+                title="Byt automat"
+                description="Störst behov först."
+                trigger={
+                  <button type="button" className="nm pickb" aria-haspopup="dialog">
+                    <span className="nmt">{title}</span>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                }
+              >
+                <MachinePicker
+                  machines={machines}
+                  selectedId={m.id}
+                  onPick={(id) => {
+                    setOpen(false);
+                    onPick(id);
+                  }}
+                />
+              </Sheet>
+            )}
+          </h1>
+          {sub || chip ? (
+            <p className="sub">
+              {sub ? <span>{sub}</span> : null}
+              {chip}
+            </p>
+          ) : null}
+        </div>
+        {tools || hasLinks ? (
+          <span className="tools">
+            {tools}
+            {hasLinks ? (
+              <Sheet
+                open={more}
+                onOpenChange={setMore}
+                title={title}
+                description={[store?.address, store?.city].filter(Boolean).join(", ") || undefined}
+                trigger={
+                  <button type="button" className="more" aria-label="Kör dit och ring">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <circle cx="5" cy="12" r="1.8" />
+                      <circle cx="12" cy="12" r="1.8" />
+                      <circle cx="19" cy="12" r="1.8" />
+                    </svg>
+                  </button>
+                }
+              >
+                <div className="v2-mt-more">{links}</div>
+              </Sheet>
+            ) : null}
+          </span>
+        ) : null}
+      </div>
       {route ? (
         <div className="rstep">
           <Button size="sm" variant="plain" onClick={route.onPrev} disabled={!route.onPrev}>
@@ -89,82 +240,31 @@ export function MachineHead({
           </Button>
         </div>
       ) : null}
-      <div className="mpick">
-        <span className={cn("v2-dot", dotTone(m))} aria-hidden="true" />
-        <span className="mp-t">
-          <b>{m.name}</b>
-          <small>{[m.code, store?.city, syncLabel].filter(Boolean).join(" · ")}</small>
-        </span>
-        {route ? null : (
-          <Sheet
-            open={open}
-            onOpenChange={setOpen}
-            title="Byt automat"
-            description="Störst behov först."
-            trigger={
-              <button type="button" className="v2-btn mp-c" aria-haspopup="dialog">
-                Byt automat
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </button>
-            }
-          >
-            <MachinePicker
-              machines={machines}
-              selectedId={m.id}
-              onPick={(id) => {
-                setOpen(false);
-                onPick(id);
-              }}
-            />
-          </Sheet>
-        )}
-      </div>
-      <div className="msum">
-        <div className="who2">
-          {/* Butiken är automatens rubrik (skärmläsare och e2e: rubriken med butikens namn). */}
-          <b role="heading" aria-level={2}>
-            {store?.name ?? m.place}
-          </b>
-          {power ? <small>{power}</small> : null}
-          {store?.address || store?.city ? (
-            <small>{[store.address, store.city].filter(Boolean).join(", ")}</small>
-          ) : null}
-          {store ? (
-            <span className="links">
-              <MapsLink
-                address={store.address}
-                city={store.city}
-                lat={store.lat}
-                lng={store.lng}
-                size="sm"
-                className="plain"
-              />
-              <CallLink phone={store.phone} name={store.contactName} size="sm" className="plain" />
-            </span>
-          ) : null}
+      {hasLinks ? (
+        <div className="mt2">
+          <span className="links">
+            {store ? (
+              <>
+                <MapsLink
+                  address={store.address}
+                  city={store.city}
+                  lat={store.lat}
+                  lng={store.lng}
+                  size="sm"
+                  className="plain"
+                />
+                <CallLink
+                  phone={store.phone}
+                  name={store.contactName}
+                  size="sm"
+                  className="plain"
+                />
+              </>
+            ) : null}
+          </span>
         </div>
-        <div className="facts">
-          {facts.length > 0 ? <span className="pc">{facts.join(" · ")}</span> : null}
-          {m.suggested > 0 ? (
-            <span className="bring">Ta med {formatInt(m.suggested)} pack</span>
-          ) : (
-            <span className="bring none">Inget behövs</span>
-          )}
-        </div>
-      </div>
-    </section>
+      ) : null}
+    </header>
   );
 }
 
@@ -284,116 +384,278 @@ export function SayCard({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Ett fack (en titel)                                                        */
+/* Ett fack (en titel) som ruta, och arket för facket                         */
 /* -------------------------------------------------------------------------- */
 
 /**
- * En rad per titel (V2): packbild, nummer och titel, läget ("Slut", "2 av 10 i automaten",
- * "Hemma 141"), en mätare med det som finns (bläck) och det som läggs i (grått), stegaren som
- * räknar upp när man håller in, och "Fyll fack" (fullt). Samma regler som förut (model.ts).
+ * En ruta per fack (ägarens val A): stor packbild (blek när facket är slut och inget är valt),
+ * titeln, en stapel med "nytt/kapacitet" (grön när facket blir fullt), "Slut" när facket är tomt.
+ * Vald: mörk kant och "+N". Finns inte allt valt i lagret man fyller från: ett orange märke
+ * "Utan uttag" (samma varning som förut stod på raden). Ett tryck fyller facket eller öppnar
+ * arket (tiles.ts).
  */
-export function SlotRow({
-  index,
+export function SlotTile({
   row: r,
-  sourceName,
+  value,
   hasSource,
+  onTap,
+}: {
+  row: FillRow;
+  value: number;
+  /** Det finns ett eget lager att ta packen från (då visas "Utan uttag" när det inte räcker). */
+  hasSource: boolean;
+  onTap: () => void;
+}) {
+  const v = tileView(r, value);
+  const cap = r.capacity;
+  const short = value > 0 ? shortAtHome(r, value, hasSource) : 0;
+  const label = [
+    r.name,
+    cap !== null
+      ? `${formatInt(v.shown)} av ${formatInt(cap)} i automaten`
+      : `${formatInt(v.shown)} i automaten`,
+    v.out ? "slut" : null,
+    value > 0 ? `fyller på ${formatInt(value)}` : null,
+    short > 0 ? `${formatInt(short)} utan uttag` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <button
+      type="button"
+      className={cn("tile", value > 0 && "on", v.full && "full", short > 0 && "short")}
+      aria-label={label}
+      aria-pressed={value > 0}
+      onClick={onTap}
+    >
+      {value > 0 ? (
+        <span className="plus" aria-hidden="true">
+          +{formatInt(value)}
+        </span>
+      ) : null}
+      <span className="img" aria-hidden="true">
+        <PackImage title={r.name} size="tile" className={cn(v.out && "dim")} />
+      </span>
+      <span className="nm" aria-hidden="true">
+        {r.name}
+      </span>
+      <span className="fl" aria-hidden="true">
+        <span className={cn("bar", cap === null && "unk")}>
+          {cap !== null ? (
+            <>
+              <i className="add" style={{ transform: `scaleX(${v.shownShare})` }} />
+              <i className="now" style={{ transform: `scaleX(${v.nowShare})` }} />
+            </>
+          ) : null}
+        </span>
+        <span className="n">
+          {cap !== null ? `${formatInt(v.shown)}/${formatInt(cap)}` : formatInt(v.shown)}
+        </span>
+      </span>
+      {v.out ? (
+        <span className="chips" aria-hidden="true">
+          <Badge tone="critical">Slut</Badge>
+        </span>
+      ) : short > 0 ? (
+        <span className="chips" aria-hidden="true">
+          <Badge tone="warning" title={`${formatInt(short)} utan uttag`}>
+            Utan uttag
+          </Badge>
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+/**
+ * Arket för ett fack: stegaren (48 px), "Töm", läget och lagret, varningarna (utan uttag,
+ * mystery, fullt men säljer fort) och "Fel antal i automaten?". Samma regler som förut.
+ */
+export function SlotSheet({
+  row: r,
+  open,
+  onClose,
   value,
   onChange,
+  sourceName,
+  hasSource,
   countSlot,
 }: {
-  index: number;
   row: FillRow;
-  sourceName: string;
-  hasSource: boolean;
+  open: boolean;
+  onClose: () => void;
   value: number;
   onChange: (v: number) => void;
+  sourceName: string;
+  hasSource: boolean;
   /** "Fel antal i automaten?" (räkna om), samma formulär som förut. */
   countSlot: ReactNode;
 }) {
   const t = useT();
-  const max = maxFill(r);
+  const { min, max } = stepperBounds(r);
   const short = value > Math.max(0, r.home);
   const fullNote = fullFastNote(r, t);
   const mystery = mysteryNote(r, value, t);
   const shortBatch = hasSource && value === 0 ? mysteryShortAtHome(r) : null;
   const cap = r.capacity;
-  const nowShare = cap ? Math.min(1, r.now / cap) : 0;
-  const addShare = cap ? Math.min(1, (r.now + value) / cap) : 0;
+  const v = tileView(r, value);
   const empty = r.status === "empty" || r.now <= 0;
-  const fillTo = Math.min(max, cap !== null ? Math.max(0, cap - r.now) : r.suggested);
   return (
-    <div className={cn("row", empty && "e")}>
-      <PackImage title={r.name} size="md" className={cn(empty && "dim")} />
-      <div className="info">
-        <div className="t">
-          <span className="no">{String(index + 1).padStart(2, "0")}</span>
-          <b>{r.name}</b>
+    <Sheet
+      open={open}
+      onOpenChange={(o) => (!o ? onClose() : undefined)}
+      title={r.name}
+      description={
+        cap !== null
+          ? `${formatInt(r.now)} av ${formatInt(cap)} i automaten`
+          : `${formatInt(r.now)} i automaten`
+      }
+      footer={
+        <>
+          <Button size="lg" onClick={() => onChange(0)} disabled={value === 0}>
+            Töm
+          </Button>
+          <Button size="lg" variant="act" onClick={onClose}>
+            Stäng
+          </Button>
+        </>
+      }
+    >
+      <div className="v2-slotsheet">
+        <div className="ss-top">
+          <PackImage title={r.name} size="xl" className={cn(v.out && "dim")} />
+          <div className="ss-facts">
+            {empty ? (
+              <small className="crit">Slut</small>
+            ) : r.emptySlots > 0 ? (
+              <small className="o">{t.fill.needEmptySlots(r.emptySlots)}</small>
+            ) : r.status === "low" ? (
+              <small className="o">{t.fill.statusLow}</small>
+            ) : null}
+            {hasSource ? (
+              <small className={cn(short && "o")}>
+                {t.fill.stockLine(t.common.placeName(sourceName), r.home)}
+                {short && r.home > 0 ? t.fill.withoutWithdrawalN(value - r.home) : ""}
+                {short && r.home <= 0 ? t.fill.withoutWithdrawal : ""}
+              </small>
+            ) : null}
+            {fullNote ? <small>{`${fullNote} · ${t.fill.fullFastTip}`}</small> : null}
+            {mystery ? <small role="note">{mystery}</small> : null}
+            {shortBatch !== null ? (
+              <small className="o" role="note">
+                {t.r2.t1.fill.mysteryReady(Math.max(0, r.home), sourceName)}
+              </small>
+            ) : null}
+          </div>
         </div>
-        <small>
-          {empty ? (
-            <span className="crit">Slut</span>
-          ) : r.emptySlots > 0 ? (
-            <span className="o">{t.fill.needEmptySlots(r.emptySlots)}</span>
-          ) : r.status === "low" ? (
-            <span className="o">{t.fill.statusLow}</span>
-          ) : null}
-          {empty || r.emptySlots > 0 || r.status === "low" ? " · " : ""}
-          {cap !== null
-            ? `${formatInt(r.now)} av ${formatInt(cap)} i automaten`
-            : `${formatInt(r.now)} i automaten`}
-        </small>
-        {hasSource ? (
-          <small className={cn(short && "o")}>
-            {t.fill.stockLine(t.common.placeName(sourceName), r.home)}
-            {short && r.home > 0 ? t.fill.withoutWithdrawalN(value - r.home) : ""}
-            {short && r.home <= 0 ? t.fill.withoutWithdrawal : ""}
-          </small>
-        ) : null}
-        {fullNote ? <small>{`${fullNote} · ${t.fill.fullFastTip}`}</small> : null}
-        {mystery ? <small role="note">{mystery}</small> : null}
         {shortBatch !== null ? (
-          <small className="o" role="note">
-            {t.r2.t1.fill.mysteryReady(Math.max(0, r.home), sourceName)}{" "}
-            <button type="button" className="lnk" onClick={() => onChange(shortBatch)}>
-              {t.r2.t1.fill.mysteryFillBatch(shortBatch)}
-            </button>
-          </small>
+          <Button size="lg" onClick={() => onChange(shortBatch)}>
+            {t.r2.t1.fill.mysteryFillBatch(shortBatch)}
+          </Button>
         ) : null}
+        <div className="ss-step">
+          <Stepper
+            className="big"
+            value={value}
+            onChange={onChange}
+            min={min}
+            max={max}
+            label={r.name}
+            lessLabel={t.fill.lessAria(r.name)}
+            moreLabel={t.fill.moreAria(r.name)}
+            inputId={`antal-${r.titleId}`}
+          />
+          <span className={cn("gets", v.full && value > 0 && "full")} aria-live="polite">
+            {cap !== null ? `${formatInt(v.shown)}/${formatInt(cap)}` : formatInt(v.shown)}
+            {v.full && value > 0 ? " · fullt" : ""}
+          </span>
+        </div>
+        <div className="ss-cnt">{countSlot}</div>
       </div>
-      <div className="meter">
-        {cap !== null ? (
-          <span className="mini" aria-hidden="true">
-            <i className="add" style={{ transform: `scaleX(${addShare})` }} />
-            <i className="now" style={{ transform: `scaleX(${nowShare})` }} />
-            <span className="ticks" />
+    </Sheet>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Listan: ett kort per automat                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * En automat i listan (V2, val A): namn, kod och stad, fyllnaden som stapel med procent,
+ * "Ta med N pack", upp till sex packbilder för titlar som är slut eller snart slut (bleka när
+ * de är slut) och ett märke (Offline, Slut, Fyll på i dag, Strömmen av).
+ */
+export function FillCard({
+  machine: m,
+  store,
+  link,
+  href,
+  ariaLabel,
+  onOpen,
+}: {
+  machine: FillMachine;
+  store: FillStore | null;
+  link?: MachineLink | null;
+  href: string;
+  ariaLabel: string;
+  onOpen: () => void;
+}) {
+  const place = store?.name ?? m.place;
+  const title = m.name && m.name !== place ? `${m.name} · ${place}` : place;
+  const chip = listChip(m, link);
+  const bring = bringCount(m);
+  const packs = urgentPacks(m);
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        onOpen();
+      }}
+      aria-label={ariaLabel}
+      className={cn(
+        "mcard",
+        chip?.tone === "critical" ? "crit" : chip?.tone === "warning" && "hot",
+      )}
+    >
+      <span className="top2">
+        <span className="min-w-0">
+          <b>{title}</b>
+          <small>{[m.code, store?.city].filter(Boolean).join(" · ")}</small>
+        </span>
+        {chip ? (
+          <Badge tone={chip.tone} dot={chip.tone !== "warning"}>
+            {chip.text}
+          </Badge>
+        ) : null}
+      </span>
+      {m.fillPct !== null ? (
+        <span className="fillrow">
+          <span className="bar" aria-hidden="true">
+            <i
+              className={cn("now", m.fillPct <= 25 && "o")}
+              style={{ transform: `scaleX(${Math.max(0, Math.min(1, m.fillPct / 100))})` }}
+            />
+          </span>
+          <span className="pc">{`${formatInt(m.fillPct)}${NBSP}%`}</span>
+        </span>
+      ) : (
+        <span className="need none">Hur full den är syns efter nästa läsning</span>
+      )}
+      <span className="foot2">
+        <span className={cn("need", bring === 0 && "none")}>
+          {bring > 0 ? `Ta med ${formatInt(bring)}${NBSP}pack` : "Inget behövs"}
+        </span>
+        {packs.length > 0 ? (
+          <span className="pks" aria-hidden="true">
+            {packs.map((p) => (
+              <PackImage key={p.titleId} title={p.name} size="m" className={cn(p.empty && "dim")} />
+            ))}
           </span>
         ) : null}
-        <span className={cn("gets", cap !== null && r.now + value >= cap && "full")}>
-          {value > 0 ? `+${formatInt(value)}` : ""}
-          {cap !== null && r.now + value >= cap && value > 0 ? " · fullt" : ""}
-        </span>
-      </div>
-      <Stepper
-        className="step"
-        value={value}
-        onChange={onChange}
-        min={0}
-        max={max}
-        label={r.name}
-        lessLabel={t.fill.lessAria(r.name)}
-        moreLabel={t.fill.moreAria(r.name)}
-        inputId={`antal-${r.titleId}`}
-      />
-      <Button
-        size="sm"
-        className="fillb"
-        disabled={fillTo <= 0 || value === fillTo}
-        onClick={() => onChange(fillTo)}
-      >
-        Fyll fack
-      </Button>
-      <div className="cnt">{countSlot}</div>
-    </div>
+      </span>
+    </a>
   );
 }
 
@@ -406,6 +668,7 @@ export function ConfirmSheet({
   total,
   busy,
   restart,
+  short = 0,
   onYes,
   onClose,
 }: {
@@ -414,6 +677,8 @@ export function ConfirmSheet({
   busy: boolean;
   /** Butiken stänger av strömmen: påminn redan här. */
   restart: boolean;
+  /** Pack som inte finns i lagret man fyller från (registreras utan uttag). */
+  short?: number;
   onYes: () => void;
   onClose: () => void;
 }) {
@@ -435,6 +700,11 @@ export function ConfirmSheet({
         </>
       }
     >
+      {short > 0 ? (
+        <p className="text-v2-sm text-v2-warn-text" role="note">
+          {`${formatInt(short)} av dem finns inte i lagret och registreras utan uttag.`}
+        </p>
+      ) : null}
       {restart ? <p className="text-v2-sm text-v2-mute">{t.fill.restartScreen}</p> : null}
     </Sheet>
   );

@@ -6,10 +6,11 @@ import { PACK_IMAGES, packInitials, packKey } from "@/lib/pack-image";
 /**
  * Höjder (px). Packen ska gå att känna igen direkt, så bilderna är större än i prototypen:
  * xs 40 (rader med många bilder, t.ex. automaternas remsor), s 48 (tabeller och listor),
- * m 64 (kort och titellistor), md 84 (standard, fackraderna i Fyll på), l 96 och xl 120
- * (framhävda ställen). Bilderna är 240 px höga, alltså skarpa på 2×-skärm även i xl.
+ * m 64 (kort och titellistor), md 84 (standard), l 96 och xl 120 (framhävda ställen, arket
+ * för ett fack i Fyll på), tile 118 (rutorna i Fyll på). Bilderna är 240 px höga, alltså
+ * skarpa på 2×-skärm även i xl.
  */
-const HEIGHT = { xs: 40, s: 48, m: 64, md: 84, l: 96, xl: 120 } as const;
+const HEIGHT = { xs: 40, s: 48, m: 64, md: 84, l: 96, xl: 120, tile: 118 } as const;
 export type PackSize = keyof typeof HEIGHT;
 
 /** Packens format (bredd ÷ höjd) för plattan utan bild: samma som de flesta bilderna. */

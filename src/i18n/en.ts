@@ -294,6 +294,8 @@ export const en: Messages = {
     statusEmpty: "empty",
     statusLow: "almost empty",
     inMachine: "in the machine",
+    fillSlot: (n) => `Fill the slot (+${f.int(n)})`,
+    fillSlotAria: (title, n) => `Fill the ${title} slot with ${f.int(n)}`,
     lessAria: (title) => `One less ${title}`,
     moreAria: (title) => `One more ${title}`,
     hint: (suggested, room) =>

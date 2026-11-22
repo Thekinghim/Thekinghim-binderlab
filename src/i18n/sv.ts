@@ -161,6 +161,8 @@ export const sv = {
     statusEmpty: "slut",
     statusLow: "snart slut",
     inMachine: "i automaten",
+    fillSlot: (n: number) => `Fyll facket (+${f.int(n)})`,
+    fillSlotAria: (title: string, n: number) => `Fyll facket ${title} med ${f.int(n)}`,
     lessAria: (title: string) => `En mindre ${title}`,
     moreAria: (title: string) => `En till ${title}`,
     hint: (suggested: number, room: number | null) =>

@@ -30,6 +30,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { startFakeAwishWeb } from "@/server/awish/testing/fake-web-server";
 import { hashPassword } from "@/server/auth/password";
 
+import { closeSlotSheet, doneCount, fillTile } from "./support/fill";
 import {
   expectNoPageErrors,
   launchBrowser,
@@ -410,11 +411,20 @@ describe("Fyll på: 'Packade du en omgång?'", () => {
   it("ägaren svarar Ja: lagret står på 0 (inte −14) och delarna är dragna", async () => {
     const page = await ownerPage();
     await openMachine(page);
-    await ownRow(page).getByText(`Inga färdiga ${inCentral}. Har du packat?`).waitFor();
+    // V2 (val A): mystery-facket är tomt men lagret har ingen färdig omgång. Ett tryck på
+    // rutan väljer inget utan öppnar arket med beskedet och "Fyll på en omgång".
+    const tile = fillTile(page, MYSTERY);
+    await tile.click();
+    const sheet = page.getByRole("dialog", { name: MYSTERY });
+    await sheet.getByText(`Inga färdiga ${inCentral}. Har du packat?`).waitFor();
     await shot(page, "r2-t1-fyll-pa-tomt-mystery-fack");
-    await ownRow(page)
-      .getByRole("button", { name: /^Fyll på en omgång \(14\sst\)$/ })
-      .click();
+    await sheet.getByRole("button", { name: /^Fyll på en omgång \(14\sst\)$/ }).click();
+    await closeSlotSheet(page);
+    // Ett tryck valde inget (arket öppnades); omgången valdes i arket.
+    expect(await tile.getAttribute("aria-pressed")).toBe("true");
+    expect(await tile.getAttribute("aria-label")).toContain("fyller på 14");
+    // Inget annat är förifyllt: Klar gäller bara omgången.
+    expect(await doneCount(page)).toBe(14);
     await page.getByRole("button", { name: /^Klar/ }).click();
     // V2: Klar frågar först (Ja, jag har fyllt på), sedan kommer frågan i ett ark.
     const confirm = page.getByRole("button", { name: "Ja, jag har fyllt på" });
@@ -643,6 +653,9 @@ describe("Awish fick inte antalen", () => {
         const page = await ownerPage();
         await openMachine(page);
         const before = await level(machineLocation, plainId);
+        // Allt börjar på 0: ett tryck på rutan fyller facket (5 av 10 → +5).
+        await fillTile(page, PLAIN).click();
+        expect(await doneCount(page)).toBe(5);
         await page.getByRole("button", { name: /^Klar/ }).click();
         await page.getByRole("button", { name: "Ja, jag har fyllt på", exact: true }).click();
         await page.getByText(/Klart! \d+\spack påfyllda/).waitFor();

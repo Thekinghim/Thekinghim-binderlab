@@ -73,12 +73,28 @@ import {
   type RefreshOutcome,
 } from "../_lib/refresh";
 import { FILL_BASE, machineIdFrom, shownMachineId, type FillNav } from "../_lib/route";
+import {
+  initialSelection,
+  inSlotOrder,
+  shortAtHome,
+  tapQty,
+  tapTile,
+  type MachineLink,
+} from "../_lib/tiles";
 import { useFreshData } from "../_lib/use-fresh-data";
 import { BringScreen } from "./bring-list";
-import { ConfirmSheet, MachineHead, MysterySheet, powerText, SayCard, SlotRow } from "./fill-v2";
+import {
+  ConfirmSheet,
+  FillCard,
+  MachineTop,
+  MysterySheet,
+  SayCard,
+  SlotSheet,
+  SlotTile,
+} from "./fill-v2";
 import { Button } from "@/components/v2/button";
 import { toastUndo } from "@/components/v2/toast";
-import { PackImage } from "@/components/v2/pack-image";
+import { RollingNumber } from "@/components/v2/rolling-number";
 
 export interface FillAppProps {
   /** Köns ägare: organisation och användare (samma som /drift/pafyllning). */
@@ -104,6 +120,8 @@ export interface FillAppProps {
    * fick antalen; annars stannar bekräftelsen här. null = stanna i Fyll på.
    */
   readonly returnTo?: string | null;
+  /** V2: automater som är offline eller har strömmen av just nu (märket i rubriken och listan). */
+  readonly links?: Readonly<Record<string, MachineLink>>;
 }
 
 const BASE = FILL_BASE;
@@ -188,6 +206,7 @@ export function FillApp({
   initialMachineId = null,
   route = null,
   returnTo = null,
+  links = {},
 }: FillAppProps) {
   const router = useRouter();
   const toast = useToast();
@@ -598,6 +617,7 @@ export function FillApp({
         machines={view.machines}
         onPick={(id) => go(`${BASE}/${id}`)}
         restartHint={(data.restartAfterPush ?? []).includes(selected.id)}
+        link={links[selected.id] ?? null}
         route={
           stopIndex >= 0
             ? {
@@ -631,7 +651,7 @@ export function FillApp({
         headerActions={
           <div className="flex items-center gap-2">
             {refreshButton}
-            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} v2={!simple} />
           </div>
         }
         notice={
@@ -791,7 +811,7 @@ export function FillApp({
         headerActions={
           <div className="flex items-center gap-2">
             {refreshButton}
-            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} v2={!simple} />
           </div>
         }
         onBack={() => {
@@ -847,7 +867,7 @@ export function FillApp({
           </h1>
           <div className="tools">
             {refreshButton}
-            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} v2={!simple} />
           </div>
         </header>
         {noticeLine}
@@ -904,7 +924,7 @@ export function FillApp({
         ) : null}
         {shown.length > 0 ? (
           <Button
-            className="self-start"
+            className="min-h-11 self-start"
             onClick={() => {
               setBring({ chosen: null, placeId: null });
               window.scrollTo({ top: 0 });
@@ -917,10 +937,12 @@ export function FillApp({
         <ul className="list" aria-label={t.fill.machines}>
           {shown.map((m) => (
             <li key={m.id}>
-              <MachineCardV2
+              <FillCard
                 machine={m}
                 store={data.stores?.[m.id] ?? null}
-                syncLabel={syncLabels[m.id]}
+                link={links[m.id] ?? null}
+                href={`${BASE}/${m.id}`}
+                ariaLabel={t.fill.cardAria(m.place, needLabel(m, t), m.fillPct)}
                 onOpen={() => {
                   setDone(null);
                   go(`${BASE}/${m.id}`);
@@ -950,7 +972,7 @@ export function FillApp({
           )}
           <div className="flex items-center gap-2">
             {refreshButton}
-            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} v2={!simple} />
           </div>
         </div>
         <p className="label text-subtle">{t.fill.title}</p>
@@ -1145,36 +1167,60 @@ function NetPill({
   online,
   waiting,
   syncing,
+  v2 = false,
 }: {
   online: boolean;
   waiting: number;
   syncing: boolean;
+  /** V2: vanlig text (inte versaler eller kodtypsnitt), V2-färger. */
+  v2?: boolean;
 }) {
   const t = useT();
   return (
     <span
       role="status"
       aria-live="polite"
-      className={cn(
-        "label inline-flex min-h-8 items-center gap-2 rounded-full border px-3",
-        online ? "border-line text-subtle" : "border-signal-line text-signal-fg",
-      )}
+      className={
+        v2
+          ? cn("v2-net", !online && "off", online && waiting === 0 && "calm")
+          : cn(
+              "label inline-flex min-h-8 items-center gap-2 rounded-full border px-3",
+              online ? "border-line text-subtle" : "border-signal-line text-signal-fg",
+            )
+      }
     >
       <span
         aria-hidden
         className={cn(
           "inline-block size-1.5 rounded-full bg-current",
+          v2 && "dt",
           syncing && "live-dot",
           online && waiting === 0 && "text-muted",
         )}
       />
-      {online
-        ? waiting > 0
-          ? t.fill.sending(waiting)
-          : t.fill.online
-        : waiting > 0
-          ? t.fill.offlineQueued(waiting)
-          : t.fill.offline}
+      {v2 ? (
+        // V2 på telefonen: bara pricken när allt är som vanligt (har nät, inget i kön); texten
+        // står kvar för skärmläsare. Utan nät eller med kö syns texten alltid.
+        <span className={cn("tx", online && waiting === 0 && "quiet")}>
+          {online
+            ? waiting > 0
+              ? t.fill.sending(waiting)
+              : t.fill.online
+            : waiting > 0
+              ? t.fill.offlineQueued(waiting)
+              : t.fill.offline}
+        </span>
+      ) : online ? (
+        waiting > 0 ? (
+          t.fill.sending(waiting)
+        ) : (
+          t.fill.online
+        )
+      ) : waiting > 0 ? (
+        t.fill.offlineQueued(waiting)
+      ) : (
+        t.fill.offline
+      )}
     </span>
   );
 }
@@ -1387,7 +1433,10 @@ function MachineScreen({
   onPick,
   route = null,
   restartHint = false,
+  link = null,
 }: {
+  /** V2: offline, eller strömmen av just nu (märket i rubriken). */
+  link?: MachineLink | null;
   /** V2: butiken stänger av strömmen på natten (påminn om omstart vid bekräftelsen). */
   restartHint?: boolean;
   /** V2-utseendet (inte i Enkel vy). */
@@ -1426,16 +1475,13 @@ function MachineScreen({
 }) {
   const toast = useToast();
   const t = useT();
-  const suggestedQty = () => Object.fromEntries(m.rows.map((r) => [r.titleId, r.suggested]));
-  const [qty, setQty] = useState<Record<string, number>>(suggestedQty);
-  // Ny data (Uppdatera, appen öppnad igen): nya förslag, så länge inget antal har ändrats.
-  const suggestKey = m.rows.map((r) => `${r.titleId}:${r.suggested}`).join(",");
-  const [seenKey, setSeenKey] = useState(suggestKey);
+  // Allt börjar på 0 (ägarens val A): inga förifyllda förslag. Ett tryck på en ruta (V2) eller
+  // "Fyll facket" (Enkel vy) fyller facket; ny data (Uppdatera) ändrar inget som valts.
+  const [qty, setQty] = useState<Record<string, number>>(initialSelection);
   const [touched, setTouched] = useState(false);
-  if (suggestKey !== seenKey) {
-    setSeenKey(suggestKey);
-    if (!touched) setQty(suggestedQty());
-  }
+  // Arket för ett fack (V2): stegaren, Töm och "Fel antal i automaten?". Raden står kvar medan
+  // arket stängs (animationen), därför öppet för sig.
+  const [sheet, setSheet] = useState<{ titleId: string; open: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [counting, setCounting] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
@@ -1582,8 +1628,10 @@ function MachineScreen({
     }
     setCounting(null);
     onCounted(r.titleId, value);
+    // Ett valt fack fylls till det som får plats efter räkningen; ett som inte är valt står
+    // kvar på 0 (allt börjar på 0).
     const next = qtyAfterCount(r, value);
-    if (next !== null) {
+    if (next !== null && (qty[r.titleId] ?? 0) > 0) {
       set(r.titleId, next, maxFill({ ...r, now: value }));
     }
     toast({ title: t.fill.countSaved(value), tone: "ok" });
@@ -1602,6 +1650,7 @@ function MachineScreen({
         hasSource={sourceId !== null}
         value={qty[r.titleId] ?? 0}
         onChange={(v) => set(r.titleId, v, maxFill(r))}
+        fillQty={tapQty(r, sourceId !== null)}
         counting={counting === r.titleId}
         onCountToggle={() => setCounting((c) => (c === r.titleId ? null : r.titleId))}
         onCount={(value) => onCount(r, value)}
@@ -1632,95 +1681,74 @@ function MachineScreen({
         </div>
       </Sheet>
     );
-    const rowV2 = (r: FillRow, i: number) => (
-      <SlotRow
-        key={r.titleId}
-        index={i}
-        row={r}
-        sourceName={sourceName}
-        hasSource={sourceId !== null}
-        value={qty[r.titleId] ?? 0}
-        onChange={(v) => set(r.titleId, v, maxFill(r))}
-        countSlot={
-          <CountForm
-            row={r}
-            counting={counting === r.titleId}
-            onToggle={() => setCounting((c) => (c === r.titleId ? null : r.titleId))}
-            onCount={(value) => onCount(r, value)}
-          />
-        }
-      />
-    );
+    const hasSource = sourceId !== null;
+    const tiles = inSlotOrder(m.rows, m.slots);
+    const tap = (r: FillRow) => {
+      const out = tapTile(qty, r, hasSource);
+      if (out.selection !== qty) {
+        setTouched(true);
+        setQty({ ...out.selection });
+      }
+      if (out.sheet) setSheet({ titleId: r.titleId, open: true });
+    };
+    const sheetRow = sheet ? m.rows.find((r) => r.titleId === sheet.titleId) : undefined;
     const slotsSection = (
-      <section className="pn slots" aria-label={t.fill.titlesAria}>
-        <div className="hd">
-          <b>Fack · {formatInt(m.rows.length)}</b>
+      <section className="slots" aria-label={t.fill.titlesAria}>
+        <div className="tapline">
+          <span>Tryck på ett fack för att fylla det</span>
           {m.rows.some((r) => r.capacity !== null) ? (
-            <Button size="sm" onClick={fillAll}>
+            <button type="button" className="fillall" onClick={fillAll}>
               Fyll alla
-            </Button>
+            </button>
           ) : null}
         </div>
+        {places.length > 1 ? (
+          <div className="srcline">
+            <Button size="sm" onClick={() => setChoosing(true)}>
+              {t.fill.from} {t.common.placeName(sourceName)}
+            </Button>
+            {sourceReason ? <span>{sourceReason}</span> : null}
+          </div>
+        ) : null}
         {m.rows.length === 0 ? (
-          <p className="p-4 text-v2-sm text-v2-mute">{t.fill.noTitles}</p>
+          <p className="empty">{t.fill.noTitles}</p>
         ) : (
-          <>
-            {first.map((r, i) => rowV2(r, i))}
-            {rest.length > 0 ? (
-              <details className="more" open={first.length === 0}>
-                <summary>{t.fill.moreTitles(rest.length)}</summary>
-                <div>{rest.map((r, i) => rowV2(r, first.length + i))}</div>
-              </details>
-            ) : null}
-          </>
+          <ul className="tiles">
+            {tiles.map((r) => (
+              <li key={r.titleId}>
+                <SlotTile
+                  row={r}
+                  value={qty[r.titleId] ?? 0}
+                  hasSource={hasSource}
+                  onTap={() => tap(r)}
+                />
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     );
     return (
-      <div className="v2-fill-app">
-        <header className="top">
-          <button type="button" className="back" onClick={onBack} aria-label={t.fill.machines}>
-            <Icon name="chevronLeft" size={22} />
-          </button>
-          <h1>
-            {t.fill.title}
-            <span className="crumb">
-              {m.code} · {m.place}
-            </span>
-          </h1>
-          <div className="tools">{headerActions}</div>
-        </header>
+      <div className="v2-fill-app v2-fill-machine">
+        <MachineTop
+          m={m}
+          store={store}
+          machines={machines}
+          onPick={(id) => onPick?.(id)}
+          onBack={onBack}
+          backLabel={t.fill.machines}
+          route={route}
+          syncLabel={syncLabel}
+          link={link}
+          tools={headerActions}
+        />
         {notice}
-        {/* Datorn: automaten och facken till vänster, sammanfattningen och Klar till höger.
-            Telefonen: en kolumn (main2 och side2 är display: contents, ordningen i CSS). */}
+        {/* Datorn: facken till vänster, sammanfattningen och Klar till höger. Telefonen: en
+            kolumn (main2 och side2 är display: contents), Klar fäst nedtill. */}
         <div className="work">
-          <div className="main2">
-            <MachineHead
-              m={m}
-              store={store}
-              machines={machines}
-              onPick={(id) => onPick?.(id)}
-              route={route}
-              syncLabel={syncLabel}
-            />
-            {slotsSection}
-          </div>
+          <div className="main2">{slotsSection}</div>
           <div className="side2">
-            <SayCard
-              m={m}
-              total={total}
-              after={after}
-              source={
-                places.length > 1 ? (
-                  <div className="src">
-                    <span>{sourceReason ?? t.fill.takeFrom}</span>
-                    <Button size="sm" onClick={() => setChoosing(true)}>
-                      {t.fill.from} {t.common.placeName(sourceName)}
-                    </Button>
-                  </div>
-                ) : null
-              }
-            />
+            <SayCard m={m} total={total} after={after} source={null} />
             <div className="foot">
               <Button
                 variant="act"
@@ -1728,18 +1756,58 @@ function MachineScreen({
                 disabled={busy || total === 0}
                 pending={busy}
                 onClick={() => void onKlar()}
+                aria-label={
+                  busy ? t.common.saving : total > 0 ? t.fill.doneWith(total) : t.fill.done
+                }
               >
-                {busy ? t.common.saving : total > 0 ? t.fill.doneWith(total) : t.fill.done}
+                {busy ? (
+                  t.common.saving
+                ) : (
+                  <span className="klar" aria-hidden="true">
+                    {t.fill.done}
+                    <span className="sep">·</span>
+                    <RollingNumber value={total} unit="pack" />
+                  </span>
+                )}
               </Button>
-              {total === 0 ? <p className="hint">Tryck på + eller Fyll fack.</p> : null}
             </div>
           </div>
         </div>
+        {sheet && sheetRow ? (
+          <SlotSheet
+            row={sheetRow}
+            open={sheet.open}
+            onClose={() => {
+              // "Fel antal i automaten?" stängs med arket (annars spärrar det appens uppdatering).
+              setCounting((c) => (c === sheetRow.titleId ? null : c));
+              setSheet((s) => (s ? { ...s, open: false } : s));
+            }}
+            value={qty[sheetRow.titleId] ?? 0}
+            onChange={(v) => set(sheetRow.titleId, v, maxFill(sheetRow))}
+            sourceName={sourceName}
+            hasSource={hasSource}
+            countSlot={
+              <CountForm
+                row={sheetRow}
+                counting={counting === sheetRow.titleId}
+                onToggle={() =>
+                  setCounting((c) => (c === sheetRow.titleId ? null : sheetRow.titleId))
+                }
+                onCount={(value) => onCount(sheetRow, value)}
+              />
+            }
+          />
+        ) : null}
         <ConfirmSheet
           open={confirming}
           total={total}
           busy={busy}
           restart={restartHint}
+          short={
+            hasSource
+              ? m.rows.reduce((n, r) => n + shortAtHome(r, qty[r.titleId] ?? 0, true), 0)
+              : 0
+          }
           onYes={() => void finish()}
           onClose={() => setConfirming(false)}
         />
@@ -1991,6 +2059,7 @@ function TitleRow({
   hasSource,
   value,
   onChange,
+  fillQty,
   counting,
   onCountToggle,
   onCount,
@@ -2002,6 +2071,8 @@ function TitleRow({
   hasSource: boolean;
   value: number;
   onChange: (v: number) => void;
+  /** "Fyll facket": antalet ett tryck väljer (som en ruta i V2), 0 = knappen visas inte. */
+  fillQty: number;
   counting: boolean;
   onCountToggle: () => void;
   onCount: (value: number) => Promise<void>;
@@ -2108,6 +2179,16 @@ function TitleRow({
           <Icon name="plus" size={24} />
         </button>
       </div>
+      {fillQty > 0 && value !== fillQty ? (
+        <button
+          type="button"
+          onClick={() => onChange(fillQty)}
+          aria-label={t.fill.fillSlotAria(r.name, fillQty)}
+          className="-mt-1 flex min-h-12 w-full items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-md font-medium text-fg active:bg-hover"
+        >
+          {t.fill.fillSlot(fillQty)}
+        </button>
+      ) : null}
       <span id={`${inputId}-hint`} className="sr-only">
         {t.fill.hint(r.suggested, r.capacity === null ? null : Math.max(0, r.capacity - r.now))}
       </span>
@@ -2257,7 +2338,7 @@ function CountForm({
           setDraft(String(r.now));
           onToggle();
         }}
-        className="min-h-8 text-v2-sm text-v2-mute underline-offset-4 hover:text-v2-ink hover:underline"
+        className="min-h-11 text-v2-sm text-v2-mute underline-offset-4 hover:text-v2-ink hover:underline"
       >
         {t.fill.wrongCount}
       </button>
@@ -2345,61 +2426,5 @@ function DoneV2({
         </Button>
       </div>
     </section>
-  );
-}
-
-/** En automat i listan (V2): butik, kod, fyllnad, vad som behövs och tomma fack som packbilder. */
-function MachineCardV2({
-  machine: m,
-  store,
-  syncLabel,
-  onOpen,
-}: {
-  machine: FillMachine;
-  store: FillStore | null;
-  syncLabel?: string;
-  onOpen: () => void;
-}) {
-  const t = useT();
-  const label = needLabel(m, t);
-  const urgent = m.emptySlots > 0 || m.empty > 0;
-  const empties = m.rows.filter((r) => r.status === "empty" || r.emptySlots > 0);
-  return (
-    <a
-      href={`${BASE}/${m.id}`}
-      onClick={(e) => {
-        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-        e.preventDefault();
-        onOpen();
-      }}
-      aria-label={t.fill.cardAria(m.place, label, m.fillPct)}
-      className={cn("mcard", urgent ? "crit" : m.needs && "hot")}
-    >
-      <span className="top2">
-        <span className="min-w-0">
-          <b>{m.place}</b>
-          <small>
-            {[m.code, store?.city, powerText(store), syncLabel].filter(Boolean).join(" · ")}
-          </small>
-        </span>
-        {m.fillPct !== null ? <span className="pc">{t.common.pct(m.fillPct)}</span> : null}
-      </span>
-      {m.fillPct !== null ? (
-        <span className="bar" aria-hidden="true">
-          <i
-            className={cn("now", m.fillPct <= 25 && "o")}
-            style={{ transform: `scaleX(${Math.max(0, Math.min(1, m.fillPct / 100))})` }}
-          />
-        </span>
-      ) : null}
-      {label ? <span className="need first-letter:uppercase">{label}</span> : null}
-      {empties.length > 0 ? (
-        <span className="flex flex-wrap gap-1.5" aria-hidden="true">
-          {empties.slice(0, 6).map((r) => (
-            <PackImage key={r.titleId} title={r.name} size="xs" />
-          ))}
-        </span>
-      ) : null}
-    </a>
   );
 }

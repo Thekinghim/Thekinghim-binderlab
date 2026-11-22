@@ -1,7 +1,8 @@
 /*
- * Fyll på i V2 (prototypen docs/design/v2/prototyp.html, .pg-fyll): automaten överst med
- * "Byt automat", facken med packbild, stegare och "Fyll fack", och "Du fyller på N pack" + Klar.
- * Bara V2-färgerna (src/styles/v2.css), under .v2-fill-app. Enkel vy använder inte de här.
+ * Fyll på i V2, ägarens val A (docs/design/fyllpa-a.html): kompakt rubrik, facken som rutor i två
+ * kolumner (stor packbild, stapel "nytt/kapacitet", "+N" när vald), arket för ett fack och
+ * "Klar · N pack" fäst nedtill. På datorn facken till vänster, sammanfattningen och Klar till
+ * höger. Bara V2-färgerna (src/styles/v2.css), under .v2-fill-app. Enkel vy använder inte de här.
  */
 
 @layer components {
@@ -52,6 +53,16 @@
     margin-left: 2px;
   }
   @media (max-width: 900px) {
+    /* Telefon: "Awish läst 11:42" på en egen rad under "Fyll på" (annars kapas tiden). */
+    .v2-fill-app .top h1 {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0;
+      line-height: 1.2;
+    }
+    .v2-fill-app .top h1 .crumb {
+      font-size: var(--v2-t-sm);
+    }
     /* Telefon: 44 px att trycka på, inom sidans kant. */
     .v2-fill-app .top .back {
       width: 44px;
@@ -96,104 +107,6 @@
     font-weight: 650;
   }
 
-  /* Automaten överst */
-  .v2-fill-app .pick {
-    padding: 12px;
-  }
-  .v2-fill-app .rstep {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 0 0 10px;
-    margin-bottom: 10px;
-    border-bottom: 1px solid var(--v2-line);
-  }
-  .v2-fill-app .mpick {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 2px 4px 12px;
-    border-bottom: 1px solid var(--v2-line);
-  }
-  .v2-fill-app .mp-t {
-    flex: 1;
-    min-width: 0;
-  }
-  .v2-fill-app .mp-t b {
-    display: block;
-    font-size: var(--v2-t-lg);
-    font-weight: 650;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .v2-fill-app .mp-t small {
-    display: block;
-    font-size: var(--v2-t-sm);
-    color: var(--v2-mute);
-  }
-  .v2-fill-app .mp-c {
-    gap: 6px;
-  }
-  .v2-fill-app .msum {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 12px;
-    padding: 12px 4px 2px;
-  }
-  .v2-fill-app .msum .who2 {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .v2-fill-app .msum .who2 b {
-    font-size: var(--v2-t-lg);
-    font-weight: 650;
-  }
-  .v2-fill-app .msum .who2 small {
-    font-size: var(--v2-t-sm);
-    color: var(--v2-mute);
-  }
-  .v2-fill-app .msum .links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 14px;
-    margin-top: 6px;
-  }
-  .v2-fill-app .msum .links .v2-btn.plain {
-    padding: 0;
-    height: auto;
-    min-height: 32px;
-    border: 0;
-    background: none;
-    font-weight: 550;
-    text-decoration: underline;
-    text-decoration-color: var(--v2-line3);
-    text-underline-offset: 4px;
-  }
-  .v2-fill-app .msum .facts {
-    text-align: right;
-    flex: none;
-    font-size: var(--v2-t-md);
-    white-space: nowrap;
-  }
-  .v2-fill-app .msum .facts span {
-    display: block;
-  }
-  .v2-fill-app .msum .facts .pc {
-    color: var(--v2-mute);
-  }
-  .v2-fill-app .msum .facts .bring {
-    font-weight: 650;
-  }
-  .v2-fill-app .msum .facts .bring.none {
-    color: var(--v2-mute);
-    font-weight: 550;
-  }
-
   /* Arbetsytan: fack till vänster, sammanfattning och Klar till höger (dator) */
   .v2-fill-app .work {
     display: flex;
@@ -224,8 +137,9 @@
   }
   .v2-fill-app .after {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 8px 12px;
     margin-top: 10px;
     font-size: var(--v2-t-md);
     color: var(--v2-mute);
@@ -234,18 +148,9 @@
     color: var(--v2-ink);
     font-weight: 650;
   }
+  /* Långa butiksnamn bryts (stapeln hamnar under) i stället för att gå utanför kortet. */
   .v2-fill-app .after .msg {
-    white-space: nowrap;
-  }
-  @media (max-width: 900px) {
-    /* Långa butiksnamn bryts i stället för att göra sidan bredare än telefonen. */
-    .v2-fill-app .after {
-      flex-wrap: wrap;
-    }
-    .v2-fill-app .after .msg {
-      white-space: normal;
-      min-width: 0;
-    }
+    min-width: 0;
   }
   .v2-fill-app .bar {
     flex: 1;
@@ -309,206 +214,516 @@
     margin-top: 8px;
   }
 
-  /* Facken */
-  .v2-fill-app .row {
+  /* Automaten: kompakt rubrik (val A) */
+  .v2-fill-machine .mtop {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .v2-fill-machine .mt1 {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+  }
+  .v2-fill-machine .mt1 .back {
+    width: 44px;
+    height: 44px;
+    margin-right: -6px;
     display: grid;
-    /* Bredd för den bredaste packen (151) i storlek md. */
-    grid-template-columns: 62px minmax(0, 1fr) auto;
-    grid-template-areas:
-      "pk info step"
-      "pk meter fill"
-      "pk cnt cnt";
-    column-gap: 14px;
-    row-gap: 8px;
+    place-items: center start;
+    flex: none;
+    border-radius: var(--v2-r-md);
+    color: var(--v2-mute);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .v2-fill-machine .mt1 .back:active {
+    background: var(--v2-sel);
+  }
+  .v2-fill-machine .mt-t {
+    flex: 1;
+    min-width: 0;
+  }
+  .v2-fill-machine .mt-t h1 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+    min-width: 0;
+  }
+  .v2-fill-machine .mt-t .nm {
+    display: flex;
     align-items: center;
-    padding: 12px 16px 12px 18px;
+    gap: 4px;
+    max-width: 100%;
+    min-height: 44px;
+    text-align: left;
+    color: var(--v2-ink);
+    font: inherit;
+  }
+  /* Långa namn ("Automat 04 · Köpcentrum Kvarnen") får två rader innan de kortas. */
+  .v2-fill-machine .mt-t .nmt,
+  .v2-fill-machine .mt-t span.nm {
+    min-width: 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+  }
+
+  .v2-fill-machine .mt-t .pickb {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  .v2-fill-machine .mt-t .pickb svg {
+    flex: none;
+    color: var(--v2-faint);
+  }
+  .v2-fill-machine .mt-t .sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    margin-top: 0;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Uppdatera, nätet och "Mer" (Kör dit, Ring) till höger på rubrikraden. */
+  .v2-fill-machine .mt1 > .tools {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    flex: none;
+  }
+  .v2-fill-machine .mt1 .refresh {
+    height: 44px;
+    min-width: 44px;
+    padding: 0;
+    border-color: transparent;
+    background: none;
+    color: var(--v2-mute);
+  }
+  .v2-fill-machine .mt1 .refresh:active {
+    background: var(--v2-sel);
+  }
+  .v2-fill-machine .mt1 .refresh .lbl {
+    display: none;
+  }
+  .v2-fill-machine .mt1 .more {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--v2-r-md);
+    color: var(--v2-mute);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  .v2-fill-machine .mt1 .more:active {
+    background: var(--v2-sel);
+  }
+  .v2-mt-more {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 4px;
+  }
+  .v2-mt-more .v2-btn {
+    justify-content: center;
+  }
+  /* Telefonen: Kör dit och Ring ligger i "Mer"; datorn: en rad länkar, ingen "Mer". */
+  .v2-fill-machine .mt2 {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+  }
+  @media (min-width: 901px) {
+    .v2-fill-machine .mt2 {
+      display: flex;
+    }
+    .v2-fill-machine .mt1 .more {
+      display: none;
+    }
+  }
+  .v2-fill-machine .mt2 .links {
+    display: flex;
+    align-items: center;
+    gap: 4px 14px;
+    min-width: 0;
+  }
+  .v2-fill-machine .mt2 .links .v2-btn.plain {
+    min-width: 44px;
+    padding: 0 4px;
+    height: 44px;
+    border: 0;
+    background: none;
+    font-weight: 550;
+    color: var(--v2-ink);
+    text-decoration: underline;
+    text-decoration-color: var(--v2-line3);
+    text-underline-offset: 4px;
+  }
+  .v2-fill-app .rstep {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 0;
+    border-top: 1px solid var(--v2-line);
     border-bottom: 1px solid var(--v2-line);
   }
-  .v2-fill-app .row:last-child {
-    border-bottom: 0;
+
+  /* Nätet ("Har nät"): vanlig text, inte versaler eller kodtypsnitt. */
+  .v2-net {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--v2-line);
+    border-radius: 999px;
+    background: var(--v2-panel);
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-mute);
+    white-space: nowrap;
   }
-  .v2-fill-app .row > .v2-pk {
-    grid-area: pk;
-    align-self: center;
-    justify-self: center;
+  .v2-net > .dt {
+    color: var(--v2-profit);
   }
-  .v2-fill-app .row > .v2-pk {
+  .v2-net.off {
+    border-color: var(--v2-crit-line);
+    background: var(--v2-crit-soft);
+    color: var(--v2-crit-text);
+  }
+  .v2-net.off > .dt {
+    color: var(--v2-crit-icon);
+  }
+  /* Telefonen: har nät och inget i kön = bara en grön prick (texten för skärmläsare). */
+  @media (max-width: 900px) {
+    .v2-net.calm {
+      justify-content: center;
+      width: 16px;
+      padding: 0;
+      border: 0;
+      background: none;
+    }
+    .v2-net.calm > .dt {
+      width: 8px;
+      height: 8px;
+    }
+    .v2-net .quiet {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+
+  /* Facken som rutor */
+  .v2-fill-machine .slots {
+    order: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .v2-fill-machine .tapline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .v2-fill-machine .tapline .fillall {
+    min-height: 44px;
+    /* 44 px att trycka på, men raden tar bara 36 px (facken börjar högre upp). */
+    margin-block: -4px;
+    padding: 0 0 0 8px;
+    border-radius: var(--v2-r-md);
+    font-size: var(--v2-t-md);
+    font-weight: 650;
+    color: var(--v2-ink);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  .v2-fill-machine .tapline .fillall:active {
+    background: var(--v2-sel);
+  }
+  .v2-fill-machine .srcline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .v2-fill-machine .srcline .v2-btn {
+    min-height: 44px;
+  }
+  .v2-fill-machine .slots .empty {
+    padding: 16px 0;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .v2-fill-machine .tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .v2-fill-machine .tiles > li {
+    display: flex;
+    min-width: 0;
+  }
+  .v2-fill-machine .tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--v2-line);
+    border-radius: 14px;
+    background: var(--v2-panel);
+    text-align: left;
+    color: var(--v2-ink);
+    font: inherit;
+    /* Kanten byts direkt (1 → 2 px utan att innehållet flyttar sig): skuggan ritar den andra. */
+    box-shadow: 0 0 0 0 var(--v2-ink);
+    transition:
+      transform 0.16s var(--v2-ease),
+      box-shadow 0.12s ease,
+      border-color 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .v2-fill-machine .tile:active {
+    transform: scale(0.97);
+  }
+  .v2-fill-machine .tile.on {
+    border-color: var(--v2-ink);
+    box-shadow: 0 0 0 1px var(--v2-ink);
+  }
+  /* Inte allt finns i lagret man fyller från: orange +N (och märket "Utan uttag"). */
+  .v2-fill-machine .tile.short .plus {
+    background: var(--v2-warn);
+    color: var(--v2-warn-on);
+  }
+  .v2-fill-machine .tile:focus-visible {
+    outline: 2px solid var(--v2-info-icon);
+    outline-offset: 2px;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .v2-fill-machine .tile:not(.on):hover {
+      border-color: var(--v2-line3);
+    }
+  }
+  .v2-fill-machine .tile .plus {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--v2-ink);
+    color: var(--v2-on-primary);
+    font-size: var(--v2-t-md);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.3;
+    transition:
+      opacity 0.16s var(--v2-ease),
+      transform 0.16s var(--v2-ease);
+  }
+  @starting-style {
+    .v2-fill-machine .tile .plus {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+  }
+  .v2-fill-machine .tile .img {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    height: 118px;
+    overflow: hidden;
+  }
+  .v2-fill-machine .tile .img .v2-pk {
+    max-width: 100%;
     transition:
       opacity 0.2s ease-out,
       filter 0.2s ease-out;
   }
-  .v2-fill-app .row > .v2-pk.dim {
+  .v2-fill-app .v2-pk.dim,
+  .v2-slotsheet .v2-pk.dim {
     opacity: 0.35;
     filter: grayscale(1);
   }
-  /* Telefon: titeln får hela bredden, stegknapparna och "Fyll fack" till höger under den
-     (prototypen); bilden står överst. */
-  @media (max-width: 600px) {
-    .v2-fill-app .row {
-      grid-template-areas:
-        "pk info info"
-        "pk meter step"
-        "pk cnt fill";
-      align-items: center;
-    }
-    .v2-fill-app .row > .v2-pk {
-      align-self: start;
-    }
-    .v2-fill-app .row .info small {
-      margin-left: 0;
-    }
-    .v2-fill-app .row .meter {
-      padding-left: 0;
-    }
-  }
-  .v2-fill-app .row .info {
-    grid-area: info;
-    min-width: 0;
-  }
-  .v2-fill-app .row .info .t {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    min-width: 0;
-  }
-  .v2-fill-app .row .info .no {
-    font-size: var(--v2-t-xs);
-    color: var(--v2-faint);
-    flex: none;
-    width: 18px;
-  }
-  .v2-fill-app .row .info b {
-    font-weight: 650;
+  .v2-fill-machine .tile .nm {
+    display: block;
+    margin-top: 8px;
     font-size: var(--v2-t-md);
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .v2-fill-app .row .info small {
-    display: block;
-    font-size: var(--v2-t-sm);
-    color: var(--v2-mute);
-    margin: 2px 0 0 26px;
-  }
-  .v2-fill-app .row .info .o,
-  .v2-fill-app .row .info small.o {
-    color: var(--v2-warn-text);
-    font-weight: 650;
-  }
-  .v2-fill-app .row .info .crit {
-    color: var(--v2-crit-text);
-    font-weight: 650;
-  }
-  .v2-fill-app .row .lnk {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    color: var(--v2-ink);
-    font-weight: 550;
-    min-height: 32px;
-  }
-  .v2-fill-app .row .meter {
-    grid-area: meter;
+  .v2-fill-machine .tile .fl {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding-left: 26px;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .v2-fill-machine .tile .bar {
+    flex: 1;
     min-width: 0;
   }
-  .v2-fill-app .mini {
-    flex: 1;
-    height: 8px;
-    background: var(--v2-track);
-    border-radius: 6px;
-    position: relative;
-    overflow: hidden;
-    max-width: 220px;
+  .v2-fill-machine .tile .bar.unk {
+    visibility: hidden;
   }
-  .v2-fill-app .mini i {
-    position: absolute;
-    inset: 0;
-    transform-origin: left;
-  }
-  .v2-fill-app .mini .add {
+  .v2-fill-machine .tile .bar .add {
     background: var(--v2-adding);
-    transition: transform 0.18s var(--v2-ease);
   }
-  .v2-fill-app .mini .now {
-    background: var(--v2-ink);
+  .v2-fill-machine .tile.full .bar .add,
+  .v2-fill-machine .tile.full .bar .now {
+    background: var(--v2-profit);
   }
-  .v2-fill-app .mini .ticks {
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(
-      90deg,
-      transparent 0 calc(10% - 2px),
-      var(--v2-panel) calc(10% - 2px) 10%
-    );
-  }
-  .v2-fill-app .meter .gets {
+  .v2-fill-machine .tile .n {
+    flex: none;
     font-size: var(--v2-t-sm);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .v2-fill-machine .tile.full .n {
+    color: var(--v2-profit-text);
+  }
+  /* "Slut" över bilden (uppe till vänster): rutan blir lika hög vald som ovald. */
+  .v2-fill-machine .tile .chips {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 1;
+    display: flex;
+    gap: 6px;
+  }
+
+  /* Klar nedtill */
+  .v2-fill-machine .foot .klar {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .v2-fill-machine .foot .klar .sep {
+    opacity: 0.6;
+  }
+  @media (max-width: 900px) {
+    .v2-fill-machine .foot {
+      border-top: 1px solid var(--v2-line);
+      background: var(--v2-panel);
+    }
+
+    /* Telefonen: rutorna och Klar räcker; sammanfattningen står på datorn. */
+    .v2-fill-machine .say {
+      display: none;
+    }
+  }
+
+  /* Arket för ett fack */
+  .v2-slotsheet {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .v2-slotsheet .ss-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .v2-slotsheet .ss-facts {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .v2-slotsheet .ss-facts small {
+    font-size: var(--v2-t-md);
     color: var(--v2-mute);
-    white-space: nowrap;
-    min-width: 52px;
   }
-  .v2-fill-app .meter .gets.full {
-    color: var(--v2-ink);
-    font-weight: 650;
+  .v2-slotsheet .ss-facts .o {
+    color: var(--v2-warn-text);
+    font-weight: 600;
   }
-  .v2-fill-app .row .step {
-    grid-area: step;
+  .v2-slotsheet .ss-facts .crit {
+    color: var(--v2-crit-text);
+    font-weight: 600;
   }
-  .v2-fill-app .row .step input {
-    width: 44px;
-    height: 44px;
+  .v2-slotsheet .ss-step {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .v2-slotsheet .v2-step.big button {
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+  }
+  .v2-slotsheet .v2-step.big input {
+    width: 64px;
+    height: 48px;
     border: 0;
     background: none;
     text-align: center;
     font: inherit;
+    font-size: 24px;
     font-weight: 650;
-    font-size: 16px;
+    font-variant-numeric: tabular-nums;
     color: var(--v2-ink);
     -moz-appearance: textfield;
     appearance: textfield;
   }
-  .v2-fill-app .row .step input::-webkit-inner-spin-button,
-  .v2-fill-app .row .step input::-webkit-outer-spin-button {
+  .v2-slotsheet .v2-step.big input::-webkit-inner-spin-button,
+  .v2-slotsheet .v2-step.big input::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
   }
-  .v2-fill-app .row .step input[data-zero] {
+  .v2-slotsheet .v2-step.big input[data-zero] {
     color: var(--v2-faint);
-    font-weight: 550;
   }
-  .v2-fill-app .row .fillb {
-    grid-area: fill;
-    justify-self: end;
-  }
-  .v2-fill-app .row .cnt {
-    grid-area: cnt;
-    padding-left: 26px;
-  }
-  .v2-fill-app .row .cnt:empty {
-    display: none;
-  }
-  .v2-fill-app .more {
-    padding: 4px 18px 10px;
-  }
-  .v2-fill-app .more summary {
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    list-style: none;
-    font-size: var(--v2-t-sm);
+  .v2-slotsheet .gets {
+    font-size: var(--v2-t-md);
+    font-weight: 600;
     color: var(--v2-mute);
+    font-variant-numeric: tabular-nums;
   }
-  .v2-fill-app .more summary::-webkit-details-marker {
+  .v2-slotsheet .gets.full {
+    color: var(--v2-profit-text);
+  }
+  .v2-slotsheet .ss-cnt:empty {
     display: none;
   }
-  .v2-fill-app .more > div {
-    margin: 0 -18px;
-    border-top: 1px solid var(--v2-line);
+  .v2-slotsheet .ss-cnt > button {
+    min-height: 44px;
   }
 
   /* Listan (utan vald automat) */
@@ -525,6 +740,10 @@
     flex: none;
     height: 6px;
     width: 100%;
+  }
+  .v2-fill-app .mcard {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
   .v2-fill-app .say-list h2 {
     font-size: var(--v2-t-2xl);
@@ -578,11 +797,40 @@
     font-weight: 550;
     color: var(--v2-mute);
   }
-  .v2-fill-app .mcard.hot .need {
-    color: var(--v2-warn-text);
+  .v2-fill-app .mcard .need.none {
+    color: var(--v2-faint);
   }
-  .v2-fill-app .mcard.crit .need {
-    color: var(--v2-crit-text);
+  .v2-fill-app .mcard .fillrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .v2-fill-app .mcard .fillrow .bar {
+    flex: 1;
+    width: auto;
+  }
+  .v2-fill-app .mcard .fillrow .pc {
+    font-size: var(--v2-t-md);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+  .v2-fill-app .mcard .foot2 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 40px;
+  }
+  .v2-fill-app .mcard .foot2 .need {
+    color: var(--v2-ink);
+    font-weight: 650;
+  }
+  .v2-fill-app .mcard .pks {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
   }
   @media (hover: hover) and (pointer: fine) {
     .v2-fill-app .mcard:hover {
@@ -667,12 +915,8 @@
     .v2-fill-app .slots {
       order: 1;
     }
-    .v2-fill-app .row {
-      grid-template-columns: 44px minmax(0, 1fr) auto auto;
-      grid-template-areas:
-        "pk info fill step"
-        "pk meter fill step"
-        "pk cnt cnt cnt";
+    .v2-fill-machine .tiles {
+      grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
     }
     .v2-fill-app .list {
       display: grid;
