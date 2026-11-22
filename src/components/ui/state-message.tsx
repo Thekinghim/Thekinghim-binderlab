@@ -2,11 +2,10 @@
 
 import { useId, useState, type ReactNode } from "react";
 
+import { Button, ButtonLink } from "@/components/v2/button";
 import { useT } from "@/i18n/client";
 import { sv, type Messages } from "@/i18n/sv";
 import { cn } from "@/lib/cn";
-import { Button } from "./button";
-import { StatusGlyph, type Status } from "./status-tag";
 
 export type StateKind =
   "empty" | "no-results" | "error" | "offline" | "denied" | "loading-failed" | "not-configured";
@@ -43,28 +42,24 @@ export type StateMessageProps = {
 
 type KindSpec = {
   prefix: string;
-  glyph: Status;
+  /** Prickens ton (v2.css .v2-dot): bara fel som kräver åtgärd får signalfärg. */
+  dot: "critical" | "warning" | "off";
   /** Koden läggs efter prefixet i stället för att ersätta det. */
   appendCode: boolean;
   role: "status" | "alert";
 };
 
 const kinds: Record<StateKind, KindSpec> = {
-  empty: { prefix: "Tomt", glyph: "neutral", appendCode: false, role: "status" },
-  "no-results": { prefix: "0 träffar", glyph: "neutral", appendCode: false, role: "status" },
-  error: { prefix: "Fel", glyph: "critical", appendCode: true, role: "alert" },
-  "loading-failed": { prefix: "Ej laddad", glyph: "critical", appendCode: true, role: "alert" },
-  offline: { prefix: "Ur drift", glyph: "offline", appendCode: true, role: "status" },
-  denied: { prefix: "Saknar behörighet", glyph: "warning", appendCode: true, role: "status" },
-  "not-configured": {
-    prefix: "Av",
-    glyph: "offline",
-    appendCode: false,
-    role: "status",
-  },
+  empty: { prefix: "Tomt", dot: "off", appendCode: false, role: "status" },
+  "no-results": { prefix: "0 träffar", dot: "off", appendCode: false, role: "status" },
+  error: { prefix: "Fel", dot: "critical", appendCode: true, role: "alert" },
+  "loading-failed": { prefix: "Ej laddad", dot: "critical", appendCode: true, role: "alert" },
+  offline: { prefix: "Ur drift", dot: "off", appendCode: true, role: "status" },
+  denied: { prefix: "Saknar behörighet", dot: "warning", appendCode: true, role: "status" },
+  "not-configured": { prefix: "Av", dot: "off", appendCode: false, role: "status" },
 };
 
-/** Prefixet som det skrivs ut, t.ex. "FEL 503" eller "TOMT". */
+/** Prefixet som det skrivs ut, t.ex. "FEL 503" eller "TOMT" (visas i V2 som "Fel 503", "Tomt"). */
 export function statePrefix(
   kind: StateKind,
   code?: string,
@@ -76,17 +71,13 @@ export function statePrefix(
   return (spec.appendCode ? `${prefix} ${code}` : code).toUpperCase();
 }
 
-/** Signalfärg reserveras för fel som kräver åtgärd. */
-function needsAction(kind: StateKind) {
-  return kind === "error" || kind === "loading-failed";
-}
-
 function isActionObject(
   a: StateAction,
 ): a is { label: string; onClick?: () => void; href?: string; loading?: boolean } {
   return typeof a === "object" && a !== null && !Array.isArray(a) && "label" in a;
 }
 
+/** En åtgärd som V2-knapp: huvudåtgärden mörk (act), den andra vit. 44 px på telefon. */
 function ActionControl({
   action,
   emphasis,
@@ -97,79 +88,33 @@ function ActionControl({
   compact: boolean;
 }) {
   if (!isActionObject(action)) return <>{action}</>;
-  const label = (
-    <>
-      {action.label}
-      {emphasis === "primary" ? (
-        <span aria-hidden className="ml-1.5 font-mono">
-          →
-        </span>
-      ) : null}
-    </>
-  );
-
-  if (compact) {
-    const cls = cn(
-      // Under md: 44 px att trycka på (design.md §5.1).
-      "inline-flex h-7 items-center rounded-xs px-1.5 font-mono text-sm whitespace-nowrap underline-offset-4 transition-colors duration-fast ease-instrument max-md:h-11 max-md:min-w-11",
-      emphasis === "primary"
-        ? "text-fg underline decoration-line-control hover:decoration-fg"
-        : "text-muted hover:text-fg",
-    );
-    return action.href ? (
-      <a href={action.href} className={cls}>
-        {label}
-      </a>
-    ) : (
-      <button
-        type="button"
-        onClick={action.onClick}
-        disabled={action.loading}
-        aria-busy={action.loading || undefined}
-        className={cn(cls, "disabled:text-disabled disabled:decoration-transparent")}
-      >
-        {label}
-      </button>
-    );
-  }
-
+  const variant = emphasis === "primary" && !compact ? "act" : "default";
+  const size = compact ? "sm" : "md";
   if (action.href) {
     return (
-      <a
-        href={action.href}
-        className={cn(
-          "inline-flex h-9 items-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument max-md:min-h-11",
-          emphasis === "primary"
-            ? "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover"
-            : "border-transparent text-muted hover:bg-hover hover:text-fg",
-        )}
-      >
-        {label}
-      </a>
+      <ButtonLink href={action.href} variant={variant} size={size} touch>
+        {action.label}
+      </ButtonLink>
     );
   }
   return (
-    <Button
-      variant={emphasis === "primary" ? "primary" : "ghost"}
-      onClick={action.onClick}
-      loading={action.loading}
-    >
-      {label}
+    <Button variant={variant} size={size} touch onClick={action.onClick} pending={action.loading}>
+      {action.label}
     </Button>
   );
 }
 
-/** Glyf + versalt prefix. Glyfen är den enda delen som får signalfärg. */
+/**
+ * Prick + prefix som en liten grå etikett (V2: 12 px halvfet, gemener, ingen spärrning).
+ * Texten står i versaler i DOM (statePrefix) och visas som "Tomt", "Ej laddad".
+ */
 function Prefix({ kind, code }: { kind: StateKind; code?: string }) {
   const t = useT();
   const spec = kinds[kind];
   return (
-    <span className="label inline-flex shrink-0 items-center gap-2 text-fg">
-      <span className={cn("inline-flex", needsAction(kind) ? "" : "text-muted")}>
-        <StatusGlyph status={spec.glyph} />
-      </span>
-      {/* V2: "Tomt", inte "TOMT" (prefixet skrivs i versaler för det gamla skalet). */}
-      <span className="tnum v2:lowercase v2:first-letter:uppercase">
+    <span className="inline-flex shrink-0 items-center gap-2 text-v2-xs font-[550] text-v2-mute">
+      <span className={cn("v2-dot", spec.dot)} aria-hidden="true" />
+      <span className="tnum lowercase first-letter:uppercase">
         {statePrefix(kind, code, t.state.prefix)}
       </span>
     </span>
@@ -211,28 +156,24 @@ function Diagnostics({
   };
   return (
     <div id={id} hidden={!open} className={cn("w-full", className)}>
-      <div className="relative w-full max-w-xl rounded-sm border border-line bg-bg font-mono text-xs select-text">
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 px-3 pt-2.5 pr-20 pb-2.5">
+      <div className="relative w-full max-w-xl rounded-v2 border border-v2-line bg-v2-hover text-v2-xs select-text">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 py-2.5 pr-24 pl-3">
           {items.map((d) => (
             <div key={d.label} className="contents">
-              <dt className="text-subtle">{d.label}</dt>
-              <dd className="tnum [overflow-wrap:anywhere] text-fg">{d.value}</dd>
+              <dt className="text-v2-mute">{d.label}</dt>
+              <dd className="tnum [overflow-wrap:anywhere] text-v2-ink">{d.value}</dd>
             </div>
           ))}
         </dl>
-        <button
-          type="button"
-          onClick={copy}
-          className="absolute top-1 right-1 inline-flex h-7 items-center rounded-xs px-2 text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
-        >
+        <Button size="sm" variant="quiet" onClick={copy} className="absolute top-1 right-1">
           {copyState === "copied" ? copyLabels.copied : copyLabels.idle}
-        </button>
+        </Button>
       </div>
       <span aria-live="polite" className="sr-only">
         {copyState === "idle" ? "" : copyLabels[copyState]}
       </span>
       {copyState === "failed" ? (
-        <p className="mt-1.5 font-mono text-xs text-muted">
+        <p className="mt-1.5 text-v2-xs text-v2-mute">
           Kunde inte kopiera. Markera texten och kopiera manuellt.
         </p>
       ) : null}
@@ -240,11 +181,37 @@ function Diagnostics({
   );
 }
 
+/** Pil för "Visa detaljer": pekar ner, vänds upp när detaljerna är utfällda. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      className={cn("transition-transform duration-150", open && "rotate-180")}
+    >
+      <path
+        d="M3 4.5 6 7.5 9 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /**
- * Tomt läge eller felläge utan illustration: glyf och prefix i mono,
- * en mening i sans om vad som saknas eller gick fel, och en
- * tydlig nästa åtgärd. Status bärs av prefixordet och glyfens form;
- * signalfärg används bara på glyfen, och bara för fel som kräver åtgärd.
+ * Tomt läge eller felläge i V2 (Polaris, Google Sans, bara ljust): en prick och en liten grå
+ * etikett ("Tomt", "Ej laddad"), en mening om vad som saknas eller gick fel, en grå rad med
+ * nästa steg och V2-knappar. Signalfärg bara på pricken, och bara för fel som kräver åtgärd.
+ *
+ * Används också utanför appens skal (rapportsidorna, felsidan, ConfigMissing). Markören
+ * data-ui="v2" (ett tomt, dolt element) ger då sidan V2:s färger och typsnitt via
+ * :root:has([data-ui="v2"]) i src/styles/v2.css, samma som RouteNotFound. Inne i skalet gör
+ * den ingenting.
  */
 export function StateMessage({
   kind,
@@ -263,38 +230,36 @@ export function StateMessage({
   const diagId = useId();
   const spec = kinds[kind];
   const hasDiag = diagnostics !== undefined && diagnostics.length > 0;
+  const marker = <span data-ui="v2" hidden />;
 
   const toggle = hasDiag ? (
-    <button
-      type="button"
+    <Button
+      size={compact ? "sm" : "md"}
+      variant="quiet"
+      touch
       aria-expanded={open}
       aria-controls={diagId}
       onClick={() => setOpen((v) => !v)}
-      className={cn(
-        "inline-flex items-center gap-1 rounded-xs font-mono text-muted transition-colors duration-fast ease-instrument hover:text-fg",
-        compact ? "h-7 px-1.5 text-sm max-md:h-11" : "h-9 px-2 text-sm max-md:h-11",
-      )}
     >
-      <span aria-hidden className="inline-block w-2.5 text-center">
-        {open ? "−" : "+"}
-      </span>
       {open ? t.state.hideDetails : t.state.showDetails}
-    </button>
+      <Chevron open={open} />
+    </Button>
   ) : null;
 
   if (compact) {
-    // En radmall för alla lägen: prefix i mono på första raden, meningen i
-    // sans under, och åtgärderna högerställda på meningens baslinje.
+    // En radmall för alla lägen: prefixet på första raden, meningen under och åtgärderna
+    // högerställda på meningens baslinje.
     return (
-      <div role={spec.role} className={cn("fade-in flex flex-col gap-2 px-3 py-2.5", className)}>
+      <div role={spec.role} className={cn("v2-enter flex flex-col gap-2 px-3.5 py-3", className)}>
+        {marker}
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-1">
           <Prefix kind={kind} code={code} />
-          <p className="col-start-1 min-w-0 text-sm text-fg">
+          <p className="col-start-1 min-w-0 text-v2-md text-v2-ink">
             {message}
-            {detail ? <span className="text-subtle"> {detail}</span> : null}
+            {detail ? <span className="text-v2-mute"> {detail}</span> : null}
           </p>
           {action || secondaryAction || toggle ? (
-            <div className="col-start-2 row-span-2 row-start-1 -mb-1 flex flex-wrap items-center justify-end gap-x-1 self-end md:-mr-1.5">
+            <div className="col-start-2 row-span-2 row-start-1 flex flex-wrap items-center justify-end gap-1.5 self-end">
               {action ? <ActionControl action={action} emphasis="primary" compact /> : null}
               {secondaryAction ? (
                 <ActionControl action={secondaryAction} emphasis="secondary" compact />
@@ -311,13 +276,16 @@ export function StateMessage({
   return (
     <div
       role={spec.role}
-      className={cn("fade-in flex flex-col items-start px-5 pt-8 pb-6 md:px-6 md:pt-10", className)}
+      className={cn("v2-enter flex flex-col items-start px-[18px] pt-6 pb-5", className)}
     >
+      {marker}
       <Prefix kind={kind} code={code} />
-      <p className="mt-3 max-w-xl text-md text-pretty text-fg">{message}</p>
-      {detail ? <p className="mt-1.5 max-w-xl text-base text-muted">{detail}</p> : null}
+      <p className="mt-2 max-w-xl text-v2-md font-[550] text-pretty text-v2-ink">{message}</p>
+      {detail ? (
+        <p className="mt-1 max-w-xl text-v2-md text-pretty text-v2-mute">{detail}</p>
+      ) : null}
       {action || secondaryAction || toggle ? (
-        <div className="mt-6 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {action ? <ActionControl action={action} emphasis="primary" compact={false} /> : null}
           {secondaryAction ? (
             <ActionControl action={secondaryAction} emphasis="secondary" compact={false} />
@@ -326,7 +294,7 @@ export function StateMessage({
         </div>
       ) : null}
       {hasDiag ? (
-        <Diagnostics id={diagId} items={diagnostics} open={open} className="mt-4" />
+        <Diagnostics id={diagId} items={diagnostics} open={open} className="mt-3" />
       ) : null}
     </div>
   );
@@ -341,7 +309,7 @@ export function StateRow({
 }: StateMessageProps & { colSpan: number }) {
   return (
     <tr>
-      <td colSpan={colSpan} className={cn("border-b border-line p-0", className)}>
+      <td colSpan={colSpan} className={cn("border-b border-v2-line p-0", className)}>
         <StateMessage compact={compact} {...props} />
       </td>
     </tr>

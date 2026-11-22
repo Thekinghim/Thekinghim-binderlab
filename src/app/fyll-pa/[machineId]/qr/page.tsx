@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import QRCode from "qrcode";
 
 import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
@@ -9,7 +9,7 @@ import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import * as s from "@/db/schema";
 import { getServerEnv } from "@/lib/env";
 import { withUserDbFor } from "@/server/access";
-import { OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
+import { OPERATOR_ROLES, loadOptionalContext } from "@/server/data/core";
 import { resolveAppBaseUrl } from "@/server/request-info";
 
 import { currentViewer } from "@/app/(app)/lager/_lib/session";
@@ -22,12 +22,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * QR-kod att sätta på automaten: kameran öppnar Fyll på för just den automaten
- * (/fyll-pa/<id>). Koden ritas på servern som SVG (paketet qrcode, MIT). Ägare och admin.
+ * (/fyll-pa/<id>). Koden ritas på servern som SVG (paketet qrcode, MIT). Ägare och admin;
+ * övriga roller skickas till Fyll på för automaten, utan organisation till /.
  */
 export default async function QrPage({ params }: { params: Promise<{ machineId: string }> }) {
   const { machineId } = await params;
   if (!UUID.test(machineId)) notFound();
-  const ctx = await requireContextRole(OPERATOR_ROLES);
+  const ctx = await loadOptionalContext();
+  if (!ctx) redirect("/");
+  if (!(OPERATOR_ROLES as readonly string[]).includes(ctx.role)) redirect(`/fyll-pa/${machineId}`);
   const viewer = await currentViewer();
   const machine = await withUserDbFor(viewer.user, async (tx) => {
     const [m] = await tx

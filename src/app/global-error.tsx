@@ -1,41 +1,47 @@
 "use client";
 
-import { GeistMono } from "geist/font/mono";
-import { GeistSans } from "geist/font/sans";
-import { useEffect } from "react";
+import { Google_Sans } from "next/font/google";
+import Link from "next/link";
 
-import { THEME_STORAGE_KEY } from "@/lib/theme";
+import { V2Logo } from "@/components/v2/shell/nav-icon";
 
 import { RouteError, type RouteErrorProps } from "./_fel/route-error";
 import "./globals.css";
+import "./logga-in/auth.css";
+
+/** Samma typsnitt som rotlayouten (V2: Google Sans); rotlayouten finns inte här. */
+const googleSans = Google_Sans({
+  subsets: ["latin", "latin-ext"],
+  weight: "variable",
+  display: "swap",
+  variable: "--font-google-sans",
+  adjustFontFallback: false,
+});
 
 /**
  * Sista felgränsen: ersätter rotlayouten när den själv inte kan renderas. Har därför egna
- * `<html>` och `<body>`, typsnitt och stilmall, och läser temat ur localStorage själv.
+ * `<html>` och `<body>`, typsnitt och stilmall. V2 som app/error.tsx: loggan överst och felet
+ * i ett vitt kort på den grå ytan, bara ljust läge (data-ui="v2").
  */
 export default function GlobalError(props: RouteErrorProps) {
-  useEffect(() => {
-    try {
-      const t = localStorage.getItem(THEME_STORAGE_KEY);
-      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-    } catch {
-      // Utan lagring står det mörka läget kvar.
-    }
-  }, []);
   return (
-    <html
-      lang="sv"
-      data-theme="dark"
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="sv" data-theme="light" className={googleSans.variable} suppressHydrationWarning>
       <body>
         <title>Fel · Binderlab</title>
-        <main className="mx-auto min-h-dvh w-full max-w-[1280px] bg-bg px-4 pt-16 pb-16 md:px-8 md:pt-32">
-          <div className="w-full max-w-2xl md:ml-16">
-            <RouteError {...props} homeHref={null} />
-          </div>
-        </main>
+        <div data-ui="v2" className="v2-auth">
+          <header className="v2-auth-top">
+            <Link href="/" className="v2-auth-brand" aria-label="Binderlab, till startsidan">
+              <V2Logo size={28} />
+              Binderlab
+            </Link>
+          </header>
+          <main id="main" className="v2-auth-main">
+            <div className="flex w-full justify-center">
+              <RouteError {...props} homeHref={null} />
+            </div>
+          </main>
+          <footer className="v2-auth-foot" />
+        </div>
       </body>
     </html>
   );

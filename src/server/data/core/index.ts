@@ -40,6 +40,7 @@ import {
   type OrganizationMembership,
 } from "@/server/session";
 import { withUserDbFor } from "@/server/access";
+import { redirectStoreUserToPortal } from "@/server/portal/session";
 import { guardSimpleView } from "@/server/simple-view-guard";
 import { cachedUnpaidSettlements, invalidateUnpaidSettlements } from "@/server/settlements/cache";
 import { queryUnpaidSettlements } from "@/server/settlements/queries";
@@ -189,10 +190,23 @@ export async function requireContextRole(roles: readonly MemberRole[]): Promise<
  * Att göra). Returnerar kontexten.
  */
 export async function requireRoute(id: RouteId): Promise<AppContext> {
-  const ctx = await loadContext();
+  const ctx = await loadPageContext();
   // Till startsidan med ?nekad=<rutt>, som skalet förklarar (DeniedNotice).
   if (!routeById(id).roles.includes(ctx.role)) redirect(deniedHref(ctx.role, id));
   return ctx;
+}
+
+/**
+ * Kontexten för en sida. En butiksanvändare (rollen store, utan approll) skickas till
+ * /portal i stället för att få ett fel (t.ex. /rapport/varde, som ligger utanför appens
+ * layout). Övriga utan organisation: AuthorizationError som i loadContext (inuti appen
+ * visar layouten då NoOrganization).
+ */
+async function loadPageContext(): Promise<AppContext> {
+  const ctx = await loadOptionalContext();
+  if (ctx) return ctx;
+  await redirectStoreUserToPortal();
+  return loadContext();
 }
 
 /** Första dagen med data ("Allt" börjar där). Påfyllare: första försäljningen i lagret. */

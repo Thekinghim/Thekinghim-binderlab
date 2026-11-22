@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
+import { homeHref } from "@/components/shell/nav";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { getT } from "@/i18n/server";
-import { requireRoute, requireViewer } from "@/server/data/core";
+import { ECONOMY_ROLES, requireRoute, requireViewer } from "@/server/data/core";
 import { loadTodoCount } from "@/server/data/todos";
 import { loadWeeklySummaryFor } from "@/server/weekly/summary";
 
@@ -20,10 +22,11 @@ type SearchParams = Record<string, string | string[] | undefined>;
  * Veckan (/veckan): sidan som måndagens notis öppnar. Förra veckan mot veckan innan, bästa
  * produkten och Att göra. ?v=ÅÅÅÅ-MM-DD (en måndag) väljer veckan, annars förra veckan.
  * Samma roller som Hem (ägare, admin, läsare); läsaren har ingen Att göra-lista. Vinsten är
- * alltid före butikernas andel. I den enkla vyn visas samma sammanfattning på Försäljning.
+ * alltid före butikernas andel. Påfyllaren (inga kronor) skickas till sin startsida. I den enkla vyn visas samma sammanfattning på Försäljning.
  */
 export default async function WeekPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const ctx = await requireRoute("hem");
+  if (!(ECONOMY_ROLES as readonly string[]).includes(ctx.role)) redirect(homeHref(ctx.role));
   const [sp, viewer, { t, f }] = await Promise.all([searchParams, requireViewer(), getT()]);
   const summary = await loadWeeklySummaryFor(
     viewer,

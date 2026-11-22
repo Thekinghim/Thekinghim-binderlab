@@ -31,13 +31,14 @@ function digestOf(error: unknown): string | undefined {
 }
 
 /**
- * Felläget när en sida inte kan laddas (design.md 6, "Tom-, fel- och laddningslägen"):
- * tvådelad rubrik, `StateMessage kind="loading-failed"` med signal bara på glyfen, en
- * åtgärd med verbet först och de tekniska uppgifterna (fel-id, tid, sida) bakom
- * "Visa detaljer". Ingen stacktrace och inget felmeddelande från servern.
+ * Felläget när en sida inte kan laddas, i V2: ett vitt kort med rubriken som h1, tiden i en
+ * grå rad, `StateMessage kind="loading-failed"` (röd prick, "Ej laddad"), "Försök igen" som
+ * huvudknapp och de tekniska uppgifterna (fel-id, tid, sida) bakom "Visa detaljer". Ingen
+ * stacktrace och inget felmeddelande från servern.
  *
  * Används av `app/error.tsx` (när skalet inte kan laddas, t.ex. när databasen är nere),
- * `app/(app)/error.tsx` (inne i skalet) och `app/global-error.tsx`.
+ * `app/(app)/error.tsx` (inne i skalet) och `app/global-error.tsx`. Utanför skalet ger
+ * StateMessage sidan V2:s färger och typsnitt (data-ui="v2").
  */
 export function RouteError({
   error,
@@ -70,23 +71,16 @@ export function RouteError({
   const again = retry ?? reset ?? (() => window.location.reload());
 
   return (
-    <div className="flex flex-col">
-      <p className="label flex items-center gap-2 text-subtle">
-        <span className="text-fg">{t.state.errorEyebrow}</span>
-        <span aria-hidden className="text-faint">
-          /
-        </span>
-        <span>{t.state.errorEyebrowArea}</span>
-      </p>
-      <h1 className="mt-3 text-2xl font-medium text-balance hyphens-none md:text-3xl">
-        <span className="text-fg">{t.state.errorTitle}</span>{" "}
-        <span className="text-subtle" suppressHydrationWarning>
+    <div className="v2-card w-full max-w-xl">
+      <div className="flex flex-col gap-1 px-[18px] pt-5">
+        <h1 className="text-v2-xl font-[650] text-balance text-v2-ink">{t.state.errorTitle}</h1>
+        <p className="text-v2-md text-v2-mute" suppressHydrationWarning>
           {/* Neutral: felet kan vara en databas som inte svarar lika väl som ett programfel. */}
           {t.state.errorStopped(where ? where.at : null)}
-        </span>
-      </h1>
+        </p>
+      </div>
       <StateMessage
-        className="-mt-4 -ml-5 md:-mt-10 md:-ml-6"
+        className="pt-4"
         kind="loading-failed"
         message={t.state.errorNothingChanged}
         detail={t.state.errorAskOps}

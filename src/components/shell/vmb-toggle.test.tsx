@@ -33,7 +33,8 @@ describe("VmbToggle", () => {
     expect(out).toContain("Med VMB");
     expect(out).not.toContain("Utan VMB");
     expect(out).toContain('aria-pressed="true"');
-    expect(out).toContain("bg-hover");
+    // V2-chip: .v2-chips button[aria-pressed="true"] är mörk (v2.css).
+    expect(out).toContain("v2-chips");
   });
 
   it("etiketten", () => {

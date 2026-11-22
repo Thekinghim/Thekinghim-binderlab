@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
+import { Card, CardBody } from "@/components/v2/card";
 import { renderReportEmail, type ReportEmailProps } from "@/emails/report-email";
 import { cleanEmailHtml } from "@/server/reports/email-cleanup";
 
@@ -71,30 +72,39 @@ export function EmailRenderer({ jobs }: { jobs: readonly EmailJob[] }) {
 
   if (!rendered) {
     return (
-      <p role="status" className="text-sm text-subtle">
-        Mejlen renderas …
-      </p>
+      <Card>
+        <p role="status" className="v2-empty">
+          Mejlen renderas …
+        </p>
+      </Card>
     );
   }
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-[14px] max-[900px]:gap-3">
       {rendered.map((r) => (
-        <article key={r.job.recipientId} className="flex min-w-0 flex-col gap-3">
-          <header className="flex min-w-0 flex-col gap-1">
-            <p className="flex flex-wrap items-baseline gap-x-2 text-subtle">
-              <span className="label">Till {r.job.name}</span>
-              <span className="meta">{r.job.email}</span>
-            </p>
-            <h2 className="text-md text-balance text-fg">{r.subject}</h2>
-            <p className="text-sm text-muted">{r.preheader}</p>
-          </header>
-          <iframe
-            title={`Mejlet till ${r.job.name}`}
-            srcDoc={r.html}
-            sandbox=""
-            className="bg-white h-[1400px] w-full max-w-[680px] rounded-md border border-line"
-          />
-        </article>
+        <Card
+          key={r.job.recipientId}
+          as="article"
+          title={
+            <>
+              <span className="truncate">Till {r.job.name}</span>
+              <span className="truncate text-v2-sm font-[450] text-v2-mute">{r.job.email}</span>
+            </>
+          }
+        >
+          <CardBody className="flex min-w-0 flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-1">
+              <h3 className="text-v2-md font-[650] text-balance text-v2-ink">{r.subject}</h3>
+              <p className="text-v2-sm text-v2-mute">{r.preheader}</p>
+            </div>
+            <iframe
+              title={`Mejlet till ${r.job.name}`}
+              srcDoc={r.html}
+              sandbox=""
+              className="bg-white h-[1400px] w-full rounded-v2 border border-v2-line"
+            />
+          </CardBody>
+        </Card>
       ))}
     </div>
   );

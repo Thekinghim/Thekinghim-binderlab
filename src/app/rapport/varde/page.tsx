@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
 import { ReportDocument, ReportPage } from "@/components/report/report-document";
 import {
@@ -11,7 +12,8 @@ import {
   type ReportColumn,
 } from "@/components/report/report-blocks";
 import { monthEnd, monthStart } from "@/domain";
-import { requireRoute, requireViewer } from "@/server/data/core";
+import { loadOptionalContext, requireRoute, requireViewer } from "@/server/data/core";
+import { redirectStoreUserToPortal } from "@/server/portal/session";
 import { loadValueFor } from "@/server/varde/load";
 
 import { buildValueView, type ValueRow } from "../../(app)/varde/_lib/view";
@@ -38,13 +40,18 @@ function columns(head: readonly string[]): ReportColumn<ValueRow>[] {
 /**
  * Månadsrapporten "Vad Binderlab gett dig" som A4 (skriv ut eller spara som PDF): samma
  * siffror som sidan /varde för vald månad (?manad=ÅÅÅÅ-MM). Bara ägare och admin; bara
- * den aktiva organisationens data (RLS).
+ * den aktiva organisationens data (RLS). Utan inloggning: till /logga-in. Inloggad utan
+ * organisation: butiksanvändaren till /portal, övriga till appens förklaring (/).
  */
 export default async function ValueReportPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  if (!(await loadOptionalContext())) {
+    await redirectStoreUserToPortal();
+    redirect("/");
+  }
   const [, sp] = await Promise.all([requireRoute("varde"), searchParams]);
   const manad = typeof sp.manad === "string" ? sp.manad : null;
   const data = await loadValueFor(await requireViewer(), manad);

@@ -1,6 +1,5 @@
 "use client";
 
-import { MOBILE_MENU_ITEM } from "@/components/ui/more-menu";
 import { cn } from "@/lib/cn";
 
 import { storeShareHint } from "./period-state";
@@ -29,41 +28,41 @@ export function StoreShareToggle({
   hint?: boolean;
 }) {
   const { on, setOn } = useStoreShareView(serverOn);
+  // V2-chip (som Chips på Automater): vit med kant, mörk när den är på. I en MobileMore-meny
+  // under md en hel rad på 44 px.
   const button = (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={() => setOn(!on)}
-      title={storeShareHint(on)}
+    <span
       className={cn(
-        "label inline-flex h-8 shrink-0 items-center gap-2 self-start rounded-sm border border-line-strong px-2.5 transition-colors max-md:min-h-11",
-        on ? "bg-hover font-medium text-fg" : "text-subtle hover:text-muted",
-        menuItem && cn(MOBILE_MENU_ITEM, "max-md:gap-3"),
+        "v2-chips shrink-0 self-start",
+        menuItem && "max-md:w-full",
         !hint && className,
       )}
     >
-      <span
-        aria-hidden
-        className={cn(
-          "inline-block size-2 rounded-xs border border-current transition-colors",
-          on ? "bg-current" : "bg-transparent",
-        )}
-      />
-      {STORE_SHARE_TOGGLE_LABEL}
-    </button>
+      <button
+        type="button"
+        aria-pressed={on}
+        onClick={() => setOn(!on)}
+        title={storeShareHint(on)}
+        className={
+          menuItem ? "max-md:h-11 max-md:w-full max-md:justify-start max-md:rounded-v2" : undefined
+        }
+      >
+        {STORE_SHARE_TOGGLE_LABEL}
+      </button>
+    </span>
   );
   if (!hint) return button;
   return (
     <span
       className={cn(
-        "inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 self-start md:shrink-0 md:flex-nowrap",
+        "inline-flex max-w-full flex-wrap items-center gap-x-2.5 gap-y-1 self-start md:shrink-0 md:flex-nowrap",
         menuItem && "max-md:w-full max-md:flex-col max-md:items-stretch max-md:gap-0",
         className,
       )}
     >
       {button}
       <span
-        className={cn("label whitespace-nowrap text-subtle", menuItem && "max-md:hidden")}
+        className={cn("text-v2-xs whitespace-nowrap text-v2-mute", menuItem && "max-md:hidden")}
         data-testid="store-share-hint"
       >
         {storeShareHint(on)}

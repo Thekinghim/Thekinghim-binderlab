@@ -1,0 +1,151 @@
+/*
+ * Automater, översikten: sidans rutnät och rangordningens kort. Bara V2-tokens (src/styles/v2.css).
+ *
+ * På dator (över 900 px) blir listans eget rutnät (.v2-auto i automater-v2.css) en del av sidans:
+ * listan och rangordningen står i vänsterspalten, den valda automaten i högerspalten över båda
+ * raderna. Högerspalten är klistrad och högst en skärm hög (rullar själv), så att en lång
+ * automat inte lämnar en tom yta under listan. Telefon och smal skärm som förut.
+ */
+
+@layer components {
+  .ao-page {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  @media (max-width: 900px) {
+    .ao-page {
+      gap: 12px;
+    }
+  }
+  @media (min-width: 901px) {
+    .ao-page {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      gap: 14px;
+      align-items: start;
+    }
+    .ao-page > .v2-auto {
+      display: contents;
+    }
+    .ao-page > .v2-auto > .o-list {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .ao-page > .v2-auto > .adet {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      max-height: calc(100dvh - 32px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      border-radius: var(--v2-r-lg);
+    }
+    .ao-page > .ao-more {
+      grid-column: 1;
+      grid-row: 2;
+    }
+  }
+  @media (min-width: 901px) and (max-width: 1240px) {
+    .ao-page {
+      grid-template-columns: minmax(0, 1fr) 360px;
+    }
+  }
+
+  .ao-more {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  .ao-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ---- Rangordning ---- */
+  .ao-rank .v2-card-hd {
+    flex-wrap: wrap;
+  }
+  .ao-rank-per {
+    font-size: var(--v2-t-xs);
+    font-weight: 450;
+    color: var(--v2-mute);
+  }
+  .ao-rank-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+  }
+  .ao-rank-sum {
+    padding: 14px 18px 12px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+    text-wrap: pretty;
+    border-bottom: 1px solid var(--v2-line2);
+  }
+  .ao-rank-sum b {
+    font-weight: 550;
+    color: var(--v2-ink);
+  }
+  .ao-rank-list .v2-row {
+    align-items: start;
+  }
+  .ao-rank-list li:last-child .v2-row {
+    border-bottom: 0;
+  }
+  .ao-rank-nr {
+    display: inline-block;
+    min-width: 18px;
+    margin-right: 6px;
+  }
+  .ao-rank-name {
+    font-weight: 450;
+    color: var(--v2-mute);
+  }
+  .ao-rank-m {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 6px;
+  }
+  .ao-rank-m .v2-track {
+    flex: none;
+    width: 100%;
+  }
+  .ao-rank-why {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    align-items: center;
+  }
+  .ao-rank-why .v2-badge {
+    white-space: normal;
+    height: auto;
+    min-height: 20px;
+  }
+  .ao-rank-profit {
+    font-size: var(--v2-t-md);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .ao-rank-note {
+    padding: 12px 18px;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-faint);
+    border-top: 1px solid var(--v2-line2);
+  }
+  @media (max-width: 900px) {
+    .ao-rank-sum,
+    .ao-rank-note {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+    .ao-rank-m {
+      padding-top: 0;
+    }
+  }
+}

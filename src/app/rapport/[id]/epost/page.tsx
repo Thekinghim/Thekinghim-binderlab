@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
 import { formatInt } from "@/lib/format";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { appBaseUrl, currentReportViewer, reportSender } from "@/server/reports/runtime";
@@ -19,7 +19,9 @@ import {
 import { userReportStore } from "@/server/reports/storage";
 import { AuthorizationError } from "@/server/session";
 
+import { ReportChrome } from "../../_components/report-chrome";
 import { EmailRenderer, type EmailJob } from "./email-renderer";
+import "./epost.css";
 
 export const metadata: Metadata = { title: "Mejl" };
 
@@ -99,46 +101,38 @@ export default async function EmailPage({
   }));
 
   return (
-    <div className="min-h-dvh bg-bg">
-      <div className="sticky top-0 z-10 border-b border-line bg-bg">
-        <div className="mx-auto flex h-12 max-w-[1280px] items-center gap-3 px-4 md:px-8">
-          <nav aria-label="Sökväg" className="label flex min-w-0 items-center gap-2 text-subtle">
-            <Link
-              href={`/rapport/${report.id}`}
-              className="shrink-0 rounded-xs text-muted transition-colors duration-fast ease-instrument hover:text-fg"
-            >
-              {TYPE_LABEL[report.snapshot.type]}
-            </Link>
-            <span aria-hidden className="text-faint">
-              /
-            </span>
-            <span className="truncate">Mejl</span>
-          </nav>
-        </div>
-      </div>
-      <main className="mx-auto flex max-w-[1280px] flex-col gap-10 px-4 py-8 md:px-8">
-        <SectionHeader
-          as="h1"
-          size="md"
-          eyebrow="Mejl"
-          title={
-            jobs.length === 0
+    <ReportChrome
+      back={{ href: `/rapport/${report.id}`, label: TYPE_LABEL[report.snapshot.type] }}
+      crumb="Mejl"
+      // Inga knappar: mejlen skrivs inte ut härifrån.
+      actions={<></>}
+    >
+      <div className="ep-page mx-auto flex w-full max-w-[760px] min-w-0 flex-col gap-[14px] max-[900px]:gap-3">
+        <header className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-v2-xl font-[650] text-balance text-v2-ink">
+            {jobs.length === 0
               ? "Inget mejl att visa."
-              : `${formatInt(jobs.length)} mejl med ${DEFINITE[report.snapshot.type]}.`
-          }
-          aside={jobs.length === 0 ? undefined : "Så som mottagarna får dem."}
-        />
+              : `${formatInt(jobs.length)} mejl med ${DEFINITE[report.snapshot.type]}.`}
+          </h1>
+          {jobs.length === 0 ? null : (
+            <p className="text-v2-sm text-v2-mute">Så som mottagarna får dem.</p>
+          )}
+        </header>
         {jobs.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message="Ingen aktiv mottagare kan få den här rapporten."
-            action={{ label: "Lägg till mottagare", href: "/rapporter?vy=mottagare" }}
-            className="rounded-md border border-line bg-surface"
-          />
+          <Card>
+            <Empty
+              title="Ingen aktiv mottagare kan få den här rapporten."
+              action={
+                <ButtonLink href="/rapporter?vy=mottagare" variant="act" touch>
+                  Lägg till mottagare
+                </ButtonLink>
+              }
+            />
+          </Card>
         ) : (
           <EmailRenderer jobs={jobs} />
         )}
-      </main>
-    </div>
+      </div>
+    </ReportChrome>
   );
 }

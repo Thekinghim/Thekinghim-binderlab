@@ -1,7 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/cn";
-
 import { useVmbView } from "./use-period";
 
 /** Knappens förklaring (title), en rad. */
@@ -13,32 +11,24 @@ export function vmbToggleLabel(on: boolean): string {
 }
 
 /**
- * Vyknappen i kontextraden (standard av). Av: "Utan VMB" (dämpad), siffrorna räknas utan
- * VMB-moms. På: "Med VMB" (markerad), alla vinst- och marginaltal räknas efter VMB-moms
+ * Vyknappen i kontextraden (standard av). Av: "Utan VMB" (vit chip), siffrorna räknas utan
+ * VMB-moms. På: "Med VMB" (mörk chip), alla vinst- och marginaltal räknas efter VMB-moms
  * (?vmb=1, följer med mellan sidor). Valet minns per användare.
  */
 export function VmbToggle({ userKey, className }: { userKey: string; className?: string }) {
   const { on, setOn } = useVmbView(userKey);
+  // V2-chip (som Chips): vit med kant, mörk när VMB räknas.
   return (
-    <button
-      type="button"
-      aria-pressed={on}
-      title={VMB_TOGGLE_TITLE}
-      onClick={() => setOn(!on)}
-      className={cn(
-        "label flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-line-strong px-2 transition-colors",
-        on ? "bg-hover font-medium text-fg" : "text-subtle hover:text-muted",
-        className,
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "inline-block size-2 rounded-xs border border-current",
-          on ? "bg-current" : "bg-transparent",
-        )}
-      />
-      {vmbToggleLabel(on)}
-    </button>
+    <span className="v2-chips shrink-0">
+      <button
+        type="button"
+        aria-pressed={on}
+        title={VMB_TOGGLE_TITLE}
+        onClick={() => setOn(!on)}
+        className={className}
+      >
+        {vmbToggleLabel(on)}
+      </button>
+    </span>
   );
 }

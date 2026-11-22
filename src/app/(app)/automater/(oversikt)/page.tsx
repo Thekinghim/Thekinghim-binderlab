@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { ButtonLink } from "@/components/v2/button";
 import { carriedQuery } from "@/components/shell/period-state";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { formatInt } from "@/lib/format";
@@ -16,6 +16,8 @@ import { loadOverview } from "../_lib/data";
 import { nextMachineCode } from "../_lib/model";
 import { loadAutomaterV2 } from "../_lib/v2-data";
 import { filterOf, needsFill } from "../_lib/v2-model";
+
+import "./oversikt.css";
 
 export const metadata: Metadata = { title: "Automater" };
 
@@ -84,49 +86,58 @@ export default async function AutomaterPage({
         )
       }
     >
-      {n === 0 ? null : (
-        <AutomaterView
-          data={data}
-          initialFilter={filterOf(first(sp.f), data.economy)}
-          initialSelected={first(sp.valj)}
-        />
-      )}
-      {data.economy ? (
-        <p className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-v2-xs text-v2-mute">
-          <Link className="hover:text-v2-ink" href="/automater/enhetsekonomi">
-            Enhetsekonomi →
-          </Link>
-          <Link className="hover:text-v2-ink" href="/automater/svinn">
-            Svinn →
-          </Link>
-          <Link className="hover:text-v2-ink" href="#rangordning">
-            Rangordning →
-          </Link>
-        </p>
-      ) : null}
-      {/* Automat-ranking: vinst per dag och omdöme (en automat: mot sin förra period), under
-          listan för roller som ser ekonomi. Står still: driftläget i stället för omdömet. */}
-      {data.economy && n > 0 ? (
-        <div id="rangordning" className="v2-legacy mt-8 scroll-mt-24">
-          {/* "Visa butikernas andel": rangordningen efter andelen (som förut på Automater). */}
-          <div className="mb-3">
-            <Suspense fallback={null}>
-              <StoreShareToggle on={await requestStoreShareView()} />
-            </Suspense>
+      {/* Dator: listan och rangordningen i vänsterspalten, den valda automaten till höger
+          (klistrad och högst en skärm hög), så att ingen tom yta blir kvar under listan.
+          Rutnätet i oversikt.css; telefon och smal skärm som förut. */}
+      <div className="ao-page">
+        {n === 0 ? null : (
+          <AutomaterView
+            data={data}
+            initialFilter={filterOf(first(sp.f), data.economy)}
+            initialSelected={first(sp.valj)}
+          />
+        )}
+        {data.economy ? (
+          <div className="ao-more">
+            <nav className="ao-links" aria-label="Mer om automaterna">
+              <ButtonLink size="sm" touch href="/automater/enhetsekonomi">
+                Enhetsekonomi <span aria-hidden="true">→</span>
+              </ButtonLink>
+              <ButtonLink size="sm" touch href="/automater/svinn">
+                Svinn <span aria-hidden="true">→</span>
+              </ButtonLink>
+              <ButtonLink size="sm" touch href="#rangordning">
+                Rangordning <span aria-hidden="true">↓</span>
+              </ButtonLink>
+            </nav>
+            {/* Automat-ranking: vinst per dag och omdöme (en automat: mot sin förra period),
+                under listan för roller som ser ekonomi. Står still: driftläget i stället för
+                omdömet. "Visa butikernas andel" rangordnar efter andelen (som förut). */}
+            {n > 0 ? (
+              <div id="rangordning" className="scroll-mt-24">
+                <Suspense fallback={null}>
+                  <ProfitRanking
+                    searchParams={sp}
+                    query={carriedQuery(sp)}
+                    toggle={
+                      <Suspense fallback={null}>
+                        <StoreShareToggle on={await requestStoreShareView()} />
+                      </Suspense>
+                    }
+                    down={
+                      new Map(
+                        data.machines
+                          .filter((m) => m.status === "offline")
+                          .map((m) => [m.id, "Offline"]),
+                      )
+                    }
+                  />
+                </Suspense>
+              </div>
+            ) : null}
           </div>
-          <Suspense fallback={null}>
-            <ProfitRanking
-              searchParams={sp}
-              query={carriedQuery(sp)}
-              down={
-                new Map(
-                  data.machines.filter((m) => m.status === "offline").map((m) => [m.id, "Offline"]),
-                )
-              }
-            />
-          </Suspense>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </V2Page>
   );
 }
