@@ -44,10 +44,14 @@ afterAll(async () => {
   await browser?.close();
 });
 
-/** Hems rubrik (intäkt och vinst) och Lönsamhets nyckeltal. */
+/** Hems nyckeltal (V2: bandet med Vinst, Intäkt …) och Lönsamhets nyckeltal. */
 async function figures(): Promise<{ home: string; profitability: string }> {
   await page.goto(`/?${SEED_PERIOD}`);
-  const home = await page.getByRole("heading", { level: 1 }).innerText();
+  const band = page.getByRole("group", { name: "Nyckeltal för perioden" });
+  await band.waitFor();
+  // Talen rullar in (NumberFlow): läs när animationen är klar.
+  await new Promise((r) => setTimeout(r, 1_500));
+  const home = await band.innerText();
   await page.goto(`/lonsamhet?${SEED_PERIOD}`);
   const kpis = page.getByRole("region", { name: /^Nyckeltal/ });
   await kpis.waitFor();

@@ -77,7 +77,17 @@ async function expectFits(page: Page, selector: string): Promise<void> {
     }
     for (const el of Array.from(root.querySelectorAll("a[href], button"))) {
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && (r.height < 44 || r.width < 44)) {
+      // V2: en osynlig ::before (styles/v2.css, telefon) gör tryckytan minst 44 px.
+      const hit = (() => {
+        const s = getComputedStyle(el, "::before");
+        if (s.content === "none" || s.position !== "absolute") return { w: 0, h: 0 };
+        const px = (v: string) => (v.endsWith("px") ? parseFloat(v) : 0);
+        return {
+          w: r.width - px(s.left) - px(s.right),
+          h: r.height - px(s.top) - px(s.bottom),
+        };
+      })();
+      if (r.width > 0 && (Math.max(r.height, hit.h) < 44 || Math.max(r.width, hit.w) < 44)) {
         out.push(
           `liten tryckyta ${Math.round(r.width)}×${Math.round(r.height)}: "${(el.textContent ?? "").trim().slice(0, 30)}"`,
         );
@@ -137,18 +147,17 @@ afterAll(async () => {
 });
 
 describe("Automat-ranking med tio automater (iPhone SE)", () => {
-  it("Hem: en rad om bäst och sämst som leder till rangordningen", async () => {
+  it("Hem (V2): Sämst presterande visar den som tjänar dåligt och leder till Automater", async () => {
     const page = await signedIn(fx.fleetOwner);
     await page.goto("/");
-    const line = await sectionText(page, "[data-home-ranking]");
-    expect(line).toMatch(
-      /^BL-001 tjänar mest: [\d ]+ kr\/dag\. BL-009 tjänar dåligt: överväg att flytta den\./,
-    );
-    await expectFits(page, "[data-home-ranking]");
-    await shot(page, "[data-home-ranking]", "rank-01-hem-rad");
-    await page.locator("[data-home-ranking]").click();
-    await page.waitForURL((url) => url.pathname === "/automater" && url.hash === "#rangordning");
-    await page.locator('[data-ranking="fleet"]').waitFor();
+    const card = "#hem-worst";
+    const body = await sectionText(page, card);
+    expect(body).toMatch(/En vanlig automat tjänar [\d ]+ kr per dag\./);
+    expect(await page.locator('[data-hem-worst="BL-009"]').count()).toBe(1);
+    await expectFits(page, card);
+    await shot(page, card, "rank-01-hem-samst");
+    await page.locator(`${card} a.lk`).click();
+    await page.waitForURL((url) => url.pathname === "/automater");
   });
 
   it("Automater: tio automater rangordnade med omdöme, och vyknappen drar butikernas andel", async () => {
@@ -276,7 +285,7 @@ describe("Behörighet: bara de som får se ekonomin", () => {
     const page = await signedIn(fx.fleetPartner);
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    expect(await page.locator("[data-home-ranking]").count()).toBe(0);
+    expect(await page.locator("[data-home-ranking], [data-hem-worst]").count()).toBe(0);
     await screenshot(page, "rank-09-enkel-vy-hem");
     for (const path of ["/automater", "/automater/bl-009", "/automater/enhetsekonomi"]) {
       await page.goto(path);
@@ -331,7 +340,7 @@ describe("En ensam automat (iPhone SE)", () => {
     await page.getByRole("heading", { level: 1 }).first().waitFor();
     // Raden strömmas in: sidan är klar när menyn och rubriken finns, och raden kommer aldrig.
     await page.waitForLoadState("networkidle");
-    expect(await page.locator("[data-home-ranking]").count()).toBe(0);
+    expect(await page.locator("[data-home-ranking], [data-hem-worst]").count()).toBe(0);
   });
 
   it("Bästa sortiment: det som står still visas, men inget att prova i stället", async () => {

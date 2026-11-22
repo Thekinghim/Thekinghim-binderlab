@@ -1,7 +1,7 @@
 /**
  * Värde (/varde) på datorn och på en iPhone 15: ägaren ser rubriken, de fyra korten och
  * månadsväljaren utan sidledsrullning, kan öppna de hopfällda blocken och månadsrapporten
- * (A4 utan för högt innehåll), och Hem har kortet "Vad Binderlab gett dig". Delägaren
+ * (A4 utan för högt innehåll), och Värde finns i Mer. Delägaren
  * (läsare) skickas bort från sidan och rapporten.
  */
 
@@ -77,10 +77,9 @@ describe.each([
     await page.getByText("Bästa åtgärder.").first().waitFor();
     expect(await page.locator("[data-overflow]").count()).toBe(0);
 
-    await page.goto("/");
-    // Kortet strömmas in sist på Hem: medan blocket byts in finns det två i DOM:en (ett
-    // dolt), så vänta på det synliga.
-    await page.locator('[data-testid="varde-card"] >> visible=true').first().waitFor();
+    // V2: Hem har inte längre kortet "Vad Binderlab gett dig"; Värde nås från Mer.
+    await page.goto("/mer");
+    await page.locator('a[href="/varde"] >> visible=true').first().waitFor();
   });
 });
 

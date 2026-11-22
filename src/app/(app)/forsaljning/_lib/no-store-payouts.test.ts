@@ -32,8 +32,9 @@ describe("Försäljning i Enkel vy utan butikernas utbetalning", () => {
     const src = read("../../page.tsx");
     const simple = src.indexOf('if (simple.viewMode === "simple")');
     const salesReturn = src.indexOf("return <SalesScreen ctx={simple}");
-    const content = src.indexOf("<HemContent");
-    const payouts = src.indexOf("<PayoutLines");
+    // V2: Hems innehåll börjar med sidramen; utbetalningarna står i kortet Butiker.
+    const content = src.indexOf("<V2Page");
+    const payouts = src.indexOf("<ShopsCardView");
     expect(simple).toBeGreaterThan(-1);
     expect(salesReturn).toBeGreaterThan(simple);
     expect(content).toBeGreaterThan(salesReturn);
