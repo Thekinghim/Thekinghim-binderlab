@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import type { CustomerState } from "@/analytics/subscriptions/billing";
-import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { Badge, type BadgeTone } from "@/components/v2/badge";
+import { Card } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { KpiBand, KpiTile } from "@/components/v2/kpi-tile";
 import { formatInt, formatPercent } from "@/lib/format";
 import {
   STATE_LABEL,
@@ -22,12 +24,12 @@ import { requirePlatform } from "./_lib/context";
 
 export const metadata: Metadata = { title: "Kunder" };
 
-const STATE_STATUS: Record<CustomerState, Status> = {
-  active: "ok",
-  trial: "neutral",
+const STATE_TONE: Record<CustomerState, BadgeTone> = {
+  active: "success",
+  trial: "info",
   paused: "warning",
-  ended: "offline",
-  none: "offline",
+  ended: "neutral",
+  none: "neutral",
 };
 
 const STATE_ORDER: Record<CustomerState, number> = {
@@ -39,16 +41,6 @@ const STATE_ORDER: Record<CustomerState, number> = {
 };
 
 const sv = dayLabel;
-
-function Kpi({ label, value, note }: { label: string; value: ReactNode; note?: ReactNode }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1 border-t border-line pt-3">
-      <p className="label text-subtle">{label}</p>
-      <p className="tnum text-2xl text-fg md:text-3xl">{value}</p>
-      {note ? <p className="text-sm text-muted">{note}</p> : null}
-    </div>
-  );
-}
 
 function sortRows(rows: readonly PlatformRow[]): PlatformRow[] {
   return [...rows].sort(
@@ -79,116 +71,118 @@ export default async function PlatformPage() {
   const mrrSek = totals.mrr.find((m) => m.currency === "SEK")?.amountOre ?? 0;
 
   return (
-    <div className="flex flex-col gap-10 md:gap-12">
-      <header className="flex flex-col gap-2">
-        <p className="label text-subtle">Plattform · {sv(today)}</p>
-        <h1 className="text-3xl text-fg md:text-4xl">
+    <div className="flex flex-col gap-[14px] max-[900px]:gap-3">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-v2-xl font-[650] text-v2-ink">
           MRR <span className="tnum">{formatMoney(mrrSek, "SEK")}</span>
           {otherCurrencies.length > 0 ? (
-            <span className="text-muted"> + {formatMoneyList(otherCurrencies)}</span>
+            <span className="font-normal text-v2-mute"> + {formatMoneyList(otherCurrencies)}</span>
           ) : null}
+          <span className="ml-2 text-v2-md font-normal text-v2-mute">{sv(today)}</span>
         </h1>
-        <p className="text-muted">
+        <p className="text-v2-md text-v2-mute">
           {plural(totals.payingCustomers, "betalande kund", "betalande kunder")} ·{" "}
           {plural(totals.billableMachines, "automat", "automater")} debiteras. Inget dras
           automatiskt: fakturera från underlaget.
         </p>
       </header>
 
-      <section aria-label="Nyckeltal" className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4">
-        <Kpi label="ARR" value={formatMoneyList(totals.arr)} note="12 × MRR i dag" />
-        <Kpi
+      <KpiBand>
+        <KpiTile label="ARR" value={formatMoneyList(totals.arr)} compare="12 × MRR i dag" />
+        <KpiTile
           label="Kunder"
           value={formatInt(totals.payingCustomers)}
-          note={`${formatInt(totals.trialCustomers)} i provperiod · ${plural(totals.customers, "organisation", "organisationer")}`}
+          compare={`${formatInt(totals.trialCustomers)} i provperiod · ${plural(totals.customers, "organisation", "organisationer")}`}
         />
-        <Kpi
+        <KpiTile
           label="Automater"
           value={formatInt(totals.billableMachines)}
-          note={`debiteras · ${formatInt(totals.machines)} aktiva totalt`}
+          compare={`debiteras · ${formatInt(totals.machines)} aktiva totalt`}
         />
-        <Kpi
+        <KpiTile
           label="Churn"
           value={
             lastFull?.churnBp === null || lastFull === undefined
               ? "–"
               : formatPercent(lastFull.churnBp / 10_000)
           }
-          note={`${lastFull ? monthLabel(lastFull.month) : ""} · ${plural(churned12, "kund", "kunder")} på 12 mån`}
+          compare={`${lastFull ? monthLabel(lastFull.month) : ""} · ${plural(churned12, "kund", "kunder")} på 12 mån`}
         />
-      </section>
+      </KpiBand>
 
-      <section aria-labelledby="historik" className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="historik" className="text-xl text-fg">
-            MRR per månad.
-          </h2>
-          <p className="text-sm text-muted">
+      <Card title={<span id="historik">MRR per månad</span>}>
+        <div className="flex flex-col gap-4 px-[18px] pt-1 pb-4">
+          <p className="text-v2-sm text-v2-mute">
             SEK. Månadens sista dag, i dag för {monthLabel(history.at(-1)!.month)}.
           </p>
-        </div>
-        <MrrChart
-          data={sekHistory}
-          summary={`MRR i kronor de senaste ${history.length} månaderna, från ${monthLabel(history[0]!.month)} till ${monthLabel(history.at(-1)!.month)}.`}
-        />
-        <details className="rounded-md border border-line bg-surface p-4">
-          <summary className="cursor-pointer text-sm text-muted">Visa som tabell</summary>
-          <div className="-mx-4 mt-4 overflow-x-auto px-4">
-            <table className="w-full border-collapse text-sm">
-              <caption className="sr-only">MRR, fakturerat och churn per månad</caption>
-              <thead>
-                <tr className="border-b border-line-strong text-left">
-                  <th scope="col" className="label py-2 pr-3 font-normal text-subtle">
-                    Månad
-                  </th>
-                  <th scope="col" className="label px-3 py-2 text-right font-normal text-subtle">
-                    MRR
-                  </th>
-                  <th scope="col" className="label px-3 py-2 text-right font-normal text-subtle">
-                    Fakturerat
-                  </th>
-                  <th scope="col" className="label px-3 py-2 text-right font-normal text-subtle">
-                    Betalande
-                  </th>
-                  <th scope="col" className="label py-2 pl-3 text-right font-normal text-subtle">
-                    Churn
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...history].reverse().map((h) => (
-                  <tr key={h.month} className="border-b border-line">
-                    <td className="py-2 pr-3 text-fg">
-                      {monthLabel(h.month)}
-                      {h.partial ? <span className="text-subtle"> (hittills)</span> : null}
-                    </td>
-                    <td className="tnum px-3 py-2 text-right">{formatMoneyList(h.mrr)}</td>
-                    <td className="tnum px-3 py-2 text-right">{formatMoneyList(h.invoiced)}</td>
-                    <td className="tnum px-3 py-2 text-right">{formatInt(h.payingCustomers)}</td>
-                    <td className="tnum py-2 pl-3 text-right">
-                      {h.churnBp === null
-                        ? "–"
-                        : `${formatInt(h.churned)} (${formatPercent(h.churnBp / 10_000)})`}
-                    </td>
+          <MrrChart
+            data={sekHistory}
+            summary={`MRR i kronor de senaste ${history.length} månaderna, från ${monthLabel(history[0]!.month)} till ${monthLabel(history.at(-1)!.month)}.`}
+          />
+          <details className="group">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-v2-md text-v2-mute hover:text-v2-ink md:min-h-9 [&::-webkit-details-marker]:hidden">
+              <span
+                aria-hidden
+                className="transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
+              >
+                ›
+              </span>
+              Visa som tabell
+            </summary>
+            <div className="v2-table-wrap -mx-[18px] mt-2 border-t border-v2-line">
+              <table className="v2-table">
+                <caption className="sr-only">MRR, fakturerat och churn per månad</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Månad</th>
+                    <th scope="col" className="num">
+                      MRR
+                    </th>
+                    <th scope="col" className="num">
+                      Fakturerat
+                    </th>
+                    <th scope="col" className="num">
+                      Betalande
+                    </th>
+                    <th scope="col" className="num">
+                      Churn
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-
-      <section aria-labelledby="kunder" className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="kunder" className="text-xl text-fg">
-            Kunder.
-          </h2>
-          <Link href="/plattform/underlag" className="text-sm text-muted underline hover:text-fg">
-            Fakturaunderlag för {monthLabel(today.slice(0, 7))} →
-          </Link>
+                </thead>
+                <tbody>
+                  {[...history].reverse().map((h) => (
+                    <tr key={h.month}>
+                      <td>
+                        {monthLabel(h.month)}
+                        {h.partial ? <span className="text-v2-mute"> (hittills)</span> : null}
+                      </td>
+                      <td className="num">{formatMoneyList(h.mrr)}</td>
+                      <td className="num">{formatMoneyList(h.invoiced)}</td>
+                      <td className="num">{formatInt(h.payingCustomers)}</td>
+                      <td className="num">
+                        {h.churnBp === null
+                          ? "–"
+                          : `${formatInt(h.churned)} (${formatPercent(h.churnBp / 10_000)})`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </div>
+      </Card>
+
+      <Card
+        title={<span id="kunder">Kunder</span>}
+        count={rows.length}
+        link={{
+          href: "/plattform/underlag",
+          label: `Fakturaunderlag för ${monthLabel(today.slice(0, 7))}`,
+        }}
+      >
         {rows.length === 0 ? (
-          <p className="text-muted">Inga kundorganisationer ännu.</p>
+          <Empty title="Inga kundorganisationer ännu." />
         ) : (
           <ul className="flex flex-col">
             {rows.map(({ customer: c, summary: s }) => {
@@ -197,47 +191,55 @@ export default async function PlatformPage() {
               return (
                 <li
                   key={c.id}
-                  className="border-t border-line py-4 last:border-b"
+                  className="border-t border-v2-line px-[18px] py-3"
                   data-kund={c.slug}
                 >
                   <div className="grid grid-cols-[1fr_auto] items-start gap-x-4 gap-y-1 md:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
                     <div className="flex min-w-0 flex-col gap-1">
-                      <p className="flex flex-wrap items-center gap-2 text-lg text-fg">
+                      <p className="flex flex-wrap items-center gap-2 text-v2-md font-[550] text-v2-ink">
                         <span className="min-w-0 break-words">{c.name}</span>
-                        {c.operator ? <span className="label text-subtle">Plattform</span> : null}
-                        {c.archivedAt ? <span className="label text-subtle">Arkiverad</span> : null}
+                        {c.operator ? <Badge>Plattform</Badge> : null}
+                        {c.archivedAt ? <Badge>Arkiverad</Badge> : null}
                       </p>
                       <div>
-                        <StatusTag status={STATE_STATUS[s.state]}>{STATE_LABEL[s.state]}</StatusTag>
+                        <Badge tone={STATE_TONE[s.state]} dot>
+                          {STATE_LABEL[s.state]}
+                        </Badge>
                       </div>
                     </div>
-                    <p className="tnum text-right text-lg text-fg md:order-last">
+                    <p className="tnum text-right text-v2-md font-[550] text-v2-ink md:order-last">
                       {s.mrr ? formatMoney(s.mrr.amountOre, s.mrr.currency) : "–"}
-                      <span className="block text-sm text-subtle">MRR</span>
+                      <span className="block text-v2-sm font-normal text-v2-mute">MRR</span>
                     </p>
-                    <p className="tnum col-span-2 text-sm text-muted md:col-span-1 md:text-base md:text-fg">
+                    <p className="tnum col-span-2 text-v2-sm text-v2-mute md:col-span-1 md:text-v2-md md:text-v2-ink">
                       {plural(s.machinesNow, "automat", "automater")}
-                      <span className="text-subtle md:block md:text-sm">
+                      <span className="text-v2-mute md:block md:text-v2-sm">
                         {" "}
                         · {formatInt(s.activeMachinesThisMonth)} i månaden
                       </span>
                     </p>
-                    <p className="tnum col-span-2 text-sm text-muted md:col-span-1 md:text-base md:text-fg">
+                    <p className="tnum col-span-2 text-v2-sm text-v2-mute md:col-span-1 md:text-v2-md md:text-v2-ink">
                       {plan
                         ? `${formatMoney(plan.pricePerMachineOre, currency)}/automat`
                         : "Ingen plan"}
-                      <span className="text-subtle md:block md:text-sm">
+                      <span className="text-v2-mute md:block md:text-v2-sm">
                         {" "}
                         · ARR {s.arr ? formatMoney(s.arr.amountOre, s.arr.currency) : "–"}
                       </span>
                     </p>
                   </div>
-                  <details className="mt-2">
-                    <summary className="flex min-h-11 cursor-pointer items-center text-sm text-muted hover:text-fg md:min-h-0">
+                  <details className="group mt-1">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-v2-sm text-v2-mute hover:text-v2-ink md:min-h-8 [&::-webkit-details-marker]:hidden">
+                      <span
+                        aria-hidden
+                        className="transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
+                      >
+                        ›
+                      </span>
                       Mer och ändra plan
                     </summary>
-                    <div className="mt-3 flex flex-col gap-5 rounded-md border border-line bg-surface p-4 md:p-5">
-                      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
+                    <div className="mt-2 flex flex-col gap-5 rounded-v2-lg bg-v2-hover p-4 shadow-[0_0_0_1px_var(--v2-line)] md:p-5">
+                      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-v2-sm md:grid-cols-4">
                         {[
                           ["Kund sedan", sv(s.startedOn)],
                           ["Provperiod till", sv(s.trialEndsOn)],
@@ -257,25 +259,27 @@ export default async function PlatformPage() {
                           ["Organisation skapad", sv(c.createdAt.slice(0, 10))],
                         ].map(([k, v]) => (
                           <div key={k} className="flex min-w-0 flex-col">
-                            <dt className="label text-subtle">{k}</dt>
-                            <dd className="tnum break-words text-fg">{v}</dd>
+                            <dt className="text-v2-mute">{k}</dt>
+                            <dd className="tnum break-words text-v2-ink">{v}</dd>
                           </div>
                         ))}
                       </dl>
                       {c.notes.length > 0 ? (
-                        <p className="text-sm text-muted">Anteckning: {c.notes.at(-1)!.note}</p>
+                        <p className="text-v2-sm text-v2-mute">
+                          Anteckning: {c.notes.at(-1)!.note}
+                        </p>
                       ) : null}
                       {c.periods.length > 0 ? (
-                        <ol className="flex flex-col text-sm">
+                        <ol className="flex flex-col text-v2-sm">
                           {[...c.periods].reverse().map((p) => (
                             <li
                               key={p.validFrom}
-                              className="tnum flex flex-wrap justify-between gap-2 border-t border-line py-2"
+                              className="tnum flex flex-wrap justify-between gap-2 border-t border-v2-line py-2"
                             >
-                              <span className="text-muted">
+                              <span className="text-v2-mute">
                                 {sv(p.validFrom)} – {p.validTo ? sv(p.validTo) : "tills vidare"}
                               </span>
-                              <span className="text-fg">
+                              <span className="text-v2-ink">
                                 {p.status === "active"
                                   ? "Aktiv"
                                   : p.status === "paused"
@@ -307,7 +311,7 @@ export default async function PlatformPage() {
                       />
                       <Link
                         href={`/plattform/underlag?kund=${c.id}`}
-                        className="text-sm text-muted underline hover:text-fg"
+                        className="text-v2-sm font-[550] text-v2-ink underline underline-offset-4"
                       >
                         Kundens fakturaunderlag →
                       </Link>
@@ -318,7 +322,7 @@ export default async function PlatformPage() {
             })}
           </ul>
         )}
-      </section>
+      </Card>
     </div>
   );
 }
