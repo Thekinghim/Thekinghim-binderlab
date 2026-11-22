@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { StateMessage } from "@/components/ui/state-message";
 import { ButtonLink } from "@/components/v2/button";
+import { DaySalesCard } from "@/components/v2/day-sales";
+import { SkeletonCard } from "@/components/v2/skeleton";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { messages } from "@/i18n";
 import { loadMasterData, loadOptionalContextIfSignedIn, requireRoute } from "@/server/data/core";
+import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
 import { loadDayRoute } from "@/server/data/v2/route";
 
 import { SimpleStockScreen } from "../_enkel/stock-screen";
@@ -127,6 +131,7 @@ export default async function VartLagerPage({
     <V2Page
       title="Vårt lager"
       date={date}
+      period
       tools={
         view.canEdit ? (
           <>
@@ -206,6 +211,29 @@ export default async function VartLagerPage({
           now={ctx.now}
         />
       )}
+      {/* Det som gick ut ur lagret under vald period (periodvalet överst), per titel och automat. */}
+      {view.rows.length > 0 ? (
+        <div className="mt-[14px]">
+          <Suspense fallback={<SkeletonCard rows={6} />}>
+            <Sold sp={sp} />
+          </Suspense>
+        </div>
+      ) : null}
     </V2Page>
+  );
+}
+
+async function Sold({ sp }: { sp: Record<string, string | string[] | undefined> }) {
+  const v = await loadDaySales(sp).catch((error: unknown) => {
+    console.error("[vart-lager] Försäljningen för perioden kunde inte läsas:", error);
+    return null;
+  });
+  if (!v) return null;
+  return (
+    <DaySalesCard
+      sales={v.sales}
+      title={v.singleDay ? `Sålt ${v.inline}` : `Sålt · ${v.inline}`}
+      inline={v.inline}
+    />
   );
 }

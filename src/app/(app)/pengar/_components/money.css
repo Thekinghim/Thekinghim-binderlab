@@ -1710,3 +1710,22 @@
     }
   }
 }
+
+/* Många staplar (en månad per dag, ett halvår per vecka, en dag per timme): tätare och utan
+   belopp över staplarna; beloppet står i stapelns text (title, aria-label). */
+@layer components {
+  .g4-bars.dense,
+  .g4-wls.dense {
+    gap: 3px;
+  }
+  .g4-bars.dense .amt {
+    display: none;
+  }
+  .g4-bars.dense .bar {
+    border-radius: 3px 3px 0 0;
+  }
+  .g4-wls.dense span {
+    overflow: visible;
+    font-size: var(--v2-t-xs);
+  }
+}

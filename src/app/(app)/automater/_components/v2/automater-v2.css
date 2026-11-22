@@ -116,6 +116,20 @@
   .v2-auto .sb.r {
     justify-self: end;
   }
+  .v2-auto .sb .sl {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: inherit;
+    line-height: 1.15;
+  }
+  .v2-auto .sb.r .sl {
+    align-items: flex-end;
+  }
+  .v2-auto .sb .sl small {
+    font-size: 10px;
+    color: var(--v2-faint, var(--v2-mute));
+    font-weight: 500;
+  }
   .v2-auto .sb[aria-sort="ascending"],
   .v2-auto .sb[aria-sort="descending"] {
     color: var(--v2-ink);

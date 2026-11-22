@@ -13,7 +13,7 @@ import { Empty } from "@/components/v2/empty";
 import { PackImage } from "@/components/v2/pack-image";
 import { RollingNumber } from "@/components/v2/rolling-number";
 import { Sparkline } from "@/components/v2/sparkline";
-import type { SearchParamsInput } from "@/components/shell/period-state";
+import { periodQuery, type SearchParamsInput } from "@/components/shell/period-state";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 import { loadMoneyGoal, loadMoneyPriceAdvice } from "@/server/data/v2/analytics/goal";
@@ -41,8 +41,39 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
     Math.max(0, ...r.bars.map((b) => Math.max(b.profitOre, b.paceOre ?? 0))),
   );
   const max = scale.topOre;
+  const unitName =
+    r.unit === "hour"
+      ? "timme"
+      : r.unit === "week"
+        ? "vecka"
+        : r.unit === "month"
+          ? "månad"
+          : "dag";
+  // Många staplar (en månad per dag, ett halvår per vecka): tätare, utan belopp över
+  // staplarna (de står i staplarnas text) och var n:e etikett.
+  const dense = r.bars.length > 10;
+  const step = r.labelStep;
+  // Fler än 5 staplar: beloppen kort, som axeln ("117k", "4 572"), så att de inte krockar.
+  const amt = (ore: number) =>
+    r.bars.length <= 5
+      ? kr(ore)
+      : Math.abs(ore) >= 1_000_000
+        ? `${formatInt(Math.round(ore / 100_000))}k`
+        : formatInt(Math.round(ore / 100));
   return (
-    <Card title={`Resultat · ${r.periodLabel}`}>
+    <Card
+      title={`Resultat · ${r.periodLabel}`}
+      actions={
+        <a
+          className="lk"
+          href={`/pengar/export${periodQuery(sp) || "?period=30d"}`}
+          download
+          title="Perioden per titel och automat som CSV"
+        >
+          CSV <span aria-hidden="true">↓</span>
+        </a>
+      }
+    >
       <div className="g4-res">
         <div className="l">
           <span className="lab">
@@ -81,18 +112,18 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
           {r.unit !== null && r.bars.length > 0 ? (
             <>
               <div className="g4-chart-hd">
-                <b>{r.unit === "week" ? "Vinst per vecka" : "Vinst per dag"}</b>
+                <b>{r.unit === "hour" ? "Intäkt per timme" : `Vinst per ${unitName}`}</b>
                 {r.best ? (
                   <span>
-                    Bästa {r.unit === "week" ? "vecka" : "dag"}: {r.best.label}
+                    Bästa {unitName}: {r.best.label}
                   </span>
                 ) : null}
               </div>
               <div className="g4-wc">
                 <div
-                  className="g4-bars"
+                  className={cn("g4-bars", dense && "dense")}
                   role="list"
-                  aria-label={`Vinst per ${r.unit === "week" ? "vecka" : "dag"}`}
+                  aria-label={r.unit === "hour" ? "Intäkt per timme" : `Vinst per ${unitName}`}
                 >
                   {scale.ticks.map((t) => (
                     <span
@@ -109,7 +140,7 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
                     const pace =
                       b.partial && b.paceOre !== null ? Math.max(0, b.paceOre) / max : null;
                     const text = [
-                      `${r.unit === "week" ? `Vecka ${b.label.replace(/^v\. /, "")}` : b.label}${b.partialText ? ` (${b.partialText})` : ""}: vinst ${kr(b.profitOre)}`,
+                      `${r.unit === "week" ? `Vecka ${b.label.replace(/^v\. /, "")}` : r.unit === "hour" ? `Kl. ${b.label}` : b.label}${b.partialText ? ` (${b.partialText})` : ""}: ${r.unit === "hour" ? "intäkt" : "vinst"} ${kr(b.profitOre)}`,
                       b.paceOre !== null ? `takt ${kr(b.paceOre)} för hela veckan` : null,
                     ]
                       .filter(Boolean)
@@ -144,16 +175,16 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
                             bottom: `calc(${Math.max(h, pace ?? 0) * 100}% + 4px)`,
                           }}
                         >
-                          {kr(b.profitOre)}
+                          {amt(b.profitOre)}
                         </span>
                       </div>
                     );
                   })}
                 </div>
-                <div className="g4-wls" aria-hidden="true">
-                  {r.bars.map((b) => (
+                <div className={cn("g4-wls", dense && "dense")} aria-hidden="true">
+                  {r.bars.map((b, i) => (
                     <span key={b.key}>
-                      {b.label}
+                      {i % step === 0 ? <AxisLabel label={b.label} /> : ""}
                       {b.partialText ? <small>{b.partialText}</small> : null}
                       {b.paceOre !== null ? (
                         <small className="tk">takt {kr(b.paceOre).replace(/\s?kr$/, "")}</small>
@@ -166,7 +197,7 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
           ) : (
             <div className="g4-chart-hd">
               <b>{formatInt(r.orders)} sålda pack</b>
-              <span>i dag hittills</span>
+              <span>{r.periodLabel}</span>
             </div>
           )}
         </div>
@@ -520,5 +551,17 @@ export function EmptyMoney() {
         När automaterna har sålt visas resultat, vinst per automat och det som ska betalas här.
       </Empty>
     </Card>
+  );
+}
+
+/** Stapelns etikett; ett år ("jan ’26") står på en egen rad under månaden. */
+function AxisLabel({ label }: { label: string }) {
+  const at = label.indexOf(" ’");
+  if (at < 0) return <>{label}</>;
+  return (
+    <>
+      {label.slice(0, at)}
+      <small>{label.slice(at + 1)}</small>
+    </>
   );
 }

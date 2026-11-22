@@ -13,7 +13,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
+  PERIOD_COOKIE,
+  PERIOD_COOKIE_MAX_AGE,
   parseVmbView,
+  periodCookieFromUrl,
+  periodRedirect,
   STORE_SHARE_COOKIE,
   STORE_SHARE_HEADER,
   storeShareViewOf,
@@ -69,6 +73,39 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   if (authenticated) {
+    // Periodvalet: en periodsida utan ?period får det sparade valet (kakan som periodväljaren
+    // skriver), och en periodsida med ett val i adressen sparar det, så att nästa sida visar
+    // samma period. Bara vanliga sidvisningar (GET/HEAD). ?fran= på andra sidor (Fyll på:s
+    // retur, Rapporters datum) rörs aldrig.
+    if (request.method === "GET" || request.method === "HEAD") {
+      let saved: string | undefined;
+      try {
+        saved = decodeURIComponent(request.cookies.get(PERIOD_COOKIE)?.value ?? "");
+      } catch {
+        saved = undefined;
+      }
+      const sp = request.nextUrl.searchParams;
+      const to = periodRedirect(pathname, sp, saved);
+      if (to) {
+        const target = request.nextUrl.clone();
+        const [path, query = ""] = to.split("?");
+        target.pathname = path ?? pathname;
+        target.search = query ? `?${query}` : "";
+        const redirect = NextResponse.redirect(target);
+        for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
+        return redirect;
+      }
+      const fromUrl = periodCookieFromUrl(pathname, sp);
+      if (fromUrl === null && saved) {
+        response.cookies.set(PERIOD_COOKIE, "", { path: "/", maxAge: 0, sameSite: "lax" });
+      } else if (typeof fromUrl === "string" && fromUrl !== saved) {
+        response.cookies.set(PERIOD_COOKIE, fromUrl, {
+          path: "/",
+          maxAge: PERIOD_COOKIE_MAX_AGE,
+          sameSite: "lax",
+        });
+      }
+    }
     return response;
   }
 

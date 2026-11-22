@@ -61,6 +61,8 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
   if (!r) return null;
   const max = Math.max(1, ...r.bars.map((b) => Math.max(b.value, b.previous ?? 0)));
   const hours = r.unit === "timme";
+  // Många staplar (en månad per dag): var n:e etikett, så att datumen inte krockar.
+  const step = hours ? 3 : Math.max(1, Math.ceil(r.bars.length / 8));
   const unitName = { vecka: "vecka", dag: "dag", timme: "timme", månad: "månad" }[r.unit];
   // Stödlinjer i hela kronor: 0, halva och den största "jämna" summan under toppen.
   const maxKr = max / 100;
@@ -75,14 +77,12 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
     >
       <div className="x-rt">
         <div className="x-rm">
-          <span className="x-l">{hours ? "Vinst i dag" : "Vinst"}</span>
+          <span className="x-l">{r.pace ? "Vinst i dag" : "Vinst"}</span>
           <span className="x-big">{r.profitOre !== null ? kr(r.profitOre) : "–"}</span>
           {r.profitDeltaBp !== null ? (
             <span className="x-cmp">
               <DeltaBadge bp={r.profitDeltaBp} />
-              {r.profitDeltaOre !== null
-                ? `${signedKr(r.profitDeltaOre)} mot förra perioden`
-                : null}
+              {r.profitDeltaOre !== null ? `${signedKr(r.profitDeltaOre)} ${r.compareText}` : null}
             </span>
           ) : null}
         </div>
@@ -124,11 +124,15 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
           <i className="lr" />
           Intäkt
         </span>
-        <span>
-          <i className="lgh" />
-          {hours ? "Vanlig dag samma timme" : "Förra perioden"}
-          {r.previousPerBarOre !== null ? `, vinst per ${unitName} ${kr(r.previousPerBarOre)}` : ""}
-        </span>
+        {hours && !r.pace ? null : (
+          <span>
+            <i className="lgh" />
+            {r.pace ? "Vanlig dag samma timme" : "Förra perioden"}
+            {r.previousPerBarOre !== null
+              ? `, vinst per ${unitName} ${kr(r.previousPerBarOre)}`
+              : ""}
+          </span>
+        )}
       </div>
       <div className={cn("x-ch", hours && "hrs")}>
         <div className="x-plot" role="img" aria-label={`Intäkt och vinst per ${unitName}.`}>
@@ -168,7 +172,7 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
         <div className="x-xl" aria-hidden="true">
           {r.bars.map((b, i) => (
             <span key={b.key}>
-              {hours && i % 3 !== 0 ? "" : b.label}
+              {i % step !== 0 ? "" : b.label}
               {b.partial && !hours ? (
                 <small>{i === r.bars.length - 1 ? "pågår" : "del"}</small>
               ) : null}

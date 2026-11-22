@@ -21,7 +21,18 @@ import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders
 import { loadLonsamhetWith, type LonsamhetData } from "@/app/(app)/lonsamhet/_lib/data";
 
 /** Parametrarna som styr Pengars siffror (period och filter), i fast ordning. */
-const KEYS = ["period", "from", "to", "butik", "automat", "agare", "andel", "vmb"] as const;
+const KEYS = [
+  "period",
+  "from",
+  "to",
+  "fran",
+  "till",
+  "butik",
+  "automat",
+  "agare",
+  "andel",
+  "vmb",
+] as const;
 
 type Plain = Record<string, string | undefined>;
 

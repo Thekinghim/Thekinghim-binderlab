@@ -256,6 +256,11 @@ export interface LonsamhetOptions {
   readonly dataStart?: IsoDate | null;
   /** Om organisationen har order i dag (dagen räknas då med). */
   readonly hasOrdersToday?: boolean;
+  /**
+   * Jämförelsen i periodmodellens ord ("mot dagen innan", "mot förra 7 dagarna"), samma som
+   * Hem och Pengar. Utan den: "mot perioden innan".
+   */
+  readonly compareText?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -594,6 +599,7 @@ export function buildLonsamhetModel(
       prevTotals && previousCovered
         ? { profitOre: prevTotals.profitOre, marginBp: prevTotals.marginBp }
         : null,
+    compareText: options.compareText ?? null,
     topKind: hv,
     forecast: forecast
       ? {

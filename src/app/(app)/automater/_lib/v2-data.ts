@@ -9,10 +9,13 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 
-import { parsePeriod, type SearchParamsInput } from "@/components/shell/period-state";
+import {
+  parsePeriod,
+  periodNameInline,
+  type SearchParamsInput,
+} from "@/components/shell/period-state";
 import { withUserDbFor } from "@/server/access";
 import type { AppContext } from "@/server/data/core";
-import { v2PeriodOf } from "@/components/v2/period";
 import { loadFleetState } from "@/server/data/v2/fleet";
 
 import { loadOverview } from "./data";
@@ -114,16 +117,18 @@ async function loadSlots(orgId: string): Promise<{
   });
 }
 
-/** "30 d", "7 d" eller "i dag" efter periodvalet (?period). */
-function periodLabel(sp: SearchParamsInput): string {
-  const key = parsePeriod(sp).key;
-  const p = v2PeriodOf(key);
-  return p === "idag" ? "i dag" : p === "7d" ? "7 d" : p === "30d" ? "30 d" : "perioden";
+/** "30 d", "7 d", "i går", "14–20 nov." efter periodvalet (?period, ?from&to). */
+function periodLabel(sp: SearchParamsInput, timeZone: string): string {
+  const p = parsePeriod(sp, { timeZone });
+  if (p.key === "7d") return "7 d";
+  if (p.key === "30d") return "30 d";
+  return periodNameInline(p);
 }
 
 /** Periodens intäkt och vinst per automat (bara ekonomiroller; ett fel stoppar inte sidan). */
 async function loadPeriodMoney(
   sp: SearchParamsInput,
+  timeZone: string,
 ): Promise<{ byId: Map<string, { revenueOre: number; profitOre: number }>; label: string }> {
   try {
     const data = await loadOverview(sp);
@@ -131,7 +136,7 @@ async function loadPeriodMoney(
       byId: new Map(
         data.overview.rows.map((r) => [r.id, { revenueOre: r.revenueOre, profitOre: r.profitOre }]),
       ),
-      label: periodLabel(sp),
+      label: periodLabel(sp, timeZone),
     };
   } catch (error) {
     console.error("[automater/v2] Periodens siffror kunde inte räknas:", error);
@@ -146,7 +151,7 @@ export async function loadAutomaterV2(
   const [fleet, slotData, money] = await Promise.all([
     loadFleetState(),
     loadSlots(ctx.organization.id),
-    ctx.canSeeEconomy ? loadPeriodMoney(sp) : Promise.resolve(null),
+    ctx.canSeeEconomy ? loadPeriodMoney(sp, ctx.timeZone) : Promise.resolve(null),
   ]);
   const machines: AutoMachine[] = fleet.machines.map((m) => {
     const p = money?.byId.get(m.id);
@@ -195,7 +200,7 @@ export async function loadAutomaterV2(
     machines,
     economy: ctx.canSeeEconomy && fleet.economy,
     cityOrder: cityOrderFrom(machines, slotData.origin),
-    periodLabel: money?.label ?? periodLabel(sp),
+    periodLabel: money?.label ?? periodLabel(sp, ctx.timeZone),
     canFill: ctx.role === "owner" || ctx.role === "admin" || ctx.role === "refiller",
     now: fleet.now,
     timeZone: fleet.timeZone,

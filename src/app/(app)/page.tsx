@@ -3,25 +3,26 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { isSingleDay, periodNameInline, periodQuery } from "@/components/shell/period-state";
 import { simpleHomeFor } from "@/components/shell/simple-view";
+import { DaySalesCard } from "@/components/v2/day-sales";
 import { PeriodSegment } from "@/components/v2/period-segment";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { Skeleton, SkeletonCard } from "@/components/v2/skeleton";
 import { messages } from "@/i18n";
-import { formatPeriodShort } from "@/lib/format";
 import {
   loadContext,
   loadOptionalContextIfSignedIn,
   loadPeriod,
   requireRoute,
 } from "@/server/data/core";
+import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
 import { loadKpiBand } from "@/server/data/v2/analytics/kpi-band";
 import { loadLiveOrders } from "@/server/data/v2/analytics/live";
 import { loadFleetState } from "@/server/data/v2/fleet";
 import { loadDayRoute } from "@/server/data/v2/route";
 
 import { SalesScreen } from "./forsaljning/_components/sales-screen";
-import { dateOf } from "./_hem/text";
 import {
   GeoCardView,
   GoalCardView,
@@ -72,26 +73,20 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
   const sp = await searchParams;
   const economy = ctx.canSeeEconomy;
   const canRoute = ROUTE_ROLES.has(ctx.role);
-  const p = economy ? await loadPeriod(sp) : null;
-  const periodName =
-    p === null
-      ? null
-      : p.key === "30d"
-        ? "30 dagar"
-        : p.key === "7d"
-          ? "7 dagar"
-          : p.key === "idag"
-            ? "i dag"
-            : formatPeriodShort(
-                { start: dateOf(p.period.start), end: dateOf(p.period.end) },
-                dateOf(ctx.today),
-              );
+  // Alla roller väljer period: påfyllaren ser vad som såldes (bara antal), ekonomirollerna
+  // dessutom KPI-bandet och analysen för perioden.
+  const p = await loadPeriod(sp);
+  const periodName = economy ? periodNameInline(p.resolved) : null;
+  // "Vad sålde vi i går": en enskild dag (I går, I dag, ett eget datum) får en lista per titel
+  // och automat direkt under bandet. Påfyllaren får listan för alla perioder (bara antal),
+  // under det som är att göra.
+  const soldTop = economy && isSingleDay(p.resolved);
 
   return (
     <V2Page
       title="Hem"
       date={headerDate(new Date(ctx.now), ctx.timeZone)}
-      period={economy}
+      period
       className="hem2"
       sub={
         <Suspense fallback={<Skeleton width={320} height={16} />}>
@@ -102,6 +97,12 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       {economy ? (
         <Suspense fallback={<div className="v2-card h-[106px]" aria-busy="true" />}>
           <Band sp={sp} />
+        </Suspense>
+      ) : null}
+
+      {soldTop ? (
+        <Suspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
+          <Sold sp={sp} economy={economy} />
         </Suspense>
       ) : null}
 
@@ -125,6 +126,12 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           </Suspense>
         </div>
       </div>
+
+      {!economy ? (
+        <Suspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
+          <Sold sp={sp} economy={economy} />
+        </Suspense>
+      ) : null}
 
       <section className="x-an" aria-labelledby="hem-analys">
         <div className="x-hd">
@@ -174,6 +181,23 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         </div>
       </section>
     </V2Page>
+  );
+}
+
+async function Sold({ sp, economy }: { sp: SearchParams; economy: boolean }) {
+  const v = await loadDaySales(sp).catch((error: unknown) => {
+    console.error("[hem] Försäljningen för perioden kunde inte läsas:", error);
+    return null;
+  });
+  if (!v) return null;
+  return (
+    <DaySalesCard
+      sales={v.sales}
+      title={v.singleDay ? `Sålt ${v.inline}` : `Sålt · ${v.inline}`}
+      inline={v.inline}
+      link={economy ? { href: `/pengar${periodQuery(sp)}`, label: "Pengar" } : undefined}
+      className="v2-ds o-sold"
+    />
   );
 }
 

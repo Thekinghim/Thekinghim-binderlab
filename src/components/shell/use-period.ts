@@ -8,6 +8,11 @@ import {
   parsePeriod,
   parseScope,
   parseVmbView,
+  PERIOD_COOKIE,
+  PERIOD_COOKIE_MAX_AGE,
+  periodCookieValue,
+  periodQuery,
+  withPeriodHref,
   STORE_SHARE_COOKIE,
   VMB_PARAM,
   withPeriod,
@@ -92,10 +97,28 @@ export function usePeriod(options: Omit<ParseOptions, "now"> = {}): UsePeriodRes
     [sp, now, timeZone, earliest],
   );
   const setPeriod = useCallback(
-    (selection: PeriodSelection) => replace(withPeriod(sp, selection)),
+    (selection: PeriodSelection) => {
+      writePeriodCookie(selection);
+      replace(withPeriod(sp, selection));
+    },
     [replace, sp],
   );
   return { ...resolved, ...describePeriod(resolved), setPeriod };
+}
+
+/**
+ * Sparar periodvalet i kakan (PERIOD_COOKIE) som proxyn läser, så att nästa periodsida
+ * (PERIOD_PAGES) visar samma period även när länken saknar ?period. Standardvalet tar bort den.
+ */
+export function writePeriodCookie(selection: PeriodSelection): void {
+  try {
+    const value = periodCookieValue(selection);
+    document.cookie = value
+      ? `${PERIOD_COOKIE}=${encodeURIComponent(value)}; path=/; max-age=${PERIOD_COOKIE_MAX_AGE}; samesite=lax`
+      : `${PERIOD_COOKIE}=; path=/; max-age=0; samesite=lax`;
+  } catch {
+    // Kakor avstängda: valet gäller ändå sidan (och följer med i menyns länkar).
+  }
 }
 
 /** Globalt filter på butik och automat (?butik=, ?automat=). */
@@ -204,4 +227,13 @@ export function useStoreShareView(serverOn: boolean): {
 export function useCarriedQuery(): string {
   const [sp] = useQuery();
   return useMemo(() => carriedQuery(sp), [sp]);
+}
+
+/**
+ * Menyns länk med periodvalet ("/pengar?period=igar") när länken går till en periodsida
+ * (PERIOD_PAGES), så att valet följer med utan omväg via proxyn. Andra länkar orörda.
+ */
+export function usePeriodHref(href: string): string {
+  const [sp] = useQuery();
+  return useMemo(() => withPeriodHref(href, periodQuery(sp)), [href, sp]);
 }

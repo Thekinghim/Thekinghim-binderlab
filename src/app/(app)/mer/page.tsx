@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { routesForRole, v2NavForRole, type RouteId } from "@/components/shell/nav";
+import { PERIOD_COOKIE, periodFromCookie, withPeriodHref } from "@/components/shell/period-state";
 import { Card } from "@/components/v2/card";
 import { ListRow } from "@/components/v2/list-row";
 import { NavIcon } from "@/components/v2/shell/nav-icon";
@@ -87,7 +89,12 @@ const n = (v: number | null, one: string, many: string) =>
  */
 export default async function MorePage() {
   const ctx = await requireRoute("mer");
-  const counts = await loadMoreCounts(ctx);
+  const [counts, jar] = await Promise.all([loadMoreCounts(ctx), cookies()]);
+  // Det sparade periodvalet i länkarna till periodsidorna (Pengar, Butiker, Lönsamhet …), så
+  // att sidan öppnas direkt med samma period (ingen omväg via proxyns omdirigering).
+  const saved = periodFromCookie(safeDecode(jar.get(PERIOD_COOKIE)?.value));
+  const periodQs = saved ? `?${saved.toString()}` : "";
+  const ph = (href: string) => withPeriodHref(href, periodQs);
   const allowed = new Set(routesForRole(ctx.role).map((r) => r.id));
   const top = v2NavForRole(ctx.role).filter((i) => i.id === "butiker" || i.id === "pengar");
   const pages = routesForRole(ctx.role).filter(
@@ -118,7 +125,7 @@ export default async function MorePage() {
               {top.map((i) => (
                 <Row
                   key={i.id}
-                  href={i.href}
+                  href={ph(i.href)}
                   icon={
                     <span className="mi" aria-hidden="true">
                       <NavIcon name={i.id} size={18} />
@@ -191,7 +198,7 @@ export default async function MorePage() {
             {pages.map((r) => (
               <ListRow
                 key={r.id}
-                href={r.href}
+                href={ph(r.href)}
                 title={r.label}
                 sub={r.lead}
                 actions={<span aria-hidden="true">→</span>}
@@ -229,7 +236,7 @@ export default async function MorePage() {
               )}
               {allowed.has("ekonomi") ? (
                 <Row
-                  href="/ekonomi?vy=bokforing"
+                  href={ph("/ekonomi?vy=bokforing")}
                   title="Bokföring"
                   sub="Månadens bokföringspaket."
                 />
@@ -252,4 +259,12 @@ export default async function MorePage() {
       </div>
     </V2Page>
   );
+}
+
+function safeDecode(v: string | undefined): string | undefined {
+  try {
+    return v === undefined ? undefined : decodeURIComponent(v);
+  } catch {
+    return undefined;
+  }
 }

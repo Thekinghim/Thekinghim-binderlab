@@ -80,6 +80,8 @@ const COLUMNS: readonly {
   right?: boolean;
   money?: boolean;
   title?: string;
+  /** Liten rad under rubriken: fönstret talet gäller ("30 d"), när det inte följer perioden. */
+  sub?: string;
 }[] = [
   { key: "n", label: "Automat" },
   { key: "s", label: "Läge" },
@@ -91,14 +93,16 @@ const COLUMNS: readonly {
     label: "Vinst/dag",
     right: true,
     money: true,
-    title: "Vår vinst per dag i drift, 30 dagar",
+    sub: "30 d",
+    title: "Vår vinst per dag i drift, senaste 30 dagarna (följer inte periodvalet)",
   },
   {
     key: "x",
     label: "Mot snitt",
     right: true,
     money: true,
-    title: "Vinst per dag mot medianen för alla automater",
+    sub: "30 d",
+    title: "Vinst per dag mot medianen för alla automater, senaste 30 dagarna",
   },
 ];
 
@@ -224,7 +228,14 @@ export function AutomaterView({
               }
               onClick={() => toggleSort(c.key)}
             >
-              {c.label}
+              {c.sub ? (
+                <span className="sl">
+                  <span>{c.label}</span>
+                  <small>{c.sub}</small>
+                </span>
+              ) : (
+                c.label
+              )}
               {sort.key === c.key ? (
                 <span aria-hidden="true">{sort.dir === 1 ? "↑" : "↓"}</span>
               ) : null}
@@ -304,8 +315,11 @@ export function AutomaterView({
                     ) : null}
                     {g.needFill === 0 && g.offline === 0 ? <span>· inget att göra</span> : null}
                     {data.economy && g.profitPerDayOre !== null ? (
-                      <span className="gk" title="Summa vinst per dag för gruppen">
-                        Σ {kr(g.profitPerDayOre)}/dag
+                      <span
+                        className="gk"
+                        title="Summa vinst per dag för gruppen, senaste 30 dagarna"
+                      >
+                        Σ {kr(g.profitPerDayOre)}/dag · 30{NBSP}d
                       </span>
                     ) : null}
                   </button>

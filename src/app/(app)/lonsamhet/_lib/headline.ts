@@ -59,6 +59,8 @@ export interface HeadlineInput {
     readonly shareOfProfitBp: number | null;
   } | null;
   readonly previous: { readonly profitOre: number; readonly marginBp: number | null } | null;
+  /** Jämförelsen i periodmodellens ord ("mot dagen innan"). Utan: "mot perioden innan". */
+  readonly compareText?: string | null;
   /** Vad största bidragsgivaren är. Bara en produkt ("title") kan ge varningen. */
   readonly topKind?: "title" | "machine" | "store";
   /**
@@ -147,11 +149,15 @@ function largestDeduction(input: HeadlineInput): string {
   return `${label} tog ${formatPercent(part / 10_000)} av intäkten.`;
 }
 
-/** "Upp 12 % mot perioden innan." / "Ned 8 % …" / "Samma som perioden innan." */
-function trendText(bp: number): string {
+/**
+ * "Upp 12 % mot perioden innan." / "Ned 8 % mot dagen innan." / "Samma som perioden innan."
+ * `against` är periodmodellens jämförelse ("mot dagen innan"), samma ord som Hem och Pengar.
+ */
+function trendText(bp: number, against?: string | null): string {
+  const mot = against && against.startsWith("mot ") ? against : "mot perioden innan";
   const pct = Math.round(Math.abs(bp) / 100);
-  if (pct === 0) return "Samma som perioden innan.";
-  return `${bp > 0 ? "Upp" : "Ned"} ${formatPercent(pct / 100, 0)} mot perioden innan.`;
+  if (pct === 0) return `Samma som ${mot.slice(4)}.`;
+  return `${bp > 0 ? "Upp" : "Ned"} ${formatPercent(pct / 100, 0)} ${mot}.`;
 }
 
 export function lonsamhetHeadline(input: HeadlineInput): Headline {
@@ -201,7 +207,7 @@ export function lonsamhetHeadline(input: HeadlineInput): Headline {
   const share = input.top?.shareOfProfitBp ?? null;
   const trend =
     input.previous && input.previous.profitOre > 0
-      ? trendText(changeBp(input.profitOre, input.previous.profitOre) ?? 0)
+      ? trendText(changeBp(input.profitOre, input.previous.profitOre) ?? 0, input.compareText)
       : null;
   const pace = input.forecast
     ? `I den här takten: ca${NBSP}${sek(input.forecast.amountOre)} ${

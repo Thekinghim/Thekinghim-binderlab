@@ -13,7 +13,7 @@
 import "server-only";
 
 import { profitByCity, titleTrendBp, type CityLine } from "@/analytics/home-v2";
-import type { SearchParamsInput } from "@/components/shell/period-state";
+import { chartUnitFor, compareText, type SearchParamsInput } from "@/components/shell/period-state";
 import { addDays, type IsoDate } from "@/domain";
 import { loadContext, loadDomainInput, loadPeriod } from "@/server/data/core";
 import {
@@ -22,6 +22,7 @@ import {
   loadHemProfit,
   loadHemStock,
 } from "@/server/data/v2/analytics/hem-base";
+import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
 import { loadMoneyGoal } from "@/server/data/v2/analytics/goal";
 import { loadMoneyPay } from "@/server/data/v2/analytics/shops";
 import { loadMoneyWorst } from "@/server/data/v2/analytics/worst";
@@ -57,6 +58,10 @@ export interface ResultCard {
   /** Förra periodens vinst per stapel i snitt (öre), för texten. */
   readonly previousPerBarOre: number | null;
   readonly periodText: string;
+  /** Timmarna är i dag med "vanlig dag samma timme" som jämförelse (annars en hel dag). */
+  readonly pace: boolean;
+  /** "mot dagen innan", "mot förra 7 dagarna" (periodmodellens jämförelse). */
+  readonly compareText: string;
 }
 
 export async function loadResultCard(sp: SearchParamsInput): Promise<ResultCard | null> {
@@ -76,7 +81,21 @@ export async function loadResultCard(sp: SearchParamsInput): Promise<ResultCard 
 
   let unit: ResultCard["unit"];
   let bars: ResultBar[];
-  if (p.key === "idag" && home.pace) {
+  // Upplösningen följer periodens längd (chartUnitFor): en dag per timme, upp till 31 dagar
+  // per dag, upp till ett halvår per vecka, längre per månad.
+  const chart = chartUnitFor(p.days);
+  const daySales = chart === "hour" && p.key !== "idag" ? await loadDaySales(sp) : null;
+  if (daySales && daySales.sales.hours.length === 24) {
+    // En hel dag (I går, ett eget datum): intäkten per timme ur dagens order.
+    unit = "timme";
+    bars = daySales.sales.hours.map((h) => ({
+      key: String(h.hour),
+      label: String(h.hour).padStart(2, "0"),
+      value: h.revenueOre,
+      previous: null,
+      partial: false,
+    }));
+  } else if (p.key === "idag" && home.pace) {
     unit = "timme";
     const hourly = home.pace.todayHourly.map((v, i, a) =>
       Math.max(0, v - (i > 0 ? (a[i - 1] ?? 0) : 0)),
@@ -92,7 +111,7 @@ export async function loadResultCard(sp: SearchParamsInput): Promise<ResultCard 
       partial: h === hourly.length - 1,
     }));
   } else {
-    const trendKey = p.key === "7d" ? "day" : p.key === "30d" ? "week" : profit.model.defaultTrend;
+    const trendKey = chart === "week" ? "week" : chart === "month" ? "month" : "day";
     unit = trendKey === "day" ? "dag" : trendKey === "week" ? "vecka" : "månad";
     const buckets = profit.model.trend[trendKey].buckets;
     const prevPer =
@@ -133,6 +152,8 @@ export async function loadResultCard(sp: SearchParamsInput): Promise<ResultCard 
           ? Math.round(prevProfit / bars.length)
           : null,
     periodText: profit.model.periodLabel,
+    pace: unit === "timme" && !daySales,
+    compareText: compareText(p.resolved) ?? "mot förra perioden",
   };
 }
 

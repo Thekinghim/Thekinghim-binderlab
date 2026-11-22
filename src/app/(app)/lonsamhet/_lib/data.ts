@@ -6,7 +6,7 @@
 
 import "server-only";
 
-import type { SearchParamsInput } from "@/components/shell/period-state";
+import { compareText, type SearchParamsInput } from "@/components/shell/period-state";
 import type { IsoDate } from "@/domain";
 import type { AppContext, AppPeriod, DomainInput } from "@/server/data/core/types";
 import type { PageLoaders } from "@/server/data/page-loaders";
@@ -75,6 +75,7 @@ export async function loadLonsamhetWith(
       lastOrderDate,
       dataStart: p.dataStart,
       hasOrdersToday: organization.current.orders.some((o) => o.businessDate === ctx.today),
+      compareText: compareText(p.resolved),
     },
   );
   return { ctx, p, input, organization, model };

@@ -4,6 +4,9 @@
  * - /pengar och /butiker: påfyllaren skickas till sin startsida innan något läses.
  * - GET /pengar/export (vinst per automat som CSV): påfyllaren, butiken, en icke-medlem och
  *   en utloggad nekas; ägaren och läsaren får filen, och en utomstående ser aldrig A:s automater.
+ * - GET /pengar/export?period=igar (perioden per titel och automat): samma regler.
+ * - "Sålt i går" (loadDaySales): påfyllaren får bara antal, aldrig kronor; butiken och en
+ *   icke-medlem får ingenting; en utomstående ser aldrig A:s titlar eller automater.
  * - /mer: påfyllaren får sidan (utan Driften och Kopplingar).
  * - Butikernas laddare (loadShops, med vinst per automat och packbilderna per automat):
  *   påfyllaren och butiken får null på servern; en utomstående ser aldrig A:s automater.
@@ -61,11 +64,11 @@ async function renderPage(file: string) {
   );
 }
 
-async function exportAs(p: PersonaName): Promise<{ status: number; body: string }> {
+async function exportAs(p: PersonaName, query = ""): Promise<{ status: number; body: string }> {
   await loginAs(req, cast.personas[p]);
   const { GET } = await import("@/app/(app)/pengar/export/route");
   try {
-    const res = await GET();
+    const res = await GET(new Request(`http://localhost/pengar/export${query}`));
     return { status: res.status, body: await res.text() };
   } catch (error) {
     if (error instanceof NextSignal) return { status: 307, body: "" };
@@ -105,6 +108,64 @@ describe("Pengar, Butiker och Mer (V2)", () => {
     expect(owner.body).toContain("Kod;Automat");
     const outsider = await exportAs("outsider");
     expect(outsider.body).not.toContain(cast.A.machineId);
+  }, 60_000);
+
+  it("GET /pengar/export?period=igar och eget intervall: bara ekonomirollerna", async () => {
+    for (const q of ["?period=igar", "?fran=2026-10-01&till=2026-10-31"]) {
+      for (const p of ["refiller", "store", "stranger", "anon"] as PersonaName[]) {
+        const r = await exportAs(p, q);
+        expect([401, 403, 307], `${p} ${q}`).toContain(r.status);
+        expect(r.body, p).not.toMatch(/;\d+,\d\d/);
+        req.cookies.clear();
+        req.headers.clear();
+      }
+      const owner = await exportAs("owner", q);
+      expect(owner.status).toBe(200);
+      expect(owner.body).toContain("Typ;Namn;Kod;Sålda pack");
+      req.cookies.clear();
+      req.headers.clear();
+      const outsider = await exportAs("outsider", q);
+      expect(outsider.body).not.toContain(cast.A.machineId);
+      req.cookies.clear();
+      req.headers.clear();
+    }
+  }, 60_000);
+
+  it("loadDaySales (Sålt i går): påfyllaren får bara antal, aldrig kronor", async () => {
+    const { loadDaySales } = await import("@/server/data/v2/analytics/day-sales");
+    for (const q of [
+      { period: "igar" },
+      { period: "30d" },
+      { from: "2020-01-01", to: "2030-01-01" },
+    ]) {
+      await loginAs(req, cast.personas.refiller);
+      const r = await call(() => loadDaySales(q));
+      expect(r.kind).toBe("ok");
+      const v = (r as { value: Awaited<ReturnType<typeof loadDaySales>> }).value;
+      expect(v.sales.economy).toBe(false);
+      expect(v.sales.revenueOre).toBeNull();
+      expect(v.sales.profitOre).toBeNull();
+      expect(v.sales.hours).toEqual([]);
+      for (const row of [...v.sales.titles, ...v.sales.machines]) {
+        expect(row.revenueOre).toBeNull();
+        expect(row.profitOre).toBeNull();
+      }
+      expect(JSON.stringify(v)).not.toMatch(/"(revenueOre|profitOre)":-?\d/);
+      req.cookies.clear();
+      req.headers.clear();
+    }
+    for (const p of ["store", "stranger", "anon"] as PersonaName[]) {
+      await loginAs(req, cast.personas[p]);
+      const r = await call(() => loadDaySales({ period: "30d" }));
+      expect(r.kind, p).not.toBe("ok");
+      req.cookies.clear();
+      req.headers.clear();
+    }
+    await loginAs(req, cast.personas.outsider);
+    const outsider = await call(() => loadDaySales({ period: "30d" }));
+    if (outsider.kind === "ok") {
+      expect(JSON.stringify(outsider.value)).not.toContain(cast.A.machineId);
+    }
   }, 60_000);
 
   it("loadShops: inga belopp till påfyllaren eller butiken, bara den egna organisationen", async () => {
