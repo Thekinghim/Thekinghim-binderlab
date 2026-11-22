@@ -19,6 +19,7 @@ import {
 import { FROM_PARAM, PERIOD_PARAM, TO_PARAM } from "@/components/shell/period-state";
 import { Button } from "@/components/ui/button";
 import { StateMessage } from "@/components/ui/state-message";
+import { Notice } from "@/components/v2/notice";
 import { StatusTag } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { formatDuration, formatInt } from "@/lib/format";
@@ -281,25 +282,27 @@ export function AssistantChat({
   const tooLong = question.length > QUESTION_MAX_LENGTH;
 
   return (
-    <div className="flex min-w-0 flex-col gap-8">
+    <div className="flex min-w-0 flex-col gap-6">
       {notConfigured ? (
-        <StateMessage
-          kind="not-configured"
-          message={notConfigured.message}
-          detail={notConfigured.detail}
-        />
+        <Notice tone="info" title={notConfigured.message}>
+          {notConfigured.detail || undefined}
+        </Notice>
       ) : null}
 
       {turns.length > 0 ? (
-        <ol className="flex flex-col gap-12" aria-label="Samtalet">
+        <ol className="flex flex-col gap-6" aria-label="Samtalet">
           {turns.map((t, i) => (
-            <li key={t.key} className="flex min-w-0 flex-col gap-5 border-t border-line pt-6">
+            <li
+              key={t.key}
+              className="flex min-w-0 flex-col gap-4 border-t border-v2-line2 pt-5 first:border-t-0 first:pt-0"
+            >
               <div className="flex flex-col gap-2">
-                <span className="label text-muted">
-                  <span className="tnum text-fg">{String(i + 1).padStart(2, "0")}</span>
-                  <span className="text-faint"> / </span>Din fråga
+                <span className="v2-lab">
+                  Din fråga<span className="tabular-nums"> · {i + 1}</span>
                 </span>
-                <p className="max-w-3xl text-lg break-words text-fg">{t.question}</p>
+                <p className="max-w-3xl text-v2-lg font-[550] break-words text-v2-ink">
+                  {t.question}
+                </p>
               </div>
 
               <div className="flex flex-col gap-3" aria-busy={t.state === "streaming"}>
@@ -403,14 +406,13 @@ export function AssistantChat({
               ? (examples[0] ?? "Ställ en fråga om er data")
               : "Assistenten är inte konfigurerad"
           }
-          className={cn(
-            "w-full min-w-0 resize-y rounded-sm border bg-bg px-3 py-2 text-base text-fg transition-[border-color] duration-fast ease-instrument placeholder:text-subtle enabled:hover:border-muted",
-            "disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled disabled:placeholder:text-disabled",
-            tooLong ? "border-signal" : "border-line-control",
-          )}
+          className="v2-textarea min-h-24 resize-y disabled:cursor-not-allowed"
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p id={hintId} className={cn("meta", tooLong ? "text-signal-fg" : "text-subtle")}>
+          <p
+            id={hintId}
+            className={cn("text-v2-xs", tooLong ? "text-v2-crit-text" : "text-v2-mute")}
+          >
             {tooLong
               ? `${formatInt(question.length)} av högst ${formatInt(QUESTION_MAX_LENGTH)} tecken.`
               : "Enter skickar."}
@@ -448,7 +450,7 @@ export function AssistantChat({
                   type="button"
                   disabled={!ready || busy}
                   onClick={() => void ask(ex)}
-                  className="min-h-7 rounded-sm border border-line-strong bg-surface px-2.5 py-1 text-left text-sm text-fg transition-[background-color,border-color] duration-fast ease-instrument enabled:hover:border-line-control enabled:hover:bg-hover disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-disabled max-md:min-h-11"
+                  className="v2-btn h-auto min-h-8 py-1.5 text-left font-[450] whitespace-normal max-md:min-h-11"
                 >
                   {ex}
                 </button>

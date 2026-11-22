@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
 import { MobileFold } from "@/components/ui/mobile-fold";
-import { SectionHeader } from "@/components/ui/section-header";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { daysInMonth } from "@/domain";
 import { formatInt } from "@/lib/format";
+import { loadContext } from "@/server/data/core";
 
 import { loadEffectPage, type Names } from "../expansion/_lib/data";
 import { withOrderCounts } from "../expansion/_lib/slim";
@@ -40,6 +44,8 @@ export default async function EffektPage({
   searchParams: Promise<SearchParamsInput>;
 }) {
   const data = await loadEffectPage(await searchParams);
+  // Sidhuvudets datum (sammanhanget är redan läst, cache per anrop).
+  const ctx = await loadContext();
   const names = lookups(data.names);
   const scopeOf = (s: { scope: string; scopeId: string | null }) =>
     s.scope === "store"
@@ -81,101 +87,95 @@ export default async function EffektPage({
       : "Lägg in mätvärden per månad.";
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-4">
-        <MerHead
-          eyebrow="Effekt"
+    <V2Page title="Effekt" date={headerDate(new Date(ctx.now), ctx.timeZone)}>
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <PageIntro
           title={title}
-          line={aside}
-          count={false}
-          tone={pointBp !== null && pointBp > 0 ? "good" : undefined}
-          meta={[{ label: "Månader", value: monthsText }]}
+          aside={aside}
+          facts={[
+            { label: "Månader", value: monthsText },
+            // day() slutar med punkt ("13 okt.")
+            ...(data.dataStartInMonth
+              ? [{ label: "Data från", value: day(data.dataStartInMonth) }]
+              : []),
+          ]}
         />
-        {data.dataStartInMonth ? (
-          <p className="meta break-words text-subtle">
-            {/* day() slutar med punkt ("13 okt.") */}
-            Data från {day(data.dataStartInMonth)}
-          </p>
-        ) : null}
-      </div>
 
-      <section
-        aria-labelledby="forbattring"
-        className="rise flex flex-col gap-8"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="forbattring"
-          title="Förbättring."
-          aside={`Per månad, ${monthsText}.`}
+        <Card
+          as="section"
+          title="Förbättring"
           actions={
             data.period.key !== "allt" ? (
               <Link
                 href="?period=allt"
-                className="meta rounded-xs text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg max-md:tap"
+                className="inline-flex min-h-7 items-center rounded-v2-sm text-v2-sm font-[550] text-v2-ink hover:underline max-[900px]:min-h-11"
               >
                 Visa alla månader →
               </Link>
             ) : undefined
           }
-        />
-        {data.series.length === 0 ? (
-          <p className="text-sm text-muted">Lägg in utgångsläget.</p>
-        ) : (
-          <div className="flex flex-col gap-10">
-            {data.series.map((s) => (
-              <SeriesView
-                key={s.baselineId}
-                series={withOrderCounts(s)}
-                scope={scopeOf(s)}
-                links={evidenceLinks(s.latest?.evidence ?? s.evidence, names)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+        >
+          <CardBody className="flex flex-col gap-5">
+            <p id="forbattring" className="text-v2-md text-v2-mute">
+              Per månad, {monthsText}.
+            </p>
+            {data.series.length === 0 ? (
+              <Empty title="Lägg in utgångsläget." />
+            ) : (
+              <div className="flex flex-col divide-y divide-v2-line2 [&>*]:pt-6 [&>*]:pb-6 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+                {data.series.map((s) => (
+                  <SeriesView
+                    key={s.baselineId}
+                    series={withOrderCounts(s)}
+                    scope={scopeOf(s)}
+                    links={evidenceLinks(s.latest?.evidence ?? s.evidence, names)}
+                  />
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
 
-      <section
-        aria-labelledby="utgangslage"
-        className="rise flex flex-col gap-8"
-        style={{ "--i": 2 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="utgangslage"
-          title={
-            data.baselines.length === 0
-              ? "Så var det före Binderlab."
-              : `Så var det före Binderlab: ${formatInt(data.baselines.length)} mått.`
-          }
-        />
-        {/* Inställningar för mätningen: fällda på mobilen, siffrorna ovan är det viktiga. */}
-        <MobileFold summary="Visa och ändra">
-          <BaselinesSection
-            baselines={data.baselines}
-            stores={data.names.stores}
-            machines={data.names.machines}
-            canEdit={data.ctx.canEdit}
-          />
-        </MobileFold>
-      </section>
+        <div className="v2-stack">
+          <Card as="section" title="Utgångsläge" count={data.baselines.length}>
+            <CardBody className="flex flex-col gap-4">
+              <p id="utgangslage" className="text-v2-md text-v2-mute">
+                {data.baselines.length === 0
+                  ? "Så var det före Binderlab."
+                  : `Så var det före Binderlab: ${formatInt(data.baselines.length)} mått.`}
+              </p>
+              {/* Inställningar för mätningen: fällda på mobilen, siffrorna ovan är det viktiga. */}
+              <MobileFold summary="Visa och ändra">
+                <BaselinesSection
+                  baselines={data.baselines}
+                  stores={data.names.stores}
+                  machines={data.names.machines}
+                  canEdit={data.ctx.canEdit}
+                />
+              </MobileFold>
+            </CardBody>
+          </Card>
 
-      <section
-        aria-labelledby="matvarden"
-        className="rise flex flex-col gap-8"
-        style={{ "--i": 3 } as React.CSSProperties}
-      >
-        <SectionHeader id="matvarden" title="Inmatade siffror." aside="Per månad." />
-        <MobileFold summary="Visa och ändra">
-          <MeasurementsSection
-            measurements={data.measurements}
-            settings={data.settings}
-            stores={data.names.stores}
-            machines={data.names.machines}
-            canEdit={data.ctx.canEdit}
-            defaultMonth={monthOfDate(data.ctx.today)}
-          />
-        </MobileFold>
-      </section>
-    </div>
+          <Card as="section" title="Inmatade siffror">
+            <CardBody className="flex flex-col gap-4">
+              <p id="matvarden" className="text-v2-md text-v2-mute">
+                Per månad.
+              </p>
+              <MobileFold summary="Visa och ändra">
+                <MeasurementsSection
+                  measurements={data.measurements}
+                  settings={data.settings}
+                  stores={data.names.stores}
+                  machines={data.names.machines}
+                  canEdit={data.ctx.canEdit}
+                  defaultMonth={monthOfDate(data.ctx.today)}
+                />
+              </MobileFold>
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </V2Page>
   );
 }

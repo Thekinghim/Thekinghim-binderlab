@@ -124,7 +124,19 @@ export function KpiDelta({
         className,
       )}
     >
-      <span className={cn("inline-flex items-center gap-1", flat ? "text-muted" : "text-fg")}>
+      <span
+        className={cn(
+          "inline-flex items-center gap-1",
+          flat ? "text-muted" : "text-fg",
+          // V2: som DeltaBadge (src/components/v2/badge.tsx): grönt bättre, rött sämre, grått lika.
+          "v2:h-5 v2:rounded-v2-sm v2:px-1.5 v2:font-[550]",
+          flat
+            ? "v2:bg-v2-sel v2:text-v2-ink"
+            : good
+              ? "v2:bg-v2-profit-soft v2:text-v2-profit-text"
+              : "v2:bg-v2-crit-soft v2:text-v2-crit-text",
+        )}
+      >
         {flat ? <FlatGlyph /> : <DeltaGlyph up={delta > 0} />}
         <span>{text}</span>
         <span className="sr-only">
@@ -140,7 +152,7 @@ export function KpiDelta({
 export function KpiAlert({ children, className }: { children: string; className?: string }) {
   return (
     <p className={cn("label flex items-center gap-1.5 text-signal-fg", className)}>
-      <span aria-hidden className="size-1.5 shrink-0 bg-signal" />
+      <span aria-hidden className="size-1.5 shrink-0 bg-signal v2:rounded-full" />
       <span className="sr-only">Kräver åtgärd: </span>
       {children}
     </p>

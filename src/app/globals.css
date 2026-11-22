@@ -7,6 +7,14 @@
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
 /*
+ * V2-skalet (data-ui="v2", src/styles/v2.css): v2:-klasser gäller bara där, så att de gemensamma
+ * komponenterna (src/components/ui) kan se ut som V2 i appen men som förut i portalen, rapporterna
+ * och inloggningen. :where() ger ingen extra vikt: komponentens v2:-klass går före dess egen bas.
+ * :root:has() når också dialoger och menyer som ritas i en portal utanför skalet.
+ */
+@custom-variant v2 (&:where(:root:has([data-ui="v2"]) *));
+
+/*
  * Tailwind-temat pekar enbart på tokens. Standardpaletter, skuggor och
  * radier nollställs så att de inte kan användas av misstag.
  */
@@ -340,6 +348,29 @@
     text-transform: none;
   }
 
+  /*
+   * V2 (appens skal): etiketter och metatext i Google Sans, gemener, 12 px, utan spärrning.
+   * Samma vikt som .label/.meta och senare i källan, så att de vinner bara i V2-skalet.
+   */
+  :where(:root:has([data-ui="v2"])) .label {
+    font-family: var(--v2-sans);
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 550;
+  }
+  :where(:root:has([data-ui="v2"])) .meta {
+    font-family: var(--v2-sans);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  /* V2 lyfter inga kort vid hover: kanten blir bara ett snäpp mörkare. */
+  :where(:root:has([data-ui="v2"])) .lift:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
   .tnum {
     font-variant-numeric: tabular-nums;
     font-feature-settings:
@@ -358,6 +389,11 @@
 
   .grid-field-fine {
     --bl-grid-size: 16px;
+  }
+
+  /* V2 ritar inget koordinatnät (efter .grid-field i källan, samma vikt). */
+  :where(:root:has([data-ui="v2"])) :is(.grid-field, .grid-field-fine) {
+    background-image: none;
   }
 
   /* Diagonal skraffering för negativa steg i vattenfall m.m. */

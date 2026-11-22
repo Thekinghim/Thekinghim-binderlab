@@ -4,7 +4,7 @@ import { RouteNotFound } from "@/components/ui/route-not-found";
 export default function NotFound() {
   return (
     <RouteNotFound
-      className="mx-auto flex min-h-dvh w-full max-w-[1280px] flex-col bg-bg px-4 pt-16 pb-16 md:px-8 md:pt-24"
+      className="flex min-h-dvh w-full flex-col items-center px-4 pt-16 pb-16 md:pt-24"
       eyebrow="Rapporter · 404"
       title="Rapporten finns inte."
       aside="Länken kan vara fel, eller så hör rapporten till en annan organisation."

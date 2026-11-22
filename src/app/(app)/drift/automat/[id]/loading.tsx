@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { OpsLoading } from "../../_components/ops-loading";
 
 /** Medan tidslinjen hämtas: rubriken och händelserna som skeleton. */
 export default function TimelineLoading() {
-  return <RouteLoading label="Laddar tidslinjen" inset="inset" blocks={["chart", "table"]} />;
+  return <OpsLoading label="Laddar tidslinjen" cards={[3, 6]} />;
 }

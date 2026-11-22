@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Empty } from "@/components/v2/empty";
 import { formatInt, formatMonth } from "@/lib/format";
 import { periodText } from "@/reports/text";
 import type { ArchiveRow } from "@/server/reports/service";
@@ -141,12 +142,16 @@ export function ArchiveTable({
 
   if (rows.length === 0) {
     return (
-      <StateMessage
-        kind="empty"
-        message="Ingen rapport är skapad ännu."
-        detail="Utkast skapas den 1:a varje månad."
-        action={{ label: "Skapa ett utkast", href: "#ny-rapport" }}
-      />
+      <Empty
+        title="Ingen rapport är skapad ännu."
+        action={
+          <ButtonLink href="/rapporter#ny-rapport" touch>
+            Skapa ett utkast
+          </ButtonLink>
+        }
+      >
+        <p>Utkast skapas den 1:a varje månad.</p>
+      </Empty>
     );
   }
   return (

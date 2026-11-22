@@ -1,24 +1,32 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { PrintButton } from "@/components/report/print-button";
 import { StateMessage } from "@/components/ui/state-message";
 import { DomainError } from "@/domain";
-import { ReportStatusTag } from "@/app/(app)/rapporter/_components/report-status";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { fileKindsOf } from "@/server/reports/files";
+import { STATUS_LABEL, type ReportStatus } from "@/server/reports/status";
 import { currentReportViewer } from "@/server/reports/runtime";
 import { getReportFor, ReportError, type ReportDetail } from "@/server/reports/service";
 import { AuthorizationError } from "@/server/session";
 
+import { ReportChrome } from "../_components/report-chrome";
 import { ReportView } from "../_components/report-view";
+import { V2PrintButton } from "../_components/v2-print-button";
 import { periodLabel } from "../_components/shared";
 import { isWholeMonth } from "@/reports/text";
 
 export const metadata: Metadata = { title: "Rapport" };
 
 const FILE_LABEL = { pdf: "PDF", xlsx: "Excel", sie: "SIE 4" } as const;
+
+/** Statusen som V2-märke: utkast väntar (gult), skickad klar (grönt), övrigt grått. */
+const BADGE_TONE: Record<ReportStatus, string> = {
+  draft: "warning",
+  approved: "info",
+  sent: "success",
+  superseded: "",
+};
 
 /**
  * En sparad rapport i utskriftsläget, renderad ur ögonblicksbilden. Samma sida skrivs ut
@@ -47,45 +55,30 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
   const back = `/rapporter?manad=${s.month}&typ=${s.type}${s.type === "butik" ? `&butiken=${s.store.id}` : ""}${range}`;
 
   return (
-    <div className="bl-desk min-h-dvh">
-      <div data-print="hide" className="sticky top-0 z-10 border-b border-line bg-bg">
-        <div className="mx-auto flex min-h-12 max-w-[1280px] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-2 md:px-8">
-          <nav aria-label="Sökväg" className="label flex min-w-0 items-center gap-2 text-subtle">
-            <Link
-              href={back}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xs text-muted transition-colors duration-fast ease-instrument hover:text-fg max-md:tap"
-            >
-              <span aria-hidden className="text-faint">
-                ←
-              </span>
-              Rapporter
-            </Link>
-            <span aria-hidden className="text-faint">
-              /
-            </span>
-            <span className="truncate">
-              {TYPE_LABEL[s.type]} · {scope}
-            </span>
-          </nav>
-          <div className="flex flex-wrap items-center gap-2">
-            <ReportStatusTag status={report.status} />
-            {fileKindsOf(s).map((kind) => (
-              <a
-                key={kind}
-                href={`/rapport/${report.id}/fil/${kind}`}
-                className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11 max-md:min-w-11 max-md:justify-center"
-              >
-                {FILE_LABEL[kind]}
-              </a>
-            ))}
-            <PrintButton className="max-md:h-11">Skriv ut</PrintButton>
-          </div>
-        </div>
-      </div>
-      <main className="px-4 py-6 md:px-8 md:py-12 print:p-0">
-        <ReportView snapshot={s} />
-      </main>
-    </div>
+    <ReportChrome
+      back={{ href: back, label: "Rapporter" }}
+      crumb={
+        <>
+          {TYPE_LABEL[s.type]}
+          <small>{scope}</small>
+        </>
+      }
+      actions={
+        <>
+          <span className={`v2-badge ${BADGE_TONE[report.status]}`}>
+            {STATUS_LABEL[report.status]}
+          </span>
+          {fileKindsOf(s).map((kind) => (
+            <a key={kind} href={`/rapport/${report.id}/fil/${kind}`} className="v2-btn touch">
+              {FILE_LABEL[kind]}
+            </a>
+          ))}
+          <V2PrintButton>Skriv ut</V2PrintButton>
+        </>
+      }
+    >
+      <ReportView snapshot={s} />
+    </ReportChrome>
   );
 }
 

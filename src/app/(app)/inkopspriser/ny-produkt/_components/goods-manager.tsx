@@ -131,12 +131,7 @@ function GoodLine({
   const slotLink = (
     <Link
       href={`/inkopspriser/ny-produkt?flik=fack&vara=${row.id}`}
-      className={cn(
-        "inline-flex h-9 items-center justify-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-colors max-md:h-11 max-md:min-h-11",
-        noSlot
-          ? "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover"
-          : "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover",
-      )}
+      className={cn("v2-btn touch whitespace-nowrap", noSlot && "act")}
     >
       Lägg i fack<span className="sr-only">: {row.name}</span>
     </Link>
@@ -166,7 +161,7 @@ function GoodLine({
       <Thumb src={row.image} name={row.name} />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-3">
-          <p className="min-w-0 font-medium break-words text-fg">{row.name}</p>
+          <p className="min-w-0 font-[550] break-words text-fg">{row.name}</p>
           <p className="tnum shrink-0 text-fg">{kr(row.priceOre)}</p>
         </div>
         {row.titleId ? (
@@ -317,7 +312,7 @@ function EditPanel({
     return (
       // Mobilen: ingen tom ruta överst; redigeraren visas när en vara väljs.
       <Panel className="flex flex-col gap-2 max-lg:hidden">
-        <h2 className="text-lg font-medium">Redigera vara</h2>
+        <h2 className="text-v2-md font-[650] text-v2-ink">Redigera vara</h2>
         <p className="text-sm text-muted">Tryck Redigera på en vara i listan.</p>
       </Panel>
     );
@@ -403,7 +398,7 @@ function EditPanel({
         <div className="flex min-w-0 items-center gap-3">
           <Thumb src={row.image} name={row.name} />
           <div className="flex min-w-0 flex-col">
-            <h2 className="text-lg font-medium">Redigera vara</h2>
+            <h2 className="text-v2-md font-[650] text-v2-ink">Redigera vara</h2>
             <p className="meta break-words text-subtle">
               {row.name} · id {row.id}
             </p>
@@ -640,22 +635,17 @@ export function GoodsManager({
           className="max-md:h-11"
           onChange={(e) => setQuery(e.target.value)}
         />
-        <div role="group" aria-label="Visa" className="flex flex-wrap gap-2">
+        <div role="group" aria-label="Visa" className="v2-chips">
           {GOODS_FILTERS.map((f) => (
             <button
               key={f.value}
               type="button"
               aria-pressed={filter === f.value}
               onClick={() => setFilter(f.value)}
-              className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors max-md:h-11",
-                filter === f.value
-                  ? "border-inverse bg-inverse text-on-inverse"
-                  : "border-line-strong text-muted hover:text-fg",
-              )}
+              className="max-md:!h-11"
             >
               {f.label}
-              <span className="tnum opacity-80">{counts[f.value]}</span>
+              <span className="n tnum">{counts[f.value]}</span>
             </button>
           ))}
         </div>

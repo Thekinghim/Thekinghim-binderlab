@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import { useFormat, useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 
 import { updateMysteryCost } from "../actions";
 import { krAuto } from "../_lib/kr";
+
+import "./mystery.css";
 
 /**
  * Notisen "Mystery pack premium kostar nu 213 kr, inte 174 kr": mystery-packets inköpspris
@@ -86,32 +87,29 @@ export function CostNotice({
     <div
       role="status"
       data-testid="mystery-kostnad-notis"
-      className={cn(
-        "flex flex-col gap-3 rounded-md border border-signal-line bg-signal-soft px-4 py-3",
-        className,
-      )}
+      className={cn("v2-notice warning flex-col !flex-nowrap gap-3", className)}
     >
-      <div className="flex flex-col gap-1">
-        <p className="flex items-start gap-2 text-base font-medium [overflow-wrap:anywhere] text-fg">
-          <Icon name="alert" size={16} className="mt-1 shrink-0 text-signal-fg" />
-          <span>
+      <div className="flex items-start gap-2.5">
+        <span className="dot" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="font-[650] [overflow-wrap:anywhere]">
             {t.mystery.costNow(name, amount, currentOre !== null ? krAuto(f, currentOre) : null)}
-          </span>
-        </p>
-        <p className="text-base text-muted">
-          {currentOre === null ? t.mystery.costMissingWhy : t.mystery.costNowWhy}
-          {canUpdate ? "" : ` ${t.mystery.costNowAsk}`}
-        </p>
+          </p>
+          <p>
+            {currentOre === null ? t.mystery.costMissingWhy : t.mystery.costNowWhy}
+            {canUpdate ? "" : ` ${t.mystery.costNowAsk}`}
+          </p>
+        </div>
       </div>
       {canUpdate && confirming ? (
         <div className="flex flex-col gap-2" data-testid="mystery-kostnad-bekrafta">
-          <p className="text-base text-fg">{t.mystery.fixConfirm(amount)}</p>
+          <p className="text-v2-ink">{t.mystery.fixConfirm(amount)}</p>
           <div className="flex flex-col gap-2 md:flex-row">
             <button
               type="button"
               disabled={pending}
               onClick={() => run("correct")}
-              className="flex min-h-12 flex-1 items-center justify-center rounded-md border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse active:bg-inverse-hover disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled"
+              className="v2-btn act lg md:flex-1"
             >
               {busy === "correct" ? t.common.saving : t.mystery.fixYes}
             </button>
@@ -119,53 +117,51 @@ export function CostNotice({
               type="button"
               disabled={pending}
               onClick={() => setConfirming(false)}
-              className="flex min-h-12 flex-1 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-base text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
+              className="v2-btn lg md:flex-1"
             >
               {t.common.cancel}
             </button>
           </div>
         </div>
       ) : canUpdate && currentOre === null ? (
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => run("correct")}
-          data-testid="mystery-kostnad-lagg-in"
-          className="flex min-h-14 flex-col items-start justify-center gap-0.5 rounded-md border border-inverse bg-inverse px-4 py-2 text-left text-on-inverse active:bg-inverse-hover disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled"
-        >
-          <span className="text-base font-medium">
-            {busy === "correct" ? t.common.saving : t.mystery.addPrice(amount)}
-          </span>
-          <span className="text-sm opacity-80">{t.mystery.addPriceSub}</span>
-        </button>
+        <div className="mys-choice">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run("correct")}
+            data-testid="mystery-kostnad-lagg-in"
+            className="v2-btn act"
+          >
+            <span>{busy === "correct" ? t.common.saving : t.mystery.addPrice(amount)}</span>
+            <small>{t.mystery.addPriceSub}</small>
+          </button>
+        </div>
       ) : canUpdate ? (
-        <div className="flex flex-col gap-2 md:flex-row">
+        <div className="mys-choice">
           <button
             type="button"
             disabled={pending}
             onClick={() => run("today")}
-            className="flex min-h-14 flex-1 flex-col items-start justify-center gap-0.5 rounded-md border border-inverse bg-inverse px-4 py-2 text-left text-on-inverse active:bg-inverse-hover disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled"
+            className="v2-btn act"
           >
-            <span className="text-base font-medium">
-              {busy === "today" ? t.common.saving : t.mystery.updateFromToday}
-            </span>
-            <span className="text-sm opacity-80">{t.mystery.updateFromTodaySub}</span>
+            <span>{busy === "today" ? t.common.saving : t.mystery.updateFromToday}</span>
+            <small>{t.mystery.updateFromTodaySub}</small>
           </button>
           <button
             type="button"
             disabled={pending}
             onClick={() => setConfirming(true)}
-            className="flex min-h-14 flex-1 flex-col items-start justify-center gap-0.5 rounded-md border border-line-strong bg-surface px-4 py-2 text-left text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
+            className="v2-btn"
           >
-            <span className="text-base font-medium">{t.mystery.fixPrice}</span>
-            <span className="text-sm text-muted">{t.mystery.fixPriceSub}</span>
+            <span>{t.mystery.fixPrice}</span>
+            <small>{t.mystery.fixPriceSub}</small>
           </button>
         </div>
       ) : null}
       {href ? (
         <Link
           href={href}
-          className="inline-flex min-h-11 w-fit items-center text-base text-fg underline underline-offset-4"
+          className="inline-flex min-h-11 w-fit items-center font-[550] text-v2-ink underline underline-offset-[3px] md:min-h-8"
         >
           {t.mystery.openCalc}
         </Link>

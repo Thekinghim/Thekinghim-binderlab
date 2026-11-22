@@ -31,6 +31,7 @@ export function BarChart({
   partLabel = "Vinst",
   valueLabel = "Intäkt",
   ariaLabel,
+  selectedIndex,
   className,
 }: {
   data: ReadonlyArray<BarDatum>;
@@ -42,6 +43,11 @@ export function BarChart({
   partLabel?: string;
   valueLabel?: string;
   ariaLabel: string;
+  /**
+   * En vald stapel (t.ex. vald månad): den ritas mörk och de andra ljusa. Gäller staplar
+   * utan `part`.
+   */
+  selectedIndex?: number;
   className?: string;
 }) {
   const id = useId();
@@ -63,7 +69,11 @@ export function BarChart({
         {data.map((d, i) => {
           const h = Math.max(0, (d.value / max) * height);
           const p =
-            d.part === undefined ? h : Math.max(0, (Math.min(d.part, d.value) / max) * height);
+            d.part === undefined
+              ? selectedIndex === undefined || selectedIndex === i
+                ? h
+                : 0
+              : Math.max(0, (Math.min(d.part, d.value) / max) * height);
           const prev = d.previous ? (d.previous / max) * height : 0;
           return (
             <div

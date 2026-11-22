@@ -1,0 +1,129 @@
+/*
+ * Ytan runt rapporterna i appen (/rapport/…): V2:s ljusa grå skrivbord och en vit
+ * verktygsrad i Google Sans. Rapportsidorna ligger utanför appens skal (inget data-ui), så
+ * V2:s färger sätts här på .rp-chrome. Bara på skärmen: utskriften och PDF:en är oförändrade.
+ */
+
+@media screen {
+  .rp-chrome {
+    --v2-bg: #f1f1f1;
+    --v2-panel: #ffffff;
+    --v2-hover: #f7f7f7;
+    --v2-sel: #f1f1f1;
+    --v2-line: #e3e3e3;
+    --v2-line2: #ebebeb;
+    --v2-ink: #303030;
+    --v2-mute: #616161;
+    --v2-faint: #8a8a8a;
+    --v2-primary: #303030;
+    --v2-primary-hover: #1a1a1a;
+    --v2-on-primary: #ffffff;
+    --v2-profit-text: #014b40;
+    --v2-profit-soft: #cdfed4;
+    --v2-warn-text: #5e4200;
+    --v2-warn-soft: #fff1e3;
+    --v2-info-text: #003a5a;
+    --v2-info-soft: #eaf4ff;
+    --v2-shadow-primary:
+      0 -1px 0 1px rgb(0 0 0 / 0.8) inset, 0 0 0 1px rgb(48 48 48) inset,
+      0 0.5px 0 1.5px rgb(255 255 255 / 0.25) inset;
+    --v2-t-xs: 12px;
+    --v2-t-sm: 13px;
+    --v2-t-md: 14px;
+    --v2-r-sm: 6px;
+    --v2-r-md: 8px;
+    --v2-r-lg: 12px;
+    --v2-ease: cubic-bezier(0.23, 1, 0.32, 1);
+    /* Skrivbordet runt arken: V2:s grå i stället för det mörka. */
+    --bl-desk: #f1f1f1;
+    --bl-desk-edge: #e3e3e3;
+    background-color: var(--bl-desk);
+  }
+
+  .rp-chrome-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--v2-panel);
+    box-shadow: 0 1px 0 var(--v2-line);
+    font-family:
+      var(--font-google-sans),
+      "Google Sans",
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+    color: var(--v2-ink);
+  }
+  .rp-chrome-in {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    max-width: 1280px;
+    min-height: 56px;
+    margin: 0 auto;
+    padding: 8px 22px;
+  }
+  .rp-crumb {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--v2-t-md);
+  }
+  .rp-crumb .back {
+    margin-left: -10px;
+    flex: none;
+    color: var(--v2-mute);
+    font-size: var(--v2-t-md);
+  }
+  .rp-crumb .here {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 650;
+    color: var(--v2-ink);
+  }
+  .rp-crumb .here small {
+    margin-left: 6px;
+    font-size: var(--v2-t-sm);
+    font-weight: 450;
+    color: var(--v2-mute);
+  }
+  .rp-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .rp-chrome-main {
+    padding: 24px 22px 48px;
+  }
+  /* Arket på den ljusa ytan: en tunn kant och en mjuk skugga i stället för den mörka kanten. */
+  .rp-chrome .bl-sheet {
+    outline-color: var(--v2-line);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.06);
+  }
+
+  @media (max-width: 900px) {
+    .rp-chrome-in {
+      padding: 8px 12px;
+    }
+    .rp-chrome-main {
+      padding: 12px 12px 32px;
+    }
+    .rp-acts {
+      width: 100%;
+    }
+    .rp-acts .v2-btn {
+      flex: 1;
+    }
+    .rp-crumb .here small {
+      display: none;
+    }
+  }
+}

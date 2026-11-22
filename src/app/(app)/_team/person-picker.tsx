@@ -80,8 +80,10 @@ export function PersonPicker({
         className,
       )}
     >
+      {/* Etikett och värde skiljs åt med ett kolon ("Vem: Båda"), inte bara ett mellanrum. */}
       <label htmlFor={id} className={hideLabel ? "sr-only" : "label text-subtle"}>
         {label}
+        <span aria-hidden="true">:</span>
       </label>
       <select
         id={id}

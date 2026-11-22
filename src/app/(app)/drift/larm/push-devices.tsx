@@ -181,17 +181,17 @@ export function PushDevices({
       )}
 
       {devices.length === 0 ? (
-        <p className="text-sm text-muted">Ingen enhet har push påslaget.</p>
+        <p className="ops-p">Ingen enhet har push påslaget.</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-line border-y border-line">
+        <ul className="flex flex-col divide-y divide-v2-line2 border-y border-v2-line2">
           {devices.map((d) => (
             <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-sm text-fg">
+                <span className="truncate text-v2-sm font-[550] text-v2-ink">
                   {d.label}
                   {d.endpoint === currentEndpoint ? " · den här enheten" : ""}
                 </span>
-                <span className="meta text-subtle">{d.detail}</span>
+                <span className="text-v2-xs text-v2-mute">{d.detail}</span>
               </div>
               <div className="flex items-center gap-2">
                 {d.disabled ? <StatusTag status="offline">Avstängd</StatusTag> : null}
@@ -211,7 +211,7 @@ export function PushDevices({
           </Button>
         </div>
         {results ? (
-          <ul className="flex flex-col gap-1 text-sm" aria-live="polite">
+          <ul className="flex flex-col gap-1 text-v2-sm" aria-live="polite">
             {results.map((r) => (
               <li key={r.channel} className="flex flex-wrap items-baseline gap-2">
                 <StatusTag
@@ -221,7 +221,7 @@ export function PushDevices({
                 >
                   {r.channel === "push" ? "Push" : r.channel === "email" ? "E-post" : "Sms"}
                 </StatusTag>
-                <span className="text-muted">{r.detail}</span>
+                <span className="text-v2-mute">{r.detail}</span>
               </li>
             ))}
           </ul>

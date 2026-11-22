@@ -43,7 +43,7 @@ export function MachineQueue({
         message="Det finns inga automater att koppla till."
         detail="Lägg till automaterna under Automater först."
         action={{ label: "Till Automater", href: "/automater" }}
-        className="rounded-md border border-line bg-surface"
+        className="rounded-v2-lg border border-v2-line bg-v2-panel"
       />
     );
   }
@@ -119,7 +119,7 @@ function QueueRow({
     >
       <div className="flex min-w-0 flex-col gap-1 md:col-span-5">
         <p className="label text-subtle">Namn i Awish · {entry.dataSourceName}</p>
-        <p id={headingId} className="truncate text-md font-medium text-fg">
+        <p id={headingId} className="truncate text-v2-md font-[550] text-fg">
           {name}
         </p>
         <p className="tnum text-sm text-muted">

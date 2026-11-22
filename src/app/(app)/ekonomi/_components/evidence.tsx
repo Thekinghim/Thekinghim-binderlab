@@ -3,12 +3,12 @@ import Link from "next/link";
 import type { FinanceEvidence } from "@/analytics/reconciliation";
 import { formatInt, formatPercent } from "@/lib/format";
 
-import { kr, periodText, plural } from "../_lib/view";
+import { amount, periodText, plural } from "../_lib/view";
 
 function figureText(f: FinanceEvidence["figures"][number]): string {
   switch (f.unit) {
     case "ore":
-      return kr(f.value);
+      return amount(f.value);
     case "bp":
       return formatPercent(f.value / 10_000);
     case "days":
@@ -43,7 +43,7 @@ export function EvidenceDetails({
   const href = ordersHref(evidence);
   return (
     <details className="group text-sm">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xs font-mono text-xs text-muted transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-xs text-muted transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
         <span aria-hidden className="text-faint group-open:rotate-90">
           ›
         </span>

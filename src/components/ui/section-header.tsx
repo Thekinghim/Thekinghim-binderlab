@@ -3,7 +3,7 @@ import { cn } from "@/lib/cn";
 
 export type SectionHeaderSize = "xl" | "lg" | "md" | "sm";
 
-/** En rad i metadatablocket: mono-etikett till vänster, värde till höger. */
+/** En rad i metadatablocket: etikett till vänster, värde till höger. */
 export type SectionMeta = { label: string; value: ReactNode };
 
 type SectionHeaderProps = {
@@ -12,7 +12,7 @@ type SectionHeaderProps = {
    * tyngre utan att hjälpa. Propen finns kvar så att äldre anrop kompilerar.
    */
   index?: number | string;
-  /** Kategori i versaler, t.ex. "Försäljning" */
+  /** Kategori, t.ex. "Försäljning" (V2: liten grå etikett i gemener; gamla skalet: versaler). */
   eyebrow?: string;
   /** Första, ljusa delen av rubriken */
   title: string;
@@ -36,10 +36,11 @@ type SectionHeaderProps = {
 
 const titleSize: Record<SectionHeaderSize, string> = {
   // Under 400 px (iPhone SE och mini): ett steg mindre, så att rubriken ryms på två rader.
-  xl: "text-2xl max-[399px]:text-xl lg:text-3xl",
-  lg: "text-xl md:text-2xl",
-  md: "text-lg",
-  sm: "text-md",
+  // V2 (appens skal): V2:s typskala, halvfet, inga affischrubriker (20 / 16 / 14 / 14 px).
+  xl: "text-2xl max-[399px]:text-xl lg:text-3xl v2:text-v2-xl",
+  lg: "text-xl md:text-2xl v2:text-v2-lg",
+  md: "text-lg v2:text-v2-md",
+  sm: "text-md v2:text-v2-md",
 };
 
 function isMetaList(meta: SectionHeaderProps["meta"]): meta is ReadonlyArray<SectionMeta> {
@@ -109,14 +110,18 @@ export function SectionHeader({
             <span>{eyebrow}</span>
           </p>
         ) : null}
-        <Tag id={id} className={cn("font-medium text-balance hyphens-none", titleSize[size])}>
+        <Tag
+          id={id}
+          className={cn("font-medium text-balance hyphens-none v2:font-[650]", titleSize[size])}
+        >
           <span className="text-fg">{title}</span>
           {aside ? (
             <span
               className={cn(
-                "text-subtle",
+                "text-subtle v2:font-normal",
                 // Under md: den stora rubriken på en rad, den grå delen mindre under.
-                size === "xl" && "max-md:mt-1 max-md:block max-md:text-lg max-[399px]:text-md",
+                size === "xl" &&
+                  "max-md:mt-1 max-md:block max-md:text-lg max-[399px]:text-md v2:max-md:mt-0 v2:max-md:text-v2-lg",
                 hideAsideOnMobile && "max-md:hidden",
               )}
             >

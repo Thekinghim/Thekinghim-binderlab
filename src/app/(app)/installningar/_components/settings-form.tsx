@@ -195,11 +195,11 @@ export function SettingsForm({
         />
       ) : null}
       {historyLines.length > 0 ? (
-        <p className="text-sm text-muted" data-card-fee-history>
+        <p className="text-v2-sm text-v2-mute" data-card-fee-history>
           Kortavgift: {historyLines.join(" · ")}
         </p>
       ) : null}
-      <p className="border-t border-line pt-4 text-sm text-muted">
+      <p className="border-t border-v2-line2 pt-4 text-v2-sm text-v2-mute">
         Kortavgiften gäller från ett datum. Momssatsen gäller bakåt. Stängda månader ändras inte.
       </p>
       <Modal

@@ -69,7 +69,7 @@ export function ContractFileUpload({
         {signed ? "Ladda upp signerat" : hasFile ? "Byt fil" : "Bifoga fil"}
       </Button>
       {error ? (
-        <span role="alert" className="text-xs text-signal-fg">
+        <span role="alert" className="text-v2-sm text-v2-crit-text">
           {error}
         </span>
       ) : null}

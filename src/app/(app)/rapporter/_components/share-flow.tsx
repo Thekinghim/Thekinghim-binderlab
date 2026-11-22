@@ -215,12 +215,12 @@ export function ShareFlow({
 
   return (
     <div
-      className="flex flex-col gap-3 rounded-md border border-line bg-surface p-4 md:p-5"
+      className="v2-card v2-card-body flex flex-col gap-3"
       data-share-flow={shared ? "shared" : asking ? "ask" : "share"}
     >
       {asking ? (
         <>
-          <p className="text-lg font-medium text-fg">Skickade du den?</p>
+          <p className="text-v2-lg font-[650] text-v2-ink">Skickade du den?</p>
           <div className="flex flex-wrap gap-2">
             <Button
               variant="primary"

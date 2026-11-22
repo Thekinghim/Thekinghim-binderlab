@@ -3,18 +3,22 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { wallClockIn } from "@/components/shell/period-state";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { formatters, messages } from "@/i18n";
 import { getT } from "@/i18n/server";
 import { requireRoute } from "@/server/data/core";
 
 import { currentViewer } from "../../../lager/_lib/session";
-import { PageHead } from "../../_components/page-head";
 import { Calculator } from "../_components/calculator";
 import { CostNotice } from "../_components/cost-notice";
 import { ContentsSection, UndoPackButton } from "../_components/mystery-actions";
 import { PackFlow } from "../_components/pack-flow";
+import { SimpleFrame } from "../_components/simple-frame";
 import { StockLine } from "../_components/stock-line";
 import { loadMysteryDetailFor } from "../_lib/data";
+import "../_components/mystery.css";
 import {
   batchesForPacks,
   defaultPlace,
@@ -30,7 +34,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t.mystery.title };
 }
 
-const SECTION = "flex flex-col gap-4 scroll-mt-28";
+/** Korten som länkas till (#packa, #innehall, #kalkyl) hamnar under sidhuvudet. */
+const CARD = "scroll-mt-4";
 
 type Params = Promise<{ titelId: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -114,40 +119,30 @@ export default async function MysteryPackPage({
       )
     : m.mystery.addContentsFirst;
 
-  return (
-    <div className="mx-auto flex w-full max-w-[880px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-3">
-        <Link
-          href="/vart-lager/mystery"
-          className="meta inline-flex min-h-11 w-fit items-center text-muted hover:text-fg"
-        >
-          {m.mystery.back}
-        </Link>
-        <PageHead eyebrow={m.mystery.title} title={t.name} aside={aside} count={false} />
-        <StockLine
-          titleId={t.id}
-          places={view.places}
-          inPlaces={t.inPlaces}
-          inMachines={t.inMachines}
-          batchSize={recipe?.batchSize ?? null}
-          canPack={view.canPack}
-          canCount={canSetCost}
-          merged={merged}
-          t={m}
-        />
-      </div>
+  const stockLine = (
+    <StockLine
+      titleId={t.id}
+      places={view.places}
+      inPlaces={t.inPlaces}
+      inMachines={t.inMachines}
+      batchSize={recipe?.batchSize ?? null}
+      canPack={view.canPack}
+      canCount={canSetCost}
+      merged={merged}
+      t={m}
+    />
+  );
 
-      {recipe && view.canPack ? (
-        <section id="packa" aria-labelledby="packa-rubrik" className={SECTION}>
-          <h2 id="packa-rubrik" className="text-xl font-medium text-fg">
-            {m.mystery.pack}
-          </h2>
+  const packCard =
+    recipe && view.canPack ? (
+      <Card id="packa" title={m.mystery.pack} className={CARD}>
+        <CardBody className="mys-body">
           {sentence ? (
             <p
               className={
                 sentence.tone === "act"
-                  ? "text-base font-medium text-signal-fg"
-                  : "text-base text-muted"
+                  ? "text-v2-md font-[550] text-v2-warn-text"
+                  : "text-v2-sm text-v2-mute"
               }
             >
               {sentence.text}
@@ -162,13 +157,13 @@ export default async function MysteryPackPage({
             defaultPlaceId={place?.id ?? null}
             initialBatches={initialBatches}
           />
-        </section>
-      ) : null}
+        </CardBody>
+      </Card>
+    ) : null;
 
-      <section id="innehall" aria-labelledby="innehall-rubrik" className={SECTION}>
-        <h2 id="innehall-rubrik" className="text-xl font-medium text-fg">
-          {m.mystery.contents}
-        </h2>
+  const contentsCard = (
+    <Card id="innehall" title={m.mystery.contents} className={CARD}>
+      <CardBody className="mys-body">
         <ContentsSection
           titleId={t.id}
           recipe={recipe}
@@ -179,7 +174,7 @@ export default async function MysteryPackPage({
           }
         />
         {detail.versions.length > 0 && !simple ? (
-          <p className="meta text-subtle">
+          <p className="mys-mute">
             {detail.versions
               .map((v) =>
                 m.mystery.version(
@@ -190,80 +185,121 @@ export default async function MysteryPackPage({
               .join(" · ")}
           </p>
         ) : null}
-      </section>
+      </CardBody>
+    </Card>
+  );
 
-      {calc ? (
-        <section id="kalkyl" aria-labelledby="kalkyl-rubrik" className={SECTION}>
-          <h2 id="kalkyl-rubrik" className="text-xl font-medium text-fg">
-            {m.mystery.calcTitle}
-          </h2>
-          {differs && calc.perPackOre !== null ? (
-            <CostNotice
-              titleId={t.id}
-              name={t.name}
-              currentOre={t.currentCostOre}
-              calculatedOre={calc.perPackOre}
-              canUpdate={canSetCost}
-            />
-          ) : null}
-          <Calculator calc={calc} lowestIn={detail.salePriceMachine} />
-          {calc.missing.length > 0 ? (
-            <Link
-              href="/inkopspriser"
-              className="inline-flex min-h-11 w-fit items-center text-base text-fg underline underline-offset-4"
-            >
-              {m.mystery.pricesLink}
-            </Link>
-          ) : null}
-        </section>
-      ) : null}
+  const calcCard = calc ? (
+    <Card id="kalkyl" title={m.mystery.calcTitle} className={CARD}>
+      <CardBody className="mys-body">
+        {differs && calc.perPackOre !== null ? (
+          <CostNotice
+            titleId={t.id}
+            name={t.name}
+            currentOre={t.currentCostOre}
+            calculatedOre={calc.perPackOre}
+            canUpdate={canSetCost}
+          />
+        ) : null}
+        <Calculator calc={calc} lowestIn={detail.salePriceMachine} />
+        {calc.missing.length > 0 ? (
+          <Link href="/inkopspriser" className="mys-link">
+            {m.mystery.pricesLink}
+          </Link>
+        ) : null}
+      </CardBody>
+    </Card>
+  ) : null;
 
-      {detail.packings.length > 0 ? (
-        <section aria-labelledby="packat-rubrik" className={SECTION}>
-          <h2 id="packat-rubrik" className="text-xl font-medium text-fg">
-            {m.mystery.recent}
-          </h2>
-          <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
-            {detail.packings.map((p) => (
-              <li key={p.id} className="flex min-h-14 items-center justify-between gap-3 px-4 py-2">
-                <span className="flex min-w-0 flex-col">
-                  <span
-                    className={p.undone ? "text-base text-muted line-through" : "text-base text-fg"}
-                  >
-                    {m.mystery.packingLine(p.batches, p.packs, p.placeName)}
-                  </span>
-                  <span className="meta text-subtle">
-                    {m.mystery.packingMeta(
-                      f.dateTime(local(p.packedAt), { year: "auto", now: nowLocal }),
-                      simple ? null : p.version,
-                    )}
-                    {p.costPerPackOre !== null && view.seesMoney
-                      ? ` · ${m.sales.perPack(kr(p.costPerPackOre))}`
-                      : ""}
-                    {p.undone ? m.mystery.packingUndone : ""}
-                  </span>
-                </span>
-                {p.undoable ? <UndoPackButton packingId={p.id} /> : null}
-              </li>
-            ))}
-          </ul>
-          {detail.packings.some((p) => p.tooLate) ? (
-            <p className="text-base text-muted">
-              {m.r2.t1.mystery.tooLateToUndo}{" "}
-              {canSetCost ? (
-                <Link
-                  href="/vart-lager/inventering"
-                  className="inline-flex min-h-11 items-center text-fg underline underline-offset-4"
-                >
-                  {m.r2.t1.mystery.countInstead}
-                </Link>
-              ) : (
-                m.r2.t1.mystery.countInsteadText
-              )}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
+  const packedCard =
+    detail.packings.length > 0 ? (
+      <Card title={m.mystery.recent} count={detail.packings.length}>
+        <ul className="mys-packed">
+          {detail.packings.map((p) => (
+            <li key={p.id}>
+              <span className="min-w-0">
+                <b className={p.undone ? "undone" : undefined}>
+                  {m.mystery.packingLine(p.batches, p.packs, p.placeName)}
+                </b>
+                <small>
+                  {m.mystery.packingMeta(
+                    f.dateTime(local(p.packedAt), { year: "auto", now: nowLocal }),
+                    simple ? null : p.version,
+                  )}
+                  {p.costPerPackOre !== null && view.seesMoney
+                    ? ` · ${m.sales.perPack(kr(p.costPerPackOre))}`
+                    : ""}
+                  {p.undone ? m.mystery.packingUndone : ""}
+                </small>
+              </span>
+              {p.undoable ? <UndoPackButton packingId={p.id} /> : null}
+            </li>
+          ))}
+        </ul>
+        {detail.packings.some((p) => p.tooLate) ? (
+          <p className="border-t border-v2-line2 px-[18px] py-3 text-v2-sm text-v2-mute max-[900px]:px-4">
+            {m.r2.t1.mystery.tooLateToUndo}{" "}
+            {canSetCost ? (
+              <Link href="/vart-lager/inventering" className="mys-link inline-flex">
+                {m.r2.t1.mystery.countInstead}
+              </Link>
+            ) : (
+              m.r2.t1.mystery.countInsteadText
+            )}
+          </p>
+        ) : null}
+      </Card>
+    ) : null;
+
+  const body = (
+    <div className="v2-mystery">
+      <div className="max-[900px]:px-1">{stockLine}</div>
+      {calcCard ? (
+        <div className="v2-cols">
+          <div className="v2-stack">
+            {packCard}
+            {contentsCard}
+            {packedCard}
+          </div>
+          <div className="v2-stack">{calcCard}</div>
+        </div>
+      ) : (
+        <div className="v2-stack">
+          {packCard}
+          {contentsCard}
+          {packedCard}
+        </div>
+      )}
     </div>
+  );
+
+  // Enkel vy: skalets eget huvud på personens språk (V2Page är svensk), samma innehåll.
+  if (simple) {
+    return (
+      <SimpleFrame headline={t.name} aside={aside}>
+        <Link
+          href="/vart-lager/mystery"
+          className="-mt-2 inline-flex min-h-11 w-fit items-center px-0.5 text-v2-sm font-[550] text-v2-mute"
+        >
+          {m.mystery.back}
+        </Link>
+        {body}
+      </SimpleFrame>
+    );
+  }
+  return (
+    <V2Page
+      title={t.name}
+      date={headerDate(now, ctx.timeZone)}
+      sub={aside}
+      tools={
+        <ButtonLink href="/vart-lager/mystery" touch aria-label="Tillbaka till Mystery packs">
+          <span aria-hidden="true">←</span>
+          <span className="max-[900px]:hidden">Mystery packs</span>
+        </ButtonLink>
+      }
+    >
+      {body}
+    </V2Page>
   );
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { sumByCurrency } from "@/analytics/subscriptions/billing";
 import { PrintButton } from "@/components/report/print-button";
+import { Empty } from "@/components/v2/empty";
 import { addMonths, monthEnd, type IsoMonth } from "@/domain";
 import { formatInt } from "@/lib/format";
 import {
@@ -50,45 +51,31 @@ export default async function InvoiceBasisPage({
   const csvHref = `/plattform/underlag/csv?manad=${month}${only ? `&kund=${only}` : ""}`;
 
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-4" data-print="hide">
-        <p className="label text-subtle">Fakturaunderlag</p>
-        <h1 className="text-3xl text-fg md:text-4xl">
+    <div className="flex flex-col gap-[14px] max-[900px]:gap-3">
+      <header className="flex flex-col gap-3" data-print="hide">
+        <h1 className="text-v2-xl font-[650] text-v2-ink">
           <span className="tnum">{formatMoneyList(net)}</span> exkl. moms
         </h1>
-        <p className="text-muted">
+        <p className="-mt-2 text-v2-md text-v2-mute">
           {monthLabel(month)} · {plural(rows.length, "kund", "kunder")} · att fakturera inkl. moms{" "}
           <span className="tnum">{formatMoneyList(gross)}</span>.
           {preliminary ? " Preliminärt: månaden pågår." : ""}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={q(addMonths(month, -1))}
-            className="inline-flex h-11 items-center rounded-sm border border-line-strong px-3 text-sm hover:bg-hover md:h-9"
-          >
+          <Link href={q(addMonths(month, -1))} className="v2-btn">
             ← {monthLabel(addMonths(month, -1))}
           </Link>
           {month < current ? (
-            <Link
-              href={q(addMonths(month, 1))}
-              className="inline-flex h-11 items-center rounded-sm border border-line-strong px-3 text-sm hover:bg-hover md:h-9"
-            >
+            <Link href={q(addMonths(month, 1))} className="v2-btn">
               {monthLabel(addMonths(month, 1))} →
             </Link>
           ) : null}
-          <a
-            href={csvHref}
-            className="inline-flex h-11 items-center rounded-sm border border-line-strong px-3 text-sm hover:bg-hover md:h-9"
-            download
-          >
+          <a href={csvHref} className="v2-btn" download>
             Ladda ner CSV
           </a>
           <PrintButton />
           {only ? (
-            <Link
-              href={`/plattform/underlag?manad=${month}`}
-              className="text-sm text-muted underline"
-            >
+            <Link href={`/plattform/underlag?manad=${month}`} className="v2-btn plain">
               Visa alla kunder
             </Link>
           ) : null}
@@ -96,20 +83,22 @@ export default async function InvoiceBasisPage({
       </header>
 
       {rows.length === 0 ? (
-        <p className="text-muted">Inga kunder med plan.</p>
+        <div className="v2-card">
+          <Empty title="Inga kunder med plan." />
+        </div>
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="v2-stack">
           {rows.map(({ customer: c, basis: b }) => (
             <article
               key={c.id}
               data-theme="light"
-              className="break-inside-avoid rounded-md border border-line bg-bg p-5 text-fg md:p-8 print:break-after-page print:border-0 print:p-0"
+              className="v2-card break-inside-avoid p-5 text-v2-ink md:p-8 print:break-after-page print:p-0 print:shadow-none"
               aria-label={`Underlag ${c.name}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex min-w-0 flex-col gap-1">
-                  <p className="label text-subtle">Fakturaunderlag · {monthLabel(month)}</p>
-                  <h2 className="text-2xl break-words">{c.name}</h2>
+                  <p className="text-v2-sm text-v2-mute">Fakturaunderlag · {monthLabel(month)}</p>
+                  <h2 className="text-v2-xl font-[650] break-words">{c.name}</h2>
                   <p className="text-sm text-muted">
                     Land {c.customer.countryCode ?? "SE"}
                     {c.customer.vatNumber ? ` · Momsnr ${c.customer.vatNumber}` : ""} ·{" "}

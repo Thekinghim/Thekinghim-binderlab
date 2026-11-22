@@ -3,9 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
-import { cn } from "@/lib/cn";
 import { AuthorizationError } from "@/server/access";
 import { goodsOverviewFor, type GoodsOverview } from "@/server/awish/edit-good";
 import { NewProductError } from "@/server/awish/goods";
@@ -22,7 +20,11 @@ import {
 import type { Viewer } from "@/server/data/core/loaders";
 import { safeErrorForLog } from "@/server/errors";
 
-import { PageHead } from "../../vart-lager/_components/page-head";
+import { ButtonLink } from "@/components/v2/button";
+import { Notice } from "@/components/v2/notice";
+import { PAGE_BODY } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SkeletonCard } from "@/components/v2/skeleton";
 import { GoodsManager } from "./_components/goods-manager";
 import { NewProductPanels, SlotPanel } from "./_components/new-product-panels";
 import { goodsPreselect, goodsTab, initialSlotMachine } from "./_lib/fack";
@@ -82,17 +84,8 @@ async function GoodsSection({
 
 function GoodsSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Läser varorna i Awish">
-      <Skeleton className="h-11 w-full" />
-      {Array.from({ length: 4 }, (_, i) => (
-        <div key={i} className="flex gap-3 border-b border-line py-4">
-          <Skeleton className="size-14 shrink-0" />
-          <div className="flex flex-1 flex-col gap-2">
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        </div>
-      ))}
+    <div className="v2-stack" aria-busy="true" aria-label="Läser varorna i Awish">
+      <SkeletonCard rows={6} />
     </div>
   );
 }
@@ -134,72 +127,70 @@ export default async function NewProductPage({
   ] as const;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-3">
-        <PageHead
-          eyebrow="Inköpspriser · Varor i Awish"
-          title="Varor i Awish"
-          aside={
-            tab === "ny"
+    <V2Page
+      title="Varor i Awish"
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      period={tab === "redigera"}
+      sub={
+        <>
+          <Link href="/inkopspriser" className="font-[550] text-v2-ink hover:underline">
+            <span aria-hidden="true">← </span>
+            Inköpspriser
+          </Link>
+          <span aria-hidden="true">·</span>
+          <span>
+            {tab === "ny"
               ? "Skapa varan i Awish. Du ser allt innan det skickas."
               : tab === "fack"
                 ? "Välj fack och vara. Du ser allt innan det skickas."
-                : "Det som behöver åtgärd står först. Du ser allt innan det sparas."
-          }
-        />
-        <Link
-          href="/inkopspriser"
-          className="meta inline-flex min-h-11 w-fit items-center rounded-xs text-muted underline underline-offset-4 hover:text-fg md:min-h-0"
-        >
-          ← Inköpspriser
-        </Link>
-      </div>
-      <nav aria-label="Varor i Awish" className="flex gap-1 border-b border-line sm:gap-2">
-        {tabs.map((t) => (
-          <Link
-            key={t.id}
-            href={t.href}
-            aria-current={tab === t.id ? "page" : undefined}
-            className={cn(
-              "-mb-px inline-flex min-h-11 items-center border-b-2 px-2 text-base whitespace-nowrap transition-colors sm:px-3",
-              tab === t.id
-                ? "border-fg font-medium text-fg"
-                : "border-transparent text-muted hover:text-fg",
-            )}
+                : "Det som behöver åtgärd står först. Du ser allt innan det sparas."}
+          </span>
+        </>
+      }
+    >
+      <div className={PAGE_BODY}>
+        <nav aria-label="Varor i Awish" className="v2-subnav mb-0">
+          {tabs.map((t) => (
+            <Link key={t.id} href={t.href} aria-current={tab === t.id ? "page" : undefined}>
+              {t.label}
+            </Link>
+          ))}
+        </nav>
+        {data.status.blocker ? (
+          <Notice
+            tone="warning"
+            title="Inte kopplad"
+            action={
+              <ButtonLink href="/datakallor" touch>
+                Till Datakällor
+              </ButtonLink>
+            }
           >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
-      {data.status.blocker ? (
-        <StateMessage
-          kind="not-configured"
-          code="Inte kopplad"
-          message={data.status.blocker}
-          action={{ label: "Till Datakällor", href: "/datakallor" }}
-        />
-      ) : tab === "ny" ? (
-        <NewProductPanels />
-      ) : tab === "fack" ? (
-        <SlotPanel
-          machines={data.machines}
-          initialMachineId={initialSlotMachine(data.machines, scope.machineId)}
-          preselect={{
-            goodId: preselect.goodId,
-            titleId: preselect.goodId === null ? preselect.titleId : null,
-          }}
-        />
-      ) : (
-        <Suspense fallback={<GoodsSkeleton />}>
-          <GoodsSection
-            viewer={viewer}
-            scope={scope}
-            vmb={vmb}
-            storeShare={storeShare}
-            preselect={preselect}
+            {data.status.blocker}
+          </Notice>
+        ) : tab === "ny" ? (
+          <NewProductPanels />
+        ) : tab === "fack" ? (
+          <SlotPanel
+            machines={data.machines}
+            initialMachineId={initialSlotMachine(data.machines, scope.machineId)}
+            preselect={{
+              goodId: preselect.goodId,
+              titleId: preselect.goodId === null ? preselect.titleId : null,
+            }}
           />
-        </Suspense>
-      )}
-    </div>
+        ) : (
+          <Suspense fallback={<GoodsSkeleton />}>
+            <GoodsSection
+              viewer={viewer}
+              scope={scope}
+              vmb={vmb}
+              storeShare={storeShare}
+              preselect={preselect}
+            />
+          </Suspense>
+        )}
+      </div>
+    </V2Page>
   );
 }

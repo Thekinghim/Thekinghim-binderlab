@@ -1,0 +1,417 @@
+/*
+ * Driftsidornas V2-delar (Drift, Lager, Inköp/Prognos, Veckan, Att göra, Automat, Enhetsekonomi).
+ * Bara V2-tokens. Prefix .ops-. Allt annat kommer från src/styles/v2.css (kort, knappar,
+ * märken, rader, tabeller).
+ */
+
+@layer components {
+  /* Länkar som segmentkontroll (Status · Besök · Påfyllning · Notiser, 1 dygn · 7 · 30 dagar). */
+  .ops-seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--v2-r-md);
+    background: var(--v2-line);
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ops-seg::-webkit-scrollbar {
+    display: none;
+  }
+  .ops-seg > a,
+  .ops-seg > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: var(--v2-r-sm);
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-mute);
+    white-space: nowrap;
+    transition:
+      color 0.15s ease,
+      background-color 0.15s ease;
+  }
+  .ops-seg > [aria-current="page"],
+  .ops-seg > [aria-current="true"],
+  .ops-seg > [aria-pressed="true"] {
+    background: var(--v2-panel);
+    color: var(--v2-ink);
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.04),
+      0 1px 2px rgb(0 0 0 / 0.06);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ops-seg > a:not([aria-current]):hover,
+    .ops-seg > button:not([aria-pressed="true"]):hover {
+      color: var(--v2-ink);
+    }
+  }
+  @media (max-width: 900px) {
+    .ops-seg.full {
+      display: flex;
+      width: 100%;
+    }
+    .ops-seg.full > a,
+    .ops-seg.full > button {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 0 6px;
+    }
+    .ops-seg > a,
+    .ops-seg > button {
+      height: 38px;
+    }
+  }
+
+  /* Rad ovanför korten: segment till vänster, knappar till höger. */
+  .ops-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .ops-bar > .acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* Lista i ett kort: rader med kortets sidluft och tunna linjer emellan. */
+  .ops-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .ops-list > li,
+  .ops-list > .it {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--v2-line2);
+    min-width: 0;
+  }
+  .ops-list > li:last-child,
+  .ops-list > .it:last-child {
+    border-bottom: 0;
+  }
+  @media (max-width: 900px) {
+    .ops-list > li,
+    .ops-list > .it {
+      padding: 12px 16px;
+    }
+  }
+
+  /* Underrubrik i ett kort (dag, grupp): 12 px grå på #F7F7F7, som tabellernas rubrikrad. */
+  .ops-group {
+    padding: 8px 18px;
+    background: var(--v2-hover);
+    border-bottom: 1px solid var(--v2-line2);
+    font-size: var(--v2-t-xs);
+    font-weight: 550;
+    color: var(--v2-mute);
+  }
+  @media (max-width: 900px) {
+    .ops-group {
+      padding: 8px 16px;
+    }
+  }
+
+  /* Utfällning: "Underlag", "Fler val". Text 13 px grå, pil som vrids. */
+  .ops-more > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    cursor: pointer;
+    list-style: none;
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-mute);
+    transition: color 0.15s ease;
+  }
+  .ops-more > summary::-webkit-details-marker {
+    display: none;
+  }
+  .ops-more > summary::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 0.15s var(--v2-ease);
+  }
+  .ops-more[open] > summary::after {
+    transform: translateY(1px) rotate(225deg);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ops-more > summary:hover {
+      color: var(--v2-ink);
+    }
+  }
+  @media (max-width: 900px) {
+    .ops-more > summary {
+      min-height: 44px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ops-more > summary::after {
+      transition: none;
+    }
+  }
+
+  /* Etikett och värde inne i en utfällning (Regel, Förväntat …). */
+  .ops-dl {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 12px;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+  }
+  .ops-dl dt {
+    color: var(--v2-faint);
+    font-weight: 550;
+  }
+  .ops-dl dd {
+    color: var(--v2-ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Textlänk i ett kort ("Öppna underlaget →"). */
+  .ops-link {
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-ink);
+    text-underline-offset: 3px;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ops-link:hover {
+      text-decoration: underline;
+    }
+  }
+  @media (max-width: 900px) {
+    .ops-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+    }
+  }
+
+  /* Tal och små grå texter. */
+  .ops-num {
+    font-variant-numeric: tabular-nums;
+  }
+  .ops-mute {
+    color: var(--v2-mute);
+  }
+  .ops-faint {
+    color: var(--v2-faint);
+  }
+  .ops-p {
+    font-size: var(--v2-t-sm);
+    line-height: 20px;
+    color: var(--v2-mute);
+  }
+  .ops-title {
+    font-size: var(--v2-t-md);
+    font-weight: 550;
+    color: var(--v2-ink);
+  }
+
+  /* Rubrik på tvåspaltiga sidor (fyra lika rutor: fack). */
+  .ops-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+  .ops-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: var(--v2-r-md);
+    box-shadow: 0 0 0 1px var(--v2-line);
+    min-width: 0;
+  }
+  .ops-tile.empty {
+    box-shadow: 0 0 0 1px var(--v2-crit-line);
+    background: var(--v2-crit-soft);
+  }
+  @media (max-width: 900px) {
+    .ops-tiles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+@layer components {
+  /* Val som chips (role=checkbox): vit med kant, vald mörk. 44 px på telefon. */
+  .ops-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid var(--v2-line);
+    background: var(--v2-panel);
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-ink);
+    transition:
+      transform 0.16s var(--v2-ease),
+      background-color 0.15s ease;
+  }
+  .ops-chip[aria-checked="true"],
+  .ops-chip[aria-pressed="true"] {
+    background: var(--v2-primary);
+    border-color: var(--v2-primary);
+    color: var(--v2-on-primary);
+  }
+  .ops-chip:active {
+    transform: scale(0.97);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ops-chip:not([aria-checked="true"]):not([aria-pressed="true"]):hover {
+      background: var(--v2-hover);
+    }
+  }
+  @media (max-width: 900px) {
+    .ops-chip {
+      height: 44px;
+      padding: 0 14px;
+    }
+  }
+
+  /* Brytare (role=switch): 36 × 20, mörk när på. */
+  .ops-switch {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    width: 36px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--v2-off);
+    transition: background-color 0.15s ease;
+  }
+  .ops-switch::before {
+    content: "";
+    position: absolute;
+    inset: -12px -4px;
+  }
+  .ops-switch > i {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+    transition: transform 0.2s var(--v2-ease);
+  }
+  .ops-switch[aria-checked="true"] {
+    background: var(--v2-primary);
+  }
+  .ops-switch[aria-checked="true"] > i {
+    transform: translateX(16px);
+  }
+  .ops-switch:disabled {
+    cursor: progress;
+    opacity: 0.6;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ops-switch > i {
+      transition: none;
+    }
+  }
+}
+
+@layer components {
+  /* Utfällbara rader i ett kort ("Mer": Inköpsorder, Leverantörer …): rubrik, grå mening och
+     en pil; innehållet under med kortets luft. */
+  .ops-acc {
+    border-bottom: 1px solid var(--v2-line2);
+    scroll-margin-top: 7rem;
+  }
+  .ops-acc:last-of-type {
+    border-bottom: 0;
+  }
+  .ops-acc > summary {
+    display: grid;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 4px 14px;
+    min-height: 48px;
+    padding: 13px 18px;
+    cursor: pointer;
+    list-style: none;
+    transition: background-color 0.15s ease;
+  }
+  .ops-acc > summary::-webkit-details-marker {
+    display: none;
+  }
+  .ops-acc > summary > span {
+    font-size: var(--v2-t-md);
+    font-weight: 550;
+    color: var(--v2-ink);
+    white-space: nowrap;
+  }
+  .ops-acc > summary > small {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ops-acc > summary::after {
+    content: "";
+    width: 7px;
+    height: 7px;
+    align-self: center;
+    border-right: 1.5px solid var(--v2-mute);
+    border-bottom: 1.5px solid var(--v2-mute);
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 0.15s var(--v2-ease);
+  }
+  .ops-acc[open] > summary::after {
+    transform: translateY(1px) rotate(225deg);
+  }
+  .ops-acc > div {
+    padding: 4px 18px 18px;
+    min-width: 0;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ops-acc > summary:hover {
+      background: var(--v2-hover);
+    }
+  }
+  @media (max-width: 900px) {
+    .ops-acc > summary {
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 12px 16px;
+    }
+    .ops-acc > summary > small {
+      grid-column: 1;
+      grid-row: 2;
+      white-space: normal;
+    }
+    .ops-acc > summary::after {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+    .ops-acc > div {
+      padding: 4px 16px 16px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ops-acc > summary::after {
+      transition: none;
+    }
+  }
+}

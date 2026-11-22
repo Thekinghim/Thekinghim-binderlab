@@ -9,7 +9,8 @@ import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
-import { formatDateTime, formatInt, formatKronor, MISSING } from "@/lib/format";
+import { formatAmountOre } from "@/components/v2/format";
+import { formatDateTime, formatInt, MISSING } from "@/lib/format";
 
 import {
   CANCEL_LABEL,
@@ -72,9 +73,9 @@ function at(iso: string, timeZone: string): string {
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-1 gap-1 border-t border-line py-2 first:border-t-0 sm:grid-cols-[9rem_1fr] sm:gap-4">
-      <dt className="label pt-0.5 text-subtle">{label}</dt>
-      <dd className="min-w-0 text-base break-words text-fg">{children}</dd>
+    <div className="grid grid-cols-1 gap-0.5 border-t border-v2-line2 py-2 first:border-t-0 sm:grid-cols-[9rem_1fr] sm:gap-4">
+      <dt className="text-v2-sm text-v2-mute">{label}</dt>
+      <dd className="min-w-0 text-v2-md break-words text-v2-ink">{children}</dd>
     </div>
   );
 }
@@ -82,8 +83,8 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 /** Underavsnitt i dialogen: etikett och en linje, tätare än PanelSection. */
 function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2 border-t border-line pt-4 not-first:mt-6 first:border-t-0 first:pt-0">
-      <h3 className="label text-muted">{label}</h3>
+    <section className="flex flex-col gap-1 border-t border-v2-line pt-4 not-first:mt-5 first:border-t-0 first:pt-0">
+      <h3 className="text-v2-md font-[650] text-v2-ink">{label}</h3>
       <dl className="flex flex-col">{children}</dl>
     </section>
   );
@@ -113,7 +114,7 @@ function SourceMachine({
       {ids.length ? (
         <Muted>
           {" · "}
-          <span className="font-mono text-sm">{ids.join(" · ")}</span>
+          <span className="text-v2-sm">{ids.join(" · ")}</span>
         </Muted>
       ) : null}
     </>
@@ -164,7 +165,7 @@ function TestPurchaseStatus({ detail, timeZone }: { detail: OrderDetail; timeZon
   const note = testPurchaseNote(detail.testPurchase, (iso) => at(iso, timeZone));
   return (
     <div className="mb-6 flex flex-col gap-2">
-      <p className="flex flex-wrap items-center gap-2 text-base text-fg">
+      <p className="flex flex-wrap items-center gap-2 text-v2-md text-fg">
         <StatusTag status="neutral">{TEST_PURCHASE_LABEL}</StatusTag>
         <span>Räknas inte i försäljningen.</span>
       </p>
@@ -198,7 +199,7 @@ function TestPurchaseButton({
   return (
     <section className="mt-6 flex flex-col gap-3 border-t border-line pt-4">
       {step === "confirm" ? (
-        <p role="alert" className="text-base text-fg">
+        <p role="alert" className="text-v2-md text-fg">
           {CONFIRM_TEXT}
         </p>
       ) : null}
@@ -259,13 +260,13 @@ export function OrderDetailView({
       <TestPurchaseStatus detail={detail} timeZone={timeZone} />
       <Group label="Order">
         <Row label="Ordernummer">
-          <span className="font-mono">{detail.externalId}</span>
+          <span className="tnum">{detail.externalId}</span>
         </Row>
         <Row label="Tid">
           <span className="tnum">{at(detail.orderedAt, timeZone)}</span>
         </Row>
         <Row label="Belopp">
-          <span className="tnum">{formatKronor(detail.amountOre / 100)}</span>
+          <span className="tnum">{formatAmountOre(detail.amountOre)}</span>
         </Row>
         <Row label="Betalsätt">
           {detail.paymentMethod ? (
@@ -288,7 +289,7 @@ export function OrderDetailView({
           )}
         </Row>
         <Row label="Originaltitel">
-          <span className="font-mono text-sm">{detail.rawTitle}</span>
+          <span className="text-v2-sm">{detail.rawTitle}</span>
           {sameTitle ? null : detail.title ? (
             <span className="block pt-1 text-xs text-subtle">Originaltitel i Awish.</span>
           ) : null}
@@ -299,7 +300,7 @@ export function OrderDetailView({
         <Row label="Automat">
           {detail.machine ? (
             <>
-              <span className="font-mono">{detail.machine.code}</span>
+              <span className="tnum">{detail.machine.code}</span>
               {detail.machine.name !== detail.machine.code ? (
                 <Muted> · {detail.machine.name}</Muted>
               ) : null}

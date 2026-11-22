@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { PageSkeleton } from "@/components/v2/page-intro";
 
-/** Medan sidan hämtar och räknar: rubriken och innehållet som skeleton. */
+/** Medan sidan hämtar och räknar: rubrikraden och korten som skeleton. */
 export default function EkonomiLoading() {
-  return <RouteLoading label="Laddar ekonomi" />;
+  return <PageSkeleton label="Laddar ekonomi" main={[3, 6]} side={[4, 2]} />;
 }

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { Notice } from "@/components/v2/notice";
+
 import { parseLinkFragment, type LinkFragment } from "./link-fragment";
 
 /**
@@ -29,14 +31,13 @@ export function useLinkFragment(): LinkFragment | null {
   return fragment;
 }
 
-const PRIMARY =
-  "inline-flex h-12 w-full items-center justify-center rounded-sm border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse hover:bg-inverse-hover";
-const SECONDARY =
-  "inline-flex h-12 w-full items-center justify-center rounded-sm border border-line-strong bg-surface px-4 text-base font-medium text-fg hover:border-line-control hover:bg-hover";
+/** V2:s stora knappar (44 px), full bredd. */
+const PRIMARY = "v2-btn lg act w-full";
+const SECONDARY = "v2-btn lg w-full";
 
 /** Plats för knappen medan fragmentet läses: samma höjd, inget hopp. */
 export function LinkPending() {
-  return <div aria-hidden className="h-12 w-full animate-pulse-soft rounded-sm bg-hover" />;
+  return <div aria-hidden className="v2-auth-pending animate-pulse-soft" />;
 }
 
 /**
@@ -51,8 +52,8 @@ export function LinkFailed({
   retryLabel?: string;
 }) {
   return (
-    <div className="fade-in flex flex-col gap-4" role="alert">
-      <p className="text-base text-signal-fg">Länken gick inte att öppna.</p>
+    <div className="fade-in flex flex-col gap-3" role="alert">
+      <Notice tone="critical" title="Länken gick inte att öppna." />
       <Link href="/logga-in?vy=losenord" className={PRIMARY}>
         Logga in med lösenord
       </Link>

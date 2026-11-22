@@ -3,7 +3,6 @@ import "server-only";
 import { sql } from "drizzle-orm";
 
 import { wallClockIn } from "@/components/shell/period-state";
-import { StatusGlyph } from "@/components/ui/status-tag";
 import { getServiceDb } from "@/db/client";
 import type { Locale } from "@/i18n/locale";
 import { getServerEnv } from "@/lib/env";
@@ -79,7 +78,7 @@ async function ping(): Promise<number | null> {
 }
 
 /**
- * Mono-raden längst ner på inloggningssidorna: om databasen svarar (och hur
+ * Statusraden längst ner på inloggningssidorna: om databasen svarar (och hur
  * snabbt), miljö, inloggningssätt och klockan i Stockholm. Raden påstår bara
  * det den har mätt: databasens svar, inte resten av systemet.
  */
@@ -107,14 +106,21 @@ export async function SystemStatus({ locale = "sv" }: { locale?: Locale } = {}) 
   ].filter((p): p is string => Boolean(p));
 
   return (
-    <p className="label flex flex-wrap items-center gap-x-3 gap-y-1 text-subtle" role="status">
-      <span className="inline-flex items-center gap-2 text-muted">
-        <StatusGlyph status={ms === null ? "critical" : "ok"} size={ms === null ? 8 : 6} />
+    <p
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 text-v2-xs text-v2-faint"
+      role="status"
+    >
+      <span className="inline-flex items-center gap-1.5 font-[550] text-v2-mute">
+        <span
+          aria-hidden
+          className="inline-block size-1.5 rounded-full"
+          style={{ background: ms === null ? "var(--v2-crit-icon)" : "var(--v2-profit)" }}
+        />
         {ms === null ? t.down : t.up}
       </span>
       {parts.map((p) => (
-        <span key={p} className="inline-flex items-center gap-3">
-          <span aria-hidden className="h-px w-3 bg-line-strong" />
+        <span key={p} className="inline-flex items-center gap-2">
+          <span aria-hidden>·</span>
           <span className="tnum">{p}</span>
         </span>
       ))}

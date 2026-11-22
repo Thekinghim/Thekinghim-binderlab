@@ -4,7 +4,7 @@ import { RouteNotFound } from "@/components/ui/route-not-found";
 export default function NotFound() {
   return (
     <RouteNotFound
-      className="flex flex-col"
+      className="flex flex-col px-[22px] py-6 max-[900px]:px-3"
       eyebrow="Drift · 404"
       title="Automaten finns inte."
       aside="Länken kan vara fel, eller så hör automaten till en annan organisation."

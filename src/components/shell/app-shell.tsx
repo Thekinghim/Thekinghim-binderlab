@@ -168,6 +168,9 @@ export function AppShell(props: AppShellProps) {
             syncState: props.syncState,
             openCommand,
             timeZone: props.timeZone ?? "Europe/Stockholm",
+            stores: props.stores,
+            machines: props.machines,
+            vmbUserKey: props.vmbUserKey ?? null,
           }}
         >
           <div className="v2-app" data-ui="v2">

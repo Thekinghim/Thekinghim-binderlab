@@ -7,7 +7,8 @@ import { useCallback, useMemo } from "react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
-import { MISSING, formatInt, formatKronor } from "@/lib/format";
+import { formatAmountOre } from "@/components/v2/format";
+import { MISSING, formatInt } from "@/lib/format";
 
 import {
   CUSTOMER_PRICE_TEXT,
@@ -40,8 +41,9 @@ function titleHref(baseQuery: string, id: string): string {
   return `/inkopspriser?${q.toString()}`;
 }
 
+/** Hela kronor som på V2-sidorna; ören bara när de finns (149,50 kr). */
 function money(ore: number | null): string {
-  return ore === null ? MISSING : formatKronor(kr(ore));
+  return ore === null ? MISSING : formatAmountOre(ore);
 }
 
 /** Butikens andel som kolumner: rubriken och vem den gäller (vald butik eller alla). */
@@ -163,7 +165,7 @@ export function TitleTable({
                 aria-current={selected ? "true" : undefined}
                 className={cn(
                   "rounded-xs underline-offset-4 hover:underline max-md:tap",
-                  selected ? "font-medium text-fg underline" : "text-fg",
+                  selected ? "font-[550] text-fg underline" : "text-fg",
                 )}
               >
                 {r.name}

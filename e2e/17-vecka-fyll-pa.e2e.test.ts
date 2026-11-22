@@ -611,7 +611,9 @@ describe("Veckosammanfattningen på iPhone SE", () => {
     const { page } = await newPage("sv-SE");
     await login(page, e2e().users.owner);
     await page.goto(`/veckan?v=${target.week}`);
-    const heading = page.getByRole("heading", { level: 1 });
+    // V2: sidans namn (Veckan) är h1; veckans mening är rubriken (h2, #veckan) i sammanfattningen.
+    await page.getByRole("heading", { level: 1, name: "Veckan" }).waitFor();
+    const heading = page.locator("main #veckan");
     await heading.waitFor();
     expect(await heading.innerText()).toMatch(
       new RegExp(`^${target.lastPacks}\\s?pack sålda\\. .+\\skr i vinst\\.$`),
@@ -638,7 +640,7 @@ describe("Veckosammanfattningen på iPhone SE", () => {
 
     // Utan ?v= visas förra veckan (samma sida).
     await page.goto("/veckan");
-    expect(await page.getByRole("heading", { level: 1 }).innerText()).toMatch(
+    expect(await page.locator("main #veckan").innerText()).toMatch(
       new RegExp(`^${target.lastPacks}\\s?pack sålda\\.`),
     );
     // Att göra går att öppna härifrån (om det finns något att göra).

@@ -2,13 +2,14 @@
 
 import { useActionState, useEffect, useState, type FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/v2/button";
+import { KeyValues } from "@/components/v2/key-values";
 import { useT } from "@/i18n/client";
 import type { Messages } from "@/i18n/sv";
 
 import { requestMagicLink, requestPasswordReset, signIn } from "./actions";
+import { AuthInput } from "./auth-field";
 import { FormError } from "./form-error";
 import type { LoginState, MagicLinkState } from "./state";
 
@@ -36,9 +37,8 @@ export function emailProblem(email: string, t?: Messages): string | undefined {
   return undefined;
 }
 
-const LINK =
-  "text-fg underline decoration-line-strong underline-offset-4 max-md:tap hover:decoration-fg";
-const BIG = "h-12 w-full text-lg";
+const LINK = "v2-auth-link";
+const BIG = "w-full";
 
 /**
  * Formuläret på /logga-in: länk i mejlet (Supabase), lösenord och "Glömt
@@ -146,9 +146,9 @@ function PasswordForm({
     }
   };
   return (
-    <form action={action} onSubmit={check} noValidate className="fade-in flex flex-col gap-5">
+    <form action={action} onSubmit={check} noValidate className="fade-in flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
-      <Input
+      <AuthInput
         label={t.auth.email}
         name="email"
         type="email"
@@ -160,7 +160,7 @@ function PasswordForm({
         required
         autoFocus
       />
-      <Input
+      <AuthInput
         label={t.auth.password}
         name="password"
         type="password"
@@ -169,11 +169,11 @@ function PasswordForm({
         required
       />
       <FormError message={fieldErrors.email || fieldErrors.password ? undefined : error} />
-      <Button type="submit" variant="primary" loading={pending} className={BIG}>
+      <Button type="submit" variant="act" size="lg" pending={pending} className={BIG}>
         {t.auth.login}
       </Button>
       {footer ? (
-        <p className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-sm">{footer}</p>
+        <p className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-v2-sm">{footer}</p>
       ) : null}
     </form>
   );
@@ -200,31 +200,32 @@ function LinkForm({
 
   if (state.status === "sent") {
     return (
-      <div className="fade-in flex flex-col gap-5" role="status">
-        <p className="flex items-center gap-3 text-lg text-fg">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-up/15 text-up">
+      <div className="fade-in flex flex-col gap-4" role="status">
+        <p className="flex items-center gap-3 text-v2-lg font-[650] text-v2-ink">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-v2-profit-soft text-v2-profit">
             <Icon name="check" size={16} />
           </span>
           {t.auth.checkMail}
         </p>
-        <dl className="flex flex-col border-y border-line">
-          <div className="flex items-baseline justify-between gap-4 py-2">
-            <dt className="label text-subtle">{t.auth.to}</dt>
-            <dd className="meta truncate text-fg">{state.email}</dd>
-          </div>
-          <div className="flex items-baseline justify-between gap-4 border-t border-line py-2">
-            <dt className="label text-subtle">{t.auth.valid}</dt>
-            <dd className="meta text-fg">{t.auth.oneHour}</dd>
-          </div>
-        </dl>
+        <KeyValues
+          className="border-y border-v2-line2"
+          items={[
+            {
+              key: "to",
+              label: t.auth.to,
+              value: <span className="wrap-anywhere">{state.email}</span>,
+            },
+            { key: "valid", label: t.auth.valid, value: t.auth.oneHour },
+          ]}
+        />
         <form action={action}>
           <input type="hidden" name="next" value={next} />
           <input type="hidden" name="email" value={state.email ?? ""} />
-          <Button type="submit" loading={pending}>
+          <Button type="submit" size="lg" pending={pending} className="w-full">
             {t.auth.sendAgain}
           </Button>
         </form>
-        <p className="text-sm">{footer}</p>
+        <p className="text-v2-sm">{footer}</p>
       </div>
     );
   }
@@ -240,9 +241,9 @@ function LinkForm({
     }
   };
   return (
-    <form action={action} onSubmit={check} noValidate className="fade-in flex flex-col gap-5">
+    <form action={action} onSubmit={check} noValidate className="fade-in flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
-      <Input
+      <AuthInput
         label={t.auth.email}
         name="email"
         type="email"
@@ -255,10 +256,10 @@ function LinkForm({
         autoFocus
       />
       <FormError message={emailError ? undefined : error} />
-      <Button type="submit" variant="primary" loading={pending} className={BIG}>
+      <Button type="submit" variant="act" size="lg" pending={pending} className={BIG}>
         {kind === "login" ? t.auth.sendLink : t.auth.sendResetLink}
       </Button>
-      <p className="text-sm">{footer}</p>
+      <p className="text-v2-sm">{footer}</p>
     </form>
   );
 }

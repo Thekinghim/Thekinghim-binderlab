@@ -36,7 +36,7 @@ export function UndoPackButton({ packingId }: { packingId: string }) {
           );
         })
       }
-      className="inline-flex h-11 shrink-0 items-center rounded-sm border border-line-strong px-3 text-sm font-medium text-fg hover:bg-hover disabled:border-dashed disabled:text-disabled"
+      className="v2-btn touch shrink-0"
     >
       {pending ? t.common.undoing : t.common.undo}
     </button>
@@ -82,17 +82,13 @@ export function ContentsSection({
     );
   }
   if (!recipe) {
-    return <p className="text-base text-muted">{t.mystery.noContentsOwner}</p>;
+    return <p className="mys-mute">{t.mystery.noContentsOwner}</p>;
   }
   return (
     <div className="flex flex-col gap-3">
       <ContentsCard recipe={recipe} />
       {canEdit ? (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="inline-flex h-11 w-fit items-center gap-2 rounded-sm border border-line-strong px-4 text-base text-fg hover:bg-hover"
-        >
+        <button type="button" onClick={() => setEditing(true)} className="v2-btn touch w-fit">
           {t.mystery.editContents}
         </button>
       ) : null}

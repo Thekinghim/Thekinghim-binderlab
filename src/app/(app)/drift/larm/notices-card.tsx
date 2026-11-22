@@ -6,7 +6,6 @@ import { useEffect, useState, useSyncExternalStore, useTransition } from "react"
 import { readyRegistration } from "@/components/pwa/service-worker";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/cn";
 
 import { savePushDevice } from "../actions";
 import { deviceHint, type NoticeDevice } from "./device-hint";
@@ -193,14 +192,9 @@ export function NoticesCard({
     });
 
   return (
-    <section
-      aria-labelledby="notiser"
-      className="flex flex-col gap-5 rounded-sm border border-line-strong bg-surface p-5"
-    >
-      <div className="flex items-center justify-between gap-4">
-        <h2 id="notiser" className="text-lg font-medium text-fg">
-          Notiser i mobilen
-        </h2>
+    <section aria-labelledby="notiser" className="v2-card">
+      <div className="v2-card-hd">
+        <h2 id="notiser">Notiser i mobilen</h2>
         <button
           type="button"
           role="switch"
@@ -208,66 +202,53 @@ export function NoticesCard({
           aria-labelledby="notiser"
           onClick={toggle}
           disabled={busy}
-          className={cn(
-            "relative inline-flex h-9 w-16 shrink-0 items-center rounded-full border transition-[background-color,border-color] duration-base ease-instrument disabled:cursor-progress max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1 max-md:before:content-['']",
-            on ? "border-inverse bg-inverse" : "border-line-strong bg-hover",
-          )}
+          className="ops-switch"
         >
           <span className="sr-only">{on ? "På" : "Av"}</span>
-          <span
-            aria-hidden
-            className={cn(
-              "shadow-sm absolute top-1 left-1 size-7 rounded-full transition-transform duration-base ease-instrument motion-reduce:transition-none",
-              on ? "translate-x-7 bg-on-inverse" : "translate-x-0 bg-surface",
-            )}
-          />
+          <i aria-hidden="true" />
         </button>
       </div>
+      <div className="v2-card-body flex flex-col gap-4">
+        {hint ? <p className="ops-p">{hint}</p> : null}
 
-      {hint ? <p className="text-sm text-muted">{hint}</p> : null}
-
-      {on ? (
-        <div className="rise flex flex-col gap-4" style={{ "--i": 0 } as React.CSSProperties}>
-          <ul className="flex flex-wrap gap-2" aria-label="Typer">
-            {types.map((t) => {
-              const checked = chosen.includes(t.value);
-              return (
-                <li key={t.value}>
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={checked}
-                    onClick={() => flip(t.value)}
-                    className={cn(
-                      "inline-flex h-11 items-center gap-2 rounded-sm border px-4 text-base transition-[background-color,border-color,color] duration-fast ease-instrument",
-                      checked
-                        ? "border-fg bg-hover text-fg"
-                        : "border-line-strong text-subtle hover:text-muted",
-                    )}
-                  >
-                    <span aria-hidden className="w-3 text-center">
-                      {checked ? "✓" : ""}
-                    </span>
-                    {t.label}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="flex flex-wrap gap-2">
-            {canHere && !thisDeviceOn ? (
-              <Button variant="primary" onClick={addHere} loading={busy}>
-                Slå på i den här telefonen
-              </Button>
-            ) : null}
-            {endpoints.length > 0 ? (
-              <Button variant="ghost" onClick={test} loading={testing}>
-                Skicka en provnotis
-              </Button>
-            ) : null}
+        {on ? (
+          <div className="flex flex-col gap-4">
+            <ul className="flex flex-wrap gap-2" aria-label="Typer">
+              {types.map((t) => {
+                const checked = chosen.includes(t.value);
+                return (
+                  <li key={t.value}>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      onClick={() => flip(t.value)}
+                      className="ops-chip"
+                    >
+                      <span aria-hidden className="w-3 text-center">
+                        {checked ? "✓" : "+"}
+                      </span>
+                      {t.label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="flex flex-wrap gap-2">
+              {canHere && !thisDeviceOn ? (
+                <Button variant="primary" onClick={addHere} loading={busy}>
+                  Slå på i den här telefonen
+                </Button>
+              ) : null}
+              {endpoints.length > 0 ? (
+                <Button variant="ghost" onClick={test} loading={testing}>
+                  Skicka en provnotis
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </section>
   );
 }

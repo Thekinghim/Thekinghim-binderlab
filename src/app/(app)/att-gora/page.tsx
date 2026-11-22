@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
-import type React from "react";
 
 import { isMine, personOptions, todoAssignee } from "@/analytics/team";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { wallClockIn } from "@/components/shell/period-state";
 import { Icon } from "@/components/ui/icon";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { KeyValues } from "@/components/v2/key-values";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatRelative, formatTime } from "@/lib/format";
 import {
   isKnownStock,
@@ -33,7 +36,7 @@ import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
 import { readyPackageFor } from "@/server/bokforing/stored";
 import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
 
-import { HeaderMeta } from "./_components/header-meta";
+import "../drift/_components/ops.css";
 import { TodoBoard } from "./_components/todo-board";
 import { buildPage, extraTodos, suggestionsLine } from "./_lib/model";
 import { loadDismissedFor } from "./_lib/service";
@@ -165,86 +168,95 @@ export default async function TodoPage({
   });
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <div className="rise">
-        <SectionHeader
-          as="h1"
-          size="xl"
-          id="att-gora-rubrik"
-          eyebrow="Att göra"
-          title={view.header.title}
-          aside={view.header.aside}
-          description={view.header.description || undefined}
-          meta={<HeaderMeta items={view.header.meta} />}
-          // Mobil: "Först: …" döljs (första raden säger samma sak).
-          className="pb-6 max-md:pb-3 md:pb-8 max-md:[&_p.line-clamp-2]:hidden"
-        />
-      </div>
-      {mine || othersHaveItems ? (
-        <div
-          className="rise flex flex-wrap items-center gap-3 pb-6 max-md:pb-4"
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          <MineToggle
-            mine={mine}
-            hrefMine={withMine(sp, true)}
-            hrefAll={withMine(sp, false)}
-            label="Vems punkter"
+    <V2Page
+      title="Att göra"
+      date={headerDate(now, ctx.timeZone)}
+      sub={
+        <>
+          <b id="att-gora-rubrik">{view.header.title}</b>
+          {view.header.aside ? <span>{view.header.aside}</span> : null}
+          {/* Telefon: "Först: …" döljs (första raden säger samma sak). */}
+          {view.header.description ? (
+            <span className="max-[900px]:hidden">{view.header.description}</span>
+          ) : null}
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-cols">
+        <div className="v2-stack">
+          {mine || othersHaveItems ? (
+            <div className="ops-bar">
+              <MineToggle
+                mine={mine}
+                hrefMine={withMine(sp, true)}
+                hrefAll={withMine(sp, false)}
+                label="Vems punkter"
+              />
+            </div>
+          ) : null}
+          <AwishExpiry notice={awishExpiry} className="mb-0 max-md:mb-0" />
+          {viewer ? <NewMachinesFound viewer={viewer} preloaded={newMachines} /> : null}
+          <StartklarRow todo={startklar} />
+          {viewer ? <BokforingReady viewer={viewer} preloaded={ready} /> : null}
+          {view.total === 0 ? (
+            <Card>
+              <Empty
+                title={
+                  view.unknownStock > 0
+                    ? "Räkna in lagret först."
+                    : view.hiddenByScope > 0
+                      ? "Inget för filtret."
+                      : "Allt klart."
+                }
+                action={
+                  <ButtonLink href="/lager" touch>
+                    {view.unknownStock > 0 ? "Räkna in lagret" : "Visa lagret"}
+                  </ButtonLink>
+                }
+              />
+            </Card>
+          ) : null}
+          <TodoBoard
+            groups={view.groups}
+            dismissed={view.dismissed}
+            canDismiss
+            people={personOptions(me, teamState.team)}
           />
         </div>
-      ) : null}
-      <AwishExpiry notice={awishExpiry} />
-      {viewer ? <NewMachinesFound viewer={viewer} preloaded={newMachines} /> : null}
-      <StartklarRow todo={startklar} />
-      {viewer ? <BokforingReady viewer={viewer} preloaded={ready} /> : null}
-      {view.total === 0 ? (
-        <div className="fade-in border-t border-line pt-10 pb-12">
-          <StateMessage
-            kind="empty"
-            message={
-              view.unknownStock > 0
-                ? "Räkna in lagret först."
-                : view.hiddenByScope > 0
-                  ? "Inget för filtret."
-                  : "Allt klart."
-            }
-            action={{
-              label: view.unknownStock > 0 ? "Räkna in lagret" : "Visa lagret",
-              href: "/lager",
-            }}
-          />
+
+        <div className="v2-stack">
+          {view.header.meta.length > 0 ? (
+            <Card title="Läget">
+              <CardBody>
+                <KeyValues
+                  items={view.header.meta.map((m) => ({ label: m.label, value: m.value }))}
+                />
+              </CardBody>
+            </Card>
+          ) : null}
+          {/* AI-förslagen hopfällda till en rad: det som brådskar står först. */}
+          {advisor && advisor.suggestions.length > 0 ? (
+            <Card title="Förslag">
+              <details className="group/ai" data-ai-suggestions>
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-[18px] py-3 text-v2-sm text-v2-ink max-[900px]:px-4 [&::-webkit-details-marker]:hidden">
+                  <span>{suggestionsLine(advisor.suggestions)}</span>
+                  <Icon
+                    name="chevronRight"
+                    size={12}
+                    className="shrink-0 text-v2-mute transition-transform duration-150 group-open/ai:rotate-90"
+                  />
+                </summary>
+                {/* Telefonen: kortets knappar får 44 px tryckyta. */}
+                <div className="border-t border-v2-line2 px-[18px] pt-3 pb-4 max-[900px]:px-4 max-md:[&_a]:min-h-11 max-md:[&_button]:min-h-11">
+                  <Suggestions items={advisor.suggestions} manualLeft={null} canGenerate={false} />
+                </div>
+              </details>
+            </Card>
+          ) : null}
         </div>
-      ) : null}
-      <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
-        <TodoBoard
-          groups={view.groups}
-          dismissed={view.dismissed}
-          canDismiss
-          people={personOptions(me, teamState.team)}
-        />
       </div>
-      {/* AI-förslagen ligger under listan, hopfällda till en rad: det som brådskar står först. */}
-      {advisor && advisor.suggestions.length > 0 ? (
-        <details
-          className="group/ai rise border-t border-line"
-          style={{ "--i": 2 } as React.CSSProperties}
-          data-ai-suggestions
-        >
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-3 text-base text-fg hover:text-fg [&::-webkit-details-marker]:hidden">
-            <span>{suggestionsLine(advisor.suggestions)}</span>
-            <Icon
-              name="chevronRight"
-              size={12}
-              className="shrink-0 text-subtle transition-transform duration-fast group-open/ai:rotate-90"
-            />
-          </summary>
-          {/* Telefonen: kortets knappar får 44 px tryckyta. */}
-          <div className="pt-2 pb-8 max-md:[&_a]:min-h-11 max-md:[&_button]:min-h-11">
-            <Suggestions items={advisor.suggestions} manualLeft={null} canGenerate={false} />
-          </div>
-        </details>
-      ) : null}
-    </div>
+    </V2Page>
   );
 }
 

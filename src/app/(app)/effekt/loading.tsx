@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { PageSkeleton } from "@/components/v2/page-intro";
 
-/** Medan sidan hämtar och räknar: rubriken och innehållet som skeleton. */
+/** Medan sidan hämtar och räknar: rubriken och korten som skeleton (V2). */
 export default function EffektLoading() {
-  return <RouteLoading label="Laddar effekt" />;
+  return <PageSkeleton label="Laddar effekt" main={[8, 4]} />;
 }

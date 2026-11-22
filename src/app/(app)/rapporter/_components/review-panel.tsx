@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Notice } from "@/components/v2/notice";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { formatInt, formatSek } from "@/lib/format";
@@ -49,8 +50,8 @@ function Fact({
 }) {
   return (
     <div className={`flex min-w-0 flex-col gap-1 ${className ?? ""}`}>
-      <dt className="label text-subtle">{label}</dt>
-      <dd className="text-base text-fg">{children}</dd>
+      <dt className="v2-lab">{label}</dt>
+      <dd className="text-v2-md text-v2-ink">{children}</dd>
     </div>
   );
 }
@@ -214,7 +215,7 @@ export function ReviewPanel({
 
   return (
     <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
-      <dl className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-4 self-start border-t border-line pt-4 lg:col-span-5">
+      <dl className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-4 self-start border-t border-v2-line2 pt-4 lg:col-span-5">
         <Fact label="Status">
           <ReportStatusTag status={report.status} />
         </Fact>
@@ -238,27 +239,20 @@ export function ReviewPanel({
         </Fact>
         {/* Teknisk detalj: tar plats på telefonen utan att säga ägaren något. */}
         <Fact label="Beräkningsversion" className="max-md:hidden">
-          <span className="tnum font-mono text-sm">{report.calcVersion}</span>
+          <span className="tnum text-v2-sm">{report.calcVersion}</span>
         </Fact>
         <div className="col-span-2 flex flex-wrap items-center gap-2">
-          <a
-            href={`/rapport/${report.id}`}
-            className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:h-11 max-md:px-4"
-          >
+          <a href={`/rapport/${report.id}`} className="v2-btn sm touch">
             Öppna
           </a>
-          <a
-            hidden={shareMode}
-            href={`/rapport/${report.id}/epost`}
-            className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:h-11 max-md:px-4"
-          >
+          <a hidden={shareMode} href={`/rapport/${report.id}/epost`} className="v2-btn sm touch">
             Mejlet
           </a>
           {FILES[report.type].map((f) => (
             <a
               key={f.kind}
               href={`/rapport/${report.id}/fil/${f.kind}`}
-              className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:h-11 max-md:px-4"
+              className="v2-btn sm touch"
             >
               {f.label}
             </a>
@@ -276,10 +270,8 @@ export function ReviewPanel({
 
       <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">
         {legacy ? (
-          <div className="border-t border-line pt-4">
-            <StateMessage
-              compact
-              kind="error"
+          <div className="border-t border-v2-line2 pt-4">
+            <Warn
               message="Rapporten är gjord med den gamla mallen."
               detail={
                 !canEdit
@@ -291,10 +283,8 @@ export function ReviewPanel({
             />
           </div>
         ) : report.status === "draft" && stale ? (
-          <div className="border-t border-line pt-4">
-            <StateMessage
-              compact
-              kind="error"
+          <div className="border-t border-v2-line2 pt-4">
+            <Warn
               message={
                 stale.draftOre !== null && stale.nowOre !== null && stale.draftOre !== stale.nowOre
                   ? `Siffrorna har ändrats: ${formatSek(stale.draftOre / 100)} i utkastet, ${formatSek(stale.nowOre / 100)} nu.`
@@ -305,7 +295,7 @@ export function ReviewPanel({
           </div>
         ) : report.status === "draft" ? (
           canEdit ? (
-            <div className="flex flex-col gap-3 border-t border-line pt-4">
+            <div className="flex flex-col gap-3 border-t border-v2-line2 pt-4">
               <p className="text-base text-muted">
                 {shareMode
                   ? "Läs förhandsvisningen. Godkänn här, eller tryck Dela överst."
@@ -318,70 +308,61 @@ export function ReviewPanel({
               </div>
             </div>
           ) : (
-            <p className="border-t border-line pt-4 text-base text-muted">
+            <p className="border-t border-v2-line2 pt-4 text-base text-muted">
               Väntar på ägarens godkännande.
             </p>
           )
         ) : null}
 
         {basisWarning ? (
-          <StateMessage
-            kind="error"
-            compact
+          <Warn
             message={basisWarning.message}
             detail={basisWarning.detail}
             action={basisWarning.action}
-            className="px-0"
           />
         ) : null}
 
         {agreementWarning ? (
-          <StateMessage
-            kind="error"
-            compact
+          <Warn
             message={agreementWarning.message}
             detail={agreementWarning.detail}
             action={agreementWarning.action}
-            className="px-0"
           />
         ) : null}
 
         {recipientWarning ? (
-          <StateMessage
-            kind="error"
-            compact
+          <Warn
             message={recipientWarning.message}
             detail={recipientWarning.detail}
             action={recipientWarning.action}
-            className="px-0"
           />
         ) : null}
 
         {approved && !legacy && !report.hasPdf ? (
-          <StateMessage
-            kind="error"
-            compact
+          <Warn
             message="PDF:en saknas."
             detail={canEdit ? "Butiken ser den inte förrän den skapats." : undefined}
             action={
               canEdit ? { label: "Skapa PDF →", href: `/rapport/${report.id}/fil/pdf` } : undefined
             }
-            className="px-0"
           />
         ) : null}
 
         {approved && !legacy && canEdit && !shareMode ? (
           recipients.length === 0 ? (
-            <StateMessage
-              kind="empty"
-              compact
-              message="Ingen mottagare för rapporten."
-              action={{ label: "Lägg till mottagare →", href: "/rapporter?vy=mottagare" }}
+            <Notice
+              tone="info"
+              title="Ingen mottagare för rapporten."
+              action={
+                <ButtonLink href="/rapporter?vy=mottagare" size="sm" touch>
+                  Lägg till mottagare →
+                </ButtonLink>
+              }
             />
           ) : (
-            <fieldset className="flex flex-col gap-4 border-t border-line pt-4">
-              <legend className="label mb-3 text-muted">Skicka till</legend>
-              <ul className="flex flex-col divide-y divide-line">
+            <fieldset className="flex flex-col gap-4 border-t border-v2-line2 pt-4">
+              <legend className="v2-lab mb-3">Skicka till</legend>
+              <ul className="flex flex-col divide-y divide-v2-line2">
                 {recipients.map((r) => {
                   const id = `${textId}-${r.id}`;
                   return (
@@ -440,12 +421,12 @@ export function ReviewPanel({
           )
         ) : null}
 
-        {error ? <StateMessage kind="error" compact message={error} className="px-0" /> : null}
+        {error ? <Warn message={error} /> : null}
 
         {report.deliveries.length > 0 ? (
           <div className="flex flex-col gap-2">
-            <h3 className="label text-muted">Utskick</h3>
-            <ul className="flex flex-col divide-y divide-line border-y border-line">
+            <h3 className="v2-lab">Utskick</h3>
+            <ul className="flex flex-col divide-y divide-v2-line2 border-y border-v2-line2">
               {[...report.deliveries].reverse().map((d) => {
                 const s = DELIVERY_STATUS[d.status];
                 return (
@@ -471,5 +452,32 @@ export function ReviewPanel({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** Ett fel eller något som saknas i rapporten (V2-notis med en länk till åtgärden). */
+function Warn({
+  message,
+  detail,
+  action,
+}: {
+  message: string;
+  detail?: string;
+  action?: { label: string; href: string };
+}) {
+  return (
+    <Notice
+      tone="critical"
+      title={message}
+      action={
+        action ? (
+          <ButtonLink href={action.href} size="sm" touch>
+            {action.label}
+          </ButtonLink>
+        ) : null
+      }
+    >
+      {detail}
+    </Notice>
   );
 }

@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { PageSkeleton } from "@/components/v2/page-intro";
 
-/** Medan sidan hämtar och räknar: rubriken och innehållet som skeleton. */
+/** Medan sidan hämtar och räknar: rubriken och korten som skeleton (V2). */
 export default function ExpansionLoading() {
-  return <RouteLoading label="Laddar expansion" blocks={["kpi", "table", "form"]} />;
+  return <PageSkeleton label="Laddar expansion" main={[4, 6]} />;
 }

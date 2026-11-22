@@ -1,13 +1,9 @@
 import Link from "next/link";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
 import type { ValueCard, ValueRow, ValueView } from "../_lib/view";
-
-function rise(i: number): CSSProperties {
-  return { "--i": i } as CSSProperties;
-}
 
 /** Månaderna som länkar (nyast först), vald månad markerad. Rullar i sidled på mobilen. */
 export function MonthPicker({
@@ -20,8 +16,11 @@ export function MonthPicker({
   label: (month: string) => string;
 }) {
   return (
-    <nav aria-label="Välj månad" className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-      <ul className="flex w-max gap-2">
+    <nav
+      aria-label="Välj månad"
+      className="-mx-3 [scrollbar-width:none] overflow-x-auto px-3 min-[901px]:mx-0 min-[901px]:px-0"
+    >
+      <ul className="flex w-max gap-1.5">
         {months.map((m) => {
           const active = m.month === selected;
           return (
@@ -31,10 +30,10 @@ export function MonthPicker({
                 aria-current={active ? "page" : undefined}
                 aria-label={label(m.month)}
                 className={cn(
-                  "inline-flex h-9 items-center rounded-sm border px-3 text-sm whitespace-nowrap transition-colors duration-fast ease-instrument max-md:min-h-11",
+                  "inline-flex h-8 items-center rounded-full border px-3 text-v2-sm font-[550] whitespace-nowrap transition-[background-color,transform] duration-150 active:scale-[0.97] max-[900px]:h-11",
                   active
-                    ? "border-inverse bg-inverse text-on-inverse"
-                    : "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover",
+                    ? "border-v2-primary bg-v2-primary text-[color:var(--v2-on-primary)]"
+                    : "border-v2-line bg-v2-panel text-v2-ink hover:bg-v2-hover",
                 )}
               >
                 {m.label}
@@ -47,59 +46,59 @@ export function MonthPicker({
   );
 }
 
-/** De fyra korten: räddat, tid, kvar efter inköp och försäljning. */
+/** De fyra talen (räddat, tid, kvar efter inköp och försäljning) som KPI-bandet på Hem. */
 export function ValueCards({ cards }: { cards: readonly ValueCard[] }) {
   return (
-    <ul
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
-      aria-label="Sammanfattning"
-    >
-      {cards.map((c, i) => (
-        <li
-          key={c.id}
-          data-card={c.id}
-          className="rise flex min-w-0 flex-col gap-2 rounded-md border border-line bg-surface p-4 md:p-5"
-          style={rise(i + 1)}
-        >
-          <span className="label text-muted">{c.label}</span>
-          <span
-            className={cn(
-              "tnum text-2xl font-medium md:text-3xl",
-              c.tone === "good" && "text-up",
-              c.tone === "bad" && "text-signal-fg",
-            )}
-          >
-            {c.value}
-          </span>
-          <span className="text-sm text-muted">{c.sub}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="v2-band-wrap">
+      <ul className="v2-band" aria-label="Sammanfattning">
+        {cards.map((c) => (
+          <li key={c.id} data-card={c.id} className="v2-kt pb-3.5">
+            <span className="kl">{c.label}</span>
+            <span
+              className={cn(
+                "kn tnum",
+                c.tone === "good" && "text-v2-profit-text",
+                c.tone === "bad" && "text-v2-crit-text",
+              )}
+            >
+              {c.value}
+            </span>
+            <span className="kd">
+              <span className="!whitespace-normal">{c.sub}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
 /** Bästa åtgärder: högst tre, med värde och länk. */
 export function ActionList({ actions }: { actions: ValueView["actions"] }) {
   if (actions.length === 0) {
-    return <p className="text-base text-muted">Inget att föreslå just nu. Bra jobbat.</p>;
+    return <p className="v2-empty">Inget att föreslå just nu. Bra jobbat.</p>;
   }
   return (
-    <ol className="flex flex-col divide-y divide-line border-y border-line">
+    <ol className="flex flex-col">
       {actions.map((a, i) => (
-        <li key={a.key}>
+        <li key={a.key} className="group">
           <Link
             href={a.href}
-            className="group flex min-h-14 items-start gap-3 py-3 transition-colors duration-fast ease-instrument hover:bg-hover md:items-center md:px-2"
+            className="group flex min-h-14 items-start gap-3 border-b border-v2-line2 px-[18px] py-3 transition-colors duration-150 group-last:border-b-0 hover:bg-v2-hover md:items-center"
           >
-            <span className="tnum label mt-0.5 w-5 shrink-0 text-subtle md:mt-0">{i + 1}</span>
+            <span className="tnum mt-0.5 w-5 shrink-0 text-v2-sm text-v2-mute md:mt-0">
+              {i + 1}
+            </span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-base font-medium text-fg">{a.title}</span>
-              <span className="text-sm text-muted">{a.detail}</span>
+              <span className="text-v2-md font-[550] text-v2-ink">{a.title}</span>
+              <span className="text-v2-sm text-v2-mute">{a.detail}</span>
             </span>
             {a.valueText ? (
-              <span className="tnum shrink-0 text-sm text-up">{a.valueText}</span>
+              <span className="tnum shrink-0 text-v2-sm font-[550] text-v2-profit-text">
+                {a.valueText}
+              </span>
             ) : null}
-            <span aria-hidden className="shrink-0 text-subtle group-hover:text-fg">
+            <span aria-hidden className="shrink-0 text-v2-faint group-hover:text-v2-ink">
               →
             </span>
           </Link>
@@ -121,22 +120,15 @@ export function ValueTable({
   caption: string;
   empty: string;
 }) {
-  if (rows.length === 0) return <p className="text-sm text-muted">{empty}</p>;
+  if (rows.length === 0) return <p className="v2-empty">{empty}</p>;
   return (
-    <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-      <table className="w-full min-w-[520px] border-collapse text-sm">
+    <div className="v2-table-wrap">
+      <table className="v2-table min-w-[520px]">
         <caption className="sr-only">{caption}</caption>
         <thead>
-          <tr className="border-b border-line">
+          <tr>
             {head.map((h, i) => (
-              <th
-                key={h}
-                scope="col"
-                className={cn(
-                  "label py-2 font-normal text-muted",
-                  i === 0 ? "pr-4 text-left" : "px-2 text-right",
-                )}
-              >
+              <th key={h} scope="col" className={i === 0 ? undefined : "num"}>
                 {h}
               </th>
             ))}
@@ -144,14 +136,18 @@ export function ValueTable({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.key} className="border-b border-line">
+            <tr key={r.key}>
               {r.cells.map((c, i) =>
                 i === 0 ? (
-                  <th key={i} scope="row" className="py-2 pr-4 text-left font-normal text-fg">
+                  <th
+                    key={i}
+                    scope="row"
+                    className="h-auto border-b-v2-line2 bg-transparent py-2.5 text-left text-v2-sm font-[450] text-v2-ink"
+                  >
                     {c}
                   </th>
                 ) : (
-                  <td key={i} className="tnum px-2 py-2 text-right whitespace-nowrap text-fg">
+                  <td key={i} className="num whitespace-nowrap">
                     {c}
                   </td>
                 ),
@@ -164,7 +160,7 @@ export function ValueTable({
   );
 }
 
-/** Ett hopfällt block (stängt som standard): det mindre viktiga. */
+/** Ett hopfällt block (stängt som standard): det mindre viktiga, som en rad i ett kort. */
 export function Fold({
   title,
   meta,
@@ -179,18 +175,18 @@ export function Fold({
   open?: boolean;
 }) {
   return (
-    <details id={id} open={open} className="group border-t border-line">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 py-3 text-base text-fg [&::-webkit-details-marker]:hidden">
+    <details id={id} open={open} className="group border-b border-v2-line2 last:border-b-0">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-[18px] py-3 text-v2-md text-v2-ink transition-colors duration-150 hover:bg-v2-hover [&::-webkit-details-marker]:hidden">
+        <span className="font-[550]">{title}</span>
+        {meta ? <span className="tnum text-v2-sm text-v2-mute">{meta}</span> : null}
         <span
           aria-hidden
-          className="inline-block w-4 text-subtle transition-transform duration-fast group-open:rotate-90"
+          className="ml-auto inline-block text-v2-faint transition-transform duration-150 group-open:rotate-90"
         >
           ›
         </span>
-        <span className="font-medium">{title}</span>
-        {meta ? <span className="tnum text-sm text-muted">· {meta}</span> : null}
       </summary>
-      <div className="pb-6">{children}</div>
+      <div className="pb-4">{children}</div>
     </details>
   );
 }

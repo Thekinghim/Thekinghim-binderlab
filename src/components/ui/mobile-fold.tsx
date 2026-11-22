@@ -38,6 +38,8 @@ export function MobileFold({
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "label flex min-h-11 w-full items-center gap-2 border-t border-line text-left text-muted transition-colors hover:text-fg md:hidden",
+          // V2: en knapprad som .v2-row (14 px, halvfet) i stället för en versaletikett.
+          "v2:text-v2-md! v2:font-[550]! v2:text-v2-ink",
           !open && "border-b",
         )}
       >

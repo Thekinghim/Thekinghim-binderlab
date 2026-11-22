@@ -139,7 +139,7 @@ export function CustomerDemos({ demos }: { demos: readonly CustomerDemoRow[] }) 
   const locked = pending || busy !== null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <form
         onSubmit={submit}
         noValidate
@@ -164,12 +164,12 @@ export function CustomerDemos({ demos }: { demos: readonly CustomerDemoRow[] }) 
           Skapa demo och bjud in
         </Button>
       </form>
-      <p className="text-sm text-muted">
+      <p className="text-v2-sm text-v2-mute">
         Kunden får en egen påhittad organisation och blir ägare där. Inget från er syns, och inget
         skickas ut från demon.
       </p>
       {busy ? (
-        <p role="status" aria-live="polite" className="tnum text-base text-fg">
+        <p role="status" aria-live="polite" className="text-v2-md text-v2-ink tabular-nums">
           Skapar demo för {busy.label} …{" "}
           {busy.steps > 0 ? `${busy.step} av ${busy.steps} steg` : "kontona först"}
         </p>
@@ -181,11 +181,13 @@ export function CustomerDemos({ demos }: { demos: readonly CustomerDemoRow[] }) 
           {demos.map((d) => (
             <li
               key={d.id}
-              className="flex flex-col gap-3 border-t border-line py-3 last:border-b md:flex-row md:items-center md:justify-between"
+              className="flex flex-col gap-3 border-t border-v2-line2 py-3 md:flex-row md:items-center md:justify-between"
             >
               <div className="flex min-w-0 flex-col gap-1">
-                <span className="truncate text-fg">{d.customerEmail}</span>
-                <span className="meta text-muted">Skapad {d.createdLabel}</span>
+                <span className="truncate text-v2-md font-[550] text-v2-ink">
+                  {d.customerEmail}
+                </span>
+                <span className="text-v2-sm text-v2-mute">Skapad {d.createdLabel}</span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {d.status === "failed" ? (

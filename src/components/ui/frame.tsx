@@ -18,7 +18,7 @@ export function CornerMarks({ inset = -4, size = 7 }: { inset?: number; size?: n
           width={size}
           height={size}
           viewBox="0 0 7 7"
-          className="pointer-events-none absolute text-[color:var(--bl-grid-mark)]"
+          className="pointer-events-none absolute text-[color:var(--bl-grid-mark)] v2:hidden"
           style={p}
         >
           <path d="M3.5 0v7M0 3.5h7" stroke="currentColor" strokeWidth="1" />
@@ -71,6 +71,8 @@ const nestedPanel = [
   "[[data-frame=panel]>&:first-child]:border-t-0 [[data-frame=panel]>&:first-child]:pt-0",
   "[[data-frame=panel]>svg+&]:border-t-0 [[data-frame=panel]>svg+&]:pt-0",
   "[[data-frame=panel]>[data-slot=panel-header]+&]:border-t-0",
+  // V2: v2:-klasser går före de andra varianterna, så en inre panel släpper V2-radien igen.
+  "v2:in-data-[frame=panel]:rounded-none",
 ].join(" ");
 
 /** Grundyta: 1px kant, radie 6 px, ingen skugga. variant="bare" för ytor utan kant. */
@@ -91,6 +93,8 @@ export function Panel({
       className={cn(
         "relative min-w-0",
         framed && "rounded-md border border-line bg-surface",
+        // V2 (appens skal): vitt kort med radie 12 och 1 px #E3E3E3, som .v2-card.
+        framed && "v2:rounded-v2-lg v2:border-v2-line v2:bg-v2-panel",
         framed && nestedPanel,
         grid && "grid-field",
         grid === "fine" && "grid-field-fine",
@@ -105,7 +109,7 @@ export function Panel({
   );
 }
 
-/** Rubrikrad inuti en panel: monospace-etikett till vänster, metadata till höger. */
+/** Rubrikrad inuti en panel: etikett till vänster (V2: kortrubrik), metadata till höger. */
 export function PanelHeader({
   label,
   meta,
@@ -122,8 +126,14 @@ export function PanelHeader({
       data-slot="panel-header"
       className={cn("flex items-center justify-between gap-3", className)}
     >
-      <span className="label text-muted">{label}</span>
-      {meta ? <span className="label tnum text-subtle">{meta}</span> : null}
+      {/* V2: rubriken som i .v2-card-hd (14 px, halvfet, bläck), metadata 13 px grå. ! eftersom
+          .label står efter verktygsklasserna och annars tar storleken. */}
+      <span className="label text-muted v2:text-v2-md! v2:font-[650]! v2:text-v2-ink">{label}</span>
+      {meta ? (
+        <span className="label tnum text-subtle v2:text-v2-sm! v2:font-normal! v2:text-v2-mute">
+          {meta}
+        </span>
+      ) : null}
       {children}
     </div>
   );

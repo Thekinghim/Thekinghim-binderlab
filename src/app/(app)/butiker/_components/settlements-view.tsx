@@ -95,13 +95,13 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[960px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <header className="rise flex flex-col gap-3" style={rise(0)}>
-        <p className="label text-subtle">Att betala till butikerna</p>
-        <h1 className="text-3xl font-medium md:text-4xl">
+    <div className="flex w-full min-w-0 flex-col gap-6 max-[900px]:gap-5">
+      <header className="flex min-w-0 flex-col gap-0.5">
+        <p className="text-v2-sm text-v2-mute">Att betala till butikerna</p>
+        <h2 className="tnum text-v2-xl leading-7 font-[650] tracking-[-0.01em] text-v2-ink">
           {unpaid.length === 0 ? idle.title : <MoneyCount ore={toPay} id="avrakning-att-betala" />}
-        </h1>
-        <p className={`text-base ${late ? "text-signal-fg" : "text-muted"}`}>
+        </h2>
+        <p className={`text-v2-md ${late ? "font-[550] text-v2-crit-text" : "text-v2-mute"}`}>
           {unpaid.length === 0
             ? idle.aside
             : `${unpaidStores === 1 ? "1 butik" : `${unpaidStores} butiker`} · ${late ? "försenad, skulle betalats" : "senast"} ${dayLabel(firstDue!)}`}

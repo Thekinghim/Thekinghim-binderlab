@@ -48,8 +48,10 @@ export function TermsFields({
               aria-checked={on}
               onClick={() => onChange(presetDraft(p, value))}
               className={cn(
-                "min-h-11 rounded-md border px-3 py-2 text-base font-medium transition-[border-color,background-color,transform] duration-fast ease-instrument active:scale-[0.98]",
-                on ? "border-fg bg-hover text-fg" : "border-line-control text-muted hover:bg-hover",
+                "min-h-11 rounded-v2 border bg-v2-panel px-3 py-2 text-v2-md font-[550] transition-[border-color,background-color,transform] duration-150 active:scale-[0.98]",
+                on
+                  ? "border-v2-ink bg-v2-hover text-v2-ink shadow-[inset_0_0_0_1px_var(--v2-ink)]"
+                  : "border-v2-line3 text-v2-mute hover:bg-v2-hover",
               )}
             >
               {CONTRACT_PRESETS[p].label}
@@ -81,7 +83,7 @@ export function TermsFields({
 
       {value.share.trim() !== "" ? (
         <div className="fade-in flex flex-col gap-1.5">
-          <span className="label text-muted">Av vad</span>
+          <span className="text-v2-sm font-[550] text-v2-ink">Av vad</span>
           <Segmented
             label="Av vad"
             value={value.base}
@@ -97,7 +99,7 @@ export function TermsFields({
 
       {split ? (
         <div className="fade-in flex flex-col gap-1.5">
-          <span className="label text-muted">Vid förlust</span>
+          <span className="text-v2-sm font-[550] text-v2-ink">Vid förlust</span>
           <Segmented
             label="Vid förlust"
             value={value.loss}
@@ -116,11 +118,11 @@ export function TermsFields({
           aria-expanded={more}
           aria-controls={`${id}-mer`}
           onClick={() => setMore(!more)}
-          className="label inline-flex w-fit items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:tap"
+          className="inline-flex w-fit items-center gap-1.5 rounded-v2-sm text-v2-sm font-[550] text-v2-mute hover:text-v2-ink max-md:tap"
         >
           <span
             aria-hidden
-            className={cn("inline-block transition-transform duration-fast", more && "rotate-90")}
+            className={cn("inline-block transition-transform duration-150", more && "rotate-90")}
           >
             ›
           </span>
@@ -136,7 +138,7 @@ export function TermsFields({
               />
             ) : null}
             <div className="flex flex-col gap-1.5">
-              <label htmlFor={`${id}-sv`} className="label text-muted">
+              <label htmlFor={`${id}-sv`} className="text-v2-sm font-[550] text-v2-ink">
                 Särskilda villkor
               </label>
               <textarea
@@ -147,13 +149,10 @@ export function TermsFields({
                 onChange={(e) => onChange({ ...value, special: e.target.value })}
                 placeholder="Står i kontraktet."
                 aria-invalid={error?.field === "special" ? true : undefined}
-                className={cn(
-                  "w-full min-w-0 rounded-sm border bg-bg px-3 py-2 text-base text-fg placeholder:text-subtle",
-                  error?.field === "special" ? "border-signal" : "border-line-control",
-                )}
+                className="v2-textarea w-full min-w-0"
               />
               {error?.field === "special" ? (
-                <p className="text-xs text-signal-fg">{error.message}</p>
+                <p className="text-v2-sm text-v2-crit-text">{error.message}</p>
               ) : null}
             </div>
           </div>

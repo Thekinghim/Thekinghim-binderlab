@@ -171,7 +171,7 @@ export function SlotsEditorButton({
             >
               Lägg till titel
             </Button>
-            <p className="meta tnum text-subtle" aria-live="polite">
+            <p className="meta tnum text-v2-mute" aria-live="polite">
               {formatInt(total)} av {formatInt(capacity)} fack
             </p>
           </div>
@@ -190,18 +190,18 @@ export function SlotsEditorButton({
             }
           />
           {replaced.length > 0 ? (
-            <p className="text-sm text-fg" role="status">
+            <p className="text-v2-sm text-v2-ink" role="status">
               {replaced.length === 1
                 ? `Fackfördelningen som börjar ${dayText(replaced[0]!, today)} ersätts.`
                 : `${formatInt(replaced.length)} fackfördelningar som börjar ${replaced.map((d) => dayText(d, today)).join(", ")} ersätts.`}
             </p>
           ) : null}
           {error ? (
-            <p role="alert" className="text-sm text-signal-fg">
+            <p role="alert" className="text-v2-sm text-v2-crit-text">
               {error}
             </p>
           ) : null}
-          <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-2 border-t border-v2-line pt-4 sm:flex-row sm:justify-end">
             <Button type="button" onClick={() => setOpen(false)}>
               Avbryt
             </Button>

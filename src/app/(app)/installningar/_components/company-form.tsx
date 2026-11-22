@@ -7,7 +7,6 @@ import { FormError } from "@/app/logga-in/form-error";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/cn";
 import {
   REPORT_VAT_MODE_LABEL,
   suggestedVatNumber,
@@ -217,7 +216,7 @@ export function CompanyForm({
           }}
         />
       </div>
-      <p className="border-t border-line pt-4 text-sm text-muted">
+      <p className="border-t border-v2-line2 pt-4 text-v2-sm text-v2-mute">
         Står i varje nytt kontrakt och i nya butiksrapporter.
       </p>
       <FormError message={error} />
@@ -245,12 +244,12 @@ function ReportSwitch({
   onToggle: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md border border-line-strong px-4 py-3 sm:col-span-2">
+    <div className="st-toggle-row sm:col-span-2">
       <span className="flex min-w-0 flex-col">
-        <span id={id} className="text-base text-fg">
+        <span id={id} className="lb">
           {label}
         </span>
-        <span className="meta text-subtle">{hint}</span>
+        <span className="hn">{hint}</span>
       </span>
       <button
         type="button"
@@ -258,18 +257,9 @@ function ReportSwitch({
         aria-checked={checked}
         aria-labelledby={id}
         onClick={onToggle}
-        className={cn(
-          "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors duration-fast ease-instrument max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1.5 max-md:before:content-['']",
-          checked ? "border-up bg-up" : "border-line-control bg-raised",
-        )}
+        className="st-switch"
       >
-        <span
-          aria-hidden
-          className={cn(
-            "shadow inline-block size-6 rounded-full bg-fg transition-transform duration-fast ease-instrument",
-            checked ? "translate-x-7 bg-bg" : "translate-x-1",
-          )}
-        />
+        <span aria-hidden />
       </button>
     </div>
   );

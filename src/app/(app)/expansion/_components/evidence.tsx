@@ -36,24 +36,24 @@ export function EvidenceDetails({
     );
   return (
     <details className={cn("group min-w-0", className)}>
-      <summary className="meta inline-flex cursor-pointer list-none items-center gap-2 rounded-xs text-muted transition-colors duration-fast ease-instrument hover:text-fg [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="font-mono text-faint group-open:rotate-90">
+      <summary className="meta inline-flex cursor-pointer list-none items-center gap-2 rounded-v2-sm text-v2-mute transition-colors duration-fast ease-instrument hover:text-v2-ink [&::-webkit-details-marker]:hidden">
+        <span aria-hidden className="text-v2-faint group-open:rotate-90">
           ›
         </span>
         <span>{label}</span>
-        {parts.length > 0 ? <span className="text-subtle">· {parts.join(" · ")}</span> : null}
+        {parts.length > 0 ? <span className="text-v2-mute">· {parts.join(" · ")}</span> : null}
       </summary>
-      <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
-        <p className="text-sm text-muted">{evidence.rule}</p>
+      <div className="mt-3 flex flex-col gap-3 border-t border-v2-line pt-3">
+        <p className="text-v2-sm text-v2-mute">{evidence.rule}</p>
         {evidence.figures.length > 0 ? (
           <dl className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
             {evidence.figures.map((f) => (
               <div
                 key={f.key}
-                className="flex items-baseline justify-between gap-4 border-t border-line py-1.5"
+                className="flex items-baseline justify-between gap-4 border-t border-v2-line py-1.5"
               >
-                <dt className="min-w-0 text-sm text-muted">{f.label}</dt>
-                <dd className="tnum shrink-0 text-sm text-fg">{figureText(f)}</dd>
+                <dt className="min-w-0 text-v2-sm text-v2-mute">{f.label}</dt>
+                <dd className="tnum shrink-0 text-v2-sm text-v2-ink">{figureText(f)}</dd>
               </div>
             ))}
           </dl>
@@ -64,7 +64,7 @@ export function EvidenceDetails({
               <li key={l.href}>
                 <Link
                   href={l.href}
-                  className="meta rounded-xs text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg max-md:tap"
+                  className="meta rounded-v2-sm text-v2-ink underline decoration-line-control underline-offset-4 hover:decoration-fg max-md:tap"
                 >
                   {l.label} →
                 </Link>
@@ -80,7 +80,7 @@ export function EvidenceDetails({
 /** Märkning för uppskattningar: streckad kant (inte uppmätt), mono-etikett. */
 export function EstimateTag({ children = "Uppskattning" }: { children?: string }) {
   return (
-    <span className="label inline-flex h-6 shrink-0 items-center rounded-xs border border-dashed border-line-control px-1.5 text-muted">
+    <span className="label inline-flex h-6 shrink-0 items-center rounded-v2-sm border border-dashed border-v2-line3 px-1.5 text-v2-mute">
       {children}
     </span>
   );
@@ -99,7 +99,7 @@ export function DataStartNote({
 }) {
   if (!clippedFrom) return null;
   return (
-    <p className="text-sm break-words text-subtle">
+    <p className="text-v2-sm break-words text-v2-mute">
       Räknat från första ordern {day(clippedFrom)}
       {requested ? `; perioden ${periodText(requested)} börjar före den` : ""}. Dagar utan data
       räknas inte som dagar utan försäljning.

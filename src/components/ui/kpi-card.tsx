@@ -73,13 +73,20 @@ export function KpiCard({
         "relative flex min-w-0 flex-col gap-4",
         variant === "panel" &&
           "lift rounded-md border border-line bg-surface p-4 in-data-[frame=panel]:rounded-none in-data-[frame=panel]:border-0 in-data-[frame=panel]:bg-transparent in-data-[frame=panel]:p-0 md:p-5 md:in-data-[frame=panel]:p-0",
+        // V2: som en ruta i .v2-band (vit, radie 12, 14 × 18 px luft).
+        variant === "panel" &&
+          "v2:not-in-data-[frame=panel]:rounded-v2-lg v2:not-in-data-[frame=panel]:border-v2-line v2:not-in-data-[frame=panel]:bg-v2-panel v2:not-in-data-[frame=panel]:px-[18px] v2:not-in-data-[frame=panel]:py-3.5",
+        "v2:gap-3",
         className,
       )}
     >
       <h3 className="label truncate text-muted">{label}</h3>
 
       <div className="flex flex-col gap-1">
-        <p ref={ref} className="tnum truncate text-xl font-medium sm:text-2xl">
+        <p
+          ref={ref}
+          className="tnum truncate text-xl font-medium sm:text-2xl v2:text-v2-xl v2:font-[650] v2:tracking-[-0.01em]"
+        >
           {countUp ? <CountUp id={label} value={value} format={format} /> : format(shown)}
         </p>
         {delta !== undefined ? (

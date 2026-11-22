@@ -5,16 +5,19 @@ import { notFound } from "next/navigation";
 import { connectivityView, type TimelineEntry } from "@/analytics/health";
 import { weekdayDay } from "@/analytics/todos/text";
 import { channelText, fillLevels, fillPercent } from "@/analytics/visits";
-import { FillBar } from "@/components/ui/fill-bar";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
 import { StatusGlyph, StatusTag, type Status } from "@/components/ui/status-tag";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { fillTone } from "@/components/v2/fill-bar";
+import { KpiBand, KpiTile } from "@/components/v2/kpi-tile";
 import type { IsoDate } from "@/domain";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { AlertList } from "../../_components/alert-list";
+import { DriftFrame } from "../../_components/drift-frame";
 import { toAlertItems } from "../../_lib/alert-items";
 import { connectionLabel, firstSentence, healthTagFor, plural } from "../../_lib/display";
 import { loadMachineTimeline } from "../../_lib/load";
@@ -91,169 +94,168 @@ export default async function MachineTimelinePage({
       data.slots.map((s) => ({ machineId: data.machine.id, titleId: s.titleId, onHand: s.onHand })),
     ).get(data.machine.id) ?? null;
 
-  return (
-    <div className="flex flex-col gap-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow={`Tidslinje / ${data.machine.code}`}
-        title={`${data.machine.name}: ${tag ? tag.label.toLowerCase() : "okänd status"}.`}
-        aside={
-          data.health
-            ? firstSentence(data.health.detail)
-            : `${plural(sold, "pack sålt", "pack sålda")} de senaste ${plural(days, "dagen", "dagarna")}.`
-        }
-        meta={[
-          ...(connection ? [{ label: "Awish", value: connection.text }] : []),
-          { label: "Period", value: `${formatInt(days)} d` },
-          { label: "Sålda pack", value: formatInt(sold) },
-          { label: "Påfyllda pack", value: formatInt(refilled) },
-        ]}
-      />
+  const openAlerts = alertItems.filter((a) => a.open).length;
 
-      {/* Perioden styr talen ovan (Sålda, Påfyllda). */}
-      <nav aria-label="Period" className="flex flex-wrap items-center gap-2 max-md:-mt-8">
-        {RANGES.map((r) => (
-          <Link
-            key={r}
-            href={`/drift/automat/${data.machine.id}?dagar=${r}`}
-            aria-current={r === days ? "page" : undefined}
-            className={
-              r === days
-                ? "inline-flex h-8 items-center rounded-sm border border-line-strong bg-hover px-3 text-sm text-fg max-md:min-h-11"
-                : "inline-flex h-8 items-center rounded-sm border border-line px-3 text-sm text-muted hover:text-fg max-md:min-h-11"
-            }
-          >
-            {r === 1 ? "1 dygn" : `${r} dagar`}
-          </Link>
-        ))}
-        {/* Under md står statusen bara i rubriken (taggen såg ut som en fjärde knapp). */}
+  return (
+    <DriftFrame
+      ctx={ctx}
+      title={data.machine.code}
+      sub={
+        <>
+          <b>{`${data.machine.name}: ${tag ? tag.label.toLowerCase() : "okänd status"}.`}</b>
+          <span>
+            {data.health
+              ? firstSentence(data.health.detail)
+              : `${plural(sold, "pack sålt", "pack sålda")} de senaste ${plural(days, "dagen", "dagarna")}.`}
+          </span>
+        </>
+      }
+    >
+      <div className="ops-bar">
+        {/* Perioden styr talen nedan (Sålda, Påfyllda) och händelserna. */}
+        <nav aria-label="Period" className="ops-seg">
+          {RANGES.map((r) => (
+            <Link
+              key={r}
+              href={`/drift/automat/${data.machine.id}?dagar=${r}`}
+              aria-current={r === days ? "page" : undefined}
+            >
+              {r === 1 ? "1 dygn" : `${r} dagar`}
+            </Link>
+          ))}
+        </nav>
         {tag ? (
-          <StatusTag status={tag.status} className="max-md:hidden">
+          <StatusTag status={tag.status} className="max-[900px]:hidden">
             {tag.label}
           </StatusTag>
         ) : null}
-      </nav>
+      </div>
+
+      <KpiBand>
+        <KpiTile label="Sålda pack" value={formatInt(sold)} compare={`${formatInt(days)} d`} />
+        <KpiTile
+          label="Påfyllda pack"
+          value={formatInt(refilled)}
+          compare={`${formatInt(days)} d`}
+        />
+        {fill ? (
+          <KpiTile
+            label="Fyllt"
+            value={`${fillPercent(fill.bp)}${NBSP}%`}
+            compare={`${formatInt(fill.units)}/${formatInt(fill.capacity)} pack`}
+          />
+        ) : null}
+        {connection ? <KpiTile label="Awish" value={connection.text} /> : null}
+      </KpiBand>
 
       {fill ? (
-        <section
-          aria-labelledby="automat-fack"
-          className="rise flex flex-col gap-6"
-          style={{ "--i": 1 } as React.CSSProperties}
+        <Card
+          title="Fack"
+          count={fill.emptyTitles > 0 ? fill.emptyTitles : null}
+          actions={
+            <span className="text-v2-xs text-v2-mute">
+              {fill.emptyTitles > 0
+                ? `${plural(fill.emptyTitles, "titel slut", "titlar slut")}`
+                : `${formatInt(fill.units)}/${formatInt(fill.capacity)} pack`}
+            </span>
+          }
         >
-          <SectionHeader
-            id="automat-fack"
-            eyebrow="Fack"
-            title={`${fillPercent(fill.bp)}${NBSP}% fyllt.`}
-            aside={
-              fill.emptyTitles > 0
-                ? `${plural(fill.emptyTitles, "titel slut", "titlar slut")}.`
-                : undefined
-            }
-            meta={[
-              { label: "Pack", value: `${formatInt(fill.units)}/${formatInt(fill.capacity)}` },
-            ]}
-            size="md"
-          />
-          <ul
-            aria-label="Fack"
-            className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6"
-            title="Från Awish, uppdateras var femte minut"
-          >
-            {data.slots.map((s, i) => {
-              const empty = s.onHand === 0;
-              const bp = Math.round((Math.min(s.onHand, s.capacity) * 10_000) / s.capacity);
-              return (
-                <li
-                  key={s.titleId}
-                  className={cn(
-                    "rise flex flex-col gap-1.5 rounded-sm border px-2.5 py-2",
-                    empty ? "border-signal-line" : "border-line",
-                  )}
-                  style={{ "--i": Math.min(i, 12) + 2 } as React.CSSProperties}
-                >
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="meta truncate text-fg">{channelText(s.channels) || "–"}</span>
-                    <span className={cn("tnum text-sm", empty ? "text-fg" : "text-muted")}>
-                      {`${formatInt(s.onHand)}/${formatInt(s.capacity)}`}
+          <CardBody>
+            <ul
+              aria-label="Fack"
+              className="ops-tiles"
+              title="Från Awish, uppdateras var femte minut"
+            >
+              {data.slots.map((s) => {
+                const empty = s.onHand === 0;
+                const bp = Math.round((Math.min(s.onHand, s.capacity) * 10_000) / s.capacity);
+                return (
+                  <li key={s.titleId} className={cn("ops-tile", empty && "empty")}>
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="truncate text-v2-xs font-[550] text-v2-ink">
+                        {channelText(s.channels) || "–"}
+                      </span>
+                      <span className="tnum text-v2-xs text-v2-mute">
+                        {`${formatInt(s.onHand)}/${formatInt(s.capacity)}`}
+                      </span>
                     </span>
-                  </span>
-                  <FillBar bp={bp} delayMs={Math.min(i, 12) * 40} />
-                  <span className="truncate text-xs text-muted">{s.titleName}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+                    <span className="v2-track block w-full" aria-hidden="true">
+                      <i
+                        className={fillTone(bp)}
+                        style={{ transform: `scaleX(${Math.min(1, bp / 10_000)})` }}
+                      />
+                    </span>
+                    <span className="truncate text-v2-xs text-v2-mute">{s.titleName}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardBody>
+        </Card>
       ) : null}
 
       {alertItems.length > 0 ? (
-        <section
-          aria-labelledby="automat-larm"
-          className="rise flex flex-col gap-6"
-          style={{ "--i": 1 } as React.CSSProperties}
+        <Card
+          title={`${plural(alertItems.length, "larm", "larm")} de senaste 7 dagarna`}
+          actions={
+            <span className="text-v2-xs text-v2-mute">{`${formatInt(openAlerts)} öppna`}</span>
+          }
         >
-          <SectionHeader
-            id="automat-larm"
-            eyebrow="Larm"
-            title={`${plural(alertItems.length, "larm", "larm")} de senaste 7 dagarna.`}
-            aside={`${formatInt(alertItems.filter((a) => a.open).length)} öppna.`}
-            size="md"
-          />
           <AlertList items={alertItems} canAck={ctx.canEdit} />
-        </section>
+        </Card>
       ) : null}
 
-      <section
-        aria-labelledby="handelser"
-        className="rise flex flex-col gap-6"
-        style={{ "--i": 2 } as React.CSSProperties}
+      <Card
+        title={
+          data.entries.length === 0
+            ? "Inga händelser i perioden"
+            : `${plural(data.entries.length, "händelse", "händelser")}`
+        }
+        actions={
+          <span className="text-v2-xs text-v2-mute">
+            {days > 7 ? "Försäljningen per dag" : "Försäljningen per timme"}
+          </span>
+        }
       >
-        <SectionHeader
-          id="handelser"
-          eyebrow="Händelser"
-          title={
-            data.entries.length === 0
-              ? "Inga händelser i perioden."
-              : `${plural(data.entries.length, "händelse", "händelser")}.`
-          }
-          aside={days > 7 ? "Försäljningen visas per dag." : "Försäljningen visas per timme."}
-          size="md"
-        />
         {data.entries.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message={`Ingen försäljning, påfyllning eller ärende i ${data.machine.code} de senaste ${plural(days, "dagen", "dagarna")}.`}
+          <Empty
+            title="Inget hände."
             action={
-              days < 30
-                ? { label: "Visa 30 dagar", href: `/drift/automat/${data.machine.id}?dagar=30` }
-                : undefined
+              days < 30 ? (
+                <ButtonLink href={`/drift/automat/${data.machine.id}?dagar=30`} touch>
+                  Visa 30 dagar
+                </ButtonLink>
+              ) : undefined
             }
-          />
+          >
+            {`Ingen försäljning, påfyllning eller ärende i ${data.machine.code} de senaste ${plural(days, "dagen", "dagarna")}.`}
+          </Empty>
         ) : (
-          <ol className="flex flex-col gap-8">
+          <ol>
             {[...byDay].map(([date, entries]) => (
-              <li key={date} className="flex flex-col gap-2">
-                <h3 className="label text-muted">{weekdayDay(date as IsoDate)}</h3>
-                <ol className="flex flex-col divide-y divide-line border-y border-line">
+              <li key={date}>
+                <h3 className="ops-group">{weekdayDay(date as IsoDate)}</h3>
+                <ol className="ops-list">
                   {entries.map((e) => (
                     <li
                       key={e.key}
-                      className="grid grid-cols-[3.5rem_1fr] gap-x-3 py-3 sm:grid-cols-[3.5rem_8rem_1fr]"
+                      className="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-3 sm:grid-cols-[3rem_8rem_minmax(0,1fr)]"
                     >
-                      <span className="meta tnum pt-0.5 text-subtle">{e.time}</span>
-                      <span className="label hidden items-center gap-1.5 pt-1 text-subtle sm:flex">
+                      <span className="tnum pt-px text-v2-xs text-v2-mute">{e.time}</span>
+                      <span className="hidden items-center gap-1.5 text-v2-xs font-[550] text-v2-mute sm:flex">
                         <StatusGlyph status={glyphOf(e)} size={8} />
                         {KIND_LABEL[e.kind]}
                       </span>
                       <div className="flex min-w-0 flex-col gap-0.5">
-                        <span className="text-sm text-fg">
+                        <span className="text-v2-sm text-v2-ink">
                           {e.severity === "critical" ? (
                             <span className="sr-only">Kräver åtgärd: </span>
                           ) : null}
                           {e.title}
                         </span>
-                        {e.detail ? <span className="text-sm text-muted">{e.detail}</span> : null}
+                        {e.detail ? (
+                          <span className="text-v2-xs text-v2-mute">{e.detail}</span>
+                        ) : null}
                       </div>
                     </li>
                   ))}
@@ -262,7 +264,7 @@ export default async function MachineTimelinePage({
             ))}
           </ol>
         )}
-      </section>
-    </div>
+      </Card>
+    </DriftFrame>
   );
 }

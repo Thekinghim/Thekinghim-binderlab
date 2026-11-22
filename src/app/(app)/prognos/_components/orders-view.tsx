@@ -74,7 +74,7 @@ export function OrdersView({
         sortValue: (r) => r.createdAt,
         render: (r) => (
           <span className="flex min-w-0 flex-col">
-            <span className="font-mono text-sm text-fg">{r.number}</span>
+            <span className="text-v2-sm font-[550] text-v2-ink">{r.number}</span>
             <span className="text-xs text-subtle">{r.supplierName}</span>
             {/* Under md står läget och leveransdagen här; kolumnerna är dolda (design.md §5.1). */}
             <span className="tnum text-xs text-subtle md:hidden">

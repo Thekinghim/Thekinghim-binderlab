@@ -141,7 +141,7 @@ export function InviteDialog({
             ref={emailRef}
           />
           <RoleChoice roles={roles} value={role} onChange={setRole} />
-          <div className="flex flex-col gap-3 border-t border-line pt-4">
+          <div className="flex flex-col gap-3 border-t border-v2-line2 pt-4">
             <label className="flex min-h-11 cursor-pointer items-start gap-3">
               <input
                 type="checkbox"
@@ -150,18 +150,17 @@ export function InviteDialog({
                 className="mt-1 size-5 shrink-0 accent-current"
               />
               <span className="flex flex-col">
-                <span className="text-base text-fg">{t.team.simpleView}</span>
-                <span className="text-sm text-muted">{t.team.simpleViewHint}</span>
+                <span className="text-v2-md font-[550] text-v2-ink">{t.team.simpleView}</span>
+                <span className="text-v2-sm text-v2-mute">{t.team.simpleViewHint}</span>
               </span>
             </label>
             <label className="flex min-h-11 items-center justify-between gap-3">
-              <span className="text-base text-fg">{t.team.inviteLanguage}</span>
+              <span className="text-v2-md font-[550] text-v2-ink">{t.team.inviteLanguage}</span>
               <select
                 name="invite-locale"
                 value={locale}
                 onChange={(e) => setLocale(e.target.value as Locale)}
-                className="h-11 rounded-sm border border-line-control bg-bg px-3 text-fg"
-                style={{ fontSize: 16 }}
+                className="v2-select w-auto"
               >
                 {LOCALES.map((l) => (
                   <option key={l} value={l}>
@@ -172,7 +171,7 @@ export function InviteDialog({
             </label>
           </div>
           <details className="group" open={passwordError !== undefined || undefined}>
-            <summary className="cursor-pointer text-sm text-muted hover:text-fg">
+            <summary className="cursor-pointer text-v2-sm text-v2-mute hover:text-v2-ink">
               Sätt lösenord (valfritt)
             </summary>
             <div className="mt-4">
@@ -193,7 +192,7 @@ export function InviteDialog({
             </div>
           </details>
           <FormError message={error} />
-          <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-2 border-t border-v2-line2 pt-4 sm:flex-row sm:justify-end">
             <Button type="button" onClick={close}>
               Avbryt
             </Button>

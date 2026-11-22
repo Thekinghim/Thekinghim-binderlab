@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { SectionHeader } from "@/components/ui/section-header";
+import { Card, CardBody } from "@/components/v2/card";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { requireRoute } from "@/server/data/core";
 
 import { ClosedMonthsBanner } from "../../_manad/closed-note";
@@ -31,51 +33,57 @@ export default async function NewIncidentPage({
     : (data.machines[0]?.id ?? "");
   const prefilled = order !== null && order.machineId === machineId;
   return (
-    <div className="mx-auto flex w-full max-w-[960px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow="Inkorg / Nytt ärende"
-        title={prefilled ? `Återbetalning för order ${order.externalId}.` : "Nytt ärende."}
-        aside={
-          prefilled
+    <V2Page
+      title="Nytt ärende"
+      sub={
+        <>
+          {prefilled ? <b>{`Återbetalning för order ${order.externalId}.`} </b> : null}
+          {prefilled
             ? "Awish har återbetalat ordern. Kontrollera beloppet och spara."
-            : "Välj automat och helst ordern."
-        }
-      />
-      <ClosedMonthsBanner />
-      <IncidentForm
-        initial={{
-          machineId,
-          kind: prefilled ? "refund_request" : "not_delivered",
-          occurredAt: utcToLocalInput(prefilled ? order.orderedAt : ctx.now, ctx.timeZone),
-          orderId: prefilled ? order.id : "",
-          titleId: prefilled ? (order.titleId ?? "") : "",
-          description: prefilled ? "Återbetald i Awish." : "",
-          customerContact: "",
-          status: "open",
-          assigneeId: ctx.user.id,
-          actionTaken: "",
-          refunded: prefilled ? formatCsvNumber(order.amountOre / 100) : "",
-          refundedOn: ctx.today,
-        }}
-        machines={data.machines.map((m) => ({ id: m.id, label: `${m.code} ${m.name}` }))}
-        titles={data.titles}
-        members={data.members}
-        timeZone={ctx.timeZone}
-        currentOrder={
-          prefilled
-            ? {
-                id: order.id,
-                externalId: order.externalId,
-                orderedAt: order.orderedAt,
-                amountOre: order.amountOre,
-                titleId: order.titleId,
-                titleName: order.titleName,
+            : "Välj automat och helst ordern."}
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-stack max-w-[960px]">
+        <Card title="Ärendet">
+          <CardBody className="flex flex-col gap-4">
+            <ClosedMonthsBanner />
+            <IncidentForm
+              initial={{
+                machineId,
+                kind: prefilled ? "refund_request" : "not_delivered",
+                occurredAt: utcToLocalInput(prefilled ? order.orderedAt : ctx.now, ctx.timeZone),
+                orderId: prefilled ? order.id : "",
+                titleId: prefilled ? (order.titleId ?? "") : "",
+                description: prefilled ? "Återbetald i Awish." : "",
+                customerContact: "",
+                status: "open",
+                assigneeId: ctx.user.id,
+                actionTaken: "",
+                refunded: prefilled ? formatCsvNumber(order.amountOre / 100) : "",
+                refundedOn: ctx.today,
+              }}
+              machines={data.machines.map((m) => ({ id: m.id, label: `${m.code} ${m.name}` }))}
+              titles={data.titles}
+              members={data.members}
+              timeZone={ctx.timeZone}
+              currentOrder={
+                prefilled
+                  ? {
+                      id: order.id,
+                      externalId: order.externalId,
+                      orderedAt: order.orderedAt,
+                      amountOre: order.amountOre,
+                      titleId: order.titleId,
+                      titleName: order.titleName,
+                    }
+                  : null
               }
-            : null
-        }
-      />
-    </div>
+            />
+          </CardBody>
+        </Card>
+      </div>
+    </V2Page>
   );
 }

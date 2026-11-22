@@ -127,15 +127,15 @@ function SuggestionList({
           <li
             key={s.titleId}
             className={cn(
-              "rise flex flex-wrap items-center justify-between gap-3 rounded-md border border-line-strong bg-raised px-4 py-3 max-md:flex-nowrap max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:border-line max-md:bg-transparent max-md:px-0 max-md:py-2",
+              "flex flex-wrap items-center justify-between gap-3 rounded-v2-lg border border-v2-line3 bg-v2-hover px-4 py-3 max-md:flex-nowrap max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:border-v2-line max-md:bg-transparent max-md:px-0 max-md:py-2",
               i >= MOBILE_SUGGESTIONS && !all && "max-md:hidden",
             )}
             style={{ "--i": i } as React.CSSProperties}
           >
             <div className="flex min-w-0 flex-col max-md:flex-1">
-              <span className="label text-subtle">Förslag · ny titel</span>
-              <span className="text-base font-medium">{s.text}</span>
-              <span className="text-sm text-muted">
+              <span className="label text-v2-mute">Förslag · ny titel</span>
+              <span className="text-v2-md font-[550]">{s.text}</span>
+              <span className="text-v2-sm text-v2-mute">
                 {s.machineIds.map(code).join(", ")} · in {s.sinceLabel}
               </span>
             </div>
@@ -159,7 +159,7 @@ function SuggestionList({
           type="button"
           aria-expanded={all}
           onClick={() => setAll((v) => !v)}
-          className="label flex min-h-11 w-full items-center justify-between border-b border-line text-muted hover:text-fg md:hidden"
+          className="label flex min-h-11 w-full items-center justify-between border-b border-v2-line text-v2-mute hover:text-v2-ink md:hidden"
         >
           <span>{all ? "Färre förslag" : `Alla förslag (${suggestions.length})`}</span>
           <Icon
@@ -321,10 +321,10 @@ function CampaignDialog({
       {step === "fill" ? (
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <span className="label text-muted">Bild</span>
+            <span className="label text-v2-mute">Bild</span>
             <label
               className={cn(
-                "relative flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-md border border-dashed border-line-control bg-bg text-center transition-colors hover:bg-hover",
+                "relative flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-v2-lg border border-dashed border-v2-line3 bg-v2-panel text-center transition-colors hover:bg-v2-hover",
                 imageSrc && "border-solid",
               )}
             >
@@ -332,9 +332,11 @@ function CampaignDialog({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={imageSrc} alt="" className="max-h-56 w-full object-contain" />
               ) : (
-                <span className="px-4 py-6 text-base text-muted">
+                <span className="px-4 py-6 text-v2-md text-v2-mute">
                   Tryck för att välja bild
-                  <span className="block text-xs text-subtle">PNG, JPG eller WebP, högst 3 MB</span>
+                  <span className="block text-v2-xs text-v2-mute">
+                    PNG, JPG eller WebP, högst 3 MB
+                  </span>
                 </span>
               )}
               <input
@@ -347,7 +349,7 @@ function CampaignDialog({
             </label>
             {library.length > 0 ? (
               <div className="flex flex-col gap-1.5">
-                <span className="text-xs text-subtle">Eller en tidigare bild:</span>
+                <span className="text-v2-xs text-v2-mute">Eller en tidigare bild:</span>
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {library.map((l) => (
                     <button
@@ -361,8 +363,8 @@ function CampaignDialog({
                         setReuse(l.campaignId);
                       }}
                       className={cn(
-                        "h-14 w-20 shrink-0 overflow-hidden rounded-sm border bg-bg",
-                        reuse === l.campaignId ? "border-fg ring-1 ring-fg" : "border-line-strong",
+                        "h-14 w-20 shrink-0 overflow-hidden rounded-v2 border bg-v2-panel",
+                        reuse === l.campaignId ? "border-fg ring-1 ring-fg" : "border-v2-line3",
                       )}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -388,7 +390,7 @@ function CampaignDialog({
           />
 
           <div className="flex flex-col gap-2">
-            <span className="label text-muted">Var</span>
+            <span className="label text-v2-mute">Var</span>
             <Segmented
               label="Var"
               value={scope}
@@ -413,12 +415,12 @@ function CampaignDialog({
                         )
                       }
                       className={cn(
-                        "flex min-h-12 flex-col items-start justify-center rounded-sm border px-3 py-2 text-left transition-colors",
-                        on ? "border-fg bg-hover" : "border-line-strong hover:bg-hover",
+                        "flex min-h-12 flex-col items-start justify-center rounded-v2 border px-3 py-2 text-left transition-colors",
+                        on ? "border-fg bg-v2-hover" : "border-v2-line3 hover:bg-v2-hover",
                       )}
                     >
-                      <span className="text-sm font-medium">{m.code}</span>
-                      <span className="truncate text-xs text-muted">{m.name}</span>
+                      <span className="text-v2-sm font-[550]">{m.code}</span>
+                      <span className="truncate text-v2-xs text-v2-mute">{m.name}</span>
                     </button>
                   );
                 })}
@@ -428,7 +430,7 @@ function CampaignDialog({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
-              <span className="label text-muted">Start</span>
+              <span className="label text-v2-mute">Start</span>
               <Segmented
                 label="Start"
                 value={when}
@@ -449,7 +451,7 @@ function CampaignDialog({
               ) : null}
             </div>
             <div className="flex flex-col gap-2">
-              <span className="label text-muted">Hur länge</span>
+              <span className="label text-v2-mute">Hur länge</span>
               <Segmented
                 label="Hur länge"
                 value={end}
@@ -473,31 +475,31 @@ function CampaignDialog({
               ) : null}
             </div>
           </div>
-          {error ? <p className="text-sm text-signal-fg">{error}</p> : null}
+          {error ? <p className="text-v2-sm text-v2-crit-text">{error}</p> : null}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           {imageSrc ? (
-            <div className="overflow-hidden rounded-md border border-line-strong bg-bg">
+            <div className="overflow-hidden rounded-v2-lg border border-v2-line3 bg-v2-panel">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={imageSrc} alt="" className="max-h-64 w-full object-contain" />
             </div>
           ) : null}
-          <p className="text-xl font-medium">{title.trim()}</p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-base">
-            <dt className="text-muted">Var</dt>
+          <p className="text-v2-xl font-[550]">{title.trim()}</p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-v2-md">
+            <dt className="text-v2-mute">Var</dt>
             <dd>
               {scope === "alla"
                 ? machinesText(machines.length, machines.length)
                 : chosen.map(code).join(", ")}
             </dd>
-            <dt className="text-muted">När</dt>
+            <dt className="text-v2-mute">När</dt>
             <dd>
               {when === "nu" ? "Från nu" : `Från ${dayLabel(startsOn, today)}`} till och med{" "}
               {dayLabel(lastDay, today)}
             </dd>
           </dl>
-          {error ? <p className="text-sm text-signal-fg">{error}</p> : null}
+          {error ? <p className="text-v2-sm text-v2-crit-text">{error}</p> : null}
         </div>
       )}
     </Modal>

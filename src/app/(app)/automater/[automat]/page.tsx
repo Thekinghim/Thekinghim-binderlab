@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type React from "react";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { notFound, redirect } from "next/navigation";
 
 import { carriedQuery, parseIsoDate, wallClockIn } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { requestStoreShareView } from "@/server/data/core";
-import { Panel } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { KeyValues } from "@/components/v2/key-values";
+import { Notice } from "@/components/v2/notice";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import {
   formatDate,
   formatDateTime,
@@ -33,7 +36,6 @@ import { PersonPicker } from "../../_team/person-picker";
 import { MachineActions } from "../_components/machine-dialogs";
 import { ReadyList } from "../_components/ready-list";
 import { RefillSourcePicker } from "../_components/refill-source";
-import { Sub } from "../_components/sub";
 import { UnpricedNote } from "../_components/unpriced-note";
 import { pickTab, ViewTabs } from "../_components/view-tabs";
 import {
@@ -48,6 +50,8 @@ import { currentViewer } from "../_lib/session";
 import { withUserDbFor } from "@/server/access";
 import { queryRefillSources } from "@/server/data/core/places";
 import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
+
+import "../../drift/_components/ops.css";
 
 const TABS = [
   { value: "forsaljning", label: "Försäljning" },
@@ -128,7 +132,6 @@ export default async function MachinePage({
   const today = parseIsoDate(ctx.today) ?? new Date();
   const listHref = `/automater${data.query}`;
   const tab = pickTab(TABS, sp.vy);
-  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
   const sessionUser = { userId: ctx.user.id, email: ctx.user.email };
   const [team, readiness] = await Promise.all([
     loadTeamStateFor(sessionUser, ctx.organization.id),
@@ -143,102 +146,121 @@ export default async function MachinePage({
   const placeStore = openPlace ? first(sp.butik) : undefined;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
-      <div className="rise flex flex-col gap-6">
-        <nav aria-label="Brödsmulor">
-          <Link
-            href={listHref}
-            // min-h-7: klickytan minst 24 px hög (WCAG 2.5.8) även på mobilen.
-            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:tap max-md:min-h-11"
-          >
-            <span aria-hidden className="text-faint">
-              ←
-            </span>
-            Alla automater
+    <V2Page
+      title={machine.code}
+      date={machine.name}
+      period
+      sub={
+        <>
+          <b>{headline.title}</b>
+          {headline.aside ? <span>{headline.aside}</span> : null}
+          {status.reason && status.status !== "ok" ? <span>{status.reason}</span> : null}
+        </>
+      }
+      tools={
+        ctx.canEdit ? (
+          <span className="flex items-center gap-2 max-[900px]:hidden">
+            <ButtonLink href={`/fyll-pa/${machine.id}/qr`}>QR för påfyllning</ButtonLink>
+          </span>
+        ) : undefined
+      }
+    >
+      <SubNav />
+      <div className="v2-stack">
+        <nav aria-label="Brödsmulor" className="ops-bar">
+          <Link href={listHref} className="ops-link text-v2-mute">
+            <span aria-hidden>← </span>Alla automater
           </Link>
+          {ctx.canEdit ? (
+            <div className="acts">
+              <ButtonLink href={`/fyll-pa/${machine.id}/qr`} touch className="min-[901px]:hidden">
+                QR för påfyllning
+              </ButtonLink>
+              <MachineActions
+                // Ny nyckel när länken "Välj butik" trycks på samma sida: rutan öppnas då.
+                key={openPlace ? `placera-${placeStore ?? ""}` : "vanlig"}
+                machine={data.editable}
+                stores={data.stores}
+                today={ctx.today}
+                storeName={store?.name ?? null}
+                openMove={openPlace}
+                openMoveStore={placeStore}
+              />
+            </div>
+          ) : null}
         </nav>
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow={`${machine.name} · ${machine.code}`}
-          title={headline.title}
-          aside={headline.aside}
-          description={status.reason && status.status !== "ok" ? status.reason : undefined}
-          meta={[
-            {
-              label: "Status",
-              value:
-                status.status === "ok" ? (
-                  <span className="inline-flex items-center gap-2">
-                    <span className="live-dot inline-block size-1.5 rounded-full bg-current text-muted" />
-                    {status.label}
-                  </span>
-                ) : (
-                  <StatusTag status={status.status}>{status.label}</StatusTag>
-                ),
-            },
-            { label: "Butik", value: store?.name ?? MISSING },
-            {
-              label: "Ansvarig",
-              value: (
-                <PersonPicker
-                  target={{ kind: "machine", machineId: machine.id }}
-                  value={responsible ?? ""}
-                  options={personOptions(ctx.user.id, team.team, responsible)}
-                  label="Ansvarig"
-                  hideLabel
-                  editable={ctx.canEdit}
-                />
-              ),
-            },
-            machine.activeTo
-              ? { label: "Sista dag", value: dayText(machine.activeTo, ctx.today) }
-              : {
-                  label: "Driftstart",
-                  value: data.startedOn ? dayText(data.startedOn, ctx.today) : MISSING,
-                },
-          ]}
-          actions={
-            ctx.canEdit ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  href={`/fyll-pa/${machine.id}/qr`}
-                  className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast hover:border-line-control hover:bg-hover max-md:min-h-11"
-                >
-                  QR för påfyllning
-                </Link>
-                <MachineActions
-                  // Ny nyckel när länken "Välj butik" trycks på samma sida: rutan öppnas då.
-                  key={openPlace ? `placera-${placeStore ?? ""}` : "vanlig"}
-                  machine={data.editable}
-                  stores={data.stores}
-                  today={ctx.today}
-                  storeName={store?.name ?? null}
-                  openMove={openPlace}
-                  openMoveStore={placeStore}
-                />
-              </div>
-            ) : undefined
-          }
-        />
-      </div>
 
-      {ready ? <ReadyList ready={ready} canEdit={ctx.canEdit} /> : null}
+        {ready ? <ReadyList ready={ready} canEdit={ctx.canEdit} /> : null}
 
-      {period.pendingToday ? (
-        <StateMessage kind="empty" message={`Inga order från ${machine.code} i dag än.`} />
-      ) : (
-        <div className="rise flex flex-col gap-4" style={rise(1)}>
-          {/* Vår vinst före butikernas andel; med knappen efter butikens andel. */}
-          <Suspense fallback={null}>
-            <StoreShareToggle on={shareToggle} />
-          </Suspense>
-          <MachineKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
-          {data.unpriced ? <UnpricedNote unpriced={data.unpriced} canEdit={ctx.canEdit} /> : null}
+        <div className="v2-cols">
+          <div className="v2-stack">
+            {period.pendingToday ? (
+              <Card>
+                <Empty title={`Inga order från ${machine.code} i dag än.`} />
+              </Card>
+            ) : (
+              <>
+                <MachineKpis
+                  items={data.kpis}
+                  label={`Nyckeltal · ${days}`}
+                  comparison={comparison}
+                />
+                <div className="ops-bar">
+                  {data.unpriced ? (
+                    <UnpricedNote unpriced={data.unpriced} canEdit={ctx.canEdit} />
+                  ) : (
+                    <span />
+                  )}
+                  {/* Vår vinst före butikernas andel; med knappen efter butikens andel. */}
+                  <Suspense fallback={null}>
+                    <StoreShareToggle on={shareToggle} />
+                  </Suspense>
+                </div>
+              </>
+            )}
+          </div>
+          <Card title="Automaten">
+            <CardBody>
+              <KeyValues
+                items={[
+                  {
+                    label: "Status",
+                    value:
+                      status.status === "ok" ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="v2-dot bg-v2-profit" aria-hidden />
+                          {status.label}
+                        </span>
+                      ) : (
+                        <StatusTag status={status.status}>{status.label}</StatusTag>
+                      ),
+                  },
+                  { label: "Butik", value: store?.name ?? MISSING },
+                  {
+                    label: "Ansvarig",
+                    value: (
+                      <PersonPicker
+                        target={{ kind: "machine", machineId: machine.id }}
+                        value={responsible ?? ""}
+                        options={personOptions(ctx.user.id, team.team, responsible)}
+                        label="Ansvarig"
+                        hideLabel
+                        editable={ctx.canEdit}
+                      />
+                    ),
+                  },
+                  machine.activeTo
+                    ? { label: "Sista dag", value: dayText(machine.activeTo, ctx.today) }
+                    : {
+                        label: "Driftstart",
+                        value: data.startedOn ? dayText(data.startedOn, ctx.today) : MISSING,
+                      },
+                ]}
+              />
+            </CardBody>
+          </Card>
         </div>
-      )}
 
-      <div className="rise -mb-6 md:-mb-10" style={rise(2)}>
         <ViewTabs
           tabs={TABS}
           value={tab}
@@ -246,31 +268,82 @@ export default async function MachinePage({
           query={data.query}
           label="Visa"
         />
-      </div>
 
-      <div key={tab} className="fade-in flex flex-col gap-12 md:gap-16">
-        {tab === "forsaljning" ? (
-          <>
-            <SalesSection data={data} days={days} today={today} />
-            {/* Bästa sortiment: vad som säljer här och vad som bör bytas ut. */}
-            {period.pendingToday ? null : (
-              <Suspense fallback={null}>
-                <BestAssortment machineId={machine.id} code={machine.code} searchParams={sp} />
-              </Suspense>
-            )}
-            <TitlesAndHours data={data} days={days} />
-          </>
-        ) : null}
-        {tab === "lager" ? <StockSection data={data} /> : null}
-        {tab === "order" ? <OrdersSection data={data} /> : null}
-        {tab === "ekonomi" ? (
-          <>
-            <PlacementSection data={data} />
-            <UnitEconomicsSection data={data} />
-          </>
-        ) : null}
+        <div key={tab} className="v2-stack">
+          {tab === "forsaljning" ? (
+            <>
+              <SalesSection data={data} days={days} today={today} />
+              {/* Bästa sortiment: vad som säljer här och vad som bör bytas ut. */}
+              {period.pendingToday ? null : (
+                <Suspense fallback={null}>
+                  <BestAssortment machineId={machine.id} code={machine.code} searchParams={sp} />
+                </Suspense>
+              )}
+              <TitlesAndHours data={data} days={days} />
+            </>
+          ) : null}
+          {tab === "lager" ? <StockSection data={data} /> : null}
+          {tab === "order" ? <OrdersSection data={data} /> : null}
+          {tab === "ekonomi" ? (
+            <>
+              <PlacementSection data={data} />
+              <UnitEconomicsSection data={data} />
+            </>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </V2Page>
+  );
+}
+
+/**
+ * Ett avsnitt som V2-kort: kortrubrik (vad det är) med mått till höger, sedan meningen med
+ * talet (h2-raden på de gamla sidorna) och innehållet.
+ */
+function Block({
+  id,
+  label,
+  meta,
+  title,
+  aside,
+  actions,
+  children,
+  flush = false,
+}: {
+  id: string;
+  label: string;
+  meta?: ReactNode;
+  title: ReactNode;
+  aside?: ReactNode;
+  actions?: ReactNode;
+  children?: ReactNode;
+  /** Innehållet går kant i kant (tabeller). */
+  flush?: boolean;
+}) {
+  return (
+    <section aria-labelledby={id} className="v2-card">
+      <div className="v2-card-hd">
+        <h2>{label}</h2>
+        {actions ?? (meta ? <span className="tnum text-v2-xs text-v2-mute">{meta}</span> : null)}
+      </div>
+      <div className="flex flex-col gap-1 px-[18px] pt-3.5 max-[900px]:px-4">
+        <h3 id={id} className="text-v2-lg font-[650] text-balance text-v2-ink">
+          {title}
+        </h3>
+        {aside ? <p className="ops-p">{aside}</p> : null}
+      </div>
+      {children ? (
+        <div
+          className={
+            flush ? "mt-3 border-t border-v2-line2" : "px-[18px] pt-3 pb-4 max-[900px]:px-4"
+          }
+        >
+          {children}
+        </div>
+      ) : (
+        <div className="pb-4" />
+      )}
+    </section>
   );
 }
 
@@ -296,39 +369,36 @@ function SalesSection({
   );
   const peakDate = peak ? parseIsoDate(peak.date) : null;
   return (
-    <section
-      aria-labelledby="forsaljning"
-      className="flex flex-col gap-8 border-t border-line pt-8"
+    <Block
+      id="forsaljning"
+      label="Försäljning per dag"
+      meta={`Intäkt · ${days}`}
+      title={
+        total > 0 && peak && peakDate
+          ? `Snitt ${formatSek(mean)} per dag.`
+          : "Ingen försäljning i perioden."
+      }
+      aside={
+        total > 0 && peak && peakDate
+          ? sentence(
+              `Topp ${formatDate(peakDate, { year: "auto", now: today })} med ${formatSek(peak.value)}`,
+            )
+          : undefined
+      }
     >
-      <SectionHeader
-        id="forsaljning"
-        eyebrow={`Intäkt per dag · ${days}`}
-        title="Försäljning per dag."
-        aside={
-          total > 0 && peak && peakDate
-            ? sentence(
-                `Snitt ${formatSek(mean)}, topp ${formatDate(peakDate, { year: "auto", now: today })} med ${formatSek(peak.value)}`,
-              )
-            : "Ingen försäljning i perioden."
-        }
-      />
       {total > 0 ? (
-        <Panel grid marks>
-          <RevenueChart
-            code={data.machine.code}
-            daily={daily}
-            compare={data.dailyCompare}
-            compareName={data.period.comparisonLabel ? "Perioden innan" : undefined}
-          />
-        </Panel>
-      ) : (
-        <StateMessage
-          kind="empty"
-          message={sentence(`Inga order i ${data.machine.code} ${data.period.rangeLabel}`)}
-          detail="Välj en längre period i periodraden."
+        <RevenueChart
+          code={data.machine.code}
+          daily={daily}
+          compare={data.dailyCompare}
+          compareName={data.period.comparisonLabel ? "Perioden innan" : undefined}
         />
+      ) : (
+        <Empty title={sentence(`Inga order i ${data.machine.code} ${data.period.rangeLabel}`)}>
+          Välj en längre period.
+        </Empty>
       )}
-    </section>
+    </Block>
   );
 }
 
@@ -338,56 +408,48 @@ function TitlesAndHours({ data, days }: { data: MachineDetailData; days: string 
   const heat = data.heatmap;
   const peak = heat.peak;
   return (
-    <section
-      aria-labelledby="vad-som-saljer"
-      className="flex flex-col gap-8 border-t border-line pt-8"
+    <Block
+      id="vad-som-saljer"
+      label="Titlar och tider"
+      meta={days}
+      title={top ? sentence(`${top.name} säljer mest`) : "Inga titlar sålda i perioden."}
+      aside={
+        top
+          ? sentence(
+              `${formatPercent(top.share, 0)} av intäkten, ${formatInt(top.orders)}${NBSP}pack${
+                titles.length > 1
+                  ? ` av ${formatInt(titles.reduce((n, t) => n + t.orders, 0))}`
+                  : ""
+              }`,
+            )
+          : undefined
+      }
     >
-      <SectionHeader
-        id="vad-som-saljer"
-        eyebrow={`Titlar och tider · ${days}`}
-        title={top ? sentence(`${top.name} säljer mest`) : "Inga titlar sålda i perioden."}
-        aside={
-          top
-            ? sentence(
-                `${formatPercent(top.share, 0)} av intäkten, ${formatInt(top.orders)}${NBSP}pack${
-                  titles.length > 1
-                    ? ` av ${formatInt(titles.reduce((n, t) => n + t.orders, 0))}`
-                    : ""
-                }`,
-              )
-            : undefined
-        }
-      />
       {top ? (
-        <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
-          <Sub
-            label={`Bästa titlar · ${days}`}
-            meta={`${formatInt(titles.length)} titlar`}
-            title={`${formatInt(titles.length)} ${titles.length === 1 ? "titel" : "titlar"} såldes.`}
-            className="lg:col-span-5"
-          >
+        <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
+          <div className="flex min-w-0 flex-col gap-3 lg:col-span-5">
+            <p className="flex items-baseline justify-between gap-3 border-t border-v2-line2 pt-3">
+              <span className="text-v2-sm font-[650] text-v2-ink">Bästa titlar</span>
+              <span className="tnum text-v2-xs text-v2-mute">{`${formatInt(titles.length)} ${titles.length === 1 ? "titel" : "titlar"}`}</span>
+            </p>
             <TitleBars titles={titles} />
-          </Sub>
-          <Sub
-            label={`Köp per veckodag och timme · ${days}`}
-            meta={`${formatInt(heat.total)}${NBSP}köp`}
-            title={
-              peak
-                ? `${capitalize(WEEKDAYS_LONG[peak.weekday] ?? "")} ${hourRange(peak.hour)} toppar med ${formatInt(peak.count)}${NBSP}köp.`
-                : "Inga köp i perioden."
-            }
-            className="lg:col-span-7"
-          >
+          </div>
+          <div className="flex min-w-0 flex-col gap-3 lg:col-span-7">
+            <p className="flex flex-wrap items-baseline justify-between gap-x-3 border-t border-v2-line2 pt-3">
+              <span className="text-v2-sm font-[650] text-v2-ink">Köp per veckodag och timme</span>
+              <span className="tnum text-v2-xs text-v2-mute">
+                {peak
+                  ? `${capitalize(WEEKDAYS_LONG[peak.weekday] ?? "")} ${hourRange(peak.hour)} toppar med ${formatInt(peak.count)}${NBSP}köp`
+                  : `${formatInt(heat.total)}${NBSP}köp`}
+              </span>
+            </p>
             <SalesHeatmap heat={heat} days={data.period.span.days} />
-          </Sub>
+          </div>
         </div>
       ) : (
-        <StateMessage
-          kind="empty"
-          message={sentence(`Inga order i ${data.machine.code} ${data.period.rangeLabel}`)}
-        />
+        <Empty title={sentence(`Inga order i ${data.machine.code} ${data.period.rangeLabel}`)} />
       )}
-    </section>
+    </Block>
   );
 }
 
@@ -449,24 +511,31 @@ function StockSection({ data }: { data: MachineDetailData }) {
     now: data.ctx.now,
   });
   return (
-    <section aria-labelledby="lager" className="flex flex-col gap-8 border-t border-line pt-8">
-      <SectionHeader
-        id="lager"
-        eyebrow="Lager · nu"
-        title={title}
-        aside={refillBy && count ? `${count} ${capitalFirst(aside)}` : aside}
-      />
-      <RefillFrom data={data} />
+    <Block
+      id="lager"
+      label="Lager nu"
+      title={title}
+      aside={refillBy && count ? `${count} ${capitalFirst(aside)}` : aside}
+      flush
+    >
+      <div className="px-[18px] py-3 empty:hidden max-[900px]:px-4">
+        <RefillFrom data={data} />
+      </div>
       {lines.length > 0 ? (
-        <StockTable lines={lines} timeZone={tz} now={data.ctx.now} />
+        <div className="px-[18px] pb-2 max-[900px]:px-4">
+          <StockTable lines={lines} timeZone={tz} now={data.ctx.now} />
+        </div>
       ) : (
-        <StateMessage
-          kind="empty"
-          message={`Inget lager registrerat i ${data.machine.code}.`}
-          action={{ label: "Öppna Lager", href: "/lager" }}
+        <Empty
+          title={`Inget lager registrerat i ${data.machine.code}.`}
+          action={
+            <ButtonLink href="/lager" touch>
+              Öppna Lager
+            </ButtonLink>
+          }
         />
       )}
-    </section>
+    </Block>
   );
 }
 
@@ -475,38 +544,40 @@ function OrdersSection({ data }: { data: MachineDetailData }) {
   const latest = orders[0];
   const tz = data.ctx.timeZone;
   return (
-    <section
-      aria-labelledby="senaste-order"
-      className="flex flex-col gap-8 border-t border-line pt-8"
+    <Block
+      id="senaste-order"
+      label="Senaste order"
+      title={
+        latest
+          ? sentence(
+              `Senaste ordern ${formatDateTime(wallClockIn(new Date(latest.orderedAt), tz), {
+                now: wallClockIn(new Date(data.ctx.now), tz),
+              })}`,
+            )
+          : "Inga order ännu."
+      }
+      aside={
+        latest
+          ? sentence(`${latest.titleName} för ${formatSek(latest.amountOre / 100)}`)
+          : undefined
+      }
+      flush
     >
-      <SectionHeader
-        id="senaste-order"
-        eyebrow="Senaste order"
-        title={
-          latest
-            ? sentence(
-                `Senaste ordern ${formatDateTime(wallClockIn(new Date(latest.orderedAt), tz), {
-                  now: wallClockIn(new Date(data.ctx.now), tz),
-                })}`,
-              )
-            : "Inga order ännu."
-        }
-        aside={
-          latest
-            ? sentence(`${latest.titleName} för ${formatSek(latest.amountOre / 100)}`)
-            : undefined
-        }
-      />
       {orders.length > 0 ? (
-        <RecentOrdersTable orders={orders} timeZone={tz} now={data.ctx.now} />
+        <div className="px-[18px] pt-2 pb-2 max-[900px]:px-4">
+          <RecentOrdersTable orders={orders} timeZone={tz} now={data.ctx.now} />
+        </div>
       ) : (
-        <StateMessage
-          kind="empty"
-          message={`Inga order är kopplade till ${data.machine.code}.`}
-          action={{ label: "Öppna Datakällor", href: "/datakallor" }}
+        <Empty
+          title={`Inga order är kopplade till ${data.machine.code}.`}
+          action={
+            <ButtonLink href="/datakallor" touch>
+              Öppna Datakällor
+            </ButtonLink>
+          }
         />
       )}
-    </section>
+    </Block>
   );
 }
 
@@ -515,35 +586,34 @@ function PlacementSection({ data }: { data: MachineDetailData }) {
   const store = data.store;
   const stores = new Set(placements.map((p) => p.storeId)).size;
   return (
-    <section aria-labelledby="placering" className="flex flex-col gap-8 border-t border-line pt-8">
-      <SectionHeader
-        id="placering"
-        eyebrow="Placering"
-        title={
-          store
-            ? sentence(`Står i ${store.name} sedan ${dayText(store.since, data.ctx.today)}`)
-            : "Står inte i någon butik."
-        }
-        aside={
-          [
-            placements.length > 0
-              ? `${formatInt(placements.length)} ${placements.length === 1 ? "placering" : "placeringar"} i ${formatInt(stores)} ${stores === 1 ? "butik" : "butiker"}.`
-              : null,
-            data.machine.serial ? `Serienummer ${data.machine.serial}.` : null,
-          ]
-            .filter(Boolean)
-            .join(" ") || undefined
-        }
-      />
+    <Block
+      id="placering"
+      label="Placering"
+      title={
+        store
+          ? sentence(`Står i ${store.name} sedan ${dayText(store.since, data.ctx.today)}`)
+          : "Står inte i någon butik."
+      }
+      aside={
+        [
+          placements.length > 0
+            ? `${formatInt(placements.length)} ${placements.length === 1 ? "placering" : "placeringar"} i ${formatInt(stores)} ${stores === 1 ? "butik" : "butiker"}.`
+            : null,
+          data.machine.serial ? `Serienummer ${data.machine.serial}.` : null,
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
+      flush
+    >
       {placements.length > 0 ? (
-        <PlacementsTable placements={placements} now={data.ctx.now} />
+        <div className="px-[18px] pt-2 pb-2 max-[900px]:px-4">
+          <PlacementsTable placements={placements} now={data.ctx.now} />
+        </div>
       ) : (
-        <StateMessage
-          kind="empty"
-          message={`${data.machine.code} har aldrig stått i någon butik.`}
-        />
+        <Empty title={`${data.machine.code} har aldrig stått i någon butik.`} />
       )}
-    </section>
+    </Block>
   );
 }
 
@@ -553,14 +623,10 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
   q.set("automat", data.machine.id);
   const href = `/automater/enhetsekonomi?${q.toString()}`;
   return (
-    <section
-      id="enhetsekonomi-sektion"
-      aria-labelledby="enhetsekonomi"
-      className="flex flex-col gap-8 border-t border-line pt-8"
-    >
-      <SectionHeader
+    <div id="enhetsekonomi-sektion">
+      <Block
         id="enhetsekonomi"
-        eyebrow="Enhetsekonomi"
+        label="Enhetsekonomi"
         title={
           u
             ? u.paybackMonths === null
@@ -574,33 +640,37 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
             : undefined
         }
         actions={
-          <Link
-            href={href}
-            className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg max-md:tap max-md:min-h-11"
-          >
-            Jämför med andra automater{NBSP}→
+          <Link href={href} className="lk">
+            Jämför <span aria-hidden="true">→</span>
           </Link>
         }
-      />
-      {u ? (
-        <div className="flex flex-col gap-3">
-          <MachineKpis
-            items={unitEconomicsKpis(u)}
-            label="Enhetsekonomi · till periodens slut"
-            headingLevel={3}
+      >
+        {u ? (
+          <div className="flex flex-col gap-3">
+            <MachineKpis
+              items={unitEconomicsKpis(u)}
+              label="Enhetsekonomi · till periodens slut"
+              headingLevel={3}
+            />
+            <p className="text-v2-xs text-v2-mute">
+              Vinst/mån på {formatInt(u.activeDays)}
+              {NBSP}d i butik · avskrivning {formatSek(u.monthlyDepreciationOre / 100)}/mån
+            </p>
+          </div>
+        ) : (
+          <Notice
+            tone="info"
+            title={`Inköp och installation av ${data.machine.code} saknas.`}
+            action={
+              data.ctx.canEdit ? (
+                <ButtonLink href={href} size="sm" touch>
+                  Registrera investering
+                </ButtonLink>
+              ) : undefined
+            }
           />
-          <p className="meta text-subtle">
-            Vinst/mån på {formatInt(u.activeDays)}
-            {NBSP}d i butik · avskrivning {formatSek(u.monthlyDepreciationOre / 100)}/mån
-          </p>
-        </div>
-      ) : (
-        <StateMessage
-          kind="not-configured"
-          message={`Inköp och installation av ${data.machine.code} saknas.`}
-          action={data.ctx.canEdit ? { label: "Registrera investering", href } : undefined}
-        />
-      )}
-    </section>
+        )}
+      </Block>
+    </div>
   );
 }

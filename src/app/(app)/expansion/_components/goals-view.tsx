@@ -174,19 +174,19 @@ export function GoalsView({
             return (
               <li
                 key={g.goalId}
-                className="flex flex-col gap-3 border-t border-line py-4 last:border-b"
+                className="flex flex-col gap-3 border-t border-v2-line py-4 last:border-b"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-col gap-1">
-                    <p className="label text-subtle">
+                    <p className="label text-v2-mute">
                       {monthLabel(g.month)} · {METRIC_LABEL[g.metric]}
                     </p>
-                    <p className="text-base text-fg">
+                    <p className="text-v2-md text-v2-ink">
                       {notStarted
                         ? `${METRIC_LABEL[g.metric]}: mål ${value(g.metric, g.target)} i ${monthLabel(g.month)}.`
                         : g.text}
                     </p>
-                    <p className="text-sm text-muted">
+                    <p className="text-v2-sm text-v2-mute">
                       {notStarted
                         ? "Månaden har inte börjat. Utfall och prognos räknas från den första dagen."
                         : g.detail}
@@ -215,7 +215,7 @@ export function GoalsView({
                   </div>
                 </div>
                 <div
-                  className="relative h-2 w-full border border-line"
+                  className="relative h-2 w-full border border-v2-line"
                   role="img"
                   aria-label={
                     notStarted
@@ -224,7 +224,7 @@ export function GoalsView({
                   }
                 >
                   <span
-                    className="absolute inset-y-0 left-0 border-r border-dashed border-line-control"
+                    className="absolute inset-y-0 left-0 border-r border-dashed border-v2-line3"
                     style={{ width: `${forecastShare * 100}%` }}
                   />
                   <span
@@ -232,7 +232,7 @@ export function GoalsView({
                     style={{ width: `${share * 100}%` }}
                   />
                 </div>
-                <div className="meta tnum flex flex-wrap justify-between gap-x-4 text-subtle">
+                <div className="meta tnum flex flex-wrap justify-between gap-x-4 text-v2-mute">
                   <span>
                     Utfall {value(g.metric, g.actual)}
                     {g.progressBp !== null ? ` (${pct(g.progressBp)})` : ""}

@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { businessDateAt } from "@/analytics/todos/time";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { V2Page } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { REFUND_NONE_KEY } from "@/domain/refunds";
 import { formatInt, formatPeriod } from "@/lib/format";
 import { isoDateToShellDate, loadPeriod, requireRoute } from "@/server/data/core";
+
+import { FoldCard } from "@/app/(app)/installningar/_components/fold-card";
+import "@/app/(app)/installningar/_components/settings.css";
 
 import { formatWhen, plural } from "../../drift/_lib/display";
 import { InboxKpis } from "../_components/inbox-kpis";
@@ -27,34 +32,30 @@ interface StatRow {
 
 function StatTable({ caption, rows, first }: { caption: string; rows: StatRow[]; first: string }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[22rem] text-sm">
+    <div className="v2-table-wrap">
+      <table className="v2-table min-w-[22rem]">
         <caption className="sr-only">{caption}</caption>
         <thead>
-          <tr className="label border-b border-line-strong text-subtle">
-            <th scope="col" className="h-9 text-left font-normal">
-              {first}
-            </th>
-            <th scope="col" className="h-9 text-right font-normal">
+          <tr>
+            <th scope="col">{first}</th>
+            <th scope="col" className="num">
               Ärenden
             </th>
-            <th scope="col" className="h-9 text-right font-normal">
+            <th scope="col" className="num">
               Öppna
             </th>
-            <th scope="col" className="h-9 text-right font-normal">
+            <th scope="col" className="num">
               Återbetalt
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line">
+        <tbody>
           {rows.map((r) => (
             <tr key={r.key}>
-              <td className="py-2.5 pr-3 text-fg">{r.label}</td>
-              <td className="tnum py-2.5 text-right text-fg">{formatInt(r.count)}</td>
-              <td className="tnum py-2.5 text-right text-muted">{formatInt(r.open)}</td>
-              <td className="tnum py-2.5 text-right text-fg">
-                {r.refundedOre > 0 ? kronorOfOre(r.refundedOre) : "–"}
-              </td>
+              <td>{r.label}</td>
+              <td className="num">{formatInt(r.count)}</td>
+              <td className="num text-v2-mute">{formatInt(r.open)}</td>
+              <td className="num">{r.refundedOre > 0 ? kronorOfOre(r.refundedOre) : "–"}</td>
             </tr>
           ))}
         </tbody>
@@ -83,20 +84,20 @@ export default async function InboxPage({
   const ctx = await requireRoute("inkorg");
   if (!ctx.canSeeEconomy) {
     return (
-      <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow="Inkorg"
-          title="Kundärenden hanteras av ägare och admin."
-        />
-        <StateMessage
-          kind="denied"
-          message="Ärenden innehåller återbetalningar och visas inte för påfyllare."
-          detail="Ser du ett fel på en automat? Registrera påfyllning eller säg till ägaren."
-          action={{ label: "Öppna Drift", href: "/drift" }}
-        />
-      </div>
+      <V2Page title="Inkorg" sub={<b>Kundärenden hanteras av ägare och admin.</b>}>
+        <Card>
+          <Empty
+            title="Ärenden innehåller återbetalningar och visas inte för påfyllare."
+            action={
+              <ButtonLink href="/drift" touch>
+                Öppna Drift
+              </ButtonLink>
+            }
+          >
+            Ser du ett fel på en automat? Registrera påfyllning eller säg till ägaren.
+          </Empty>
+        </Card>
+      </V2Page>
     );
   }
   const p = await loadPeriod(await searchParams);
@@ -197,35 +198,37 @@ export default async function InboxPage({
   const oldestOpen = [...open].sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1))[0];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <SectionHeader
-        className="rise"
-        as="h1"
-        size="xl"
-        eyebrow="Inkorg"
-        title={
-          open.length === 0
-            ? "Inga öppna ärenden."
-            : `${plural(open.length, "öppet ärende", "öppna ärenden")}.`
-        }
-        aside={
-          oldestOpen
+    <V2Page
+      title="Inkorg"
+      period
+      tools={
+        ctx.canEdit ? (
+          <ButtonLink href="/inkorg/nytt" variant="act" className="max-md:hidden">
+            Registrera ärende
+          </ButtonLink>
+        ) : undefined
+      }
+      sub={
+        <>
+          <b>
+            {open.length === 0
+              ? "Inga öppna ärenden."
+              : `${plural(open.length, "öppet ärende", "öppna ärenden")}.`}
+          </b>{" "}
+          {oldestOpen
             ? `Äldsta sedan ${formatWhen(oldestOpen.startedAt, ctx.timeZone, now)}.`
-            : undefined
-        }
-        actions={
-          ctx.canEdit ? (
-            <Link
-              href="/inkorg/nytt"
-              className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11"
-            >
-              Registrera ärende
-            </Link>
-          ) : undefined
-        }
-      />
+            : null}
+        </>
+      }
+    >
+      <SubNav />
+      <div className="v2-stack">
+        {ctx.canEdit ? (
+          <ButtonLink href="/inkorg/nytt" variant="act" size="lg" className="w-full md:hidden">
+            Registrera ärende
+          </ButtonLink>
+        ) : null}
 
-      <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
         <InboxKpis
           open={open.length}
           created={createdIn.length}
@@ -234,59 +237,46 @@ export default async function InboxPage({
           refundCount={total.count}
           period={periodLabel}
         />
-      </div>
 
-      <section
-        aria-labelledby="arenden"
-        className="rise flex flex-col gap-6"
-        style={{ "--i": 2 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="arenden"
-          size="md"
-          title={
-            rows.length === 0
-              ? "Inga ärenden i perioden."
-              : `${plural(rows.length, "ärende", "ärenden")}.`
+        <Card
+          title={<span id="arenden">Ärenden</span>}
+          actions={
+            <span className="lk">
+              {rows.length === 0 ? "Inga i perioden" : plural(rows.length, "ärende", "ärenden")}
+            </span>
           }
-        />
-        {rows.length === 0 ? (
-          <StateMessage compact kind="empty" message={`Inga ärenden ${periodLabel}.`} />
-        ) : (
-          <IncidentTable rows={rows} />
-        )}
-      </section>
-
-      {byMachine.length > 0 ? (
-        <details
-          className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-          style={{ "--i": 3 } as React.CSSProperties}
         >
-          <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-3">
-            <h2 id="statistik" className="text-md font-medium text-fg">
-              {top ? `Flest ärenden i ${top.label}.` : "Per automat och titel."}
-            </h2>
-            {top ? (
-              <span className="meta text-subtle">
-                {`${plural(top.count, "ärende", "ärenden")}${top.refundedOre > 0 ? `, ${kronorOfOre(top.refundedOre)}` : ""}`}
-              </span>
-            ) : null}
-          </summary>
-          <div className="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8">
-            <div className="lg:col-span-6">
+          {rows.length === 0 ? (
+            <Empty title={`Inga ärenden ${periodLabel}.`} />
+          ) : (
+            <CardBody>
+              <IncidentTable rows={rows} />
+            </CardBody>
+          )}
+        </Card>
+
+        {byMachine.length > 0 ? (
+          <FoldCard
+            id="statistik"
+            title={top ? `Flest ärenden i ${top.label}` : "Per automat och titel"}
+            aside={
+              top
+                ? `${plural(top.count, "ärende", "ärenden")}${top.refundedOre > 0 ? `, ${kronorOfOre(top.refundedOre)}` : ""}`
+                : undefined
+            }
+          >
+            <div className="grid grid-cols-1 gap-y-2 py-2 lg:grid-cols-2">
               <StatTable caption="Ärenden per automat" rows={byMachine} first="Automat" />
-            </div>
-            <div className="lg:col-span-6">
               <StatTable caption="Ärenden per titel" rows={byTitle} first="Titel" />
             </div>
-          </div>
-          {data.truncated ? (
-            <p className="mt-4 text-sm text-muted">
-              Fler än {formatInt(data.limit)} ärenden. Välj en kortare period.
-            </p>
-          ) : null}
-        </details>
-      ) : null}
-    </div>
+            {data.truncated ? (
+              <p className="st-p px-[18px] pb-4">
+                Fler än {formatInt(data.limit)} ärenden. Välj en kortare period.
+              </p>
+            ) : null}
+          </FoldCard>
+        ) : null}
+      </div>
+    </V2Page>
   );
 }

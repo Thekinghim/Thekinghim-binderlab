@@ -42,7 +42,7 @@ export function SwapButton({
       trigger={
         <button
           type="button"
-          className="text-xs text-muted underline underline-offset-4 hover:text-fg"
+          className="text-v2-sm text-v2-mute underline underline-offset-4 hover:text-v2-ink"
         >
           Det var ett produktbyte
         </button>
@@ -78,12 +78,12 @@ export function SwapButton({
         </>
       }
     >
-      <p className="text-sm text-muted">
+      <p className="text-v2-md text-v2-mute">
         Packen flyttas tillbaka till automatens lager (Fylls på från) med tiden strax före
         räkningen. Inget ändras i Awish.
       </p>
       {error ? (
-        <p role="alert" className="mt-3 text-sm text-signal-fg">
+        <p role="alert" className="mt-3 text-v2-sm text-v2-crit-text">
           {error}
         </p>
       ) : null}

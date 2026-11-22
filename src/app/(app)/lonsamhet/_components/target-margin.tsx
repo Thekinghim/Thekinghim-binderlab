@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState, useTransition, type FormEvent } from "react";
 
 import { useToast } from "@/components/ui/toast";
+import { Button } from "@/components/v2/button";
 import { formatMarginBp } from "@/lib/format";
 
 import { setTargetMargin } from "../actions";
@@ -43,31 +44,29 @@ export function TargetMarginControl({ targetBp, canEdit }: { targetBp: number; c
 
   if (!open) {
     return (
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <p className="tnum text-base text-fg">Mål: {formatMarginBp(targetBp, 0)} marginal</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="tnum text-v2-md text-v2-ink">Mål: {formatMarginBp(targetBp, 0)} marginal</p>
         {canEdit ? (
-          <button
-            type="button"
+          <Button
+            size="sm"
+            touch
             onClick={() => {
               setValue(String(Math.round(targetBp / 100)));
               setError(undefined);
               setOpen(true);
             }}
-            className="inline-flex min-h-11 items-center rounded-md border border-line-strong bg-surface px-4 text-base font-medium text-fg hover:bg-hover"
           >
             Ändra mål
-          </button>
+          </Button>
         ) : null}
       </div>
     );
   }
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-2">
-      <label htmlFor={`${id}-mal`} className="label text-subtle">
-        Mål för marginalen
-      </label>
+    <form onSubmit={submit} noValidate className="v2-field">
+      <label htmlFor={`${id}-mal`}>Mål för marginalen</label>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
+        <span className="v2-input-wrap w-28">
           <input
             id={`${id}-mal`}
             inputMode="numeric"
@@ -79,30 +78,21 @@ export function TargetMarginControl({ targetBp, canEdit }: { targetBp: number; c
             }}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${id}-fel` : undefined}
-            className="tnum h-12 w-28 rounded-md border border-line-control bg-bg pr-9 pl-3 text-right text-xl text-fg"
+            className="v2-input num"
           />
-          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-base text-subtle">
+          <span className="sfx" aria-hidden="true">
             %
           </span>
-        </div>
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex h-12 items-center rounded-md border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse active:bg-inverse-hover disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled"
-        >
-          {pending ? "Sparar…" : "Spara"}
-        </button>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => setOpen(false)}
-          className="inline-flex h-12 items-center rounded-md border border-line-strong px-5 text-base text-fg hover:bg-hover"
-        >
+        </span>
+        <Button type="submit" variant="act" touch pending={pending}>
+          Spara
+        </Button>
+        <Button disabled={pending} touch onClick={() => setOpen(false)}>
           Avbryt
-        </button>
+        </Button>
       </div>
       {error ? (
-        <p id={`${id}-fel`} role="alert" className="text-sm text-signal-fg">
+        <p id={`${id}-fel`} role="alert" className="err">
           {error}
         </p>
       ) : null}

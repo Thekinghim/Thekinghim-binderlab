@@ -148,7 +148,14 @@ export function OnTheWayList({
   canEdit,
   places,
   scope,
-}: Shared & { items: readonly WayItem[]; today: string; canEdit: boolean }) {
+  v2 = false,
+}: Shared & {
+  items: readonly WayItem[];
+  today: string;
+  canEdit: boolean;
+  /** V2-kort (Inköp i V2-skalet). Den enkla vyns inköpslista har det gamla utseendet. */
+  v2?: boolean;
+}) {
   const t = useT();
   const r2 = t.r2.t3;
   const f = useFormat();
@@ -165,21 +172,52 @@ export function OnTheWayList({
     });
   };
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h2 id={headingId} className="label text-subtle">
-        {r2.wayTitle}
-      </h2>
-      <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
+    <section aria-labelledby={headingId} className={v2 ? "v2-card" : "flex flex-col gap-2"}>
+      {v2 ? (
+        <div className="v2-card-hd">
+          <h2 id={headingId}>{r2.wayTitle}</h2>
+          <span className="tnum text-v2-xs text-v2-mute">{items.length}</span>
+        </div>
+      ) : (
+        <h2 id={headingId} className="label text-subtle">
+          {r2.wayTitle}
+        </h2>
+      )}
+      <ul
+        className={
+          v2 ? "ops-list" : "flex flex-col divide-y divide-line rounded-md border border-line"
+        }
+      >
         {items.map((item) => (
           <li
             key={item.titleId}
-            className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3"
+            className={cn(
+              "flex flex-wrap items-center justify-between gap-x-4 gap-y-2",
+              !v2 && "px-4 py-3",
+            )}
           >
             <span className="flex min-w-0 flex-col">
-              <span className="text-base font-medium [overflow-wrap:anywhere] text-fg">
+              <span
+                className={
+                  v2
+                    ? "text-v2-md font-[550] [overflow-wrap:anywhere] text-v2-ink"
+                    : "text-base font-medium [overflow-wrap:anywhere] text-fg"
+                }
+              >
                 {item.name}
               </span>
-              <span className={cn("tnum text-base", item.late ? "text-signal-fg" : "text-muted")}>
+              <span
+                className={cn(
+                  v2 ? "tnum text-v2-sm" : "tnum text-base",
+                  item.late
+                    ? v2
+                      ? "text-v2-crit-text"
+                      : "text-signal-fg"
+                    : v2
+                      ? "text-v2-mute"
+                      : "text-muted",
+                )}
+              >
                 {item.late
                   ? r2.wayLineLate(item.qty, when(item))
                   : r2.wayLine(item.qty, when(item))}
@@ -188,13 +226,13 @@ export function OnTheWayList({
             {canEdit ? (
               <button
                 type="button"
-                className={SMALL}
+                className={v2 ? "v2-btn touch" : SMALL}
                 aria-label={`${r2.arrived}, ${item.name}`}
                 onClick={() =>
                   setOpen({ kind: "arrived", target: item, planned: item.qty, from: "way" })
                 }
               >
-                <Icon name="check" size={16} className="mr-2" />
+                <Icon name="check" size={16} className={v2 ? undefined : "mr-2"} />
                 {r2.arrived}
               </button>
             ) : null}

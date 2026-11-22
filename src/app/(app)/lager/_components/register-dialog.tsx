@@ -275,7 +275,7 @@ export function RegisterDialog({
           <p
             ref={resultRef}
             tabIndex={-1}
-            className="tnum flex items-baseline gap-2 text-3xl font-medium focus:outline-none"
+            className="tnum flex items-baseline gap-2 text-v2-2xl font-[650] focus:outline-none"
           >
             {formatInt(result.onHand)}
             <span className="text-md text-muted">pack i {place}</span>
@@ -304,7 +304,7 @@ export function RegisterDialog({
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
             <dt className="label text-subtle">I {isMachine ? "automaten" : "vårt lager"}</dt>
             <dt className="label text-subtle">Status</dt>
-            <dd className="tnum text-xl font-medium">
+            <dd className="tnum text-v2-xl font-[650]">
               {isMachine && !target.cell.known ? "Saldo okänt" : packs(onHand)}
             </dd>
             <dd className="flex items-center">
@@ -372,7 +372,7 @@ export function RegisterDialog({
               setValue(e.target.value);
               if (error) setError(undefined);
             }}
-            className="tnum min-h-12 text-right text-xl!"
+            className="tnum min-h-12 text-right text-v2-xl!"
           />
 
           {mode === "waste" ? (
@@ -426,7 +426,7 @@ export function RegisterDialog({
       {!result && isMachine && canSetAlert ? (
         <form
           noValidate
-          className="mt-5 border-t border-line pt-4"
+          className="mt-5 border-t border-v2-line2 pt-4"
           onSubmit={(e) => {
             e.preventDefault();
             saveAlert();

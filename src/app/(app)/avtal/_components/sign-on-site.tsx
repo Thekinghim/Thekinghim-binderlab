@@ -105,7 +105,7 @@ export function SignScope({
         open={open}
         onClose={close}
         size="sm"
-        eyebrow="KONTRAKT / SIGNERA"
+        eyebrow="Kontrakt · Signera"
         title={
           error
             ? moveFailed
@@ -133,7 +133,7 @@ export function SignScope({
                 href={link.url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11"
+                className="v2-btn act touch"
               >
                 Öppna här
               </a>
@@ -152,15 +152,15 @@ export function SignScope({
               label={`QR-kod för att signera kontraktet med ${storeName}`}
               className="w-full max-w-[280px]"
             />
-            <p className="text-center text-base text-fg">Skanna med mobilen.</p>
-            <p className="text-center text-sm text-muted">
+            <p className="text-center text-v2-lg font-[550] text-v2-ink">Skanna med mobilen.</p>
+            <p className="text-center text-v2-sm text-v2-mute">
               Gäller till {until}. Kan användas en gång.
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {moved ? <p className="text-base text-fg">Startdagen är ändrad.</p> : null}
-            <p className="text-base text-signal-fg">{error}</p>
+            {moved ? <p className="text-v2-md text-v2-ink">Startdagen är ändrad.</p> : null}
+            <p className="text-v2-md text-v2-crit-text">{error}</p>
           </div>
         )}
       </Modal>
@@ -193,7 +193,7 @@ export function SignButton({
       loading={state.busy === kind}
       disabled={state.busy !== null && state.busy !== kind}
       onClick={() => state.run(kind)}
-      className={large ? "h-11 px-5 text-base" : undefined}
+      className={large ? "h-11 px-5" : "max-[900px]:min-h-11"}
       data-fix-start={fixStart ? "" : undefined}
     >
       {fixStart && !state.moved ? fixStart.label : "Signera på plats"}

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
-import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { Badge, type BadgeTone } from "@/components/v2/badge";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
 import { formatInt } from "@/lib/format";
 import {
   FAULT_LABEL,
@@ -14,6 +14,7 @@ import {
 import { loadPortalFaults } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
 
+import { PortalPage } from "../_components/page-head";
 import { dateTimeText } from "../_components/text";
 import { FaultForm } from "./fault-form";
 
@@ -21,10 +22,10 @@ export const metadata: Metadata = { title: "Felanmälan" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-const STATUS_TAG: Record<FaultStatus, Status> = {
+const STATUS_TONE: Record<FaultStatus, BadgeTone> = {
   open: "warning",
-  in_progress: "neutral",
-  resolved: "ok",
+  in_progress: "info",
+  resolved: "success",
 };
 
 /**
@@ -39,40 +40,90 @@ export default async function PortalFaultPage({ searchParams }: { searchParams: 
   const open = faults.filter((f) => faultStatus(f.status, f.resolvedAt) !== "resolved");
 
   return (
-    <div className="flex flex-col">
-      <section className="flex flex-col gap-10 py-10 md:py-12" aria-labelledby="felanmalan">
-        <SectionHeader
-          as="h1"
-          id="felanmalan"
-          index={1}
-          eyebrow="Felanmälan"
-          size="xl"
-          title={
-            open.length === 0
+    <PortalPage
+      id="felanmalan"
+      title="Felanmälan"
+      sub={
+        <>
+          <b>
+            {open.length === 0
               ? "Inga öppna felanmälningar."
               : open.length === 1
                 ? "1 felanmälan är öppen."
-                : `${formatInt(open.length)} felanmälningar är öppna.`
-          }
-          aside={`Anmälan går direkt till ${ctx.store.organizationName}, som ser den i sin inkorg.`}
-        />
-        <div className="grid gap-x-8 gap-y-12 lg:grid-cols-12">
-          <div className="lg:col-span-7">
+                : `${formatInt(open.length)} felanmälningar är öppna.`}
+          </b>{" "}
+          Anmälan går direkt till {ctx.store.organizationName}, som ser den i sin inkorg.
+        </>
+      }
+    >
+      <div className="v2-cols">
+        <div className="v2-stack">
+          <Card title="Anmäl ett fel">
             {machinesToday.length === 0 ? (
-              <StateMessage
-                kind="empty"
-                message="Ingen automat står i butiken i dag, så det finns inget att felanmäla."
-              />
+              <Empty title="Ingen automat står i butiken i dag, så det finns inget att felanmäla." />
             ) : (
-              <FaultForm
-                storeId={ctx.store.storeId}
-                machines={machinesToday}
-                initialMachineId={requested}
-              />
+              <CardBody>
+                <FaultForm
+                  storeId={ctx.store.storeId}
+                  machines={machinesToday}
+                  initialMachineId={requested}
+                />
+              </CardBody>
             )}
-          </div>
-          <aside className="flex flex-col gap-3 text-sm text-muted lg:col-span-4 lg:col-start-9">
-            <p className="label text-subtle">Bra att veta</p>
+          </Card>
+
+          <Card title="Era anmälningar" id="tidigare">
+            <CardBody>
+              <p className="pt-lead">
+                <b>
+                  {faults.length === 0
+                    ? "Inga anmälningar än."
+                    : `${formatInt(faults.length)} ${faults.length === 1 ? "anmälan" : "anmälningar"}.`}
+                </b>
+                {faults.length > 0
+                  ? ` ${formatInt(faults.length - open.length)} ${faults.length - open.length === 1 ? "åtgärdad" : "åtgärdade"}, ${formatInt(open.length)} ${open.length === 1 ? "öppen" : "öppna"}.`
+                  : null}
+              </p>
+            </CardBody>
+            {faults.length === 0 ? null : (
+              <ul className="pt-list border-t border-v2-line">
+                {faults.map((f) => {
+                  const status = faultStatus(f.status, f.resolvedAt);
+                  return (
+                    <li key={f.incidentId} className="pt-item flex-nowrap items-start">
+                      <div className="t">
+                        <b>
+                          {isFaultKind(f.kind) ? FAULT_LABEL[f.kind] : "Felanmälan"}
+                          <span className="font-[450] text-v2-mute">
+                            {" "}
+                            · {machineNames[f.machineId] ?? "Automat"}
+                          </span>
+                        </b>
+                        {f.description ? (
+                          <span className="text-v2-sm break-words text-v2-body2">
+                            {f.description}
+                          </span>
+                        ) : null}
+                        <small>
+                          Anmäld {dateTimeText(f.reportedAt, ctx.store.timezone)}
+                          {f.resolvedAt
+                            ? ` · åtgärdad ${dateTimeText(f.resolvedAt, ctx.store.timezone)}`
+                            : ""}
+                        </small>
+                      </div>
+                      <div className="a">
+                        <Badge tone={STATUS_TONE[status]}>{FAULT_STATUS_LABEL[status]}</Badge>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
+        </div>
+
+        <Card title="Bra att veta" as="div">
+          <CardBody className="flex flex-col gap-3 text-v2-sm text-v2-body2">
             <p>
               Skriv gärna vad som hände och när. Operatören ser automatens försäljning och larm.
             </p>
@@ -82,66 +133,9 @@ export default async function PortalFaultPage({ searchParams }: { searchParams: 
             <p>
               Är det akut, till exempel krossat glas eller fara för någon? Ring operatören också.
             </p>
-          </aside>
-        </div>
-      </section>
-
-      <section
-        className="flex flex-col gap-8 border-t border-line py-16"
-        aria-labelledby="tidigare"
-      >
-        <SectionHeader
-          id="tidigare"
-          index={2}
-          eyebrow="Era anmälningar"
-          size="md"
-          title={
-            faults.length === 0
-              ? "Inga anmälningar än."
-              : `${formatInt(faults.length)} ${faults.length === 1 ? "anmälan" : "anmälningar"}.`
-          }
-          aside={
-            faults.length > 0
-              ? `${formatInt(faults.length - open.length)} ${faults.length - open.length === 1 ? "åtgärdad" : "åtgärdade"}, ${formatInt(open.length)} ${open.length === 1 ? "öppen" : "öppna"}.`
-              : undefined
-          }
-        />
-        {faults.length === 0 ? (
-          <StateMessage kind="empty" message="Butiken har inte gjort någon felanmälan." />
-        ) : (
-          <ul className="flex flex-col border-t border-line-strong">
-            {faults.map((f) => {
-              const status = faultStatus(f.status, f.resolvedAt);
-              return (
-                <li
-                  key={f.incidentId}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1 border-b border-line py-4"
-                >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <span className="text-base text-fg">
-                      {isFaultKind(f.kind) ? FAULT_LABEL[f.kind] : "Felanmälan"}
-                      <span className="text-subtle">
-                        {" "}
-                        · {machineNames[f.machineId] ?? "Automat"}
-                      </span>
-                    </span>
-                    {f.description ? (
-                      <span className="text-sm break-words text-muted">{f.description}</span>
-                    ) : null}
-                    <span className="meta text-subtle">
-                      Anmäld {dateTimeText(f.reportedAt, ctx.store.timezone)}
-                      {f.resolvedAt
-                        ? ` · åtgärdad ${dateTimeText(f.resolvedAt, ctx.store.timezone)}`
-                        : ""}
-                    </span>
-                  </div>
-                  <StatusTag status={STATUS_TAG[status]}>{FAULT_STATUS_LABEL[status]}</StatusTag>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-    </div>
+          </CardBody>
+        </Card>
+      </div>
+    </PortalPage>
   );
 }

@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { SettingsLoading } from "@/app/(app)/installningar/_components/page-loading";
 
-/** Medan sidan hämtar och räknar: rubriken och innehållet som skeleton. */
+/** Medan sidan hämtar och räknar: rubriken och korten som skeleton. */
 export default function InkorgLoading() {
-  return <RouteLoading label="Laddar inkorgen" blocks={["kpi", "table"]} />;
+  return <SettingsLoading label="Laddar inkorgen" main={[2, 6]} side={[3]} />;
 }

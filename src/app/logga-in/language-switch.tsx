@@ -27,7 +27,7 @@ export function LanguageSwitch() {
           if (res?.ok) router.refresh();
         })
       }
-      className="inline-flex min-h-11 items-center rounded-sm px-2 text-sm text-muted hover:text-fg disabled:text-disabled"
+      className="v2-btn quiet touch"
     >
       {LOCALE_NAME[other]}
     </button>

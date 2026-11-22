@@ -30,6 +30,15 @@ const tone: Record<Status, string> = {
   critical: "border-signal-line text-fg",
 };
 
+/** V2 (appens skal): som .v2-badge, fylld mjuk ton och ingen kant. */
+const v2Tone: Record<Status, string> = {
+  ok: "v2:bg-v2-sel v2:text-v2-ink",
+  neutral: "v2:bg-v2-sel v2:text-v2-ink",
+  warning: "v2:bg-v2-warn-soft v2:text-v2-warn-text",
+  offline: "v2:bg-v2-sel v2:text-v2-mute",
+  critical: "v2:bg-v2-crit-soft v2:text-v2-crit-text",
+};
+
 /** Statusetikett. Höjd 24 px och samma inre luft i alla lägen, så glyferna linjerar i en kolumn. */
 export function StatusTag({
   status,
@@ -52,6 +61,9 @@ export function StatusTag({
         // "whitespace-nowrap" här, så radbrytningen väljs med en egen prop.
         wrap ? "min-h-6 w-fit max-w-full py-0.5 whitespace-normal" : "h-6 whitespace-nowrap",
         tone[status],
+        "v2:rounded-v2-sm v2:border-0 v2:px-1.5 v2:font-[550]",
+        !wrap && "v2:h-5",
+        v2Tone[status],
         className,
       )}
     >

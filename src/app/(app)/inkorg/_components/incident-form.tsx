@@ -97,9 +97,9 @@ export function IncidentForm({
     `${formatTime(wallClockIn(new Date(o.orderedAt), timeZone))} · ${o.titleName ?? "okänd titel"} · ${kronorOfOre(o.amountOre)} · order ${o.externalId}`;
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-8" aria-label="Kundärende">
+    <form onSubmit={submit} noValidate className="flex flex-col gap-6" aria-label="Kundärende">
       <fieldset disabled={readOnly} className="grid min-w-0 gap-5 sm:grid-cols-2">
-        <legend className="label mb-4 text-muted">Vad hände</legend>
+        <legend className="mb-4 text-v2-md font-[650] text-v2-ink">Vad hände</legend>
         <Select
           label="Automat"
           value={v.machineId}
@@ -133,25 +133,27 @@ export function IncidentForm({
           maxLength={200}
         />
         <label className="flex flex-col gap-1.5 sm:col-span-2">
-          <span className="label text-muted">Beskrivning</span>
+          <span className="text-v2-sm font-[550] text-v2-ink">Beskrivning</span>
           <textarea
             value={v.description}
             onChange={(e) => set("description", e.target.value)}
             rows={3}
             maxLength={2000}
-            className="min-h-20 w-full rounded-sm border border-line-control bg-bg px-3 py-2 text-base text-fg placeholder:text-subtle"
+            className="v2-textarea min-h-20"
           />
           {errors.description ? (
-            <span className="text-xs text-signal-fg">{errors.description}</span>
+            <span className="text-v2-xs text-v2-crit-text">{errors.description}</span>
           ) : null}
         </label>
       </fieldset>
 
       <fieldset
         disabled={readOnly}
-        className="flex min-w-0 flex-col gap-4 border-t border-line pt-4"
+        className="flex min-w-0 flex-col gap-4 border-t border-v2-line2 pt-4"
       >
-        <legend className="label float-left mb-4 w-full text-muted">Order och titel</legend>
+        <legend className="float-left mb-4 w-full text-v2-md font-[650] text-v2-ink">
+          Order och titel
+        </legend>
         <div className="flex flex-wrap items-end gap-3">
           <Button
             type="button"
@@ -196,9 +198,11 @@ export function IncidentForm({
 
       <fieldset
         disabled={readOnly}
-        className="grid min-w-0 gap-5 border-t border-line pt-4 sm:grid-cols-2"
+        className="grid min-w-0 gap-5 border-t border-v2-line2 pt-4 sm:grid-cols-2"
       >
-        <legend className="label float-left mb-4 w-full text-muted">Hantering</legend>
+        <legend className="float-left mb-4 w-full text-v2-md font-[650] text-v2-ink">
+          Hantering
+        </legend>
         <Select
           label="Status"
           value={v.status}
@@ -233,26 +237,22 @@ export function IncidentForm({
           error={errors.refundedOn}
         />
         <label className="flex flex-col gap-1.5 sm:col-span-2">
-          <span className="label text-muted">Åtgärd</span>
+          <span className="text-v2-sm font-[550] text-v2-ink">Åtgärd</span>
           <textarea
             value={v.actionTaken}
             onChange={(e) => set("actionTaken", e.target.value)}
             rows={3}
             maxLength={2000}
             aria-invalid={errors.actionTaken ? true : undefined}
-            className={
-              errors.actionTaken
-                ? "min-h-20 w-full rounded-sm border border-signal bg-bg px-3 py-2 text-base text-fg"
-                : "min-h-20 w-full rounded-sm border border-line-control bg-bg px-3 py-2 text-base text-fg"
-            }
+            className="v2-textarea min-h-20"
           />
           {errors.actionTaken ? (
-            <span className="text-xs text-signal-fg">{errors.actionTaken}</span>
+            <span className="text-v2-xs text-v2-crit-text">{errors.actionTaken}</span>
           ) : null}
         </label>
       </fieldset>
 
-      {errors.form ? <p className="text-sm text-signal-fg">{errors.form}</p> : null}
+      {errors.form ? <p className="text-v2-sm text-v2-crit-text">{errors.form}</p> : null}
       {readOnly ? null : (
         <div className="flex gap-2">
           <Button type="submit" variant="primary" loading={pending}>

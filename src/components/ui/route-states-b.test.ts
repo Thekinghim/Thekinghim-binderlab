@@ -43,7 +43,8 @@ describe("sidorna i genomgång B", () => {
       const file = join(APP, segment, "not-found.tsx");
       expect(existsSync(file)).toBe(true);
       const src = readFileSync(file, "utf8");
-      expect(src).toContain("<h1");
+      // En egen h1, eller V2Page, vars titel ritas som sidans h1.
+      expect(src).toMatch(/<h1|<V2Page\s+title="[^"]+ finns inte"/);
       expect(src).toMatch(/finns inte\./);
     },
   );

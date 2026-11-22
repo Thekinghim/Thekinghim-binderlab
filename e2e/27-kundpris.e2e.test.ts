@@ -110,8 +110,9 @@ describe("pris mot kund", () => {
     // Seeden: 30th Celebration har 145 kr mot kund (vårt pris 112 kr; andra flöden kan ha
     // lagt ett nytt inköpspris i dag, och då följer pris mot kund med till den perioden).
     const seeded = page.getByRole("row").filter({ hasText: "30th Celebration" }).first();
-    await expect.poll(() => seeded.innerText()).toContain(`145,00${NBSP}kr`);
-    expect(await seeded.innerText()).toMatch(/[+−]\d+,\d\d\skr · [+−]\d+\s%/);
+    // V2: hela kronor (ören bara när de finns).
+    await expect.poll(() => seeded.innerText()).toContain(`145${NBSP}kr`);
+    expect(await seeded.innerText()).toMatch(/[+−]\d+(,\d\d)?\skr · [+−]\d+\s%/);
     await page
       .getByText("Vinsten räknas på vårt pris. Pris mot kund visas bara här.")
       .first()
@@ -207,7 +208,7 @@ describe("pris mot kund", () => {
       await reader.page.getByRole("link", { name: TITLE, exact: true }).first().click();
       const head = reader.page.locator(`dl[aria-label="Priser för ${TITLE}"]`);
       await head.waitFor();
-      expect(await head.innerText()).toMatch(/Pris mot kund\s*119,00/i);
+      expect(await head.innerText()).toMatch(/Pris mot kund\s*119\skr/i);
       expect(await reader.page.getByLabel("Pris mot kund per pack").count()).toBe(0);
       expect(await reader.page.getByRole("button", { name: "Spara pris mot kund" }).count()).toBe(
         0,

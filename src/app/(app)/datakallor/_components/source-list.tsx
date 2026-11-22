@@ -74,7 +74,7 @@ export function SourceList({
               Lägg till datakälla
             </Button>
           }
-          className="rounded-md border border-line bg-surface"
+          className="rounded-v2-lg border border-v2-line bg-v2-panel"
         />
       ) : (
         <ul className="flex flex-col gap-3" aria-label="Datakällor">
@@ -84,7 +84,7 @@ export function SourceList({
               <li key={s.id}>
                 <Panel className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-4 md:grid-cols-12">
                   <div className="col-span-2 flex min-w-0 flex-col gap-1 md:col-span-4">
-                    <p className="truncate text-md font-medium text-fg">{s.name}</p>
+                    <p className="truncate text-v2-md font-[550] text-fg">{s.name}</p>
                     <p className="label text-subtle">{PROVIDER_LABELS[s.provider] ?? s.provider}</p>
                   </div>
                   <Fact label="Status" className="md:col-span-2">

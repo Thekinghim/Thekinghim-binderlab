@@ -111,12 +111,12 @@ export function Suggestions({
           {visible.map((s) => (
             <li
               key={s.id}
-              className="flex min-w-0 flex-col gap-2 rounded-md border border-line bg-surface p-4"
+              className="flex min-w-0 flex-col gap-2 rounded-v2-lg border border-v2-line bg-v2-panel p-4"
             >
               {/* Rubriken på en egen rad, effekten under: på mobilen bröts rubriken annars
                   mitt i ord ("Myster / y Pack") bredvid effekten. */}
               <div className="flex flex-col gap-1">
-                <h3 className="min-w-0 text-base font-medium text-pretty break-words text-fg">
+                <h3 className="min-w-0 text-v2-md font-[650] text-pretty break-words text-v2-ink">
                   {s.title}
                 </h3>
                 <span className="meta tnum text-subtle">{suggestionMeta(s)}</span>

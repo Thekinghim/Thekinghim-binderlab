@@ -272,28 +272,27 @@ export function PlanView({
   };
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="flex flex-col gap-8">
       {model.noSupplierLines.length > 0 ? (
         // Förslaget visas även utan leverantör: hur många pack som behövs. Leverantören
         // (pris, boxar, ledtid) är nästa steg, inte ett krav för att se förslaget.
         <section aria-label="Att köpa in utan leverantör" className="flex flex-col gap-3">
-          <ul className="flex flex-col divide-y divide-line border-y border-line">
-            {model.noSupplierLines.map((l, i) => (
+          <ul className="flex flex-col divide-y divide-v2-line2 border-y border-v2-line2">
+            {model.noSupplierLines.map((l) => (
               <li
                 key={l.titleId}
-                className="rise flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2"
-                style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+                className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2"
               >
-                <span className="flex min-w-0 flex-1 basis-56 flex-col text-base text-fg">
+                <span className="flex min-w-0 flex-1 basis-56 flex-col text-v2-md text-v2-ink">
                   <span>
                     Köp ca <span className="tnum font-medium">{formatInt(l.suggestQty)}</span>
                     {NBSP}st {l.title}
                   </span>
                   {l.toMystery ? (
-                    <span className="tnum text-sm text-muted">{l.toMystery.text}</span>
+                    <span className="tnum text-v2-sm text-v2-mute">{l.toMystery.text}</span>
                   ) : null}
                   {l.steps ? (
-                    <span className="text-sm font-medium text-signal-fg">
+                    <span className="text-v2-sm font-[550] text-v2-crit-text">
                       1. Räkna om. 2. Köp ca {formatInt(l.suggestQty)}
                       {NBSP}st.
                     </span>
@@ -320,13 +319,10 @@ export function PlanView({
           </ul>
           {canEdit ? (
             <div>
-              <a
-                href="#leverantorer"
-                className="inline-flex h-11 items-center rounded-sm border border-line-control px-4 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:bg-hover"
-              >
+              <a href="#leverantorer" className="v2-btn touch">
                 Lägg till leverantör
               </a>
-              <span className="meta ml-3 text-subtle">för pris och boxar</span>
+              <span className="ml-3 text-v2-xs text-v2-mute">för pris och boxar</span>
             </div>
           ) : null}
         </section>
@@ -341,13 +337,13 @@ export function PlanView({
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex min-w-0 flex-col gap-1">
-                  <p className="label text-subtle">{p.supplierName}</p>
-                  <p className="text-md text-fg">
+                  <p className="text-v2-sm font-[650] text-v2-ink">{p.supplierName}</p>
+                  <p className="text-v2-md text-v2-ink">
                     {formatInt(p.totalPacks)} pack för {kr(p.totalOre)}, framme{" "}
                     {dateText(p.expectedArrival)}.
                   </p>
                   {p.drafts.length > 0 ? (
-                    <p className="text-sm text-muted">
+                    <p className="text-v2-sm text-v2-mute">
                       Utkast finns:{" "}
                       {p.drafts.map((d) => `${d.number} (${formatInt(d.packs)} pack)`).join(", ")}.{" "}
                       <a href="#inkopsorder" className="text-fg underline underline-offset-2">
@@ -403,13 +399,13 @@ export function PlanView({
       {others.length > 0 ? (
         <details
           aria-labelledby="alla-titlar"
-          className="group flex flex-col gap-4 rounded-sm border border-line"
+          className="group -mx-[18px] -mb-4 flex flex-col border-t border-v2-line2 max-[900px]:mx-0 max-[900px]:mb-0"
         >
-          <summary className="flex cursor-pointer items-baseline justify-between gap-4 px-4 py-3 max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-0.5">
-            <h3 id="alla-titlar" className="text-sm font-medium text-fg">
+          <summary className="flex min-h-11 cursor-pointer items-baseline justify-between gap-4 px-[18px] py-3 max-[900px]:px-0 max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-0.5">
+            <h3 id="alla-titlar" className="text-v2-md font-[550] text-v2-ink">
               Alla titlar ({formatInt(others.length)})
             </h3>
-            <span className="meta text-muted">
+            <span className="text-v2-xs text-v2-mute">
               {formatInt(model.counts.ok)} räcker
               {model.counts.order > 0 ? ` · ${formatInt(model.counts.order)} beställ` : ""}
               {model.packLines.length > 0 ? ` · ${formatInt(model.packLines.length)} packa` : ""}
@@ -418,7 +414,7 @@ export function PlanView({
                 : ""}
             </span>
           </summary>
-          <div className="border-t border-line p-4">
+          <div className="border-t border-v2-line2 px-[18px] py-3 max-[900px]:px-0">
             <DataTable
               surface="bg"
               columns={allColumns}

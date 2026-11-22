@@ -1,45 +1,46 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { Wordmark } from "@/components/brand/wordmark";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { V2Logo } from "@/components/v2/shell/nav-icon";
+
+import "./logga-in/auth.css";
 
 export const metadata: Metadata = { title: "Sidan finns inte" };
 
 /**
  * Adresser som ingen sida svarar på (och notFound() utan egen not-found.tsx längre ner).
- * Utan den här filen visar Next sin engelska standardsida. Samma enkla ram som
- * `app/error.tsx`: ordmärket och meddelandet, inget skal (sidan kan nås utan inloggning).
+ * Utan den här filen visar Next sin engelska standardsida. V2 som sidorna utan inloggning:
+ * loggan överst och ett vitt kort mitt på den grå ytan, i Google Sans. Inget skal (sidan kan
+ * nås utan inloggning). Hem skickar vidare: butikens användare till portalen, andra till
+ * inloggningen.
  */
 export default function NotFound() {
   return (
-    <div className="min-h-dvh overflow-x-clip bg-bg">
-      <div className="mx-auto flex min-h-dvh w-full max-w-[1280px] flex-col px-4 md:px-8">
-        <header className="flex h-16 items-center">
-          <Link href="/" className="rounded-xs" aria-label="Binderlab, till startsidan">
-            <Wordmark size="md" />
-          </Link>
-        </header>
-        <main id="main" className="flex flex-1 flex-col gap-8 pt-16 pb-16 md:pt-32">
-          <div className="flex w-full max-w-2xl flex-col gap-8 md:ml-16">
-            <SectionHeader
-              as="h1"
-              size="xl"
-              eyebrow="404"
-              title="Sidan finns inte."
-              aside="Adressen kan vara fel eller gammal."
-            />
-            <StateMessage
-              kind="no-results"
-              code="Ingen sida"
-              message="Ingen sida i Binderlab har den här adressen."
-              action={{ label: "Till Hem", href: "/" }}
-              className="border-t border-line px-0! pt-8!"
-            />
+    <div lang="sv" data-ui="v2" className="v2-auth">
+      <header className="v2-auth-top">
+        <Link href="/" className="v2-auth-brand" aria-label="Binderlab, till startsidan">
+          <V2Logo size={28} />
+          Binderlab
+        </Link>
+      </header>
+      <main id="main" className="v2-auth-main">
+        <div className="v2-card v2-auth-card v2-enter">
+          <div className="v2-card-body">
+            <div className="v2-auth-hd">
+              <h1>Sidan finns inte</h1>
+              <p>Adressen kan vara fel eller gammal.</p>
+            </div>
+            <p className="text-v2-md text-v2-mute">Ingen sida i Binderlab har den här adressen.</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <ButtonLink href="/" variant="act" touch>
+                Till Hem
+              </ButtonLink>
+            </div>
           </div>
-        </main>
-      </div>
+        </div>
+      </main>
+      <footer className="v2-auth-foot" />
     </div>
   );
 }

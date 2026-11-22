@@ -2,10 +2,10 @@
 
 import { useActionState, useState, type FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { Button } from "@/components/v2/button";
 
 import { setNewPassword } from "../actions";
+import { AuthInput } from "../auth-field";
 import { FormError } from "../form-error";
 import { LinkFailed, LinkPending, useLinkFragment } from "../link-landing";
 import type { NewPasswordState } from "../state";
@@ -38,13 +38,13 @@ export function NewPasswordForm() {
   };
 
   return (
-    <form action={action} onSubmit={check} noValidate className="flex flex-col gap-5">
+    <form action={action} onSubmit={check} noValidate className="flex flex-col gap-4">
       <input type="hidden" name="access_token" value={fragment.accessToken} />
       <input type="hidden" name="refresh_token" value={fragment.refreshToken} />
       {fragment.email ? (
         <input type="hidden" name="username" autoComplete="username" value={fragment.email} />
       ) : null}
-      <Input
+      <AuthInput
         label="Nytt lösenord"
         name="password"
         type="password"
@@ -55,7 +55,7 @@ export function NewPasswordForm() {
         error={local?.field === "password" ? local.error : undefined}
         autoFocus
       />
-      <Input
+      <AuthInput
         label="Upprepa"
         name="confirm"
         type="password"
@@ -65,7 +65,7 @@ export function NewPasswordForm() {
         error={local?.field === "confirm" ? local.error : undefined}
       />
       <FormError message={local ? undefined : state.error} />
-      <Button type="submit" variant="primary" loading={pending} className="h-12 w-full text-lg">
+      <Button type="submit" variant="act" size="lg" pending={pending} className="w-full">
         Spara och logga in
       </Button>
     </form>

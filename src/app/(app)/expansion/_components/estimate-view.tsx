@@ -22,20 +22,22 @@ function Facts({
   items: ReadonlyArray<{ label: string; value: string; sub?: string; primary?: boolean }>;
 }) {
   return (
-    <dl className="grid grid-cols-2 border-y border-line lg:grid-cols-4">
+    <dl className="grid grid-cols-2 border-y border-v2-line lg:grid-cols-4">
       {items.map((it, i) => (
         <div
           key={it.label}
           className={cn(
             "flex min-w-0 flex-col gap-2 py-4 pr-4",
-            i % 2 === 1 && "border-l border-line pl-4",
-            i >= 2 && "border-t border-line lg:border-t-0",
+            i % 2 === 1 && "border-l border-v2-line pl-4",
+            i >= 2 && "border-t border-v2-line lg:border-t-0",
             i === 2 && "lg:border-l lg:pl-4",
           )}
         >
-          <dt className="label truncate text-muted">{it.label}</dt>
-          <dd className={cn("tnum text-fg", it.primary ? "text-2xl" : "text-xl")}>{it.value}</dd>
-          {it.sub ? <dd className="meta tnum text-subtle">{it.sub}</dd> : null}
+          <dt className="label truncate text-v2-mute">{it.label}</dt>
+          <dd className={cn("tnum text-v2-ink", it.primary ? "text-v2-xl" : "text-v2-xl")}>
+            {it.value}
+          </dd>
+          {it.sub ? <dd className="meta tnum text-v2-mute">{it.sub}</dd> : null}
         </div>
       ))}
     </dl>
@@ -91,7 +93,7 @@ export function SiteEstimateView({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start gap-3">
         <EstimateTag />
-        <p className="max-w-3xl min-w-0 flex-1 text-md text-fg">{estimate.text}</p>
+        <p className="max-w-3xl min-w-0 flex-1 text-v2-lg text-v2-ink">{estimate.text}</p>
       </div>
       <Facts
         items={[
@@ -123,22 +125,22 @@ export function SiteEstimateView({
           },
         ]}
       />
-      <p className="max-w-3xl text-sm text-muted">
+      <p className="max-w-3xl text-v2-sm text-v2-mute">
         {estimate.detail}
         {investmentNote ? ` ${investmentNote}` : ""}
       </p>
       <div className="relative min-w-0 overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-base">
+        <table className="w-full min-w-[640px] border-collapse text-v2-md">
           <caption className="sr-only">Platserna uppskattningen bygger på</caption>
           <thead>
-            <tr className="border-b border-line-strong">
+            <tr className="border-b border-v2-line3">
               {["Plats", "Likhet", "Automatmån.", "Intäkt/mån", "Vinst/mån", "Återbetalning"].map(
                 (h, i) => (
                   <th
                     key={h}
                     scope="col"
                     className={cn(
-                      "label h-9 font-normal text-subtle",
+                      "label h-9 font-normal text-v2-mute",
                       i === 0 ? "text-left" : "pl-4 text-right",
                     )}
                   >
@@ -150,10 +152,10 @@ export function SiteEstimateView({
           </thead>
           <tbody>
             {estimate.basis.map((b) => (
-              <tr key={b.storeId} className="border-b border-line align-top">
+              <tr key={b.storeId} className="border-b border-v2-line align-top">
                 <td className="py-2.5 pr-4">
-                  <span className="block text-fg">{b.name}</span>
-                  <span className="block text-sm text-muted">{b.similarity.text}</span>
+                  <span className="block text-v2-ink">{b.name}</span>
+                  <span className="block text-v2-sm text-v2-mute">{b.similarity.text}</span>
                 </td>
                 <td className="tnum py-2.5 pl-4 text-right">{pct(b.similarity.scoreBp)}</td>
                 <td className="tnum py-2.5 pl-4 text-right">
@@ -176,10 +178,10 @@ export function SiteEstimateView({
 function Excluded({ estimate }: { estimate: SiteEstimate }) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="label text-subtle">Inte med i underlaget</p>
+      <p className="label text-v2-mute">Inte med i underlaget</p>
       <ul className="flex flex-col">
         {estimate.excluded.map((e) => (
-          <li key={e.storeId} className="border-t border-line py-2 text-sm text-muted">
+          <li key={e.storeId} className="border-t border-v2-line py-2 text-v2-sm text-v2-mute">
             {e.text}
           </li>
         ))}
@@ -211,7 +213,7 @@ export function PriceChangeView({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start gap-3">
         <EstimateTag />
-        <p className="max-w-3xl min-w-0 flex-1 text-md text-fg">{scenario.text}</p>
+        <p className="max-w-3xl min-w-0 flex-1 text-v2-lg text-v2-ink">{scenario.text}</p>
       </div>
       <Facts
         items={[
@@ -241,18 +243,18 @@ export function PriceChangeView({
           },
         ]}
       />
-      <p className="max-w-3xl text-sm text-muted">{scenario.detail}</p>
+      <p className="max-w-3xl text-v2-sm text-v2-mute">{scenario.detail}</p>
       <div className="relative min-w-0 overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse text-base">
+        <table className="w-full min-w-[560px] border-collapse text-v2-md">
           <caption className="sr-only">Utfall per antagen elasticitet</caption>
           <thead>
-            <tr className="border-b border-line-strong">
+            <tr className="border-b border-v2-line3">
               {["Elasticitet", "Volym", "Pack", "Intäkt", "Vinst", "Ändring"].map((h, i) => (
                 <th
                   key={h}
                   scope="col"
                   className={cn(
-                    "label h-9 font-normal text-subtle",
+                    "label h-9 font-normal text-v2-mute",
                     i === 0 ? "text-left" : "pl-4 text-right",
                   )}
                 >
@@ -267,12 +269,12 @@ export function PriceChangeView({
               return (
                 <tr
                   key={r.elasticityHundredths}
-                  className={cn("border-b border-line", selected && "bg-hover")}
+                  className={cn("border-b border-v2-line", selected && "bg-v2-hover")}
                   aria-current={selected ? "true" : undefined}
                 >
-                  <td className="tnum py-2.5 font-mono text-sm">
+                  <td className="tnum py-2.5 text-v2-sm">
                     {hundredths(r.elasticityHundredths)}
-                    {selected ? <span className="text-subtle"> · vald</span> : null}
+                    {selected ? <span className="text-v2-mute"> · vald</span> : null}
                   </td>
                   <td className="tnum py-2.5 pl-4 text-right">{signedPct(r.volumeChangeBp)}</td>
                   <td className="tnum py-2.5 pl-4 text-right">{formatInt(r.units)}</td>

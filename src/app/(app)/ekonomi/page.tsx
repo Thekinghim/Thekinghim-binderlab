@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense } from "react";
 
-import { Panel, PanelSection } from "@/components/ui/frame";
-import { Skeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { MobileFold } from "@/components/ui/mobile-fold";
 import { MobileMore } from "../_mobil/mobile-more";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
+import { SkeletonCard } from "@/components/v2/skeleton";
+import { Section } from "@/components/v2/section";
 import { formatDate, formatDateTime, formatInt, NBSP } from "@/lib/format";
 import {
   currentViewer,
@@ -36,8 +39,7 @@ export const metadata: Metadata = { title: "Ekonomi" };
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-const SECTION =
-  "rise flex scroll-mt-28 flex-col gap-8 pb-12 max-md:gap-5 max-md:pb-8 md:gap-10 md:pb-16";
+const SECTION = "flex scroll-mt-28 flex-col gap-[14px] max-[900px]:gap-3";
 
 /**
  * Ekonomi: varje krona från automat till bankkonto. Avstämning av leverantörens
@@ -188,315 +190,316 @@ export default async function EkonomiPage({
   const bookkeeping = view === "bokforing";
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
-      {bookkeeping ? null : (
-        <div
-          className="rise flex flex-col gap-6 pb-10 max-md:relative max-md:gap-4 max-md:pb-6 md:pb-12"
-          style={{ "--i": 0 } as React.CSSProperties}
-        >
-          <SectionHeader
-            as="h1"
-            size="xl"
-            eyebrow={`Ekonomi · ${p.days}${NBSP}d`}
-            title={headline.title}
-            aside={headline.aside}
-            meta={[{ label: "Period", value: when }]}
-            // Mobil: perioden står i raden överst.
-            className="max-md:pr-10 max-md:[&_dl]:hidden"
-          />
-          {/* Mobil: AI-frågan bakom "⋯" uppe till höger; från md som förut. */}
-          <MobileMore
-            label="Fler val för ekonomin"
-            className="max-md:absolute max-md:-top-2 max-md:-right-2"
-          >
-            <AiPageLine
-              metric="ekonomin för perioden"
-              route="ekonomi"
-              className="md:mt-4"
-              menuItem
+    <V2Page
+      title={bookkeeping ? "Bokföring" : "Ekonomi"}
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      period={!bookkeeping}
+    >
+      <SubNav />
+      <div className={PAGE_BODY}>
+        {bookkeeping ? null : (
+          <div className="flex flex-col gap-3">
+            <PageIntro
+              title={headline.title}
+              aside={headline.aside}
+              facts={[{ label: "Period", value: when }]}
+              actions={
+                // Mobil: AI-frågan bakom "⋯"; från md som förut.
+                <MobileMore label="Fler val för ekonomin">
+                  <AiPageLine metric="ekonomin för perioden" route="ekonomi" menuItem />
+                </MobileMore>
+              }
             />
-          </MobileMore>
-          {scoped ? (
-            <p className="meta text-subtle">Alla butiker · filtret gäller inte här</p>
-          ) : null}
-          <ViewTabs
-            label="Vy"
-            value={view}
-            hrefFor={hrefFor}
-            tabs={economyTabs(fixedActive, view)}
-          />
-          {showAddFixedLink(fixedActive, view, ctx.canEdit) ? (
-            <Link
-              href={hrefFor("fasta")}
-              className="meta self-start text-subtle underline-offset-4 transition-colors duration-fast ease-instrument hover:text-fg hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
-            >
-              + Lägg till fast kostnad
-            </Link>
-          ) : null}
-        </div>
-      )}
-
-      {view === "avstamning" ? (
-        <section
-          aria-labelledby="avstamning"
-          className={SECTION}
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          {result ? (
-            <MobileFold summary="Fler siffror" meta={formatInt(kpis.length)}>
-              <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
-            </MobileFold>
-          ) : null}
-          {question ? (
-            <div className="lg:max-w-[720px]">
-              <PayoutQuestion
-                key={`${question.period.start}-${question.period.end}`}
-                period={question.period}
-                expectedOre={question.expected.payoutOre}
-                today={ctx.today}
-                lead={!askFirst}
+            {scoped ? (
+              <p className="text-v2-sm text-v2-mute">Alla butiker · filtret gäller inte här</p>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <ViewTabs
+                label="Vy"
+                value={view}
+                hrefFor={hrefFor}
+                tabs={economyTabs(fixedActive, view)}
               />
-            </div>
-          ) : null}
-          <SectionHeader
-            id="avstamning"
-            size="md"
-            title="Utbetalningar."
-            aside={
-              result
-                ? reconciliationFact(result)
-                : askFirst
-                  ? "Inga ännu. Ladda upp rapporten från Nayax, eller skriv in beloppet ovan."
-                  : undefined
-            }
-          />
-          <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
-            <div className="min-w-0 lg:col-span-8">
-              {result ? (
-                <ReconciliationList
-                  result={result}
-                  today={ctx.today}
-                  canEdit={canEdit}
-                  period={p.period}
-                  payoutIds={payoutIds}
-                  statements={statements}
-                  cardFeeBp={rec.cardFeeBp}
-                  cardFeeFrom={rec.cardFeeDefaultFrom}
-                />
-              ) : askFirst ? null : (
-                // Mobil: uppladdningen står direkt under, så knappen hit behövs inte.
-                <div className="max-md:[&_a]:hidden">
-                  <StateMessage
-                    kind="empty"
-                    message="Ingen utbetalning i perioden."
-                    action={
-                      canEdit
-                        ? { label: "Ladda upp utbetalningar", href: "#ladda-upp-utbetalningar" }
-                        : undefined
-                    }
-                  />
-                </div>
-              )}
-              {rec.ordersWithoutTitle > 0 ? (
-                <StateMessage
-                  compact
-                  kind="no-results"
-                  code={`${formatInt(rec.ordersWithoutTitle)} order`}
-                  message="Order utan titel ingår inte i avstämningen."
-                />
+              {showAddFixedLink(fixedActive, view, ctx.canEdit) ? (
+                <ButtonLink href={hrefFor("fasta")} size="sm" touch>
+                  + Lägg till fast kostnad
+                </ButtonLink>
               ) : null}
-            </div>
-            <div className="flex min-w-0 flex-col gap-8 lg:col-span-4">
-              {canEdit ? (
-                // Mobil: med utbetalningar i perioden är uppladdningen hopfälld; utan står
-                // den öppen (rapporten från Nayax är det vanliga sättet).
-                <MobileFold summary="Ladda upp rapport" defaultOpen={!result}>
-                  <Panel>
-                    <PanelSection label="Ladda upp utbetalningar">
-                      <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
-                        <PayoutUpload
-                          today={ctx.today}
-                          cardFeeFrom={rec.cardFeeDefaultFrom}
-                          shownPayoutIds={result ? rec.payouts.map((x) => x.id) : []}
-                          columns={{
-                            payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),
-                            lines: PAYOUT_FILE_COLUMNS.lines.join(", "),
-                          }}
-                        />
-                      </div>
-                    </PanelSection>
-                  </Panel>
-                </MobileFold>
-              ) : null}
-              <details className="group rounded-md border border-line bg-surface">
-                <summary className="label flex h-10 cursor-pointer list-none items-center justify-between px-4 text-muted hover:text-fg">
-                  <span>Logg och filer</span>
-                  <span className="tnum text-subtle">
-                    {formatInt(rec.reviews.length)} · {formatInt(rec.imports.length)}
-                  </span>
-                </summary>
-                <Panel className="border-0 border-t">
-                  <PanelSection label="Logg" meta={formatInt(rec.reviews.length)}>
-                    {rec.reviews.length === 0 ? (
-                      <p className="text-sm text-muted">Inget utrett ännu.</p>
-                    ) : (
-                      <ol className="flex flex-col gap-3">
-                        {rec.reviews.slice(0, 12).map((r) => (
-                          <li
-                            key={r.id}
-                            className="flex flex-col gap-0.5 text-sm max-md:min-h-11 max-md:justify-center"
-                          >
-                            <span className="meta text-subtle">
-                              {formatDateTime(new Date(r.createdAt))} · {r.actor ?? "System"}
-                            </span>
-                            <span className="text-fg">
-                              {r.action === "investigated" ? "Utredd" : "Öppnad igen"}:{" "}
-                              <span className="text-muted">
-                                {deviationTitle.get(r.deviationKey) ??
-                                  deviationFallback(r.deviationKey)}
-                              </span>
-                            </span>
-                            {r.note ? <span className="text-muted">{r.note}</span> : null}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </PanelSection>
-                  <PanelSection label="Uppladdade filer" meta={formatInt(rec.imports.length)}>
-                    {rec.imports.length === 0 ? (
-                      <p className="text-sm text-muted">Ingen fil ännu.</p>
-                    ) : (
-                      <ol className="flex flex-col gap-3">
-                        {rec.imports.slice(0, 6).map((i) => (
-                          <li
-                            key={i.id}
-                            className="flex flex-col gap-0.5 text-sm max-md:min-h-11 max-md:justify-center"
-                          >
-                            <span className="truncate text-fg">{i.fileName}</span>
-                            <span className="meta text-subtle">
-                              {formatDateTime(new Date(i.createdAt))} · {formatInt(i.rowsNew)} nya ·{" "}
-                              {i.rowsDuplicate === 1
-                                ? "1 dubblett"
-                                : `${formatInt(i.rowsDuplicate)} dubbletter`}{" "}
-                              · {formatInt(i.rowsConflict + i.rowsError)} fel
-                            </span>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </PanelSection>
-                </Panel>
-              </details>
             </div>
           </div>
-        </section>
-      ) : null}
+        )}
 
-      {view === "bokforing" ? (
-        <Suspense fallback={<BookkeepingSkeleton />}>
-          <BokforingSection viewer={viewer} today={ctx.today} canEdit={canEdit} asPage />
-        </Suspense>
-      ) : null}
-
-      {view === "kassaflode" ? (
-        <section
-          aria-labelledby="kassaflode"
-          className={SECTION}
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          <SectionHeader id="kassaflode" size="md" title="Per månad." />
-          {cash.result ? (
-            // Tabellen får hela bredden (Netto syns utan att scrolla); förklaringen under.
-            <div className="flex flex-col gap-6">
+        {view === "avstamning" ? (
+          <section aria-labelledby="avstamning" className={SECTION}>
+            {result ? (
+              <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
+            ) : null}
+            {question ? (
               <div className="min-w-0">
-                <CashflowTable rows={cashRows} />
+                <PayoutQuestion
+                  key={`${question.period.start}-${question.period.end}`}
+                  period={question.period}
+                  expectedOre={question.expected.payoutOre}
+                  today={ctx.today}
+                  lead={!askFirst}
+                />
               </div>
-              <details className="rounded-md border border-line bg-surface p-4 lg:max-w-[720px]">
-                <summary className="label cursor-pointer text-muted hover:text-fg">
-                  Så räknas prognosen
-                </summary>
-                <ul className="mt-3 flex list-none flex-col gap-2 text-sm text-muted">
-                  <li>{cash.payoutCycleNote}</li>
-                  {replenishmentNote ? <li>{replenishmentNote}</li> : null}
-                  {cash.result.assumptions.map((a) => (
-                    <li key={a}>{a}</li>
-                  ))}
-                </ul>
-              </details>
+            ) : null}
+            <div className="v2-cols">
+              <div className="v2-card">
+                <div className="v2-card-hd flex-wrap gap-y-1">
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <h2 id="avstamning">Utbetalningar</h2>
+                    {result || askFirst ? (
+                      <p className="text-v2-sm text-v2-mute">
+                        {result
+                          ? reconciliationFact(result)
+                          : "Inga ännu. Ladda upp rapporten från Nayax, eller skriv in beloppet ovan."}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="v2-card-body flex flex-col gap-4">
+                  {result ? (
+                    <ReconciliationList
+                      result={result}
+                      today={ctx.today}
+                      canEdit={canEdit}
+                      period={p.period}
+                      payoutIds={payoutIds}
+                      statements={statements}
+                      cardFeeBp={rec.cardFeeBp}
+                      cardFeeFrom={rec.cardFeeDefaultFrom}
+                    />
+                  ) : askFirst ? null : (
+                    // Mobil: uppladdningen står direkt under, så knappen hit behövs inte.
+                    <div className="max-md:[&_a]:hidden">
+                      <StateMessage
+                        kind="empty"
+                        message="Ingen utbetalning i perioden."
+                        action={
+                          canEdit
+                            ? { label: "Ladda upp utbetalningar", href: "#ladda-upp-utbetalningar" }
+                            : undefined
+                        }
+                      />
+                    </div>
+                  )}
+                  {rec.ordersWithoutTitle > 0 ? (
+                    <StateMessage
+                      compact
+                      kind="no-results"
+                      code={`${formatInt(rec.ordersWithoutTitle)} order`}
+                      message="Order utan titel ingår inte i avstämningen."
+                    />
+                  ) : null}
+                </div>
+              </div>
+              <div className="v2-stack">
+                {canEdit ? (
+                  // Mobil: med utbetalningar i perioden är uppladdningen hopfälld; utan står
+                  // den öppen (rapporten från Nayax är det vanliga sättet).
+                  <Card
+                    title="Ladda upp utbetalningar"
+                    id="ladda-upp-utbetalningar"
+                    className="scroll-mt-28"
+                  >
+                    <CardBody>
+                      <MobileFold summary="Ladda upp rapport" defaultOpen={!result}>
+                        <div>
+                          <PayoutUpload
+                            today={ctx.today}
+                            cardFeeFrom={rec.cardFeeDefaultFrom}
+                            shownPayoutIds={result ? rec.payouts.map((x) => x.id) : []}
+                            columns={{
+                              payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),
+                              lines: PAYOUT_FILE_COLUMNS.lines.join(", "),
+                            }}
+                          />
+                        </div>
+                      </MobileFold>
+                    </CardBody>
+                  </Card>
+                ) : null}
+                <details className="group v2-card">
+                  <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-[18px] text-v2-md font-[650] text-v2-ink hover:bg-v2-hover [&::-webkit-details-marker]:hidden">
+                    <span>Logg och filer</span>
+                    <span className="tnum text-v2-sm font-[450] text-v2-mute">
+                      {formatInt(rec.reviews.length)} · {formatInt(rec.imports.length)}
+                    </span>
+                  </summary>
+                  <div className="flex flex-col gap-5 border-t border-v2-line px-[18px] py-4">
+                    <div className="flex flex-col gap-2">
+                      <h3 className="text-v2-sm font-[550] text-v2-ink">
+                        Logg <span className="text-v2-mute">· {formatInt(rec.reviews.length)}</span>
+                      </h3>
+                      {rec.reviews.length === 0 ? (
+                        <p className="text-v2-sm text-v2-mute">Inget utrett ännu.</p>
+                      ) : (
+                        <ol className="flex flex-col gap-3">
+                          {rec.reviews.slice(0, 12).map((r) => (
+                            <li
+                              key={r.id}
+                              className="flex flex-col gap-0.5 text-v2-sm max-md:min-h-11 max-md:justify-center"
+                            >
+                              <span className="text-v2-xs text-v2-mute">
+                                {formatDateTime(new Date(r.createdAt))} · {r.actor ?? "System"}
+                              </span>
+                              <span className="text-v2-ink">
+                                {r.action === "investigated" ? "Utredd" : "Öppnad igen"}:{" "}
+                                <span className="text-v2-mute">
+                                  {deviationTitle.get(r.deviationKey) ??
+                                    deviationFallback(r.deviationKey)}
+                                </span>
+                              </span>
+                              {r.note ? <span className="text-v2-mute">{r.note}</span> : null}
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <h3 className="text-v2-sm font-[550] text-v2-ink">
+                        Uppladdade filer{" "}
+                        <span className="text-v2-mute">· {formatInt(rec.imports.length)}</span>
+                      </h3>
+                      {rec.imports.length === 0 ? (
+                        <p className="text-v2-sm text-v2-mute">Ingen fil ännu.</p>
+                      ) : (
+                        <ol className="flex flex-col gap-3">
+                          {rec.imports.slice(0, 6).map((i) => (
+                            <li
+                              key={i.id}
+                              className="flex flex-col gap-0.5 text-v2-sm max-md:min-h-11 max-md:justify-center"
+                            >
+                              <span className="truncate text-v2-ink">{i.fileName}</span>
+                              <span className="text-v2-xs text-v2-mute">
+                                {formatDateTime(new Date(i.createdAt))} · {formatInt(i.rowsNew)} nya
+                                ·{" "}
+                                {i.rowsDuplicate === 1
+                                  ? "1 dubblett"
+                                  : `${formatInt(i.rowsDuplicate)} dubbletter`}{" "}
+                                · {formatInt(i.rowsConflict + i.rowsError)} fel
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+                  </div>
+                </details>
+              </div>
             </div>
-          ) : (
-            <StateMessage
-              kind="error"
-              message={cash.error ?? "Kassaflödet kunde inte räknas fram."}
-            />
-          )}
-        </section>
-      ) : null}
+          </section>
+        ) : null}
 
-      {view === "fasta" ? (
-        <section
-          aria-labelledby="fasta-kostnader"
-          className={SECTION}
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          <SectionHeader
-            id="fasta-kostnader"
-            size="md"
-            title={
-              at && at.fixedCostOre > 0
-                ? `Vinst ${sek(at.profitAfterFixedOre)} efter fasta kostnader på ${sek(at.fixedCostOre)}.`
-                : at
-                  ? `Vinst ${sek(at.profitOre)}, inga fasta kostnader i perioden.`
-                  : "Fasta kostnader."
-            }
-            aside={
-              at && at.fixedCostOre > 0
-                ? allocationFact(fixed.allocation!, machineCode)
-                : (fixed.error ?? undefined)
-            }
-          />
-          {at && at.fixedCostOre > 0 ? (
-            <EconomyKpis
-              label={`Lönsamhet · ${when}`}
-              items={[
-                {
-                  id: "after",
-                  label: "Vinst efter fasta",
-                  value: at.profitAfterFixedOre,
-                  unit: "ore",
-                  primary: true,
-                },
-                {
-                  id: "before",
-                  label: storeShare ? "Vår del före fasta" : "Vinst före fasta",
-                  value: at.profitOre,
-                  unit: "ore",
-                },
-                { id: "fixed", label: "Fasta kostnader", value: at.fixedCostOre, unit: "ore" },
-                {
-                  id: "margin",
-                  label: "Marginal efter fasta",
-                  value: at.marginAfterFixedBp,
-                  unit: "bp",
-                },
-              ]}
+        {view === "bokforing" ? (
+          <Suspense fallback={<BookkeepingSkeleton />}>
+            <BokforingSection viewer={viewer} today={ctx.today} canEdit={canEdit} asPage />
+          </Suspense>
+        ) : null}
+
+        {view === "kassaflode" ? (
+          <section aria-labelledby="kassaflode" className={SECTION}>
+            {cash.result ? (
+              // Tabellen får hela bredden (Netto syns utan att scrolla); förklaringen under.
+              <>
+                <div className="v2-card">
+                  <div className="v2-card-hd">
+                    <h2 id="kassaflode">Per månad</h2>
+                  </div>
+                  <div className="v2-card-body min-w-0">
+                    <CashflowTable rows={cashRows} />
+                  </div>
+                </div>
+                <details className="group v2-card">
+                  <summary className="flex min-h-12 cursor-pointer list-none items-center px-[18px] text-v2-md font-[650] text-v2-ink hover:bg-v2-hover [&::-webkit-details-marker]:hidden">
+                    Så räknas prognosen
+                  </summary>
+                  <ul className="flex list-none flex-col gap-2 border-t border-v2-line px-[18px] py-4 text-v2-sm text-v2-mute">
+                    <li>{cash.payoutCycleNote}</li>
+                    {replenishmentNote ? <li>{replenishmentNote}</li> : null}
+                    {cash.result.assumptions.map((a) => (
+                      <li key={a}>{a}</li>
+                    ))}
+                  </ul>
+                </details>
+              </>
+            ) : (
+              <Card title="Per månad">
+                <CardBody>
+                  <StateMessage
+                    kind="error"
+                    message={cash.error ?? "Kassaflödet kunde inte räknas fram."}
+                  />
+                </CardBody>
+              </Card>
+            )}
+          </section>
+        ) : null}
+
+        {view === "fasta" ? (
+          <section aria-labelledby="fasta-kostnader" className={SECTION}>
+            <Section
+              id="fasta-kostnader"
+              title={
+                at && at.fixedCostOre > 0
+                  ? `Vinst ${sek(at.profitAfterFixedOre)} efter fasta kostnader på ${sek(at.fixedCostOre)}.`
+                  : at
+                    ? `Vinst ${sek(at.profitOre)}, inga fasta kostnader i perioden.`
+                    : "Fasta kostnader."
+              }
+              sub={
+                at && at.fixedCostOre > 0
+                  ? allocationFact(fixed.allocation!, machineCode)
+                  : (fixed.error ?? undefined)
+              }
             />
-          ) : null}
-          <FixedCosts
-            rows={fixedRows}
-            machines={fixed.machines
-              .filter((m) => !m.archived)
-              .map((m) => ({ id: m.id, code: m.code, name: m.name }))}
-            canEdit={canEdit}
-            today={ctx.today}
-            periodLabel={when}
-          />
-          {fixedRows.length === 0 ? (
-            <StateMessage kind="empty" compact message="Inga fasta kostnader." />
-          ) : null}
-        </section>
-      ) : null}
-    </div>
+            {at && at.fixedCostOre > 0 ? (
+              <EconomyKpis
+                label={`Lönsamhet · ${when}`}
+                items={[
+                  {
+                    id: "after",
+                    label: "Vinst efter fasta",
+                    value: at.profitAfterFixedOre,
+                    unit: "ore",
+                    primary: true,
+                  },
+                  {
+                    id: "before",
+                    label: storeShare ? "Vår del före fasta" : "Vinst före fasta",
+                    value: at.profitOre,
+                    unit: "ore",
+                  },
+                  { id: "fixed", label: "Fasta kostnader", value: at.fixedCostOre, unit: "ore" },
+                  {
+                    id: "margin",
+                    label: "Marginal efter fasta",
+                    value: at.marginAfterFixedBp,
+                    unit: "bp",
+                  },
+                ]}
+              />
+            ) : null}
+            <div className="v2-card px-[18px] py-3">
+              <FixedCosts
+                rows={fixedRows}
+                machines={fixed.machines
+                  .filter((m) => !m.archived)
+                  .map((m) => ({ id: m.id, code: m.code, name: m.name }))}
+                canEdit={canEdit}
+                today={ctx.today}
+                periodLabel={when}
+              />
+            </div>
+            {fixedRows.length === 0 ? (
+              <p className="v2-card v2-empty">Inga fasta kostnader.</p>
+            ) : null}
+          </section>
+        ) : null}
+      </div>
+    </V2Page>
   );
 }
 
@@ -504,19 +507,8 @@ export default async function EkonomiPage({
 function BookkeepingSkeleton() {
   return (
     <section aria-busy="true" aria-label="Laddar bokföringen" className={SECTION}>
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-3 w-40" />
-        <Skeleton className="h-8 w-full max-w-xl" />
-      </div>
-      <Skeleton className="h-9 w-56" />
-      <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
-        <div className="lg:col-span-7">
-          <TableSkeleton rows={6} />
-        </div>
-        <div className="lg:col-span-5">
-          <TableSkeleton rows={4} />
-        </div>
-      </div>
+      <SkeletonCard rows={3} />
+      <SkeletonCard rows={6} />
     </section>
   );
 }

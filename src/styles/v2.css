@@ -140,6 +140,10 @@
   --bl-focus: #303030;
   --bl-overlay: rgb(26 26 26 / 0.3);
   --bl-font-sans: var(--v2-sans);
+  /* Inga monospace-typsnitt och inga versaletiketter i V2 (font-mono, .label, diagrammens axlar). */
+  --bl-font-mono: var(--v2-sans);
+  --bl-caps-transform: none;
+  --bl-caps-tracking: 0;
 }
 
 /* Komponenterna ligger i lagret components: Tailwinds verktygsklasser (w-full, mt-4 …) går före. */
@@ -422,7 +426,14 @@
     font-weight: 650;
     letter-spacing: -0.01em;
   }
+  /* Långa namn (en butik) kapas med … i stället för att gå in i verktygen. */
+  .v2-top h1 .ttl {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .v2-top h1 .date {
+    flex: none;
     color: var(--v2-mute);
     font-size: var(--v2-t-md);
     font-weight: 400;
@@ -457,10 +468,15 @@
       display: block;
       padding: 6px 12px 0;
     }
-    .v2-mperiod .v2-seg-period,
-    .v2-mperiod .v2-seg {
+    .v2-mperiod .v2-seg-period {
       display: flex;
       width: 100%;
+    }
+    /* Segmentet tar resten av raden (efter "Eget" vid ett eget datumintervall). */
+    .v2-mperiod .v2-seg {
+      display: flex;
+      flex: 1;
+      min-width: 0;
     }
     .v2-mperiod .v2-seg button {
       flex: 1;
@@ -501,6 +517,63 @@
   @media (max-width: 900px) {
     .v2-sub {
       margin: 2px 16px 0;
+    }
+  }
+  /* Sidans filter (V2Page med filters): Butik, Automat och Med VMB i en rad under rubriken */
+  .v2-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 22px 0;
+  }
+  .v2-filters .v2-filter-select {
+    height: 32px;
+    width: auto;
+    max-width: 240px;
+    font-size: var(--v2-t-sm);
+    padding-left: 10px;
+    padding-right: 30px;
+    background-position: right 10px center;
+    border-color: var(--v2-line);
+    text-overflow: ellipsis;
+  }
+  .v2-filter-vmb {
+    color: var(--v2-mute);
+  }
+  .v2-filter-vmb .box {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    border: 1.5px solid currentColor;
+  }
+  .v2-filter-vmb[aria-pressed="true"] {
+    color: var(--v2-ink);
+    background: var(--v2-sel);
+  }
+  .v2-filter-vmb[aria-pressed="true"] .box {
+    background: currentColor;
+  }
+  @media (max-width: 900px) {
+    /* Telefon: en rad, Butik och Automat delar bredden och VMB-knappen står sist. */
+    .v2-filters {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      margin: 8px 12px 0;
+    }
+    .v2-filters .v2-filter-select {
+      width: 100%;
+      max-width: none;
+      height: 44px;
+      font-size: 16px;
+    }
+    .v2-filters .v2-filter-vmb {
+      height: 44px;
+      padding: 0 10px;
+    }
+    .v2-filters:has(.v2-filter-vmb) {
+      grid-auto-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
     }
   }
   .v2-page-body {
@@ -1162,6 +1235,26 @@
     }
   }
 
+  /* Band med få rutor (data-stack): på telefon under varandra i stället för i sidled */
+  @media (max-width: 900px) {
+    .v2-band-wrap[data-stack] {
+      overflow: visible;
+      margin: 0;
+      padding: 0;
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+    .v2-band-wrap[data-stack] .v2-band {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      width: auto;
+      padding-right: 0;
+    }
+    .v2-band-wrap[data-stack] .v2-kt {
+      width: auto;
+    }
+  }
+
   /* Diagram: staplar växer med kort förskjutning */
   .v2-bar-grow {
     transform-origin: bottom;
@@ -1411,6 +1504,385 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * Byggstenar för de gamla sidorna som byggs om (src/components/v2: SubNav, Section,
+   * Notice, KeyValues, Field/Input/Select/Textarea, Table). Se varje komponents kommentar.
+   * ------------------------------------------------------------------------- */
+
+  /* Sidans rutnät (som Pengar/Hem): .v2-cols = huvudspalt + högerspalt 376 px (en spalt under
+     1100 px), .v2-stack = kort under varandra med 14 px mellanrum (12 px på telefon). */
+  .v2-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 376px;
+    gap: 14px;
+    align-items: start;
+  }
+  .v2-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  @media (max-width: 1100px) {
+    .v2-cols {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 900px) {
+    .v2-cols,
+    .v2-stack {
+      gap: 12px;
+    }
+  }
+
+  /* Underflikar (SubNav): text med 2 px streck under vald, som skalets men i V2. */
+  .v2-subnav {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--v2-line);
+    margin-bottom: 16px;
+  }
+  .v2-subnav::-webkit-scrollbar {
+    display: none;
+  }
+  .v2-subnav a {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 10px;
+    font-size: var(--v2-t-md);
+    font-weight: 450;
+    color: var(--v2-mute);
+    white-space: nowrap;
+    transition: color 0.15s ease;
+  }
+  .v2-subnav a[aria-current="page"] {
+    color: var(--v2-ink);
+    font-weight: 650;
+  }
+  .v2-subnav a[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--v2-ink);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .v2-subnav a:not([aria-current="page"]):hover {
+      color: var(--v2-ink);
+    }
+  }
+  @media (max-width: 900px) {
+    .v2-subnav {
+      margin: 0 -12px 12px;
+      padding: 0 6px;
+    }
+    .v2-subnav a {
+      height: 44px;
+    }
+  }
+
+  /* Sektion (rubrik över en grupp kort) */
+  .v2-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .v2-section + .v2-section {
+    margin-top: 24px;
+  }
+  .v2-section-hd {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 2px;
+  }
+  .v2-section-hd :is(h2, h3) {
+    font-size: var(--v2-t-lg);
+    line-height: 22px;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+  }
+  .v2-section-hd p {
+    margin-top: 2px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .v2-section-hd .acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex: none;
+  }
+
+  /* Meddelanderuta (Notice) */
+  .v2-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--v2-r-lg);
+    background: var(--v2-info-soft);
+    color: var(--v2-info-text);
+    box-shadow: 0 0 0 1px var(--v2-info-line);
+    font-size: var(--v2-t-md);
+    line-height: 20px;
+  }
+  .v2-notice .dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 6px;
+    border-radius: 999px;
+    background: var(--v2-info-icon);
+    flex: none;
+  }
+  .v2-notice .tx {
+    flex: 1;
+    min-width: 0;
+  }
+  .v2-notice .tx b {
+    display: block;
+    font-weight: 650;
+  }
+  .v2-notice .ac {
+    flex: none;
+    display: flex;
+    gap: 8px;
+    align-self: center;
+  }
+  .v2-notice.success {
+    background: var(--v2-profit-soft);
+    color: var(--v2-profit-text);
+    box-shadow: 0 0 0 1px rgb(4 123 93 / 0.25);
+  }
+  .v2-notice.success .dot {
+    background: var(--v2-profit);
+  }
+  .v2-notice.warning {
+    background: var(--v2-warn-soft);
+    color: var(--v2-warn-text);
+    box-shadow: 0 0 0 1px var(--v2-warn-line);
+  }
+  .v2-notice.warning .dot {
+    background: var(--v2-warn-icon);
+  }
+  .v2-notice.critical {
+    background: var(--v2-crit-soft);
+    color: var(--v2-crit-text);
+    box-shadow: 0 0 0 1px var(--v2-crit-line);
+  }
+  .v2-notice.critical .dot {
+    background: var(--v2-crit-icon);
+  }
+  @media (max-width: 900px) {
+    .v2-notice {
+      flex-wrap: wrap;
+    }
+    .v2-notice .ac {
+      flex-basis: 100%;
+      padding-left: 18px;
+    }
+  }
+
+  /* Etikett och värde (KeyValues) */
+  .v2-kv {
+    display: flex;
+    flex-direction: column;
+  }
+  .v2-kv > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 7px 0;
+    border-top: 1px solid var(--v2-line2);
+    font-size: var(--v2-t-sm);
+  }
+  .v2-kv > div:first-child {
+    border-top: 0;
+  }
+  .v2-kv dt {
+    color: var(--v2-mute);
+    min-width: 0;
+  }
+  .v2-kv dd {
+    color: var(--v2-ink);
+    font-weight: 550;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    min-width: 0;
+  }
+
+  /* Formulärfält (Field, Input, Select, Textarea) */
+  .v2-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .v2-field > label {
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    color: var(--v2-ink);
+  }
+  .v2-field .hint {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .v2-field .err {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-crit-text);
+  }
+  .v2-input,
+  .v2-select,
+  .v2-textarea {
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--v2-faint);
+    border-radius: var(--v2-r-md);
+    background: var(--v2-panel);
+    color: var(--v2-ink);
+    font: inherit;
+    font-size: var(--v2-t-md);
+    transition: border-color 0.15s ease;
+  }
+  .v2-textarea {
+    height: auto;
+    min-height: 88px;
+    padding: 8px 12px;
+    resize: vertical;
+  }
+  .v2-input.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .v2-input::placeholder,
+  .v2-textarea::placeholder {
+    color: var(--v2-faint);
+  }
+  .v2-select {
+    appearance: none;
+    padding-right: 32px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23616161' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+  :is(.v2-input, .v2-select, .v2-textarea)[aria-invalid="true"] {
+    border-color: var(--v2-crit-icon);
+  }
+  :is(.v2-input, .v2-select, .v2-textarea):disabled {
+    background-color: var(--v2-dis);
+    color: var(--v2-mute);
+    cursor: not-allowed;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    :is(.v2-input, .v2-select, .v2-textarea):not(:disabled, :focus, [aria-invalid="true"]):hover {
+      border-color: var(--v2-body2);
+    }
+  }
+  .v2-input-wrap {
+    position: relative;
+    display: block;
+  }
+  .v2-input-wrap .v2-input {
+    padding-right: 36px;
+  }
+  .v2-input-wrap .sfx {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--v2-mute);
+    pointer-events: none;
+  }
+  @media (max-width: 900px) {
+    .v2-input,
+    .v2-select {
+      height: 44px;
+    }
+  }
+
+  /* Tabell (Table) */
+  .v2-table-wrap {
+    overflow-x: auto;
+    min-width: 0;
+  }
+  .v2-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--v2-t-sm);
+    font-variant-numeric: tabular-nums;
+  }
+  .v2-table th {
+    height: 34px;
+    padding: 0 12px;
+    background: var(--v2-hover);
+    border-bottom: 1px solid var(--v2-line);
+    font-size: var(--v2-t-xs);
+    font-weight: 550;
+    color: var(--v2-mute);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .v2-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--v2-line2);
+    color: var(--v2-ink);
+    vertical-align: middle;
+  }
+  .v2-table :is(th, td):first-child {
+    padding-left: 18px;
+  }
+  .v2-table :is(th, td):last-child {
+    padding-right: 18px;
+  }
+  .v2-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .v2-table .num {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .v2-table td.none {
+    padding: 24px 18px;
+    text-align: center;
+    color: var(--v2-mute);
+  }
+  .v2-table tfoot td {
+    border-top: 1px solid var(--v2-line);
+    border-bottom: 0;
+    font-weight: 650;
+  }
+  .v2-table tr.lnk a {
+    font-weight: 550;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .v2-table tbody tr.lnk:hover {
+      background: var(--v2-hover);
+    }
+  }
+  @media (max-width: 900px) {
+    .v2-table .ph-hide {
+      display: none;
+    }
+    .v2-table :is(th, td):first-child {
+      padding-left: 14px;
+    }
+    .v2-table :is(th, td):last-child {
+      padding-right: 14px;
+    }
   }
 
   /* Periodvalet: datumknappen, rutan på datorn, arket på telefonen och kalendern */
@@ -1910,5 +2382,82 @@
       left: min(0px, calc(50% - 22px));
       right: min(0px, calc(50% - 22px));
     }
+  }
+}
+
+/*
+ * Bron till de gamla sidorna (de bakom Mer som ännu inte byggts om till V2Page).
+ * I lagret utilities med två attribut i selektorn: väger mer än en enkel verktygsklass, så att
+ * kontrollerna i den gamla kontextraden (periodval, eget intervall, VMB, filter) ser ut som V2
+ * utan att period-bar.tsx ändras. Gäller bara i V2-skalet.
+ */
+@layer utilities {
+  [data-ui="v2"] [data-shell-context] :is(button, select):not([role="radio"]) {
+    border-radius: var(--v2-r-md);
+    border-color: var(--v2-line);
+    background-color: var(--v2-panel);
+    font-family: var(--v2-sans);
+    font-size: var(--v2-t-sm);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  [data-ui="v2"] [data-shell-context] button[aria-pressed="true"] {
+    background-color: var(--v2-primary);
+    border-color: var(--v2-primary);
+    color: var(--v2-on-primary);
+  }
+  [data-ui="v2"] [data-shell-context] button[aria-expanded="true"] {
+    background-color: var(--v2-sel);
+    border-color: var(--v2-line3);
+  }
+  [data-ui="v2"] [data-shell-context] button:not([role="radio"])::after {
+    display: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    [data-ui="v2"]
+      [data-shell-context]
+      :is(button, select):not([role="radio"], [aria-pressed="true"]):hover {
+      background-color: var(--v2-hover);
+      border-color: var(--v2-line3);
+    }
+  }
+  /* "Kopiera länk" är en ikon: ingen ram. */
+  [data-ui="v2"] [data-shell-context] button[aria-label^="Kopiera"] {
+    border-color: transparent;
+    background-color: transparent;
+  }
+}
+
+/*
+ * De gamla sidornas affischrubriker (text-3xl …) på V2:s skala: 20 px halvfet för de stora,
+ * 16 px för text-lg. Bara på sidor utan data-v2-page och bara på element som inte redan har en
+ * V2-storlek (text-v2-*). Sidorna byggs om en i taget; det här gör att de redan nu läses som V2.
+ */
+@layer utilities {
+  .v2-main:not(:has([data-v2-page]))
+    :is(
+      [class*="text-display"],
+      [class*="text-4xl"],
+      [class*="text-3xl"],
+      [class*="text-2xl"],
+      [class*="text-xl"]
+    ):not([class*="text-v2-"]) {
+    font-size: var(--v2-t-xl);
+    line-height: 28px;
+    letter-spacing: -0.01em;
+  }
+  .v2-main:not(:has([data-v2-page]))
+    :is(h1, h2, h3):is(
+      [class*="text-display"],
+      [class*="text-4xl"],
+      [class*="text-3xl"],
+      [class*="text-2xl"],
+      [class*="text-xl"]
+    ):not([class*="text-v2-"]) {
+    font-weight: 650;
+  }
+  .v2-main:not(:has([data-v2-page])) [class*="text-lg"]:not([class*="text-v2-"]) {
+    font-size: var(--v2-t-lg);
+    line-height: 22px;
   }
 }

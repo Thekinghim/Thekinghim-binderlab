@@ -1,8 +1,10 @@
 "use client";
 
 import { BarChart, type BarDatum } from "@/components/charts/bar-chart";
-import { KpiStrip, type KpiItem } from "@/components/ui/kpi-strip";
-import { formatInt, formatSek } from "@/lib/format";
+import { Badge, DeltaBadge } from "@/components/v2/badge";
+import { BarChart as V2BarChart } from "@/components/v2/bars";
+import { Sparkline } from "@/components/v2/sparkline";
+import { formatInt, formatSek, NBSP } from "@/lib/format";
 
 import { kr } from "./text";
 
@@ -23,50 +25,72 @@ const formats: Record<PortalKpi["id"], (v: number) => string> = {
   compensation: (v) => kr(v),
 };
 
-/** Nyckeltalen för månaden. Modellen är serialiserbar; formateringen väljs här. */
+/**
+ * Nyckeltalen för månaden som V2:s KPI-band (som Hem): etikett, tal, förändringen mot
+ * jämförelsemånaden och en liten linje per månad. Modellen är serialiserbar; formateringen
+ * väljs här. På telefon rullar rutorna i sidled.
+ */
 export function PortalKpis({ kpis, comparison }: { kpis: PortalKpi[]; comparison: string }) {
-  const items: KpiItem[] = kpis.map((k) => ({
-    id: k.id,
-    label: k.label,
-    value: k.value ?? Number.NaN,
-    format: formats[k.id],
-    delta:
-      k.delta === null
-        ? undefined
-        : k.id === "orders"
-          ? { delta: k.delta, kind: "absolute", unit: "st" }
-          : { delta: k.delta, kind: "relative" },
-    trend: k.trend.length > 1 ? k.trend : undefined,
-    primary: k.id === "revenue",
-  }));
-  return <KpiStrip items={items} comparison={comparison} label="Månaden" headingLevel={2} />;
+  return (
+    <div className="v2-band-wrap">
+      <div
+        className="v2-band"
+        style={{ "--cols": kpis.length } as React.CSSProperties}
+        role="group"
+        aria-label={`Månaden. ${comparison}`}
+      >
+        {kpis.map((k) => (
+          <div key={k.id} className="v2-kt">
+            <span className="kl">{k.label}</span>
+            <span className="kn">{k.value === null ? "–" : formats[k.id](k.value)}</span>
+            {k.delta !== null ? (
+              <span className="kd">
+                {k.id === "orders" ? (
+                  <Badge tone={k.delta > 0 ? "success" : k.delta < 0 ? "critical" : "neutral"}>
+                    {`${k.delta > 0 ? `↑${NBSP}` : k.delta < 0 ? `↓${NBSP}` : ""}${formatInt(Math.abs(k.delta))}${NBSP}st`}
+                  </Badge>
+                ) : (
+                  <DeltaBadge bp={Math.round(k.delta * 10_000)} />
+                )}
+              </span>
+            ) : null}
+            {k.trend.length > 1 ? (
+              <span className="ks">
+                <Sparkline values={k.trend} />
+              </span>
+            ) : (
+              <span className="ks-empty" />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-/** Försäljning per månad (staplar, värden i kronor). Vald månad annoteras, aldrig signal. */
+/**
+ * Försäljning per månad som V2:s staplar (som Pengar): vald månad mörk, de andra ljusa, en
+ * etikett per månad och tooltip. Skärmläsaren får talen som tabell.
+ */
 export function TrendChart({
   data,
   summary,
   selectedIndex,
-  mean,
 }: {
   data: BarDatum[];
   summary: string;
   selectedIndex: number;
-  /** Snitt för hela månader i kronor; utan värde ritas ingen snittlinje. */
+  /** Snitt för hela månader i kronor (står i texten under, inte som linje). */
   mean?: number;
 }) {
   return (
-    <BarChart
-      data={data}
-      orientation="vertical"
+    <V2BarChart
+      data={data.map((d, i) => ({ key: `${i}-${d.label}`, label: d.label, value: d.value }))}
       format={(v) => formatSek(v)}
-      unit="kr"
-      height={240}
-      peakIndex={selectedIndex}
-      highlightNote="Vald månad"
-      showMean={mean !== undefined}
-      meanValue={mean}
-      summary={summary}
+      valueLabel="Försäljning"
+      height={200}
+      selectedIndex={selectedIndex}
+      ariaLabel={summary}
     />
   );
 }

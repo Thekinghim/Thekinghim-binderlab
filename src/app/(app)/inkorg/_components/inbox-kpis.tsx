@@ -1,9 +1,8 @@
-"use client";
+import { formatAmountOre } from "@/components/v2/format";
+import { KpiTile } from "@/components/v2/kpi-tile";
+import { formatInt } from "@/lib/format";
 
-import { KpiStrip } from "@/components/ui/kpi-strip";
-import { formatInt, formatKronor } from "@/lib/format";
-
-/** Nyckeltalen i Inkorg. Öppna ärenden är huvudpersonen. */
+/** Nyckeltalen i Inkorg (V2-bandet, som Hem). Öppna ärenden står först. */
 export function InboxKpis({
   open,
   created,
@@ -20,22 +19,16 @@ export function InboxKpis({
   period: string;
 }) {
   return (
-    <KpiStrip
-      label={`Ärenden · ${period}`}
-      headingLevel={2}
-      // Rubriken säger redan hur många som är öppna: siffrorna fälls ihop på mobilen.
-      mobileFold
-      items={[
-        { id: "open", label: "Öppna ärenden", value: open, format: formatInt, primary: true },
-        { id: "created", label: "Nya i perioden", value: created, format: formatInt },
-        { id: "resolved", label: "Lösta i perioden", value: resolved, format: formatInt },
-        {
-          id: "refunded",
-          label: `Återbetalt · ${formatInt(refundCount)} st`,
-          value: refundedOre,
-          format: (v) => formatKronor(v / 100, { decimals: 2 }),
-        },
-      ]}
-    />
+    <section aria-label={`Ärenden · ${period}`} className="v2-band-wrap">
+      <div className="v2-band" style={{ "--cols": 4 } as React.CSSProperties}>
+        <KpiTile label="Öppna ärenden" value={formatInt(open)} />
+        <KpiTile label="Nya i perioden" value={formatInt(created)} compare={period} />
+        <KpiTile label="Lösta i perioden" value={formatInt(resolved)} />
+        <KpiTile
+          label={`Återbetalt · ${formatInt(refundCount)} st`}
+          value={formatAmountOre(refundedOre)}
+        />
+      </div>
+    </section>
   );
 }

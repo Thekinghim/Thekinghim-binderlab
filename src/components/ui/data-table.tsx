@@ -847,6 +847,8 @@ export function DataTable<T>({
                     title={col.headerTitle}
                     className={cn(
                       "h-9 border-b border-line-strong px-3 font-normal whitespace-nowrap",
+                      // V2: rubrikraden som .v2-table (ljus botten, 1 px #E3E3E3).
+                      "v2:border-v2-line v2:bg-v2-hover",
                       height !== undefined && "sticky top-0 z-[2] bg-[var(--dt-bg)]",
                       col.numeric ? "text-right" : "text-left",
                       edgeClasses(col, ci, ctx, "z-[3]"),

@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode, type Ref } from "react";
 
-import { Panel } from "@/components/ui/frame";
 import { MobileTopRows } from "@/components/ui/mobile-top-list";
-import { SectionHeader } from "@/components/ui/section-header";
 import { Segmented } from "@/components/ui/segmented";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatMarginBp, formatSek, NBSP } from "@/lib/format";
@@ -22,6 +20,39 @@ function replaceParam(name: string, value: string) {
   const url = new URL(window.location.href);
   url.searchParams.set(name, value);
   window.history.replaceState(window.history.state, "", url);
+}
+
+/**
+ * Ett kort med rubrik, en grå rad under och kontroller till höger (växlarna). Rubrikraden
+ * bryts på telefon så att växlarna hamnar under rubriken.
+ */
+export function AnalysisCard({
+  id,
+  title,
+  aside,
+  actions,
+  children,
+  sectionRef,
+}: {
+  id: string;
+  title: ReactNode;
+  aside?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+  sectionRef?: Ref<HTMLElement>;
+}) {
+  return (
+    <section ref={sectionRef} aria-labelledby={id} className="v2-card scroll-mt-28">
+      <div className="v2-card-hd flex-wrap gap-y-2">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 id={id}>{title}</h2>
+          {aside ? <p className="text-v2-sm text-v2-mute">{aside}</p> : null}
+        </div>
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -85,32 +116,30 @@ export function TableSection({
   }, [selectedTitle]);
 
   return (
-    <section
-      ref={ref}
-      aria-labelledby="per-post"
-      className="flex scroll-mt-28 flex-col gap-10 md:gap-12"
+    <AnalysisCard
+      sectionRef={ref}
+      id="per-post"
+      title={heading.title}
+      aside={heading.aside || `Per ${VIEW_NOUN[view]} · ${days}${NBSP}d`}
+      actions={
+        <>
+          {tabs}
+          <ExportButton
+            view={view}
+            rows={rows}
+            totals={totals}
+            sort={sort}
+            fileName={`${fileStem}-per-${VIEW_PARAM[view]}`}
+            showStoreShare={showStoreShare}
+          />
+        </>
+      }
     >
-      <SectionHeader
-        id="per-post"
-        eyebrow={`Lönsamhet per ${VIEW_NOUN[view]} · ${days}${NBSP}d`}
-        title={heading.title}
-        aside={heading.aside}
-        actions={
-          <div className="flex flex-wrap items-center gap-3">
-            {tabs}
-            <ExportButton
-              view={view}
-              rows={rows}
-              totals={totals}
-              sort={sort}
-              fileName={`${fileStem}-per-${VIEW_PARAM[view]}`}
-              showStoreShare={showStoreShare}
-            />
-          </div>
-        }
-      />
       {view === "title" && selectedTitle ? (
-        <p className="-mt-4 text-sm text-muted md:-mt-6" role="status">
+        <p
+          className="border-b border-v2-line2 px-[18px] py-2.5 text-v2-sm text-v2-mute"
+          role="status"
+        >
           {selected
             ? sentence(
                 `Vald titel: ${selected.name}${
@@ -129,31 +158,35 @@ export function TableSection({
         </p>
       ) : null}
       {rows.length === 0 ? (
-        <StateMessage kind="empty" message={sentence(`Inga order under ${periodLabel}`)} />
+        <div className="v2-card-body">
+          <StateMessage kind="empty" message={sentence(`Inga order under ${periodLabel}`)} />
+        </div>
       ) : (
         // På mobilen de fem första raderna och "Visa alla N" (från md hela tabellen).
-        <MobileTopRows
-          key={view}
-          // Över 200 rader virtualiseras tabellen (DataTable): då fälls inget ihop.
-          total={rows.length > 200 ? 0 : rows.length}
-          noun={VIEW_PLURAL[view]}
-          defaultOpen={selected !== null}
-        >
-          <ProfitTable
-            view={view}
-            onViewChange={change}
-            rows={rows}
-            totals={totals}
-            caption={`Lönsamhet per ${VIEW_NOUN[view]}, ${periodLabel}`}
-            sort={sort}
-            onSortChange={setSort}
-            selectedKey={selected?.key ?? null}
-            showStoreShare={showStoreShare}
-            storeShareLabel={storeShareLabel}
-          />
-        </MobileTopRows>
+        <div className="px-[18px] pt-2 pb-3">
+          <MobileTopRows
+            key={view}
+            // Över 200 rader virtualiseras tabellen (DataTable): då fälls inget ihop.
+            total={rows.length > 200 ? 0 : rows.length}
+            noun={VIEW_PLURAL[view]}
+            defaultOpen={selected !== null}
+          >
+            <ProfitTable
+              view={view}
+              onViewChange={change}
+              rows={rows}
+              totals={totals}
+              caption={`Lönsamhet per ${VIEW_NOUN[view]}, ${periodLabel}`}
+              sort={sort}
+              onSortChange={setSort}
+              selectedKey={selected?.key ?? null}
+              showStoreShare={showStoreShare}
+              storeShareLabel={storeShareLabel}
+            />
+          </MobileTopRows>
+        </div>
       )}
-    </section>
+    </AnalysisCard>
   );
 }
 
@@ -270,26 +303,24 @@ export function TrendSection({
   const notes = trendNotes(series, key, showStoreShare, total);
 
   return (
-    <section aria-labelledby="utveckling" className="flex scroll-mt-28 flex-col gap-10 md:gap-12">
-      <SectionHeader
-        id="utveckling"
-        eyebrow={`Utveckling · ${days}${NBSP}d`}
-        title={series.heading.title}
-        aside={series.heading.aside}
-        actions={
-          <div className="flex flex-wrap items-center gap-3">
-            {tabs}
-            <Segmented
-              options={TREND_OPTIONS}
-              value={key}
-              onChange={change}
-              label="Upplösning"
-              size="sm"
-            />
-          </div>
-        }
-      />
-      <Panel>
+    <AnalysisCard
+      id="utveckling"
+      title={series.heading.title}
+      aside={series.heading.aside || `Utveckling · ${days}${NBSP}d`}
+      actions={
+        <>
+          {tabs}
+          <Segmented
+            options={TREND_OPTIONS}
+            value={key}
+            onChange={change}
+            label="Upplösning"
+            size="sm"
+          />
+        </>
+      }
+    >
+      <div className="v2-card-body">
         {series.buckets.length === 0 ? (
           <StateMessage kind="empty" compact message="Ingen försäljning i perioden." />
         ) : (
@@ -299,9 +330,11 @@ export function TrendSection({
             summary={trendSummary(series, unit.noun)}
           />
         )}
-        {notes.length > 0 ? <p className="mt-4 text-xs text-subtle">{notes.join(" ")}</p> : null}
-      </Panel>
-    </section>
+        {notes.length > 0 ? (
+          <p className="mt-4 text-v2-xs text-v2-mute">{notes.join(" ")}</p>
+        ) : null}
+      </div>
+    </AnalysisCard>
   );
 }
 
@@ -340,13 +373,16 @@ export function AnalysisSection({
     <Segmented options={ANALYSIS_OPTIONS} value={tab} onChange={change} label="Visa" size="sm" />
   );
   return (
-    <div key={tab} className="fade-in">
+    <div key={tab} className="flex min-w-0 flex-col gap-[14px] max-[900px]:gap-3">
       {tab === "table" ? (
         <TableSection {...table} tabs={tabs} />
       ) : tab === "trend" ? (
         <TrendSection {...trend} tabs={tabs} />
       ) : (
-        <div id="rytm-och-topplista" className="flex scroll-mt-28 flex-col gap-8">
+        <div
+          id="rytm-och-topplista"
+          className="flex scroll-mt-28 flex-col gap-[14px] max-[900px]:gap-3"
+        >
           <div className="flex justify-end">{tabs}</div>
           {rhythm}
         </div>

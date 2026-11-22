@@ -88,6 +88,14 @@ describe("inloggning", () => {
       const res = await context.request.get(`${e2e().baseUrl}${path}`, { maxRedirects: 0 });
       expect(res.status(), path).toBe(200);
     }
+    // Sidan för ett okänt id är inte tom: en synlig rubrik (h1) som säger att den inte finns.
+    for (const path of [`/automater/${unknown}`, `/butiker/${unknown}`, `/rapport/${unknown}`]) {
+      await page.goto(path);
+      const h1 = page.getByRole("heading", { level: 1 });
+      await h1.first().waitFor();
+      expect(await h1.first().isVisible(), path).toBe(true);
+      expect(await h1.first().innerText(), path).toMatch(/finns inte/);
+    }
     await context.close();
   });
 

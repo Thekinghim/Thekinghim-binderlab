@@ -61,7 +61,7 @@ export function OwnerReports({
       router.refresh();
     });
   return (
-    <div className="flex flex-col gap-3 border-t border-line pt-4" data-owner-reports>
+    <div className="flex flex-col gap-3 border-t border-v2-line2 pt-4" data-owner-reports>
       <Select
         label="En rapport per butik hos ägaren"
         value={ownerId}

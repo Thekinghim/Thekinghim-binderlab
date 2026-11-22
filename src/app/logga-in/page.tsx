@@ -56,11 +56,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     view === "losenord" ? "password" : view === "glomt" ? "forgot" : "magic-link";
 
   return (
-    <AuthFrame
-      eyebrow={<span>Binderlab</span>}
-      title={messages(locale).auth.loginTitle}
-      locale={locale}
-    >
+    <AuthFrame title={messages(locale).auth.loginTitle} locale={locale}>
       <LoginForm
         next={next === "/" ? "" : next}
         initialMode={mode}

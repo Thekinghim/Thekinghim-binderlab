@@ -3,10 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
-import { cn } from "@/lib/cn";
+import { Button } from "@/components/v2/button";
+import { Field, Select, Textarea } from "@/components/v2/field";
 import { reportFault, type PortalActionResult } from "@/server/portal/actions";
 import { FAULT_KINDS, FAULT_LABEL, type FaultKind } from "@/server/portal/faults";
 
@@ -57,33 +56,27 @@ export function FaultForm({
     });
   }
 
+  const machineError = error?.field === "machine" ? error.error : undefined;
   return (
-    <form onSubmit={submit} className="flex flex-col gap-6" noValidate>
-      <Select
-        label="Automat"
-        value={machineId}
-        onChange={(e) => setMachineId(e.target.value)}
-        error={error?.field === "machine" ? error.error : undefined}
-        options={[
-          ...(machineId === "" ? [{ value: "", label: "Välj automat" }] : []),
-          ...machines.map((m) => ({ value: m.machineId, label: `${m.code} · ${m.name}` })),
-        ]}
-        required
-      />
+    <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
+      <Field label="Automat" error={machineError}>
+        {(p) => (
+          <Select {...p} value={machineId} onChange={(e) => setMachineId(e.target.value)} required>
+            {machineId === "" ? <option value="">Välj automat</option> : null}
+            {machines.map((m) => (
+              <option key={m.machineId} value={m.machineId}>
+                {`${m.code} · ${m.name}`}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="label mb-1.5 text-muted">Vad är fel?</legend>
+        <legend className="mb-1.5 text-v2-sm font-[550] text-v2-ink">Vad är fel?</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           {FAULT_KINDS.map((k) => (
-            <label
-              key={k}
-              className={cn(
-                "flex min-h-11 cursor-pointer items-center gap-3 rounded-sm border px-3 py-2 text-base transition-colors duration-fast ease-instrument has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus",
-                kind === k
-                  ? "border-fg bg-hover text-fg"
-                  : "border-line-control text-muted hover:border-muted hover:text-fg",
-              )}
-            >
+            <label key={k} className="pt-choice" data-on={kind === k}>
               <input
                 type="radio"
                 name="kind"
@@ -92,62 +85,48 @@ export function FaultForm({
                 onChange={() => setKind(k)}
                 className="sr-only"
               />
-              <span
-                aria-hidden
-                className={cn(
-                  "inline-flex size-3.5 shrink-0 items-center justify-center rounded-full border",
-                  kind === k ? "border-fg" : "border-line-control",
-                )}
-              >
-                {kind === k ? <span className="size-1.5 rounded-full bg-fg" /> : null}
-              </span>
+              <span aria-hidden className="r" />
               {FAULT_LABEL[k]}
             </label>
           ))}
         </div>
         {error?.field === "kind" ? (
-          <p className="flex items-center gap-1.5 text-xs text-signal-fg">
+          <p className="flex items-center gap-1.5 text-v2-sm text-v2-crit-text">
             <Icon name="alert" size={12} />
             {error.error}
           </p>
         ) : null}
       </fieldset>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={descId} className="label text-muted">
-          Beskrivning {kind === "store_other" ? "" : "(valfri)"}
-        </label>
-        <textarea
-          id={descId}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          maxLength={1000}
-          rows={4}
-          aria-invalid={descError ? true : undefined}
-          aria-describedby={`${descId}-msg`}
-          placeholder="Till exempel: kortläsaren svarar inte sedan i morse."
-          className={cn(
-            "w-full min-w-0 rounded-sm border bg-bg px-3 py-2 text-base text-fg placeholder:text-subtle",
-            descError ? "border-signal-line" : "border-line-control hover:border-muted",
-          )}
-        />
-        <p
-          id={`${descId}-msg`}
-          className={cn("text-xs", descError ? "text-signal-fg" : "text-subtle")}
-        >
-          {descError ?? `${description.length} av 1 000 tecken. Operatören ser det ni skriver.`}
-        </p>
-      </div>
+      <Field
+        id={descId}
+        label={`Beskrivning ${kind === "store_other" ? "" : "(valfri)"}`}
+        error={descError}
+        hint={`${description.length} av 1 000 tecken. Operatören ser det ni skriver.`}
+      >
+        {(p) => (
+          <Textarea
+            {...p}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={1000}
+            rows={4}
+            placeholder="Till exempel: kortläsaren svarar inte sedan i morse."
+          />
+        )}
+      </Field>
 
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" variant="primary" loading={pending}>
+        <Button type="submit" variant="act" size="lg" pending={pending} className="max-sm:w-full">
           Skicka felanmälan
         </Button>
-        <p role="status" aria-live="polite" className="text-sm">
+        <p role="status" aria-live="polite" className="text-v2-sm">
           {result?.ok ? (
-            <span className="text-fg">Tack. Felanmälan är skickad till operatören.</span>
+            <span className="text-v2-profit-text">
+              Tack. Felanmälan är skickad till operatören.
+            </span>
           ) : error && !error.field ? (
-            <span className="flex items-center gap-1.5 text-signal-fg">
+            <span className="flex items-center gap-1.5 text-v2-crit-text">
               <Icon name="alert" size={12} />
               {error.error}
             </span>

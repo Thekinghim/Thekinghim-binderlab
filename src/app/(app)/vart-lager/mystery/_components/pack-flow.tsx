@@ -125,15 +125,15 @@ export function PackFlow({
 
   return (
     <form
-      className="flex flex-col gap-5"
+      className="mys-pack"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
     >
       {places.length > 1 ? (
-        <div className="flex flex-col gap-2">
-          <span className="label text-subtle">{t.mystery.packIn}</span>
+        <div className="fld">
+          <span className="v2-lab">{t.mystery.packIn}</span>
           <PlaceButtons
             label={t.mystery.packIn}
             places={places.map((p) => ({ id: p.id, name: t.common.placeName(p.name) }))}
@@ -143,19 +143,19 @@ export function PackFlow({
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-2">
-        <label htmlFor={`omgangar-${titleId}`} className="label text-subtle">
+      <div className="fld">
+        <label htmlFor={`omgangar-${titleId}`} className="v2-lab">
           {t.mystery.batchesLabel}
         </label>
-        <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2">
+        <div className="stepper">
           <button
             type="button"
             aria-label={t.mystery.lessBatch}
             onClick={() => setBatches((b) => Math.max(1, b - 1))}
             disabled={batches <= 1}
-            className="flex size-14 items-center justify-center rounded-md border border-line-strong bg-raised text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
+            className="v2-btn lg"
           >
-            <Icon name="minus" size={24} />
+            <Icon name="minus" size={18} />
           </button>
           <input
             id={`omgangar-${titleId}`}
@@ -171,60 +171,42 @@ export function PackFlow({
                 Math.min(MAX_BATCHES, Math.max(1, Math.trunc(Number(e.target.value)) || 1)),
               )
             }
-            className="tnum h-14 w-full min-w-0 [appearance:textfield] rounded-md border border-line-control bg-bg text-center text-3xl font-medium text-fg [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            style={{ fontSize: 28 }}
+            className="v2-input"
           />
           <button
             type="button"
             aria-label={t.mystery.moreBatch}
             onClick={() => setBatches((b) => Math.min(MAX_BATCHES, b + 1))}
             disabled={batches >= MAX_BATCHES}
-            className="flex size-14 items-center justify-center rounded-md border border-line-strong bg-raised text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
+            className="v2-btn lg"
           >
-            <Icon name="plus" size={24} />
+            <Icon name="plus" size={18} />
           </button>
         </div>
-        <span className="meta text-subtle">
+        <span className="mys-mute tnum">
           {t.mystery.planLine(plan.packs, cap.batches, placeLabel)}
         </span>
       </div>
 
-      <div
-        className={cn(
-          "flex flex-col gap-3 rounded-md border px-4 py-3",
-          missing.length > 0
-            ? "border-signal-line bg-signal-soft"
-            : "border-line-strong bg-surface",
-        )}
-        aria-live="polite"
-      >
+      <div className={cn("mys-plan", missing.length > 0 && "short")} aria-live="polite">
         {missing.length > 0 ? (
-          <p className="text-base text-fg">
-            <span className="label block text-signal-fg">{t.mystery.missingIn(placeLabel)}</span>
+          <p>
+            <span className="v2-lab no">{t.mystery.missingIn(placeLabel)}</span>
             {t.mystery.list(missing)}.
           </p>
         ) : null}
-        <p className="text-base text-fg">
-          <span className="label block text-subtle">{t.mystery.takesFrom(placeLabel)}</span>
+        <p>
+          <span className="v2-lab">{t.mystery.takesFrom(placeLabel)}</span>
           {t.mystery.list(plan.takes)}
         </p>
-        <p className="text-base text-fg">
-          <span className="label block text-subtle">{t.mystery.adds}</span>
+        <p>
+          <span className="v2-lab">{t.mystery.adds}</span>
           {t.mystery.addsLine(plan.packs, name, placeLabel)}
         </p>
       </div>
 
-      <button
-        type="submit"
-        disabled={!ready}
-        className={cn(
-          "flex h-14 w-full items-center justify-center gap-2 rounded-md border text-lg font-medium transition-colors",
-          !ready
-            ? "border-dashed border-line-strong text-disabled"
-            : "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
-        )}
-      >
-        {missing.length > 0 ? null : <Icon name="check" size={20} />}
+      <button type="submit" disabled={!ready} className="v2-btn act lg w-full">
+        {missing.length > 0 ? null : <Icon name="check" size={16} />}
         {pending
           ? t.mystery.packing
           : missing.length > 0
@@ -233,8 +215,8 @@ export function PackFlow({
       </button>
 
       {done ? (
-        <p className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-line px-4 py-2 text-base">
-          <span className={cn("min-w-0", done.undone ? "text-muted line-through" : "text-fg")}>
+        <p className={cn("mys-done", done.undone && "undone")}>
+          <span className="min-w-0">
             {done.undone ? t.mystery.undoneLabel : t.mystery.packedLabel}
             {done.text}
           </span>
@@ -243,7 +225,7 @@ export function PackFlow({
               type="button"
               onClick={() => undo(done.packingId)}
               disabled={pending}
-              className="inline-flex h-11 shrink-0 items-center rounded-sm border border-line-strong px-3 text-sm font-medium text-fg hover:bg-hover"
+              className="v2-btn touch shrink-0"
             >
               {t.common.undo}
             </button>

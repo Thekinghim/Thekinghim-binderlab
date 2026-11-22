@@ -59,7 +59,7 @@ export function PreviewBox({
   children?: React.ReactNode;
 }) {
   return (
-    <div role="status" className="flex flex-col gap-3 rounded-md border border-line-strong p-4">
+    <div role="status" className="flex flex-col gap-3 rounded-v2-lg border border-v2-line p-4">
       <p className="label text-subtle">Det här händer</p>
       <ul className="flex flex-col gap-1 text-sm text-fg">
         {preview.lines.map((l, i) => (
@@ -81,9 +81,9 @@ export function PreviewBox({
 
 function OwnProductSwitch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md border border-line-strong px-4 py-3">
+    <div className="flex items-center justify-between gap-4 rounded-v2-lg border border-v2-line px-4 py-3">
       <span className="flex flex-col">
-        <span className="text-base text-fg">Egen produkt</span>
+        <span className="text-v2-md text-fg">Egen produkt</span>
         <span className="meta text-subtle">{on ? "Vi packar den själva" : "Köps in"}</span>
       </span>
       <button
@@ -205,7 +205,7 @@ function NewProductForm({
   return (
     <Panel className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium">Ny produkt</h2>
+        <h2 className="text-v2-md font-[650] text-v2-ink">Ny produkt</h2>
         <p className="text-sm text-muted">
           Skapas i Awish och i Binderlab. Försäljningen kopplas av sig själv.
         </p>
@@ -480,7 +480,7 @@ function SlotForm({
   return (
     <Panel className="flex flex-col gap-4" id="fack">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium">Lägg i fack</h2>
+        <h2 className="text-v2-md font-[650] text-v2-ink">Lägg i fack</h2>
         <p className="text-sm text-muted">
           {good
             ? `Var ska ${good.name} ligga? Välj fack. Du ser ändringen innan den skickas.`
@@ -653,12 +653,12 @@ export function NewProductPanels() {
       {created ? (
         <div
           role="status"
-          className="flex flex-col gap-3 rounded-md border border-line-strong p-4 sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-v2-lg border border-v2-line p-4 sm:flex-row sm:items-center sm:justify-between"
         >
           <p className="text-sm text-fg">{created.name} finns nu i Awish.</p>
           <Link
             href={`/inkopspriser/ny-produkt?flik=fack&vara=${created.id}`}
-            className="inline-flex h-11 w-fit items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover md:h-9"
+            className="v2-btn act touch w-fit"
           >
             Lägg den i ett fack →
           </Link>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { StateMessage } from "@/components/ui/state-message";
+import { Empty } from "@/components/v2/empty";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { messages } from "@/i18n";
 import { loadOptionalContextIfSignedIn, requireRoute } from "@/server/data/core";
 
@@ -33,23 +34,22 @@ export default async function InventeringPage({ searchParams }: { searchParams: 
   ]);
   const wanted = typeof sp.lager === "string" ? sp.lager : null;
 
-  return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 pt-4 pb-8 md:px-8 md:pt-10">
-      {simple ? <StockTabs active="stock" t={t} /> : null}
+  const body = (
+    <>
       {!view.hasWarehouse || view.rows.length === 0 || !view.canEdit ? (
-        <>
+        <div className="v2-count">
           <BackToStock href="/vart-lager" />
-          <StateMessage
-            kind="empty"
-            message={
+          <Empty
+            title={
               !view.hasWarehouse
                 ? t.stock.noWarehouse
                 : view.rows.length === 0
                   ? t.stock.noTitles
                   : t.count.readOnly
             }
+            className="v2-card"
           />
-        </>
+        </div>
       ) : (
         <CountFlow
           places={view.places}
@@ -59,6 +59,21 @@ export default async function InventeringPage({ searchParams }: { searchParams: 
           stockHref="/vart-lager"
         />
       )}
-    </div>
+    </>
+  );
+
+  // Enkel vy: skalets eget huvud på personens språk (V2Page är svensk), samma innehåll.
+  if (simple) {
+    return (
+      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-3 pt-3 pb-8 md:px-6 md:pt-6">
+        <StockTabs active="stock" t={t} />
+        {body}
+      </div>
+    );
+  }
+  return (
+    <V2Page title={t.count.title} date={headerDate(new Date(ctx.now), ctx.timeZone)}>
+      <div className="mx-auto w-full max-w-[720px]">{body}</div>
+    </V2Page>
   );
 }

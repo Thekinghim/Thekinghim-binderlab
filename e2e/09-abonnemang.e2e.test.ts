@@ -166,7 +166,9 @@ describe("Kunden på iPhone 15", () => {
 
   it("ser sin plan och sitt underlag under Inställningar", async () => {
     await page.goto("/installningar");
-    await page.getByText("Abonnemang: 499 kr per automat och månad.").waitFor();
+    // Inom main: medan sidan strömmas ligger en dold kopia av innehållet utanför (Reacts
+    // strömningsbuffert, #S:n) tills den flyttas in.
+    await page.locator("main").getByText("Abonnemang: 499 kr per automat och månad.").waitFor();
     await page.getByRole("button", { name: /Visa underlag/ }).click();
     await page.getByText("oktober 2026").first().waitFor();
     await noHorizontalScroll(page);

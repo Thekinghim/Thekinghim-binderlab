@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { OpsLoading } from "../drift/_components/ops-loading";
 
-/** Medan sidan hämtar och räknar: rubriken och innehållet som skeleton. */
+/** Medan sidan hämtar och räknar: rubriken och korten som skeleton. */
 export default function LagerLoading() {
-  return <RouteLoading label="Laddar lager" blocks={["kpi", "table"]} />;
+  return <OpsLoading label="Laddar lager" cards={[4, 8]} />;
 }

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
-import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 
 import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
 import { minDate } from "@/domain";
@@ -43,7 +45,7 @@ export default async function MarknadPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireRoute("marknad");
+  const appCtx = await requireRoute("marknad");
   const sp = await searchParams;
   const [appPeriod, data] = await Promise.all([loadPeriod(sp), loadMarket()]);
   const period = {
@@ -157,48 +159,51 @@ export default async function MarknadPage({
     : 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <div className="rise flex flex-col gap-6" style={{ "--i": 0 } as React.CSSProperties}>
-        <MerHead
-          eyebrow={`Marknad · ${periodLabel(period)}`}
-          title={model.headline.title}
-          line={model.headline.aside}
-        />
-        <ViewTabs
-          label="Vy"
-          value={view}
-          hrefFor={hrefFor}
-          tabs={[
-            { value: "releaser", label: "Släpp", count: upcoming },
-            { value: "priser", label: "Priser", count: data.quotes.length },
-            { value: "sortiment", label: "Sortiment", count: machinesWithSlots },
-          ]}
-        />
-      </div>
-
-      <div className="rise flex flex-col gap-12" style={{ "--i": 1 } as React.CSSProperties}>
-        {view === "releaser" ? <ReleasesSection releases={model.releases} ctx={ctx} /> : null}
-        {view === "priser" ? (
-          <>
-            <PricesSection
-              prices={model.prices}
-              source={source}
-              selectedTitleId={first(sp.pristitel)}
-              period={period}
-              ctx={ctx}
-            />
-            <PricingSection pricing={model.pricing} period={period} ctx={ctx} />
-          </>
-        ) : null}
-        {view === "sortiment" ? (
-          <AssortmentSection
-            assortment={model.assortment}
-            slots={slots}
-            ctx={ctx}
-            capacity={SLOTS_PER_MACHINE}
+    <V2Page title="Marknad" date={headerDate(new Date(appCtx.now), appCtx.timeZone)} period>
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <div className="flex flex-col gap-3">
+          <PageIntro
+            title={model.headline.title}
+            aside={model.headline.aside}
+            facts={[{ label: "Period", value: periodLabel(period) }]}
           />
-        ) : null}
+          <ViewTabs
+            label="Vy"
+            value={view}
+            hrefFor={hrefFor}
+            tabs={[
+              { value: "releaser", label: "Släpp", count: upcoming },
+              { value: "priser", label: "Priser", count: data.quotes.length },
+              { value: "sortiment", label: "Sortiment", count: machinesWithSlots },
+            ]}
+          />
+        </div>
+
+        <div key={view} className="v2-enter v2-stack">
+          {view === "releaser" ? <ReleasesSection releases={model.releases} ctx={ctx} /> : null}
+          {view === "priser" ? (
+            <>
+              <PricesSection
+                prices={model.prices}
+                source={source}
+                selectedTitleId={first(sp.pristitel)}
+                period={period}
+                ctx={ctx}
+              />
+              <PricingSection pricing={model.pricing} period={period} ctx={ctx} />
+            </>
+          ) : null}
+          {view === "sortiment" ? (
+            <AssortmentSection
+              assortment={model.assortment}
+              slots={slots}
+              ctx={ctx}
+              capacity={SLOTS_PER_MACHINE}
+            />
+          ) : null}
+        </div>
       </div>
-    </div>
+    </V2Page>
   );
 }

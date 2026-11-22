@@ -5,7 +5,7 @@
  * VMB-uträkningen (när VMB är på). Sist: kontoplanen.
  */
 
-import { SectionHeader } from "@/components/ui/section-header";
+import { PageIntro } from "@/components/v2/page-intro";
 import { StateMessage } from "@/components/ui/state-message";
 import { MobileFold } from "@/components/ui/mobile-fold";
 import { MobileTopList } from "@/components/ui/mobile-top-list";
@@ -43,7 +43,7 @@ import {
 /** Ankare som öppnar "Fler val" (#kontoplan är rutans id; kontraktet länkar till #bokforing). */
 const MORE_HASHES = ["kontoplan", "bokforing"] as const;
 
-const SECTION = "rise flex scroll-mt-28 flex-col gap-8 pb-12 md:gap-10 md:pb-16";
+const SECTION = "flex scroll-mt-28 flex-col gap-[14px] max-[900px]:gap-3";
 
 /**
  * Kvitton laddas upp genom en server action. På Vercel tar plattformen inte emot förfrågningar
@@ -53,19 +53,17 @@ const UPLOAD_MAX_BYTES = process.env.VERCEL ? 4 * 1024 * 1024 : MAX_RECEIPT_BYTE
 
 const TAG: Record<MonthStatus, Status> = { open: "neutral", closed: "warning", sent: "ok" };
 
-const PRIMARY =
-  "inline-flex h-9 items-center justify-center max-md:min-h-11 gap-2 whitespace-nowrap rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors hover:border-inverse-hover hover:bg-inverse-hover";
+const PRIMARY = "v2-btn act touch";
 
 export async function BokforingSection({
   viewer,
   today,
   canEdit,
-  asPage = false,
 }: {
   viewer: Viewer;
   today: string;
   canEdit: boolean;
-  /** Egen sida (underfliken Bokföring): stor rubrik (h1) överst. */
+  /** Äldre val: sidans rubrik (h1) står nu i V2-sidhuvudet, avsnittet har alltid h2. */
   asPage?: boolean;
 }) {
   let view: BokforingView;
@@ -92,17 +90,10 @@ export async function BokforingSection({
   }));
 
   return (
-    <section
-      id="bokforing"
-      aria-labelledby="bokforing-rubrik"
-      className={SECTION}
-      style={{ "--i": 1 } as React.CSSProperties}
-    >
-      <SectionHeader
+    <section id="bokforing" aria-labelledby="bokforing-rubrik" className={SECTION}>
+      <PageIntro
         id="bokforing-rubrik"
-        as={asPage ? "h1" : undefined}
-        size={asPage ? "xl" : "md"}
-        eyebrow={asPage ? "Bokföring" : undefined}
+        as="h2"
         title={
           nextMissing
             ? `${capitalize(monthText(next!.month))} är inte klar.`
@@ -117,15 +108,16 @@ export async function BokforingSection({
                 : "Importera SIE-filen i Fortnox."
               : undefined
         }
-      />
-      {/* Appen har två SIE-filer: den här är den som importeras. */}
-      <p className="text-sm text-muted" data-which-sie>
-        {IMPORT_THIS_TEXT}
-      </p>
+      >
+        {/* Appen har två SIE-filer: den här är den som importeras. */}
+        <p className="text-v2-sm text-v2-mute" data-which-sie>
+          {IMPORT_THIS_TEXT}
+        </p>
+      </PageIntro>
 
       {/* Mobil: tre månader (alltid den att skicka härnäst), resten bakom "Alla N månader". */}
       <MobileTopList
-        className="flex flex-col gap-3"
+        className="flex flex-col gap-[14px] max-[900px]:gap-3"
         ariaLabel="Månader"
         total={view.months.length}
         noun="månader"
@@ -144,23 +136,19 @@ export async function BokforingSection({
 
       <OpenMoreOnHash detailsId="kontoplan" hashes={MORE_HASHES} />
       {/* Sällan ändrat: VMB-valet och kontoplanen. Läget syns i raden även när den är stängd. */}
-      <details
-        id="kontoplan"
-        suppressHydrationWarning
-        className="group scroll-mt-28 rounded-md border border-line bg-surface"
-      >
-        <summary className="label flex min-h-10 cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-2 text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+      <details id="kontoplan" suppressHydrationWarning className="group v2-card scroll-mt-28">
+        <summary className="flex min-h-12 cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-[18px] py-2 text-v2-md font-[650] text-v2-ink hover:bg-v2-hover [&::-webkit-details-marker]:hidden">
           <span>Fler val</span>
-          <span className="text-subtle normal-case">
+          <span className="text-v2-sm font-[450] text-v2-mute">
             {view.settings.vmbEnabled ? "VMB på" : "VMB av"} · Kontoplan
           </span>
         </summary>
-        <div className="fade-in flex flex-col gap-6 border-t border-line p-4">
+        <div className="flex flex-col gap-6 border-t border-v2-line px-[18px] py-4">
           <VmbBookkeepingSwitch on={view.settings.vmbEnabled} canEdit={canEdit} />
           <div className="flex flex-col gap-3">
-            <p className="label flex flex-wrap items-center justify-between gap-2 text-muted">
+            <p className="flex flex-wrap items-center justify-between gap-2 text-v2-sm font-[550] text-v2-ink">
               <span>Kontoplan</span>
-              <span className="text-subtle normal-case">Förslag enligt BAS</span>
+              <span className="font-[450] text-v2-mute">Förslag enligt BAS</span>
             </p>
             <PlanForm
               rows={planRows}
@@ -223,21 +211,23 @@ function MonthItem({
     >
       {figures.map(([label, v]) => (
         <div key={label} className="flex min-w-0 flex-col">
-          <dt className="label text-subtle">{label}</dt>
-          <dd className={cn("tnum text-fg", label === "Resultat" && "font-medium")}>{kr(v)}</dd>
+          <dt className="text-v2-xs text-v2-mute">{label}</dt>
+          <dd className={cn("tnum text-v2-md text-v2-ink", label === "Resultat" && "font-[650]")}>
+            {kr(v)}
+          </dd>
         </div>
       ))}
     </dl>
   );
   return (
     <li
-      className={cn("rise rounded-md border border-line bg-surface", ready && "max-md:order-first")}
+      className={cn("v2-card", ready && "max-md:order-first")}
       data-keep={next ? "" : undefined}
-      style={{ "--i": Math.min(index, 8) + 1 } as React.CSSProperties}
+      data-index={index}
     >
-      <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:gap-6">
+      <div className="flex flex-col gap-4 px-[18px] py-4 lg:flex-row lg:items-center lg:gap-6">
         <div className="flex min-w-40 items-center justify-between gap-3 lg:flex-col lg:items-start lg:gap-1">
-          <h3 className="text-base font-medium text-fg">{capitalize(monthText(row.month))}</h3>
+          <h3 className="text-v2-md font-[650] text-v2-ink">{capitalize(monthText(row.month))}</h3>
           <StatusTag status={tag}>{statusText}</StatusTag>
         </div>
         {ready ? (
@@ -249,9 +239,9 @@ function MonthItem({
         )}
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {row.status === "open" ? (
-            <span className="text-sm text-muted">Pågår</span>
+            <span className="text-v2-sm text-v2-mute">Pågår</span>
           ) : !row.hasVoucher && row.receipts.length === 0 ? (
-            <span className="text-sm text-muted">Inget att bokföra</span>
+            <span className="text-v2-sm text-v2-mute">Inget att bokföra</span>
           ) : (
             <a href={`/ekonomi/bokforing/paket?manad=${row.month}`} download className={PRIMARY}>
               Ladda ner månadspaket
@@ -263,7 +253,7 @@ function MonthItem({
         </div>
       </div>
       {missing ? (
-        <div className="px-4 pb-3">
+        <div className="px-[18px] pb-3">
           <StateMessage
             compact
             kind="error"
@@ -272,12 +262,12 @@ function MonthItem({
           />
         </div>
       ) : b.purchaseBasis === "cost_of_goods" && b.purchasesOre > 0 ? (
-        <p className="meta px-4 pb-3 text-subtle">
+        <p className="px-[18px] pb-3 text-v2-xs text-v2-mute">
           {b.purchaseBasisAuto ? "Inga inköpsorder: inköp" : "Inköp"} = vad de sålda packen kostade.
         </p>
       ) : null}
       {row.changedSinceSent ? (
-        <div className="px-4 pb-3">
+        <div className="px-[18px] pb-3">
           <StateMessage
             compact
             kind="error"
@@ -286,33 +276,33 @@ function MonthItem({
           />
         </div>
       ) : null}
-      <details className="border-t border-line">
-        <summary className="label flex h-9 cursor-pointer list-none items-center justify-between px-4 text-muted hover:text-fg">
+      <details className="border-t border-v2-line2">
+        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 px-[18px] text-v2-sm font-[550] text-v2-ink hover:bg-v2-hover max-md:min-h-11 [&::-webkit-details-marker]:hidden">
           <span>
             Kvitton · {row.receipts.length}
             {b.unpricedOrders > 0
               ? ` · ${plural(b.unpricedOrders, "order", "order")} utan inköpspris`
               : ""}
           </span>
-          <span className="text-subtle normal-case">
+          <span className="font-[450] text-v2-mute">
             {b.vmbEnabled ? "VMB-uträkning" : "Utan VMB"}
           </span>
         </summary>
-        <div className="grid grid-cols-1 gap-6 border-t border-line p-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 border-t border-v2-line2 px-[18px] py-4 lg:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-3">
             {row.receipts.length > 0 ? (
-              <ul className="flex flex-col divide-y divide-line text-sm">
+              <ul className="flex flex-col divide-y divide-v2-line2 text-v2-sm">
                 {row.receipts.map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-3 py-1.5">
                     <a
                       href={`/ekonomi/bokforing/kvitto/${r.id}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="min-w-0 truncate text-fg underline-offset-2 hover:underline"
+                      className="min-w-0 truncate text-v2-ink underline-offset-2 hover:underline"
                     >
                       {r.fileName}
                     </a>
-                    <span className="flex shrink-0 items-center gap-2 text-subtle">
+                    <span className="flex shrink-0 items-center gap-2 text-v2-mute">
                       <span className="tnum">{Math.max(1, Math.round(r.sizeBytes / 1024))} kB</span>
                       {canEdit ? <ArchiveReceiptButton id={r.id} /> : null}
                     </span>
@@ -320,12 +310,12 @@ function MonthItem({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted">Inga kvitton.</p>
+              <p className="text-v2-sm text-v2-mute">Inga kvitton.</p>
             )}
             {canEdit ? <ReceiptDrop month={row.month} maxBytes={UPLOAD_MAX_BYTES} /> : null}
           </div>
           {b.vmbEnabled ? (
-            <table className="w-full self-start text-sm">
+            <table className="w-full self-start text-v2-sm">
               <tbody>
                 <Step label="Försäljning inkl. moms" ore={b.salesInclVatOre} />
                 {b.refundsOre !== 0 ? (
@@ -346,7 +336,7 @@ function MonthItem({
               </tbody>
             </table>
           ) : (
-            <p className="self-start text-sm text-muted">
+            <p className="self-start text-v2-sm text-v2-mute">
               {row.status === "sent" ? "Skickad utan VMB." : "Utan VMB."}
             </p>
           )}
@@ -358,9 +348,9 @@ function MonthItem({
 
 function Step({ label, ore, strong }: { label: string; ore: number; strong?: boolean }) {
   return (
-    <tr className={cn("border-b border-line", strong && "font-medium text-fg")}>
-      <td className="py-1 pr-3 text-muted">{label}</td>
-      <td className="tnum py-1 text-right text-fg">{kr(ore)}</td>
+    <tr className={cn("border-b border-v2-line2", strong && "font-[550] text-v2-ink")}>
+      <td className="py-1.5 pr-3 text-v2-mute">{label}</td>
+      <td className="tnum py-1.5 text-right text-v2-ink">{kr(ore)}</td>
     </tr>
   );
 }

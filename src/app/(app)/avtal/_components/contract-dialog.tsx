@@ -176,14 +176,16 @@ export function ContractDialog({
           </div>
 
           <fieldset className="flex flex-col gap-3">
-            <legend className="label mb-2 text-muted">Ersättning till butiken</legend>
+            <legend className="mb-2 text-v2-sm font-[550] text-v2-ink">
+              Ersättning till butiken
+            </legend>
             {storeAgreements.length > 0 ? (
               <ul className="flex flex-col gap-2">
                 {storeAgreements.map((a) => {
                   const checked = draft.agreementIds.includes(a.id);
                   return (
                     <li key={a.id}>
-                      <label className="flex items-start gap-3 text-sm text-fg">
+                      <label className="flex items-start gap-3 text-v2-md text-v2-ink">
                         <input
                           type="checkbox"
                           className="mt-0.5 size-4 accent-current"
@@ -199,7 +201,7 @@ export function ContractDialog({
                         />
                         <span className="flex flex-col gap-0.5">
                           <span>{a.label}</span>
-                          <span className="meta text-subtle">{a.period}</span>
+                          <span className="text-v2-sm text-v2-mute">{a.period}</span>
                         </span>
                       </label>
                     </li>
@@ -207,7 +209,7 @@ export function ContractDialog({
                 })}
               </ul>
             ) : (
-              <p className="text-sm text-muted">
+              <p className="text-v2-sm text-v2-mute">
                 Inga lediga villkor. Villkoren sätts under Butiker.
               </p>
             )}

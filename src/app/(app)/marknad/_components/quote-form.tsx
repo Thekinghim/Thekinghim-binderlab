@@ -164,11 +164,11 @@ export function QuoteFormButton({
             autoComplete="off"
           />
           {error ? (
-            <p role="alert" className="text-sm text-signal-fg">
+            <p role="alert" className="text-v2-sm text-v2-crit-text">
               {error}
             </p>
           ) : null}
-          <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-2 border-t border-v2-line pt-4 sm:flex-row sm:justify-end">
             <Button type="button" onClick={() => setOpen(false)}>
               Avbryt
             </Button>

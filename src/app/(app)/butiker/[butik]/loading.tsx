@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { PageSkeleton } from "@/components/v2/page-intro";
 
-/** Medan butikens siffror räknas: rubriken, nyckeltal och innehåll som skeleton. */
+/** Medan butikens siffror räknas: rubriken och korten som skeleton (V2). */
 export default function StoreLoading() {
-  return <RouteLoading label="Laddar butiken" blocks={["kpi", "chart", "table"]} />;
+  return <PageSkeleton label="Laddar butiken" main={[4, 8, 5]} />;
 }

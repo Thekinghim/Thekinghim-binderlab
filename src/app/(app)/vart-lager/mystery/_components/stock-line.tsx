@@ -46,12 +46,12 @@ export function StockLine({
     .map((x) => ({ ...x, fix: minusFix(x.quantity, batchSize) }));
   return (
     <div className="flex flex-col gap-2">
-      <p className="tnum text-base text-muted">
+      <p className="mys-stock">
         {places.map((p) => {
           const n = inPlaces[p.id] ?? 0;
           return (
             <Fragment key={p.id}>
-              <span className={n < 0 ? "font-medium text-signal-fg" : undefined}>
+              <span className={n < 0 ? "neg" : undefined}>
                 {t.mystery.stockIn(t.common.placeName(p.name), n)}
               </span>
               {" · "}
@@ -61,19 +61,13 @@ export function StockLine({
         {t.mystery.inMachines(inMachines)}
       </p>
       {minus.map(({ place, quantity, fix }) => (
-        <div
-          key={place.id}
-          role="note"
-          className="flex flex-col gap-2 rounded-md border border-signal-line p-3"
-        >
-          <p className="text-base text-signal-fg">
+        <div key={place.id} role="note" className="v2-notice critical flex-col !flex-nowrap gap-2">
+          <p>
             {fix?.kind === "pack"
               ? m.minus(quantity, place.name)
               : m.minusOdd(quantity, place.name)}
           </p>
-          {merged?.placeId === place.id ? (
-            <p className="text-base font-medium text-signal-fg">{merged.text}</p>
-          ) : null}
+          {merged?.placeId === place.id ? <p className="font-[650]">{merged.text}</p> : null}
           {fix?.kind === "pack" && canPack ? (
             <Link
               href={packInPlaceHref(
@@ -81,19 +75,16 @@ export function StockLine({
                 place.id,
                 merged?.placeId === place.id ? merged.packs : fix.packs,
               )}
-              className="inline-flex min-h-11 w-fit items-center rounded-sm border border-line-strong bg-surface px-4 text-base font-medium text-fg hover:bg-hover"
+              className="v2-btn lg w-fit"
             >
               {m.packNow(merged?.placeId === place.id ? merged.batches : fix.batches)}
             </Link>
           ) : canCount ? (
-            <Link
-              href={countHref(place.id)}
-              className="inline-flex min-h-11 w-fit items-center rounded-sm border border-line-strong bg-surface px-4 text-base font-medium text-fg hover:bg-hover"
-            >
+            <Link href={countHref(place.id)} className="v2-btn lg w-fit">
               {m.countNow}
             </Link>
           ) : (
-            <p className="text-base text-muted">{m.askOwnerCount}</p>
+            <p>{m.askOwnerCount}</p>
           )}
         </div>
       ))}

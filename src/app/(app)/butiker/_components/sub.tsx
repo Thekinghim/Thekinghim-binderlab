@@ -3,11 +3,10 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * Underavsnitt i en sektion: mono-etikett med mått ("03.1 / KÖP PER TIMME · 30 D"),
- * metadata till höger och en mening med en siffra (h3). Samma mönster som Sub på /design.
+ * Ett kort i en sektion på butikens sida (V2): kortrubrik 14 px halvfet med ett grått mått
+ * till höger ("3 villkor"), en mening (h3) och innehållet. Inga versaletiketter.
  */
 export function Sub({
-  index,
   label,
   meta,
   title,
@@ -15,7 +14,6 @@ export function Sub({
   className,
   children,
 }: {
-  index?: string;
   label: string;
   meta?: ReactNode;
   title?: ReactNode;
@@ -24,27 +22,19 @@ export function Sub({
   children: ReactNode;
 }) {
   return (
-    <div className={cn("flex min-w-0 flex-col", className)}>
-      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line pt-3">
-        <p className="label min-w-0 text-subtle">
-          {index ? (
-            <>
-              <span className="tnum text-fg">{index}</span>
-              <span aria-hidden className="text-faint">
-                {" / "}
-              </span>
-            </>
-          ) : null}
-          {label}
-        </p>
-        {meta ? <p className="meta tnum text-subtle">{meta}</p> : null}
+    <section className={cn("v2-card min-w-0", className)} aria-label={label}>
+      <div className="v2-card-hd">
+        <h2>{label}</h2>
+        {meta ? <span className="tnum text-v2-sm text-v2-mute">{meta}</span> : null}
       </div>
-      {title ? (
-        <h3 id={id} className="mt-2 text-md font-medium text-balance hyphens-none text-fg">
-          {title}
-        </h3>
-      ) : null}
-      <div className={cn(title ? "mt-5" : "mt-4", "min-w-0")}>{children}</div>
-    </div>
+      <div className="v2-card-body flex min-w-0 flex-col gap-4">
+        {title ? (
+          <h3 id={id} className="text-v2-md font-[550] text-balance text-v2-ink">
+            {title}
+          </h3>
+        ) : null}
+        <div className="min-w-0">{children}</div>
+      </div>
+    </section>
   );
 }

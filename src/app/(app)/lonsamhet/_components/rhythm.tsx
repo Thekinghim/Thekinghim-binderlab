@@ -1,5 +1,3 @@
-import { Panel } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP } from "@/lib/format";
 
@@ -9,6 +7,7 @@ import type { HeatmapView } from "../../automater/_lib/types";
 import type { MoverKind, MoverList } from "../_lib/movers";
 
 import { MoversList } from "./movers";
+import { AnalysisCard } from "./sections";
 
 const WEEKDAYS = ["måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag", "söndag"];
 
@@ -42,37 +41,33 @@ export function RhythmSection({
   // Samma topp som värmekartan markerar (vid lika: den sista), så att texten och rutan stämmer.
   const peak = peakCell(heat);
   return (
-    <div className="grid grid-cols-1 gap-x-10 gap-y-12 lg:grid-cols-12">
-      <section aria-labelledby="rytm" className="flex min-w-0 flex-col gap-6 lg:col-span-7">
-        <SectionHeader
-          id="rytm"
-          eyebrow={`Försäljningsrytm · ${formatInt(days)}${NBSP}d`}
-          title="När säljer vi?"
-          aside={
-            peak ? `Flest köp ${WEEKDAYS[peak.weekday] ?? ""} ${hourRange(peak.hour)}.` : undefined
-          }
-          size="md"
-        />
-        {heat.total > 0 ? (
-          <Panel grid marks className="fade-in">
+    <>
+      <AnalysisCard
+        id="rytm"
+        title="När säljer vi?"
+        aside={
+          peak
+            ? `Flest köp ${WEEKDAYS[peak.weekday] ?? ""} ${hourRange(peak.hour)} · ${formatInt(days)}${NBSP}d.`
+            : `Försäljningsrytm · ${formatInt(days)}${NBSP}d`
+        }
+      >
+        <div className="v2-card-body">
+          {heat.total > 0 ? (
             <SalesHeatmap heat={heat} days={days} />
-          </Panel>
-        ) : (
-          <StateMessage compact kind="empty" code="0 köp" message="Inga köp med klockslag." />
-        )}
-      </section>
-      <section aria-labelledby="topplista" className="flex min-w-0 flex-col gap-6 lg:col-span-5">
-        <SectionHeader
-          id="topplista"
-          eyebrow="Topplista"
-          title="Vad går upp och ned?"
-          aside={
-            compareLabel ? `Intäkt, ${compareLabel.replace(/\.$/, "")}.` : "Intäkt i perioden."
-          }
-          size="md"
-        />
-        <MoversList lists={movers} />
-      </section>
-    </div>
+          ) : (
+            <StateMessage compact kind="empty" code="0 köp" message="Inga köp med klockslag." />
+          )}
+        </div>
+      </AnalysisCard>
+      <AnalysisCard
+        id="topplista"
+        title="Vad går upp och ned?"
+        aside={compareLabel ? `Intäkt, ${compareLabel.replace(/\.$/, "")}.` : "Intäkt i perioden."}
+      >
+        <div className="v2-card-body">
+          <MoversList lists={movers} />
+        </div>
+      </AnalysisCard>
+    </>
   );
 }

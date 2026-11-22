@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-
-import type React from "react";
 import { Suspense } from "react";
 
 import { routeById } from "@/components/shell/nav";
-
-import { SectionHeader } from "@/components/ui/section-header";
+import { ButtonLink } from "@/components/v2/button";
+import { Card } from "@/components/v2/card";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatInt, formatPeriod } from "@/lib/format";
 import { isUuid } from "@/server/access";
 import { loadPeriod, requireRoute } from "@/server/data/core";
 
+import "../drift/_components/ops.css";
 import { HistoryList } from "./_components/history-list";
 import { WarehouseRedirect } from "./_components/warehouse-redirect";
 import { LagerBoard } from "./_components/lager-board";
@@ -61,62 +61,62 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
   const placesTotal = view.counts.critical + view.counts.low + view.counts.ok + view.unknownCount;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 max-md:gap-8 md:gap-16 md:px-8 md:pt-12">
+    <V2Page
+      title="Lager"
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      sub={
+        <>
+          <b>{headline.title}</b>
+          {headline.aside ? <span>{headline.aside}</span> : null}
+          <span className="max-[900px]:hidden">
+            {`${formatInt(placesTotal)} platser`}
+            {view.unknownCount > 0 ? ` · saldo okänt ${formatInt(view.unknownCount)}` : ""}
+          </span>
+        </>
+      }
+      tools={
+        view.unknownCount > 0 && routeById("datakallor").roles.includes(ctx.role) ? (
+          <ButtonLink href="/datakallor" touch>
+            Koppla Awish
+          </ButtonLink>
+        ) : undefined
+      }
+    >
       {routeById("vart-lager").roles.includes(ctx.role) ? (
         <Suspense fallback={null}>
           <WarehouseRedirect />
         </Suspense>
       ) : null}
-      <div className="rise max-md:-order-2" style={{ "--i": 0 } as React.CSSProperties}>
-        <SectionHeader
-          as="h1"
-          // Mobil: "Platser" döljs (samma tal står i matrisens rubrik).
-          className="max-md:[&_dl]:hidden"
-          size="xl"
-          eyebrow="Lager"
-          title={headline.title}
-          aside={headline.aside}
-          meta={[
-            { label: "Platser", value: formatInt(placesTotal) },
-            ...(view.unknownCount > 0
-              ? [{ label: "Saldo okänt", value: formatInt(view.unknownCount) }]
-              : []),
-          ]}
+      <SubNav />
+      <div className="v2-stack">
+        <LagerBoard view={view} focus={focus} />
+
+        <Card
+          title={<span id="historik">Historik</span>}
+          count={view.historyTotal}
           actions={
-            view.unknownCount > 0 && routeById("datakallor").roles.includes(ctx.role) ? (
-              <Link
-                href="/datakallor"
-                className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
-              >
-                Koppla Awish
-              </Link>
-            ) : undefined
+            <span className="text-v2-xs text-v2-mute">
+              {periodText}
+              {view.historyTotal > HISTORY_LIMIT ? ` · ${formatInt(HISTORY_LIMIT)} senaste` : ""}
+            </span>
           }
-        />
+        >
+          <details className="ops-more group">
+            <summary className="w-full px-[18px] py-2 max-[900px]:px-4">
+              <span className="group-open:hidden">Visa historiken</span>
+              <span className="hidden group-open:inline">Dölj historiken</span>
+            </summary>
+            <div className="border-t border-v2-line2">
+              <HistoryList
+                entries={view.history}
+                timeZone={view.timeZone}
+                now={view.now}
+                periodText={periodText}
+              />
+            </div>
+          </details>
+        </Card>
       </div>
-
-      <LagerBoard view={view} focus={focus} />
-
-      <details
-        className="group rise rounded-sm border border-line"
-        style={{ "--i": 4 } as React.CSSProperties}
-      >
-        <summary className="flex cursor-pointer items-baseline justify-between gap-4 px-4 py-3 text-sm font-medium">
-          <h2 id="historik">Historik ({formatInt(view.historyTotal)})</h2>
-          <span className="text-xs text-muted">
-            {periodText}
-            {view.historyTotal > HISTORY_LIMIT ? ` · ${formatInt(HISTORY_LIMIT)} senaste` : ""}
-          </span>
-        </summary>
-        <div className="border-t border-line p-4">
-          <HistoryList
-            entries={view.history}
-            timeZone={view.timeZone}
-            now={view.now}
-            periodText={periodText}
-          />
-        </div>
-      </details>
-    </div>
+    </V2Page>
   );
 }

@@ -1,12 +1,9 @@
 "use client";
 
 import { ChannelTags } from "@/components/ui/channel-tags";
-import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/field";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
-import { MobileFold } from "@/components/ui/mobile-fold";
-import { StatusGlyph } from "@/components/ui/status-tag";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 
@@ -50,51 +47,58 @@ export function PackList({
   const aside = packListAside(list, today);
 
   return (
-    <div className="flex flex-col gap-6">
-      <SectionHeader
-        id="pafyllningslista"
-        eyebrow="Påfyllningslista · besök i dag"
-        title={title}
-        aside={aside}
-      />
-      {machines.length > 1 ? (
-        machines.length <= 5 ? (
-          <Segmented
-            label="Automat"
-            options={machines.map((m) => ({ value: m.id, label: m.code }))}
-            value={machine.id}
-            onChange={onMachine}
-            className="h-auto! w-full sm:w-fit [&>button]:min-h-11 [&>button]:flex-1 sm:[&>button]:min-w-24"
-          />
-        ) : (
-          <Select
-            label="Automat"
-            value={machine.id}
-            onChange={(e) => onMachine(e.target.value)}
-            options={machines.map((m) => ({ value: m.id, label: `${m.code} ${m.name}` }))}
-            wrapperClassName="max-w-sm"
-          />
-        )
-      ) : null}
+    // Telefon: påfyllningslistan (det man gör) först.
+    <section aria-labelledby="pafyllningslista" className="v2-card max-[900px]:-order-1">
+      <div className="v2-card-hd">
+        <h2 id="pafyllningslista" className="min-w-0">
+          {title}
+        </h2>
+        <span className="shrink-0 text-v2-xs text-v2-mute">Besök i dag</span>
+      </div>
+      <div className="flex flex-col gap-3 px-[18px] pt-3 pb-1 max-[900px]:px-4">
+        {aside ? <p className="ops-p">{aside}</p> : null}
+        {machines.length > 1 ? (
+          machines.length <= 5 ? (
+            <div role="group" aria-label="Automat" className="ops-seg full">
+              {machines.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  aria-pressed={m.id === machine.id}
+                  onClick={() => onMachine(m.id)}
+                >
+                  {m.code}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <Select
+              label="Automat"
+              value={machine.id}
+              onChange={(e) => onMachine(e.target.value)}
+              options={machines.map((m) => ({ value: m.id, label: `${m.code} ${m.name}` }))}
+              wrapperClassName="max-w-sm"
+            />
+          )
+        ) : null}
+      </div>
 
       {list.lines.length === 0 && list.missing.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          compact
-          message={`${machine.code} räcker utan påfyllning i dag. Inget säljer slut före nästa planerade besök.`}
-        />
+        <Empty title={`${machine.code} räcker utan påfyllning i dag.`}>
+          Inget säljer slut före nästa planerade besök.
+        </Empty>
       ) : (
-        <div className="flex flex-col">
+        <div className="flex flex-col pt-2">
           {list.lines.length > 0 ? (
             <>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-end gap-x-4 border-b border-line-strong pb-2">
-                <span className="label text-subtle">Titel</span>
-                <span className="label w-20 text-right text-subtle">Har → ska ha</span>
-                <span className="label w-16 text-right text-subtle">Ta med</span>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-end gap-x-4 border-y border-v2-line2 bg-v2-hover px-[18px] py-2 text-v2-xs font-[550] text-v2-mute max-[900px]:px-4">
+                <span>Titel</span>
+                <span className="w-20 text-right">Har → ska ha</span>
+                <span className="w-16 text-right">Ta med</span>
               </div>
               <ul aria-label={`Påfyllningslista för ${machine.code}`}>
                 {list.lines.map((l) => (
-                  <li key={l.titleId} className="border-b border-line">
+                  <li key={l.titleId} className="border-b border-v2-line2">
                     <Line
                       line={l}
                       machineCode={machine.code}
@@ -104,18 +108,15 @@ export function PackList({
                   </li>
                 ))}
               </ul>
-              <p className="flex items-baseline justify-between gap-4 pt-3">
-                <span className="label text-subtle">Totalt</span>
-                <span className="tnum text-xl font-medium">{packs(list.totalPacks)}</span>
+              <p className="flex items-baseline justify-between gap-4 px-[18px] py-3 max-[900px]:px-4">
+                <span className="text-v2-sm font-[550] text-v2-mute">Totalt</span>
+                <span className="tnum text-v2-xl font-[650]">{packs(list.totalPacks)}</span>
               </p>
             </>
           ) : null}
           {list.shortBy > 0 ? (
-            <div className="mt-4 flex items-start gap-2 text-sm text-fg">
-              <span className="mt-1.5 inline-flex">
-                <StatusGlyph status="warning" />
-              </span>
-              <p>
+            <div className="px-3 pb-3">
+              <Notice tone="warning">
                 {`Vårt lager saknar ${packs(list.shortBy)} för att fylla till målet`}
                 {list.missing.length > 0
                   ? `: ${list.missing.map((m) => `${formatInt(m.shortBy)}${NBSP}×${NBSP}${m.titleName} (${formatInt(m.onHand)} kvar, finns inte i vårt lager)`).join(", ")}`
@@ -123,22 +124,22 @@ export function PackList({
                 {list.missing.length > 0 && list.lines.some((l) => l.shortBy > 0)
                   ? ", resten på raderna ovan."
                   : "."}
-              </p>
+              </Notice>
             </div>
           ) : null}
           {list.reasons.length > 0 ? (
-            // Mobil: förklaringarna bakom "Varför" (från md öppna som förut).
-            <MobileFold summary="Varför" className="max-md:mt-4">
-              <ul className="mt-6 flex flex-col gap-1 text-sm text-muted max-md:mt-0">
+            <details className="ops-more border-t border-v2-line2 px-[18px] py-1.5 max-[900px]:px-4">
+              <summary>Varför</summary>
+              <ul className="mt-1 mb-2 flex flex-col gap-1 text-v2-sm text-v2-mute">
                 {list.reasons.slice(0, 4).map((r) => (
                   <li key={r}>{r.endsWith(".") ? r : `${r}.`}</li>
                 ))}
               </ul>
-            </MobileFold>
+            </details>
           ) : null}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -154,25 +155,25 @@ function Line({
   onSelect: () => void;
 }) {
   const cls =
-    "grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 py-2 text-left";
+    "grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 px-[18px] py-2 text-left max-[900px]:px-4";
   const body = (
     <>
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-base text-fg">{line.titleName}</span>
+        <span className="truncate text-v2-md text-v2-ink">{line.titleName}</span>
         {line.capacity != null && line.channels && line.channels.length > 0 ? (
           <ChannelTags channels={line.channels} className="mt-0.5" />
         ) : null}
         {line.shortBy > 0 ? (
-          <span className="meta text-subtle">
+          <span className="text-v2-xs text-v2-crit-text">
             {formatInt(line.shortBy)}
             {NBSP}saknas i vårt lager
           </span>
         ) : null}
       </span>
-      <span className="tnum w-20 text-right text-sm text-muted">
+      <span className="tnum w-20 text-right text-v2-sm text-v2-mute">
         {formatInt(line.onHand)} → {formatInt(line.target)}
       </span>
-      <span className="tnum w-16 text-right text-xl font-medium">{formatInt(line.quantity)}</span>
+      <span className="tnum w-16 text-right text-v2-xl font-[650]">{formatInt(line.quantity)}</span>
     </>
   );
   if (!canRegister) return <div className={cls}>{body}</div>;
@@ -181,7 +182,7 @@ function Line({
       type="button"
       className={cn(
         cls,
-        "transition-colors duration-fast ease-instrument hover:bg-hover focus-visible:-outline-offset-2",
+        "transition-colors duration-150 hover:bg-v2-hover focus-visible:-outline-offset-2",
       )}
       aria-label={`${line.titleName}: ta med ${packs(line.quantity)} till ${machineCode}, ${formatInt(line.onHand)} i automaten, mål ${formatInt(line.target)}. Registrera påfyllning.`}
       onClick={onSelect}

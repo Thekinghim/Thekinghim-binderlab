@@ -4,11 +4,17 @@ import { redirect } from "next/navigation";
 
 import { wallClockIn } from "@/components/shell/period-state";
 import { homeHref } from "@/components/shell/nav";
-import { SectionHeader, type SectionMeta } from "@/components/ui/section-header";
+import type { SectionMeta } from "@/components/ui/section-header";
+import { Card, CardBody } from "@/components/v2/card";
+import { KeyValues } from "@/components/v2/key-values";
+import { Notice } from "@/components/v2/notice";
+import { V2Page } from "@/components/v2/shell/page";
 import { formatDateTime, formatDuration, formatInt, MISSING } from "@/lib/format";
 import { loadContext } from "@/server/data/core";
 import { canSeeOnboarding, onboardingStatus } from "@/server/onboarding";
 import { coverageText } from "@/server/onboarding/model";
+
+import "@/app/(app)/installningar/_components/settings.css";
 
 import { OnboardingChecklist } from "./_components/onboarding-checklist";
 
@@ -71,44 +77,42 @@ export default async function KomIgangPage() {
   const stepsDone = status.steps.filter((s) => s.state === "done").length;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <SectionHeader
-        className="rise"
-        as="h1"
-        size="xl"
-        eyebrow={`Kom igång · ${ctx.organization.name}`}
-        title={title}
-        aside={aside}
-        description={description}
-        meta={meta}
-      />
-
-      <section
-        aria-labelledby="steg"
-        className="rise flex flex-col gap-8"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="steg"
-          size="md"
-          title="Steg."
-          aside={`${formatInt(stepsDone)} av ${formatInt(status.steps.length)} klara.`}
-          actions={
-            status.complete ? (
-              <Link
-                href="/"
-                className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline max-md:tap max-md:min-h-11"
-              >
-                <span>Till Hem</span>
-                <span aria-hidden className="text-subtle">
-                  →
+    <V2Page
+      title="Kom igång"
+      sub={
+        <>
+          <b>{title}</b> {aside}
+        </>
+      }
+    >
+      <div className="v2-cols">
+        <div className="v2-stack">
+          {description ? <Notice tone="info">{description}</Notice> : null}
+          <Card
+            title={<span id="steg">Steg</span>}
+            actions={
+              status.complete ? (
+                <Link href="/" className="lk">
+                  Till Hem <span aria-hidden>→</span>
+                </Link>
+              ) : (
+                <span className="lk tabular-nums">
+                  {formatInt(stepsDone)} av {formatInt(status.steps.length)} klara
                 </span>
-              </Link>
-            ) : undefined
-          }
-        />
-        <OnboardingChecklist status={status} canEdit={ctx.canEdit} timeZone={ctx.timeZone} />
-      </section>
-    </div>
+              )
+            }
+          >
+            <OnboardingChecklist status={status} canEdit={ctx.canEdit} timeZone={ctx.timeZone} />
+          </Card>
+        </div>
+        <div className="v2-stack">
+          <Card title={ctx.organization.name}>
+            <CardBody>
+              <KeyValues items={meta.map((m) => ({ label: m.label, value: m.value }))} />
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </V2Page>
   );
 }

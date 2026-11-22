@@ -77,8 +77,8 @@ export function PriceHistory({
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="meta tnum text-muted">
                 {range(e, today)}
-                {e.current ? <span className="label ml-2 text-fg">Gäller nu</span> : null}
-                {e.future ? <span className="label ml-2 text-subtle">Kommande</span> : null}
+                {e.current ? <span className="v2-badge success ml-2">Gäller nu</span> : null}
+                {e.future ? <span className="v2-badge info ml-2">Kommande</span> : null}
               </span>
               {e.customerPriceOre !== null && e.customerPriceOre !== undefined ? (
                 <span className="tnum text-sm text-subtle">
@@ -90,7 +90,7 @@ export function PriceHistory({
               ) : null}
               {e.note ? <span className="text-sm text-subtle">{e.note}</span> : null}
             </span>
-            <span className="tnum text-right text-base text-fg">
+            <span className="tnum text-right text-v2-md text-fg">
               {formatKronor(kr(e.unitCostOre))}
             </span>
             <span className="tnum col-start-1 text-sm text-subtle sm:col-start-auto sm:text-right">

@@ -100,7 +100,7 @@ export function RecipientsPanel({
         {recipients.length === 0 ? (
           <StateMessage kind="empty" compact message="Inga mottagare ännu." />
         ) : (
-          <ul className="flex flex-col divide-y divide-line border-y border-line">
+          <ul className="flex flex-col divide-y divide-v2-line2 border-y border-v2-line2">
             {recipients.map((r) => (
               <li
                 key={r.id}

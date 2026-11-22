@@ -34,7 +34,7 @@ export interface FreePackMachine {
 const kr = (ore: number) => formatSek(ore / 100);
 
 const BIG =
-  "flex min-h-14 w-full flex-col items-start justify-center rounded-md border px-4 py-3 text-left transition-colors duration-fast";
+  "flex min-h-14 w-full flex-col items-start justify-center rounded-v2-lg border px-4 py-3 text-left transition-colors duration-fast";
 
 /** Texten att skicka (samma som shareText på servern). */
 function messageFor(r: CreatedFreePacks, today: string): string {
@@ -212,7 +212,7 @@ function GiverDialog({
             <button
               key={m.machineId}
               type="button"
-              className={cn(BIG, "border-line-strong hover:bg-hover")}
+              className={cn(BIG, "border-v2-line3 hover:bg-v2-hover")}
               onClick={() => {
                 setMachine(m);
                 setChoice(null);
@@ -221,8 +221,8 @@ function GiverDialog({
                 setStep("title");
               }}
             >
-              <span className="text-base font-medium">{m.code}</span>
-              <span className="text-sm text-muted">{m.name}</span>
+              <span className="text-v2-md font-[550]">{m.code}</span>
+              <span className="text-v2-sm text-v2-mute">{m.name}</span>
             </button>
           ))}
         </div>
@@ -230,16 +230,18 @@ function GiverDialog({
 
       {step === "title" ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted">
+          <p className="text-v2-sm text-v2-mute">
             {machine?.code} · {machine?.name}
           </p>
-          {error ? <p className="text-sm text-signal-fg">{error}</p> : null}
+          {error ? <p className="text-v2-sm text-v2-crit-text">{error}</p> : null}
           {choices === null && !error ? (
-            <p className="text-base text-muted" aria-live="polite">
+            <p className="text-v2-md text-v2-mute" aria-live="polite">
               Hämtar automatens pack…
             </p>
           ) : null}
-          {choices?.length === 0 ? <p className="text-base text-muted">Automaten är tom.</p> : null}
+          {choices?.length === 0 ? (
+            <p className="text-v2-md text-v2-mute">Automaten är tom.</p>
+          ) : null}
           {choices?.map((c) => {
             const empty = c.inMachine < 1;
             return (
@@ -250,8 +252,8 @@ function GiverDialog({
                 className={cn(
                   BIG,
                   empty
-                    ? "cursor-not-allowed border-dashed border-line-strong text-disabled"
-                    : "border-line-strong hover:bg-hover",
+                    ? "cursor-not-allowed border-dashed border-v2-line3 text-disabled"
+                    : "border-v2-line3 hover:bg-v2-hover",
                 )}
                 onClick={() => {
                   setChoice(c);
@@ -259,8 +261,8 @@ function GiverDialog({
                   setStep("details");
                 }}
               >
-                <span className="text-base font-medium">{c.titleName ?? c.goodName}</span>
-                <span className="text-sm text-muted">
+                <span className="text-v2-md font-[550]">{c.titleName ?? c.goodName}</span>
+                <span className="text-v2-sm text-v2-mute">
                   {empty ? "Slut" : `${formatInt(c.inMachine)} i automaten`}
                   {c.unitCostOre !== null ? ` · ${kr(c.unitCostOre)} st` : ""}
                 </span>
@@ -272,9 +274,9 @@ function GiverDialog({
 
       {step === "details" && choice ? (
         <div className="flex flex-col gap-5">
-          <p className="text-base font-medium">{name}</p>
+          <p className="text-v2-md font-[550]">{name}</p>
           <div className="flex flex-col gap-2">
-            <span className="label text-muted">Antal</span>
+            <span className="label text-v2-mute">Antal</span>
             <div className="flex items-center gap-3">
               <IconButton
                 variant="secondary"
@@ -283,7 +285,7 @@ function GiverDialog({
                 disabled={quantity <= 1}
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
               />
-              <span className="tnum min-w-10 text-center text-2xl font-medium" aria-live="polite">
+              <span className="tnum min-w-10 text-center text-v2-xl font-[550]" aria-live="polite">
                 {quantity}
               </span>
               <IconButton
@@ -296,7 +298,7 @@ function GiverDialog({
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <span className="label text-muted">Varför</span>
+            <span className="label text-v2-mute">Varför</span>
             <div className="grid grid-cols-2 gap-2">
               {REASONS.map((r) => (
                 <button
@@ -306,17 +308,19 @@ function GiverDialog({
                   onClick={() => setReason(r.value)}
                   className={cn(
                     BIG,
-                    reason === r.value ? "border-fg bg-hover" : "border-line-strong hover:bg-hover",
+                    reason === r.value
+                      ? "border-fg bg-v2-hover"
+                      : "border-v2-line3 hover:bg-v2-hover",
                   )}
                 >
-                  <span className="text-base font-medium">{r.label}</span>
-                  {r.hint ? <span className="text-xs text-muted">{r.hint}</span> : null}
+                  <span className="text-v2-md font-[550]">{r.label}</span>
+                  {r.hint ? <span className="text-v2-xs text-v2-mute">{r.hint}</span> : null}
                 </button>
               ))}
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <span className="label text-muted">Gäller</span>
+            <span className="label text-v2-mute">Gäller</span>
             <Segmented
               label="Gäller"
               value={days}
@@ -341,28 +345,28 @@ function GiverDialog({
             maxLength={200}
             onChange={(e) => setNote(e.target.value)}
           />
-          {error ? <p className="text-sm text-signal-fg">{error}</p> : null}
+          {error ? <p className="text-v2-sm text-v2-crit-text">{error}</p> : null}
         </div>
       ) : null}
 
       {step === "confirm" && choice && machine && reason ? (
         <div className="flex flex-col gap-3">
-          <p className="text-xl font-medium">
+          <p className="text-v2-xl font-[550]">
             {quantity} × {name}
           </p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-base">
-            <dt className="text-muted">Automat</dt>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-v2-md">
+            <dt className="text-v2-mute">Automat</dt>
             <dd>
               {machine.code} · {machine.name}
             </dd>
-            <dt className="text-muted">Varför</dt>
+            <dt className="text-v2-mute">Varför</dt>
             <dd>{REASONS.find((r) => r.value === reason)?.label}</dd>
-            <dt className="text-muted">Gäller</dt>
+            <dt className="text-v2-mute">Gäller</dt>
             <dd>{days} dagar</dd>
-            <dt className="text-muted">Kostar</dt>
+            <dt className="text-v2-mute">Kostar</dt>
             <dd>{cost === null ? "Inget inköpspris" : kr(cost)}</dd>
           </dl>
-          {error ? <p className="text-sm text-signal-fg">{error}</p> : null}
+          {error ? <p className="text-v2-sm text-v2-crit-text">{error}</p> : null}
         </div>
       ) : null}
 
@@ -390,7 +394,7 @@ export function CodesView({
   const [index, setIndex] = useState(0);
   if (codes.length === 0) {
     return (
-      <p className="text-base text-muted">
+      <p className="text-v2-md text-v2-mute">
         Koderna skapades men kunde inte läsas. Se Awish under hämtkoder.
       </p>
     );
@@ -399,8 +403,8 @@ export function CodesView({
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   return (
     <div className="flex flex-col items-center gap-4">
-      <QrCode value={code} label={`QR-kod för koden ${code}`} className="h-48 w-48 rounded-sm" />
-      <p className="tnum text-center font-mono text-4xl font-medium tracking-[0.15em] break-all select-all">
+      <QrCode value={code} label={`QR-kod för koden ${code}`} className="h-48 w-48 rounded-v2" />
+      <p className="tnum text-center text-v2-xl font-[550] tracking-[0.15em] break-all select-all">
         {code}
       </p>
       {codes.length > 1 ? (
@@ -413,7 +417,7 @@ export function CodesView({
             disabled={index === 0}
             onClick={() => setIndex((i) => i - 1)}
           />
-          <span className="tnum text-sm text-muted">
+          <span className="tnum text-v2-sm text-v2-mute">
             {index + 1} av {codes.length}
           </span>
           <IconButton

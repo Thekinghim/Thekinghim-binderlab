@@ -10,6 +10,8 @@ import type React from "react";
 import { Suspense } from "react";
 
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { requireRoute, requireViewer } from "@/server/data/core";
 
 import { MobileMore } from "../../_mobil/mobile-more";
@@ -78,11 +80,21 @@ export default async function ButikerPage({
   // Butiker → Butiksägare (?vy=agare): bolagen som äger butikerna.
   if (sp.vy === OWNERS_VIEW) {
     const ctx = await requireRoute("butiker");
-    return <OwnersView viewer={await requireViewer()} canEdit={ctx.canEdit} />;
+    return (
+      <V2Page title="Butiksägare" date={headerDate(new Date(ctx.now), ctx.timeZone)}>
+        <SubNav />
+        <OwnersView viewer={await requireViewer()} canEdit={ctx.canEdit} />
+      </V2Page>
+    );
   }
   if (sp.vy === PAYOUT_VIEW) {
     const ctx = await requireRoute("butiker");
-    return <SettlementsView viewer={await requireViewer()} today={ctx.today} />;
+    return (
+      <V2Page title="Utbetalning" date={headerDate(new Date(ctx.now), ctx.timeZone)}>
+        <SubNav />
+        <SettlementsView viewer={await requireViewer()} today={ctx.today} />
+      </V2Page>
+    );
   }
   // Rollen kontrolleras här, innan något renderas (påfyllaren skickas till sin startsida).
   await requireRoute("butiker");

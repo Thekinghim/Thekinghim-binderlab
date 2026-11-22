@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { Panel, PanelSection } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
-import { formatInt } from "@/lib/format";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
 import { noticeState, noticeTypesFor } from "@/server/alerts/notices";
 import { FIELD_KINDS, KIND_LABEL, ALERT_KINDS } from "@/server/alerts/subscriptions";
 import { WeeklySwitch } from "@/components/weekly/weekly-switch";
@@ -12,6 +11,7 @@ import { requireRoute } from "@/server/data/core";
 import { withUserDb } from "@/server/session";
 import { loadWeeklyPref } from "@/server/weekly/prefs";
 
+import { DriftFrame } from "../_components/drift-frame";
 import { channelReach, reachAside } from "../_lib/channel-reach";
 import { formatWhen, plural } from "../_lib/display";
 import { loadAlertSettings } from "../_lib/load";
@@ -140,86 +140,78 @@ export default async function AlertSettingsPage() {
     ? await withUserDb((tx) => loadWeeklyPref(tx, ctx.organization.id, ctx.user.id))
     : null;
 
+  const activeDevices = settings.devices.filter((d) => !d.disabledAt).length;
+
   return (
-    <div className="flex flex-col gap-10">
-      <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow="Notiser"
-          title={
-            !settings.saved
+    <DriftFrame
+      ctx={ctx}
+      sub={
+        <>
+          <b>
+            {!settings.saved
               ? "Du får inga notiser om larm ännu."
               : !sub.active
                 ? "Notiserna är avstängda för dig."
                 : reach.working.length === 0
                   ? "Du får inga larm utanför appen just nu."
-                  : `Du får ${plural(activeKinds, "typ av larm", "typer av larm")}${sub.machineIds === null ? " för alla automater" : ` för ${plural(sub.machineIds.length, "automat", "automater")}`}.`
-          }
-          aside={
-            !settings.saved
-              ? "Slå på för att få veta när något händer."
-              : !sub.active
-                ? undefined
-                : reachAside(reach, sub.quietStart ? `${sub.quietStart}–${sub.quietEnd}` : null)
-          }
-        />
-      </div>
-      {pushReady ? (
-        <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
-          <NoticesCard
-            publicKey={ch.push.publicKey}
-            initialOn={notices.on}
-            initialTypes={notices.types}
-            types={noticeTypesFor(ctx.role).map((t) => ({ value: t.value, label: t.label }))}
-            endpoints={settings.devices.filter((d) => !d.disabledAt).map((d) => d.endpoint)}
-          />
+                  : `Du får ${plural(activeKinds, "typ av larm", "typer av larm")}${sub.machineIds === null ? " för alla automater" : ` för ${plural(sub.machineIds.length, "automat", "automater")}`}.`}
+          </b>
+          {!settings.saved ? (
+            <span>Slå på för att få veta när något händer.</span>
+          ) : sub.active ? (
+            <span>
+              {reachAside(reach, sub.quietStart ? `${sub.quietStart}–${sub.quietEnd}` : null)}
+            </span>
+          ) : null}
+        </>
+      }
+    >
+      {pushReady || weekly ? (
+        <div className="v2-cols">
+          {pushReady ? (
+            <NoticesCard
+              publicKey={ch.push.publicKey}
+              initialOn={notices.on}
+              initialTypes={notices.types}
+              types={noticeTypesFor(ctx.role).map((t) => ({ value: t.value, label: t.label }))}
+              endpoints={settings.devices.filter((d) => !d.disabledAt).map((d) => d.endpoint)}
+            />
+          ) : (
+            <div />
+          )}
+          {pushReady && weekly ? (
+            <section aria-label="Veckosammanfattning" className="v2-card">
+              <div className="v2-card-body flex flex-col gap-3">
+                <WeeklySwitch
+                  // Delad komponent: rubriken i kortets storlek (14 px halvfet).
+                  className="[&_#vecka-knapp]:text-v2-md [&_#vecka-knapp]:font-[650]"
+                  initial={{
+                    on: weekly.on,
+                    publicKey: ch.push.publicKey,
+                    endpoints: weekly.endpoints,
+                  }}
+                />
+                <Link href="/veckan" className="ops-link w-fit">
+                  Visa förra veckan →
+                </Link>
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : null}
-      {pushReady && weekly ? (
-        <section
-          aria-label="Veckosammanfattning"
-          className="rise flex flex-col gap-4 rounded-sm border border-line-strong bg-surface p-5"
-          style={{ "--i": 1 } as React.CSSProperties}
-        >
-          <WeeklySwitch
-            initial={{
-              on: weekly.on,
-              publicKey: ch.push.publicKey,
-              endpoints: weekly.endpoints,
-            }}
-          />
-          <Link
-            href="/veckan"
-            className="inline-flex min-h-11 items-center self-start text-md text-muted underline-offset-4 hover:text-fg hover:underline"
-          >
-            Visa förra veckan →
-          </Link>
-        </section>
-      ) : null}
 
-      <details className="group flex flex-col gap-10" open={!pushReady}>
-        <summary className="label w-fit cursor-pointer list-none text-muted transition-colors duration-fast ease-instrument hover:text-fg">
-          <span
-            aria-hidden
-            className="mr-1 inline-block transition-transform duration-fast ease-instrument group-open:rotate-90"
+      <details className="ops-more group" open={!pushReady}>
+        <summary>Fler val</summary>
+        <div className="v2-cols mt-3">
+          <Card
+            title={
+              <span id="installningar" className="contents">
+                Dina larm
+              </span>
+            }
+            actions={<span className="text-v2-xs text-v2-mute">Gäller bara dig</span>}
           >
-            ›
-          </span>
-          Fler val
-        </summary>
-        <div className="mt-6 flex flex-col gap-10">
-          <div
-            className="rise grid gap-12 lg:grid-cols-12 lg:gap-8"
-            style={{ "--i": 1 } as React.CSSProperties}
-          >
-            <section aria-labelledby="installningar" className="flex flex-col gap-6 lg:col-span-7">
-              <SectionHeader
-                id="installningar"
-                title="Dina larm."
-                size="md"
-                aside="Gäller bara dig."
-              />
+            <CardBody>
               <SettingsForm
                 // Ny rad (t.ex. efter Notiser på/av) ger formuläret nya startvärden.
                 key={JSON.stringify(sub)}
@@ -231,71 +223,64 @@ export default async function AlertSettingsPage() {
                 }))}
                 channels={channelOptions}
               />
-            </section>
+            </CardBody>
+          </Card>
 
-            <div className="flex flex-col gap-12 lg:col-span-5">
-              {pushReady ? (
-                <section aria-labelledby="enheter" className="flex flex-col gap-6">
-                  <SectionHeader
-                    id="enheter"
-                    title={`${plural(settings.devices.filter((d) => !d.disabledAt).length, "enhet", "enheter")} med push.`}
-                    size="md"
-                  />
+          <div className="v2-stack">
+            {pushReady ? (
+              <Card title={`${plural(activeDevices, "enhet", "enheter")} med push`}>
+                <CardBody>
                   <PushDevices
                     publicKey={ch.push.publicKey}
                     pushConfigured={ch.push.configured}
                     emailWorks={ch.email.canSend}
                     devices={devices}
                   />
-                </section>
-              ) : null}
+                </CardBody>
+              </Card>
+            ) : null}
 
-              <section aria-labelledby="utskick" className="flex flex-col gap-6">
-                <SectionHeader
-                  id="utskick"
-                  title={
-                    settings.deliveries.length === 0
-                      ? "Inga larm skickade till dig."
-                      : `${plural(settings.deliveries.length, "utskick", "utskick")} senast.`
-                  }
-                  size="md"
-                />
-                {settings.deliveries.length > 0 ? (
-                  <Panel>
-                    <PanelSection label="Senaste" meta={formatInt(settings.deliveries.length)}>
-                      <ul className="flex flex-col divide-y divide-line">
-                        {settings.deliveries.map((d) => (
-                          <li key={d.id} className="flex flex-col gap-1 py-3">
-                            <div className="flex items-baseline justify-between gap-3">
-                              <span className="text-sm text-fg">{d.subject}</span>
-                              <StatusTag status={DELIVERY_STATUS[d.status]?.status ?? "neutral"}>
-                                {DELIVERY_STATUS[d.status]?.label ?? d.status}
-                              </StatusTag>
-                            </div>
-                            <span className="meta text-subtle">
-                              {`${formatWhen(d.sendAt, ctx.timeZone, now)} · ${plural(d.items, "larm", "larm")}`}
-                            </span>
-                            {d.results.length > 0 ? (
-                              <span className="text-xs text-muted">
-                                {d.results
-                                  .map(
-                                    (r) =>
-                                      `${r.channel === "push" ? "Push" : r.channel === "email" ? "E-post" : r.channel === "sms" ? "Sms" : r.channel}: ${r.detail}`,
-                                  )
-                                  .join(" · ")}
-                              </span>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    </PanelSection>
-                  </Panel>
-                ) : null}
-              </section>
-            </div>
+            <Card
+              title={
+                settings.deliveries.length === 0
+                  ? "Inga larm skickade till dig"
+                  : "Senaste utskicken"
+              }
+              count={settings.deliveries.length > 0 ? settings.deliveries.length : null}
+            >
+              {settings.deliveries.length > 0 ? (
+                <ul className="ops-list">
+                  {settings.deliveries.map((d) => (
+                    <li key={d.id} className="flex flex-col gap-1">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="text-v2-sm font-[550] text-v2-ink">{d.subject}</span>
+                        <StatusTag status={DELIVERY_STATUS[d.status]?.status ?? "neutral"}>
+                          {DELIVERY_STATUS[d.status]?.label ?? d.status}
+                        </StatusTag>
+                      </div>
+                      <span className="tnum text-v2-xs text-v2-mute">
+                        {`${formatWhen(d.sendAt, ctx.timeZone, now)} · ${plural(d.items, "larm", "larm")}`}
+                      </span>
+                      {d.results.length > 0 ? (
+                        <span className="text-v2-xs text-v2-mute">
+                          {d.results
+                            .map(
+                              (r) =>
+                                `${r.channel === "push" ? "Push" : r.channel === "email" ? "E-post" : r.channel === "sms" ? "Sms" : r.channel}: ${r.detail}`,
+                            )
+                            .join(" · ")}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <Empty title="Inget skickat än.">Larm som går till dig visas här.</Empty>
+              )}
+            </Card>
           </div>
         </div>
       </details>
-    </div>
+    </DriftFrame>
   );
 }

@@ -60,7 +60,7 @@ function OwnerFields({ owner }: { owner?: OwnerView }) {
             <button
               type="button"
               onClick={() => setVat(suggestion)}
-              className="self-start rounded-xs text-xs text-muted underline decoration-line-strong underline-offset-4 hover:text-fg max-md:tap"
+              className="self-start rounded-v2-sm text-v2-xs text-v2-mute underline decoration-line-strong underline-offset-4 hover:text-v2-ink max-md:tap"
             >
               Använd {suggestion}
             </button>
@@ -77,7 +77,7 @@ function OwnerFields({ owner }: { owner?: OwnerView }) {
         />
         <label
           htmlFor={`${idBase}-ftax`}
-          className="text-base text-fg max-md:-mt-3.5 max-md:-mb-2 max-md:tap"
+          className="text-v2-md text-v2-ink max-md:-mt-3.5 max-md:-mb-2 max-md:tap"
         >
           Godkänd för F-skatt
         </label>
@@ -337,9 +337,9 @@ export function OwnerActions({ owner }: { owner: OwnerView }) {
         }
       >
         {error ? (
-          <p role="alert" className="flex items-start gap-2 text-sm">
-            <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-signal" />
-            <span className="text-fg">
+          <p role="alert" className="flex items-start gap-2 text-v2-sm">
+            <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-v2-crit" />
+            <span className="text-v2-ink">
               <span className="sr-only">Kräver åtgärd: </span>
               {error}
             </span>
@@ -416,9 +416,9 @@ export function StoreOwnerPicker({
         ) : null}
       </div>
       {error ? (
-        <p role="alert" className="flex items-start gap-2 text-sm">
-          <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-signal" />
-          <span className="text-fg">
+        <p role="alert" className="flex items-start gap-2 text-v2-sm">
+          <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-v2-crit" />
+          <span className="text-v2-ink">
             <span className="sr-only">Kräver åtgärd: </span>
             {error}
           </span>

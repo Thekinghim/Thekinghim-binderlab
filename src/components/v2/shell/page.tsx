@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 
 import { PeriodSegment } from "../period-segment";
 import { HeaderTools } from "./header-tools";
+import { PageFilters } from "./page-filters";
 import { V2Logo } from "./nav-icon";
 
 /**
@@ -19,6 +20,7 @@ export function V2Page({
   date,
   sub,
   period = false,
+  filters = false,
   tools,
   children,
   className,
@@ -30,6 +32,11 @@ export function V2Page({
   sub?: ReactNode;
   /** Visa periodvalet 30 dagar / 7 dagar / I dag (?period). */
   period?: boolean;
+  /**
+   * Visa sidans filter Butik, Automat och "Med VMB" under rubriken (samma val som de gamla
+   * sidornas kontextrad), för sidor som räknar per butik eller automat.
+   */
+  filters?: boolean;
   /** Egna verktyg före sök och periodval (t.ex. en knapp). */
   tools?: ReactNode;
   children: ReactNode;
@@ -42,7 +49,7 @@ export function V2Page({
           <span className="mlogo" aria-hidden="true">
             <V2Logo size={24} />
           </span>
-          {title}
+          <span className="ttl">{title}</span>
           {date ? <span className="date">{date}</span> : null}
         </h1>
         <div className="flex min-w-0 items-center gap-2">
@@ -56,6 +63,7 @@ export function V2Page({
           <PeriodSegment />
         </div>
       ) : null}
+      {filters ? <PageFilters /> : null}
       <div className="v2-page-body">{children}</div>
     </div>
   );

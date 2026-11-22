@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import { AiPageLine } from "@/components/assistant/panel-context";
 import Link from "next/link";
-import type React from "react";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 
-import { Panel } from "@/components/ui/frame";
 import { HashTab } from "@/components/ui/hash-tab";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
-import { StatusGlyph, StatusTag } from "@/components/ui/status-tag";
+import { Badge } from "@/components/v2/badge";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatInt, MISSING, NBSP } from "@/lib/format";
 import { StorePortalAccess } from "@/app/portal/_components/store-portal-access";
 
@@ -25,6 +28,7 @@ import { ClosedMonthsBanner } from "../../_manad/closed-note";
 import { StoreOwnerPicker } from "../_components/owner-dialogs";
 import { StoreActions } from "../_components/store-dialogs";
 import { Sub } from "../_components/sub";
+import "../_components/store.css";
 import { pickTab, ViewTabs } from "../../automater/_components/view-tabs";
 import { loadStoreDetail, storeNameOf, type StoreDetailData } from "../_lib/data";
 import { loadOwnersFor, type OwnerView } from "../_lib/owner-service";
@@ -93,7 +97,6 @@ export default async function StorePage({
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const placed = data.machines.filter((m) => m.current);
   const tab = pickTab(TABS, sp.vy);
-  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
   // Inget avtal (i dag med automat, eller dagar i perioden): butiken räknas som 0 %.
   const noAgreement = data.issues.find((i) => AGREEMENT_ISSUES.has(i.id)) ?? null;
   const firstPlaced = placed.map((m) => m.from).sort()[0] ?? ctx.today;
@@ -102,62 +105,53 @@ export default async function StorePage({
   // Luckan ligger före dagens avtal: det nya avtalet slutar där luckan slutar.
   const gapEnd = current && data.agreementGap ? (data.agreementGap.lastDay ?? null) : null;
 
+  // Kontraktets läge (faktaraden under rubriken).
+  const contractFact = store.archived ? (
+    <Badge>Arkiverad</Badge>
+  ) : data.contract === "signed" ? (
+    <Badge tone="success" dot>
+      Signerat
+    </Badge>
+  ) : (
+    <Badge tone={placed.length > 0 ? "critical" : "neutral"} dot={placed.length > 0}>
+      {data.contract === "unsigned" ? "Ej signerat" : "Saknas"}
+    </Badge>
+  );
+
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
-      <Suspense fallback={null}>
-        <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
-      </Suspense>
-      <div className="rise flex flex-col gap-6">
+    <V2Page
+      title={store.name}
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      period
+      sub={
         <nav aria-label="Brödsmulor">
           <Link
             href={`/butiker${data.query}`}
-            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:tap max-md:min-h-11"
+            className="inline-flex min-h-7 items-center gap-1.5 rounded-v2-sm font-[550] text-v2-ink hover:underline max-[900px]:min-h-11"
           >
-            <span aria-hidden className="text-faint">
-              ←
-            </span>
+            <span aria-hidden="true">←</span>
             Alla butiker
           </Link>
         </nav>
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow={`Butik / ${store.name}`}
+      }
+    >
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <Suspense fallback={null}>
+          <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
+        </Suspense>
+        <PageIntro
           title={headline.title}
           aside={headline.aside}
-          description={
-            store.archived
-              ? "Butiken är arkiverad. Historiken finns kvar."
-              : store.isExample
-                ? "Exempelbutik."
-                : undefined
-          }
-          meta={[
-            {
-              label: "Kontrakt",
-              value: store.archived ? (
-                <StatusTag status="offline">Arkiverad</StatusTag>
-              ) : data.contract === "signed" ? (
-                <span className="label inline-flex h-6 items-center gap-1.5 text-up">
-                  <span aria-hidden className="size-1.5 rounded-full bg-up" />
-                  Signerat
-                </span>
-              ) : (
-                <StatusTag
-                  status={placed.length > 0 ? "critical" : "neutral"}
-                  className={placed.length > 0 ? "text-signal-fg" : undefined}
-                >
-                  {data.contract === "unsigned" ? "Ej signerat" : "Saknas"}
-                </StatusTag>
-              ),
-            },
+          facts={[
+            { label: "Kontrakt", value: contractFact },
             { label: "Automater", value: formatInt(placed.length) },
             { label: "Modell", value: current ? MODEL_LABEL[current.model] : MISSING },
             {
               label: "Ägare",
               value: owner ? (
                 <span data-store-owner>
-                  {owner.legalName} <span className="tnum text-muted">{owner.orgNumber}</span>
+                  {owner.legalName} <span className="tnum text-v2-mute">{owner.orgNumber}</span>
                 </span>
               ) : (
                 MISSING
@@ -169,103 +163,107 @@ export default async function StorePage({
               <StoreActions store={store} machines={placed.map((m) => m.code)} />
             ) : undefined
           }
-        />
+        >
+          {store.archived || store.isExample ? (
+            <p className="text-v2-sm text-v2-mute">
+              {store.archived ? "Butiken är arkiverad. Historiken finns kvar." : "Exempelbutik."}
+            </p>
+          ) : null}
+          <AiPageLine metric="butikens resultat och andel" route="butiker" />
+        </PageIntro>
+
         {noAgreement && !store.archived ? (
-          <div
-            className="flex flex-col gap-3 rounded-md border border-signal-line bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-            data-no-agreement
-          >
-            <span className="flex flex-col gap-0.5">
-              <span className="flex items-center gap-2 text-base font-medium text-fg">
-                <span aria-hidden className="size-2 shrink-0 rounded-full bg-signal" />
-                {noAgreement.id === "no-agreement" || data.agreementGap?.whole
+          <div data-no-agreement>
+            <Notice
+              tone="critical"
+              title={
+                noAgreement.id === "no-agreement" || data.agreementGap?.whole
                   ? NO_AGREEMENT_SHORT
-                  : data.agreementGap!.short}
-              </span>
-              <span className="text-sm text-muted">{noAgreement.text}</span>
-            </span>
-            {ctx.canEdit ? (
-              <AddAgreementButton
-                storeId={store.id}
-                storeName={store.name}
-                defaultFrom={agreementFrom}
-                defaultTo={gapEnd}
-                className="max-sm:w-full"
-              />
-            ) : null}
+                  : data.agreementGap!.short
+              }
+              action={
+                ctx.canEdit ? (
+                  <AddAgreementButton
+                    storeId={store.id}
+                    storeName={store.name}
+                    defaultFrom={agreementFrom}
+                    defaultTo={gapEnd}
+                    className="max-sm:w-full"
+                  />
+                ) : undefined
+              }
+            >
+              {noAgreement.text}
+            </Notice>
           </div>
         ) : null}
         {!store.archived && data.contract !== "signed" ? (
-          <div
-            className={`flex flex-col gap-3 rounded-md border bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${placed.length > 0 ? "border-signal-line" : "border-line"}`}
-          >
-            <span className="flex items-center gap-2 text-base text-fg">
-              <span
-                aria-hidden
-                className={`size-2 rounded-full ${placed.length > 0 ? "bg-signal" : "bg-line-strong"}`}
-              />
-              {data.contract === "unsigned" ? "Kontraktet är inte signerat." : "Kontrakt saknas."}
-            </span>
-            {ctx.canEdit ? (
-              <Link
-                href={contractAction(data.contract, store.id).href}
-                className="inline-flex h-11 items-center justify-center rounded-sm border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
-              >
-                {contractAction(data.contract, store.id).label}
-              </Link>
-            ) : null}
-          </div>
+          <Notice
+            tone={placed.length > 0 ? "critical" : "info"}
+            title={
+              data.contract === "unsigned" ? "Kontraktet är inte signerat." : "Kontrakt saknas."
+            }
+            action={
+              ctx.canEdit ? (
+                <ButtonLink
+                  href={contractAction(data.contract, store.id).href}
+                  variant="act"
+                  touch
+                  className="max-sm:w-full"
+                >
+                  {contractAction(data.contract, store.id).label}
+                </ButtonLink>
+              ) : undefined
+            }
+          />
         ) : null}
-        <AiPageLine metric="butikens resultat och andel" route="butiker" className="mt-4" />
         {/* Kontraktet står i rutan ovan; här resten. */}
         {data.issues.some((i) => !BANNER_ISSUES.has(i.id)) ? <Issues data={data} /> : null}
-      </div>
 
-      <div className="rise flex flex-col gap-3" style={rise(1)}>
         <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
         {/* Till butiken är det vi betalar; vinsten räknar inte order utan inköpspris. */}
         {data.unpricedNote ? (
-          <p className="text-sm text-muted" data-unpriced-note>
+          <p className="-mt-1 text-v2-sm text-v2-mute" data-unpriced-note>
             {data.unpricedNote}
           </p>
         ) : null}
-      </div>
 
-      <div className="rise -mb-6 md:-mb-10" style={rise(2)}>
-        <ViewTabs
-          tabs={TABS}
-          value={tab}
-          basePath={`/butiker/${encodeURIComponent(butik)}`}
-          query={data.query}
-          label="Visa"
-        />
-      </div>
+        <div className="pt-1">
+          <ViewTabs
+            tabs={TABS}
+            value={tab}
+            basePath={`/butiker/${encodeURIComponent(butik)}`}
+            query={data.query}
+            label="Visa"
+          />
+        </div>
 
-      <div key={tab} className="fade-in flex flex-col gap-12 md:gap-16">
-        {tab === "oversikt" ? (
-          <>
-            <SalesSection data={data} days={days} />
-            <MachinesSection data={data} days={days} />
-          </>
-        ) : null}
-        {tab === "avtal" ? <CompensationSection data={data} /> : null}
-        {tab === "kontakt" ? (
-          <>
-            <ContactSection data={data} />
-            <OwnerSection data={data} owner={owner} choices={choices} />
-            {/* Butiksportalen (fas 10): vem i butiken som har tillgång. Bara ägare och admin. */}
-            {ctx.canEdit && !store.archived ? (
-              <StorePortalAccess
-                storeId={store.id}
-                storeName={store.name}
-                defaultEmail={store.email}
-                timeZone={ctx.timeZone}
-              />
-            ) : null}
-          </>
-        ) : null}
+        <div key={tab} className="v2-enter v2-stack">
+          {tab === "oversikt" ? (
+            <>
+              <SalesSection data={data} days={days} />
+              <MachinesSection data={data} days={days} />
+            </>
+          ) : null}
+          {tab === "avtal" ? <CompensationSection data={data} /> : null}
+          {tab === "kontakt" ? (
+            <>
+              <ContactSection data={data} />
+              <OwnerSection data={data} owner={owner} choices={choices} />
+              {/* Butiksportalen (fas 10): vem i butiken som har tillgång. Bara ägare och admin. */}
+              {ctx.canEdit && !store.archived ? (
+                <StorePortalAccess
+                  storeId={store.id}
+                  storeName={store.name}
+                  defaultEmail={store.email}
+                  timeZone={ctx.timeZone}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </V2Page>
   );
 }
 
@@ -274,25 +272,39 @@ export default async function StorePage({
 // ---------------------------------------------------------------------------
 
 function Issues({ data }: { data: StoreDetailData }) {
+  const issues = data.issues.filter((i) => !BANNER_ISSUES.has(i.id));
   return (
-    <section aria-label="Att göra för butiken" className="border-t border-line pt-4">
-      <p className="label text-subtle">Att göra</p>
-      <ul className="mt-3 flex flex-col gap-2">
-        {data.issues
-          .filter((i) => !BANNER_ISSUES.has(i.id))
-          .map((i) => (
-            <li key={i.id} className="flex items-start gap-3 text-base">
-              <span className="mt-1.5 shrink-0">
-                <StatusGlyph status={i.level} />
-              </span>
-              <span className={i.level === "critical" ? "text-fg" : "text-muted"}>
-                {i.level === "critical" ? <span className="sr-only">Kräver åtgärd: </span> : null}
-                {i.text}
-              </span>
-            </li>
-          ))}
+    <Card as="section" title="Att göra" count={issues.length}>
+      <ul aria-label="Att göra för butiken" className="flex flex-col">
+        {issues.map((i) => (
+          <li
+            key={i.id}
+            className="flex items-start gap-2.5 border-t border-v2-line2 px-[18px] py-3 text-v2-md first:border-t-0"
+          >
+            <span
+              aria-hidden="true"
+              className={`v2-dot mt-[7px] shrink-0 ${i.level === "critical" ? "critical" : i.level === "warning" ? "warning" : ""}`}
+            />
+            <span className={i.level === "critical" ? "text-v2-ink" : "text-v2-mute"}>
+              {i.level === "critical" ? <span className="sr-only">Kräver åtgärd: </span> : null}
+              {i.text}
+            </span>
+          </li>
+        ))}
       </ul>
-    </section>
+    </Card>
+  );
+}
+
+/** Rubriken i ett kort med en mening och en grå fortsättning (som PageIntro, 14 px). */
+function CardLead({ title, aside, id }: { title: ReactNode; aside?: ReactNode; id?: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <h3 id={id} className="text-v2-md font-[550] text-balance text-v2-ink">
+        {title}
+      </h3>
+      {aside ? <p className="text-v2-sm text-v2-mute">{aside}</p> : null}
+    </div>
   );
 }
 
@@ -305,41 +317,38 @@ function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
     null,
   );
   return (
-    <section
-      aria-labelledby="forsaljning"
-      className="flex flex-col gap-8 border-t border-line pt-8"
-    >
-      <SectionHeader
-        id="forsaljning"
-        eyebrow={`Intäkt per dag · ${days}`}
-        title="Försäljning per dag."
-        aside={
-          total > 0 && peak
-            ? `Snitt ${sek(mean * 100)} per dag ${data.period.span}, topp ${dayText(peak.date, data.ctx.today)} med ${sek(peak.value * 100)}.`
-            : "Ingen försäljning i perioden."
-        }
-      />
-      {total > 0 ? (
-        <Panel grid marks>
+    <Card as="section" title={`Intäkt per dag · ${days}`}>
+      <CardBody className="flex flex-col gap-4">
+        <CardLead
+          id="forsaljning"
+          title="Försäljning per dag."
+          aside={
+            total > 0 && peak
+              ? `Snitt ${sek(mean * 100)} per dag ${data.period.span}, topp ${dayText(peak.date, data.ctx.today)} med ${sek(peak.value * 100)}.`
+              : "Ingen försäljning i perioden."
+          }
+        />
+        {total > 0 ? (
           <StoreRevenueChart
             name={data.store.name}
             daily={data.daily}
             compare={data.dailyCompare}
             compareName={data.period.comparisonLabel ? `Föreg. ${days}` : undefined}
           />
-        </Panel>
-      ) : (
-        <StateMessage
-          kind="empty"
-          message={sentence(`Inga order i ${data.store.name} ${data.period.rangeLabel}`)}
-          action={
-            data.machines.length === 0 && data.ctx.canEdit
-              ? { label: "Placera automat", href: "/automater" }
-              : undefined
-          }
-        />
-      )}
-    </section>
+        ) : (
+          <Empty
+            title={sentence(`Inga order i ${data.store.name} ${data.period.rangeLabel}`)}
+            action={
+              data.machines.length === 0 && data.ctx.canEdit ? (
+                <ButtonLink href="/automater" variant="act" touch>
+                  Placera automat
+                </ButtonLink>
+              ) : undefined
+            }
+          />
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -351,88 +360,88 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
   const storeHasRent =
     month.rentOre !== 0 || data.agreements.some((a) => (a.monthlyRentOre ?? 0) > 0);
   return (
-    <section aria-labelledby="ersattning" className="flex flex-col gap-8 border-t border-line pt-8">
-      <SectionHeader
-        id="ersattning"
-        eyebrow={`Ersättning · ${month.monthLabel} hittills`}
-        title={data.compensation.title}
-        aside={data.compensation.aside}
+    <>
+      <Card
+        as="section"
+        title={`Ersättning · ${month.monthLabel} hittills`}
         actions={
           ctx.canEdit && !store.archived ? (
-            <Link
-              href={action.href}
-              className={
-                action.primary
-                  ? "inline-flex h-9 items-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:bg-inverse-hover max-md:min-h-11"
-                  : "inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
-              }
-            >
+            <ButtonLink href={action.href} variant={action.primary ? "act" : "default"} touch>
               {action.label}
-            </Link>
+            </ButtonLink>
           ) : undefined
         }
-      />
-      <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
-        <Sub
-          label={`Intjänat · ${formatInt(month.days)} av ${formatInt(month.daysInMonth)} d`}
-          title={current ? sentence(current.termsLabel) : "Inga villkor i dag."}
-          className="lg:col-span-5"
-        >
-          <dl className="flex flex-col">
-            <Line
-              label="Intäkt"
-              value={kronor(month.revenueOre)}
-              meta={plural(month.orders, "pack", "pack")}
-            />
-            <Line
-              label={current?.model === "split" ? "Andel av vinsten" : "Provision"}
-              value={kronor(month.commissionOre)}
-            />
-            {storeHasRent ? (
-              <Line
-                label="Hyra"
-                value={kronor(month.rentOre)}
-                meta={month.rentOre > 0 ? `${formatInt(month.days)}${NBSP}d` : undefined}
+      >
+        <CardBody>
+          <CardLead
+            id="ersattning"
+            title={data.compensation.title}
+            aside={data.compensation.aside}
+          />
+        </CardBody>
+      </Card>
+      <div className="v2-cols">
+        <div className="v2-stack">
+          <Sub
+            label="Historik"
+            meta={plural(data.agreements.length, "villkor", "villkor")}
+            title={
+              data.agreements.length === 0
+                ? "Inga villkor än."
+                : current
+                  ? sentence(`Gäller från ${dayText(current.validFrom, ctx.today)}`)
+                  : sentence(`Senast ${data.agreements[0]!.periodLabel}`)
+            }
+          >
+            <ClosedMonthsBanner className="mb-3" />
+            {data.agreements.length > 0 ? (
+              <AgreementsTable
+                agreements={data.agreements}
+                today={ctx.today}
+                canEdit={ctx.canEdit && !store.archived}
+                storeName={store.name}
               />
-            ) : null}
-            <Line label="Totalt till butiken" value={kronor(month.totalOre)} strong />
-          </dl>
-        </Sub>
-        <Sub
-          label="Historik"
-          meta={plural(data.agreements.length, "villkor", "villkor")}
-          title={
-            data.agreements.length === 0
-              ? "Inga villkor än."
-              : current
-                ? sentence(`Gäller från ${dayText(current.validFrom, ctx.today)}`)
-                : sentence(`Senast ${data.agreements[0]!.periodLabel}`)
-          }
-          className="lg:col-span-7"
-        >
-          <ClosedMonthsBanner className="mb-3" />
-          {data.agreements.length > 0 ? (
-            <AgreementsTable
-              agreements={data.agreements}
-              today={ctx.today}
-              canEdit={ctx.canEdit && !store.archived}
-              storeName={store.name}
-            />
-          ) : (
-            <StateMessage
-              kind="not-configured"
-              compact
-              message={`${store.name} har inga villkor.`}
-            />
-          )}
-          <p className="mt-4 text-sm text-muted">
-            <Link href="/avtal" className="rounded-xs hover:text-fg max-md:tap">
-              Kontrakt{NBSP}→
-            </Link>
-          </p>
-        </Sub>
+            ) : (
+              <Empty title={`${store.name} har inga villkor.`} />
+            )}
+            <p className="mt-3 text-v2-sm">
+              <Link
+                href="/avtal"
+                className="inline-flex min-h-7 items-center rounded-v2-sm font-[550] text-v2-ink hover:underline max-[900px]:min-h-11"
+              >
+                Kontrakt{NBSP}→
+              </Link>
+            </p>
+          </Sub>
+        </div>
+        <div className="v2-stack">
+          <Sub
+            label={`Intjänat · ${formatInt(month.days)} av ${formatInt(month.daysInMonth)} d`}
+            title={current ? sentence(current.termsLabel) : "Inga villkor i dag."}
+          >
+            <dl className="flex flex-col">
+              <Line
+                label="Intäkt"
+                value={kronor(month.revenueOre)}
+                meta={plural(month.orders, "pack", "pack")}
+              />
+              <Line
+                label={current?.model === "split" ? "Andel av vinsten" : "Provision"}
+                value={kronor(month.commissionOre)}
+              />
+              {storeHasRent ? (
+                <Line
+                  label="Hyra"
+                  value={kronor(month.rentOre)}
+                  meta={month.rentOre > 0 ? `${formatInt(month.days)}${NBSP}d` : undefined}
+                />
+              ) : null}
+              <Line label="Totalt till butiken" value={kronor(month.totalOre)} strong />
+            </dl>
+          </Sub>
+        </div>
       </div>
-    </section>
+    </>
   );
 }
 
@@ -449,15 +458,13 @@ function Line({
 }) {
   return (
     <div
-      className={`flex items-baseline justify-between gap-4 border-b border-line py-2.5 ${strong ? "border-b-0" : ""}`}
+      className={`flex items-baseline justify-between gap-4 py-2.5 text-v2-md ${strong ? "" : "border-b border-v2-line2"}`}
     >
-      <dt className={strong ? "text-fg" : "text-muted"}>
+      <dt className={strong ? "font-[550] text-v2-ink" : "text-v2-mute"}>
         {label}
-        {meta ? <span className="meta ml-2 text-subtle">{meta}</span> : null}
+        {meta ? <span className="ml-2 text-v2-sm text-v2-faint">{meta}</span> : null}
       </dt>
-      <dd className={`tnum text-right ${strong ? "text-md font-medium text-fg" : "text-fg"}`}>
-        {value}
-      </dd>
+      <dd className={`tnum text-right text-v2-ink ${strong ? "font-[650]" : ""}`}>{value}</dd>
     </div>
   );
 }
@@ -466,37 +473,43 @@ function MachinesSection({ data, days }: { data: StoreDetailData; days: string }
   const placed = data.machines.filter((m) => m.current);
   const top = [...placed].sort((a, b) => b.revenueOre - a.revenueOre)[0];
   return (
-    <section aria-labelledby="automater" className="flex flex-col gap-8 border-t border-line pt-8">
-      <SectionHeader
-        id="automater"
-        eyebrow={`Automater · ${days}`}
-        title={
-          placed.length === 0
-            ? "Ingen automat står i butiken."
-            : `${plural(placed.length, "automat", "automater")} står i butiken.`
-        }
-        aside={
-          top && top.revenueOre > 0 && placed.length > 1
-            ? `${top.code} säljer mest, ${sek(top.revenueOre)}.`
-            : data.machines.length > placed.length
-              ? `${plural(data.machines.length - placed.length, "tidigare placering", "tidigare placeringar")}.`
-              : undefined
-        }
-      />
-      {data.machines.length > 0 ? (
-        <MachinesTable
-          machines={data.machines}
-          today={data.ctx.today}
-          caption={`Automater i ${data.store.name}, intäkt ${data.period.rangeLabel}`}
+    <Card as="section" title={`Automater · ${days}`} count={placed.length}>
+      <CardBody className="flex flex-col gap-4">
+        <CardLead
+          id="automater"
+          title={
+            placed.length === 0
+              ? "Ingen automat står i butiken."
+              : `${plural(placed.length, "automat", "automater")} står i butiken.`
+          }
+          aside={
+            top && top.revenueOre > 0 && placed.length > 1
+              ? `${top.code} säljer mest, ${sek(top.revenueOre)}.`
+              : data.machines.length > placed.length
+                ? `${plural(data.machines.length - placed.length, "tidigare placering", "tidigare placeringar")}.`
+                : undefined
+          }
         />
-      ) : (
-        <StateMessage
-          kind="empty"
-          message={`Ingen automat har stått i ${data.store.name}.`}
-          action={data.ctx.canEdit ? { label: "Öppna Automater", href: "/automater" } : undefined}
-        />
-      )}
-    </section>
+        {data.machines.length > 0 ? (
+          <MachinesTable
+            machines={data.machines}
+            today={data.ctx.today}
+            caption={`Automater i ${data.store.name}, intäkt ${data.period.rangeLabel}`}
+          />
+        ) : (
+          <Empty
+            title={`Ingen automat har stått i ${data.store.name}.`}
+            action={
+              data.ctx.canEdit ? (
+                <ButtonLink href="/automater" touch>
+                  Öppna Automater
+                </ButtonLink>
+              ) : undefined
+            }
+          />
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -513,35 +526,32 @@ function OwnerSection({
   const { store, ctx } = data;
   const others = owner ? owner.stores.filter((s) => s.id !== store.id && !s.archived) : [];
   return (
-    <section aria-labelledby="agare" className="flex flex-col gap-6 border-t border-line pt-8">
-      <SectionHeader
-        id="agare"
-        eyebrow="Ägare"
-        title={owner ? owner.legalName : "Ingen ägare angiven."}
-        aside={
-          owner
-            ? `Org.nr ${owner.orgNumber.replace("-", "\u2011")}${others.length > 0 ? ` · äger också ${others.map((s) => s.name).join(", ")}` : ""}.`
-            : "Bolaget som äger butiken. Samma ägare för flera butiker ger statistik för alla tillsammans."
-        }
-      />
-      {ctx.canEdit && !store.archived ? (
-        <StoreOwnerPicker
-          key={owner?.id ?? "ingen"}
-          storeId={store.id}
-          storeName={store.name}
-          ownerId={owner?.id ?? null}
-          owners={choices}
+    <Card
+      as="section"
+      title="Ägare"
+      link={{ href: "/butiker?vy=agare", label: "Alla butiksägare" }}
+    >
+      <CardBody className="flex flex-col gap-4">
+        <CardLead
+          id="agare"
+          title={owner ? owner.legalName : "Ingen ägare angiven."}
+          aside={
+            owner
+              ? `Org.nr ${owner.orgNumber.replace("-", "‑")}${others.length > 0 ? ` · äger också ${others.map((s) => s.name).join(", ")}` : ""}.`
+              : "Bolaget som äger butiken. Samma ägare för flera butiker ger statistik för alla tillsammans."
+          }
         />
-      ) : null}
-      <p className="text-sm text-muted">
-        <Link
-          href="/butiker?vy=agare"
-          className="rounded-xs underline decoration-line-strong underline-offset-4 hover:text-fg max-md:tap"
-        >
-          Alla butiksägare
-        </Link>
-      </p>
-    </section>
+        {ctx.canEdit && !store.archived ? (
+          <StoreOwnerPicker
+            key={owner?.id ?? "ingen"}
+            storeId={store.id}
+            storeName={store.name}
+            ownerId={owner?.id ?? null}
+            owners={choices}
+          />
+        ) : null}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -567,99 +577,93 @@ function ContactSection({ data }: { data: StoreDetailData }) {
       ? { name: store.contactName, email: store.email }
       : null;
   return (
-    <section aria-labelledby="kontakt" className="flex flex-col gap-8 border-t border-line pt-8">
-      <SectionHeader
-        id="kontakt"
-        eyebrow="Kontakt och rapport"
-        title={
-          active.length === 0
-            ? "Ingen tar emot månadsrapporten."
-            : `${plural(active.length, "mottagare", "mottagare")} får månadsrapporten.`
-        }
-        aside={
-          store.contactName ? `Kontaktperson ${store.contactName}.` : "Ingen kontaktperson angiven."
-        }
-      />
-      <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
-        <Sub label="Kontaktuppgifter" className="lg:col-span-4">
-          <dl className="flex flex-col">
-            {contact.map((c) => (
-              <div
-                key={c.label}
-                className="flex items-baseline justify-between gap-4 border-b border-line py-2.5 last:border-b-0"
-              >
-                <dt className="shrink-0 text-muted">{c.label}</dt>
-                <dd className="min-w-0 text-right break-words text-fg">
-                  {c.value ? (
-                    c.href ? (
-                      <a
-                        href={c.href}
-                        className="rounded-xs hover:underline max-md:tap max-md:max-w-full max-md:justify-end max-md:underline max-md:decoration-line-strong max-md:underline-offset-4"
-                      >
-                        {c.value}
-                      </a>
-                    ) : (
-                      c.value
-                    )
-                  ) : (
-                    <span className="text-subtle">{MISSING}</span>
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {/* Läsaren ser tiderna men kan inte ändra dem (bara ägare och admin). */}
-          <div className="mt-6">
-            <PowerHoursSetting
-              storeId={store.id}
-              storeName={store.name}
-              initial={store.powerHours ?? null}
-              canEdit={ctx.canEdit && !store.archived}
-            />
-          </div>
-        </Sub>
-        <Sub
-          label="Rapportmottagare"
-          meta={plural(recipients.length, "mottagare", "mottagare")}
-          className="lg:col-span-8"
-        >
-          <div className="flex flex-col gap-4">
-            {recipients.length > 0 ? (
-              <RecipientsTable
-                recipients={recipients}
-                timeZone={ctx.timeZone}
-                now={ctx.now}
-                canEdit={ctx.canEdit}
-                caption={`Mottagare av månadsrapporten för ${store.name}`}
-              />
-            ) : (
-              <StateMessage kind="empty" compact message={`Ingen mottagare för ${store.name}.`} />
-            )}
-            {ctx.canEdit && !store.archived ? (
-              <div>
-                <AddRecipientButton
-                  storeId={store.id}
-                  storeName={store.name}
-                  defaults={suggested}
+    <>
+      <div className="v2-cols">
+        <div className="v2-stack">
+          <Sub
+            label="Rapportmottagare"
+            meta={plural(recipients.length, "mottagare", "mottagare")}
+            id="kontakt"
+            title={
+              active.length === 0
+                ? "Ingen tar emot månadsrapporten."
+                : `${plural(active.length, "mottagare", "mottagare")} får månadsrapporten.`
+            }
+          >
+            <div className="flex flex-col gap-4">
+              {recipients.length > 0 ? (
+                <RecipientsTable
+                  recipients={recipients}
+                  timeZone={ctx.timeZone}
+                  now={ctx.now}
+                  canEdit={ctx.canEdit}
+                  caption={`Mottagare av månadsrapporten för ${store.name}`}
                 />
-              </div>
-            ) : null}
-            {/* Läsaren ser valet men kan inte ändra det (bara ägare och admin). */}
-            <ReportDetailsToggle
-              storeId={store.id}
-              storeName={store.name}
-              initial={store.reportDetails === true}
-              canEdit={ctx.canEdit && !store.archived}
-            />
-            <AgreementFormSelect
-              storeId={store.id}
-              initial={store.agreementForm ?? null}
-              signedContract={data.contract === "signed"}
-              canEdit={ctx.canEdit && !store.archived}
-            />
-          </div>
-        </Sub>
+              ) : (
+                <Empty title={`Ingen mottagare för ${store.name}.`} />
+              )}
+              {ctx.canEdit && !store.archived ? (
+                <div>
+                  <AddRecipientButton
+                    storeId={store.id}
+                    storeName={store.name}
+                    defaults={suggested}
+                  />
+                </div>
+              ) : null}
+              {/* Läsaren ser valet men kan inte ändra det (bara ägare och admin). */}
+              <ReportDetailsToggle
+                storeId={store.id}
+                storeName={store.name}
+                initial={store.reportDetails === true}
+                canEdit={ctx.canEdit && !store.archived}
+              />
+              <AgreementFormSelect
+                storeId={store.id}
+                initial={store.agreementForm ?? null}
+                signedContract={data.contract === "signed"}
+                canEdit={ctx.canEdit && !store.archived}
+              />
+            </div>
+          </Sub>
+        </div>
+        <div className="v2-stack">
+          <Sub label="Kontaktuppgifter">
+            <dl className="v2-kv">
+              {contact.map((c) => (
+                <div key={c.label}>
+                  <dt>{c.label}</dt>
+                  <dd className="min-w-0 break-words">
+                    {c.value ? (
+                      c.href ? (
+                        <a
+                          href={c.href}
+                          className="rounded-v2-sm underline decoration-v2-line underline-offset-4 hover:decoration-v2-ink max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
+                        >
+                          {c.value}
+                        </a>
+                      ) : (
+                        c.value
+                      )
+                    ) : (
+                      <span className="text-v2-faint">{MISSING}</span>
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {/* Läsaren ser tiderna men kan inte ändra dem (bara ägare och admin). */}
+            <div className="mt-4">
+              <PowerHoursSetting
+                storeId={store.id}
+                storeName={store.name}
+                initial={store.powerHours ?? null}
+                canEdit={ctx.canEdit && !store.archived}
+              />
+            </div>
+          </Sub>
+        </div>
       </div>
-    </section>
+    </>
   );
 }

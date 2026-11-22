@@ -168,7 +168,10 @@ function Prefix({ kind, code }: { kind: StateKind; code?: string }) {
       <span className={cn("inline-flex", needsAction(kind) ? "" : "text-muted")}>
         <StatusGlyph status={spec.glyph} />
       </span>
-      <span className="tnum">{statePrefix(kind, code, t.state.prefix)}</span>
+      {/* V2: "Tomt", inte "TOMT" (prefixet skrivs i versaler för det gamla skalet). */}
+      <span className="tnum v2:lowercase v2:first-letter:uppercase">
+        {statePrefix(kind, code, t.state.prefix)}
+      </span>
     </span>
   );
 }

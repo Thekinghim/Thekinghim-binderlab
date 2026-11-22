@@ -2,9 +2,10 @@
 
 import { useCallback, useRef, useState, useTransition } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { AuthInput } from "@/app/logga-in/auth-field";
 import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/v2/button";
+import { Notice } from "@/components/v2/notice";
 
 import { signContract } from "./actions";
 import { SignaturePad, type SignaturePadHandle } from "./signature-pad";
@@ -58,14 +59,14 @@ export function SignForm({
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <Step n={1} title="Läs avtalet" done={opened}>
         <a
           href={`/signera/${token}/avtal`}
           target="_blank"
           rel="noreferrer noopener"
           onClick={() => setOpened(true)}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-sm border border-line-strong bg-surface px-4 text-base font-medium text-fg hover:border-line-control hover:bg-hover"
+          className="v2-btn lg w-full"
         >
           <Icon name="report" />
           Öppna avtalet (PDF)
@@ -74,7 +75,7 @@ export function SignForm({
 
       <Step n={2} title="Skriv namn och signera" done={name.trim().length >= 2 && hasInk}>
         <div className="flex flex-col gap-4">
-          <Input
+          <AuthInput
             label="Ditt namn"
             name="name"
             autoComplete="name"
@@ -84,10 +85,10 @@ export function SignForm({
           />
           <div className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between">
-              <span className="text-sm text-muted">Rita med fingret</span>
+              <span className="text-v2-sm font-[550] text-v2-ink">Rita med fingret</span>
               <button
                 type="button"
-                className="max-md:tap-offset-4 rounded-xs text-sm text-fg underline hover:underline"
+                className="v2-btn sm quiet"
                 onClick={() => pad.current?.clear()}
               >
                 Rita om
@@ -100,25 +101,26 @@ export function SignForm({
 
       <Step n={3} title="Bekräfta" done={false}>
         <div className="flex flex-col gap-4">
-          <label className="flex cursor-pointer items-start gap-3 text-base text-fg">
+          <label className="flex cursor-pointer items-start gap-3 text-v2-md text-v2-ink">
             <input
               type="checkbox"
               checked={accept}
               onChange={(e) => setAccept(e.target.checked)}
-              className="mt-1 size-5 shrink-0 accent-current"
+              className="mt-0.5 size-5 shrink-0 accent-[#303030]"
             />
             <span>Jag har läst avtalet och godkänner det för {storeName}.</span>
           </label>
           {error ? (
-            <p role="alert" className="fade-in text-base text-signal-fg">
-              {error}
-            </p>
+            <div role="alert" className="fade-in">
+              <Notice tone="critical" title={error} />
+            </div>
           ) : null}
           <Button
-            variant="primary"
-            className="h-12 w-full text-md"
+            variant="act"
+            size="lg"
+            className="w-full"
             disabled={!ready}
-            loading={pending}
+            pending={pending}
             onClick={submit}
           >
             Signera avtalet
@@ -141,15 +143,17 @@ function Step({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rise flex flex-col gap-3" style={{ "--i": n } as React.CSSProperties}>
-      <h2 className="flex items-center gap-3 text-md text-fg">
+    <section className="flex flex-col gap-3 border-t border-v2-line2 pt-5 first:border-t-0 first:pt-0">
+      <h2 className="flex items-center gap-3 text-v2-md font-[650] text-v2-ink">
         <span
           aria-hidden
-          className={`tnum inline-flex size-7 items-center justify-center rounded-full border text-sm transition-colors ${
-            done ? "border-inverse bg-inverse text-on-inverse" : "border-line-strong text-muted"
+          className={`tnum inline-flex size-6 items-center justify-center rounded-full text-v2-xs font-[650] transition-colors duration-150 ${
+            done
+              ? "text-white bg-v2-profit"
+              : "bg-v2-hover text-v2-mute shadow-[0_0_0_1px_var(--v2-line)]"
           }`}
         >
-          {done ? <Icon name="check" size={14} /> : n}
+          {done ? <Icon name="check" size={12} /> : n}
         </span>
         {title}
       </h2>
@@ -174,9 +178,9 @@ export function SignedReceipt({
     timeStyle: "short",
   }).format(new Date(signedAt));
   return (
-    <div className="rise flex flex-col gap-6" role="status">
+    <div className="flex flex-col gap-5" role="status">
       <div className="flex items-center gap-4">
-        <svg viewBox="0 0 48 48" className="size-14 shrink-0 text-fg" aria-hidden>
+        <svg viewBox="0 0 48 48" className="size-12 shrink-0 text-v2-profit" aria-hidden>
           <circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="2" />
           <path
             d="M14 25l7 7 13-15"
@@ -190,20 +194,17 @@ export function SignedReceipt({
           />
         </svg>
         <div>
-          <p className="text-xl font-medium text-fg">Klart! Avtalet är signerat.</p>
-          <p className="text-base text-muted">
+          <p className="text-v2-lg font-[650] text-v2-ink">Klart! Avtalet är signerat.</p>
+          <p className="text-v2-md text-v2-mute">
             {signerName} · {when}
           </p>
         </div>
       </div>
-      <a
-        href={`/signera/${token}/signerad`}
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-sm border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse hover:bg-inverse-hover"
-      >
+      <a href={`/signera/${token}/signerad`} className="v2-btn lg act w-full">
         <Icon name="download" />
         Ladda ner signerat avtal
       </a>
-      <p className="text-sm text-muted">Spara filen. Länken fungerar i 30 dagar.</p>
+      <p className="text-v2-sm text-v2-mute">Spara filen. Länken fungerar i 30 dagar.</p>
     </div>
   );
 }
