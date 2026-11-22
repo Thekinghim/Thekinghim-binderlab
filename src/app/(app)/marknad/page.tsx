@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 
 import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
 import { minDate } from "@/domain";
@@ -157,12 +157,12 @@ export default async function MarknadPage({
     : 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <div className="rise flex flex-col gap-6" style={{ "--i": 0 } as React.CSSProperties}>
-        <MerHead
-          eyebrow={`Marknad · ${periodLabel(period)}`}
+    <div className={PAGE_BODY}>
+      <div className="flex flex-col gap-3">
+        <PageIntro
           title={model.headline.title}
-          line={model.headline.aside}
+          aside={model.headline.aside}
+          facts={[{ label: "Period", value: periodLabel(period) }]}
         />
         <ViewTabs
           label="Vy"
@@ -176,7 +176,7 @@ export default async function MarknadPage({
         />
       </div>
 
-      <div className="rise flex flex-col gap-12" style={{ "--i": 1 } as React.CSSProperties}>
+      <div key={view} className="v2-enter flex flex-col gap-7 max-[900px]:gap-5">
         {view === "releaser" ? <ReleasesSection releases={model.releases} ctx={ctx} /> : null}
         {view === "priser" ? (
           <>

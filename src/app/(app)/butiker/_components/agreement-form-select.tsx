@@ -60,10 +60,7 @@ export function AgreementFormSelect({
   }
 
   return (
-    <div
-      id="avtalsform"
-      className="flex scroll-mt-24 flex-col gap-2 rounded-md border border-line-strong px-4 py-3"
-    >
+    <div id="avtalsform" className="bt-setting scroll-mt-24">
       <Select
         label="Avtalsform i rapporten"
         name="agreementForm"

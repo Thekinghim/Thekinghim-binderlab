@@ -169,13 +169,15 @@ export function SeriesView({
     number,
   ];
   return (
-    <article className="flex flex-col gap-6 border-t border-line pt-6">
+    <article className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <p className="label text-subtle">
+        <p className="label text-v2-mute">
           {METRIC_LABEL[series.metric]} · {scope}
         </p>
-        <p className="max-w-3xl text-md text-fg">{series.text}</p>
-        {series.detail ? <p className="max-w-3xl text-sm text-muted">{series.detail}</p> : null}
+        <p className="max-w-3xl text-v2-lg text-v2-ink">{series.text}</p>
+        {series.detail ? (
+          <p className="max-w-3xl text-v2-sm text-v2-mute">{series.detail}</p>
+        ) : null}
       </div>
       {points.length >= 2 ? (
         <LineChart
@@ -193,16 +195,16 @@ export function SeriesView({
       ) : null}
       <div className="relative min-w-0 overflow-x-auto">
         {/* Under md: månad, värde och förbättring (ryms utan att rulla). */}
-        <table className="w-full border-collapse text-base md:min-w-[560px]">
+        <table className="w-full border-collapse text-v2-md md:min-w-[560px]">
           <caption className="sr-only">{METRIC_LABEL[series.metric]} per månad</caption>
           <thead>
-            <tr className="border-b border-line-strong">
+            <tr className="border-b border-v2-line3">
               {["Månad", "Värde", "Före Binderlab", "Förbättring", "I kronor"].map((h, i) => (
                 <th
                   key={h}
                   scope="col"
                   className={cn(
-                    "label h-9 font-normal text-subtle",
+                    "label h-9 font-normal text-v2-mute",
                     i === 0 ? "text-left" : "pl-4 text-right",
                     (i === 2 || i === 4) && "max-md:hidden",
                   )}
@@ -214,13 +216,13 @@ export function SeriesView({
           </thead>
           <tbody>
             {series.points.map((p) => (
-              <tr key={p.month} className="h-11 border-b border-line">
+              <tr key={p.month} className="h-11 border-b border-v2-line">
                 <td className="pr-4">
                   {monthLabel(p.month)}
-                  {p.partial ? <span className="meta text-subtle"> · hittills</span> : null}
+                  {p.partial ? <span className="meta text-v2-mute"> · hittills</span> : null}
                 </td>
                 <td className="tnum pl-4 text-right">{metricValue(series.metric, p.value)}</td>
-                <td className="tnum pl-4 text-right text-muted max-md:hidden">
+                <td className="tnum pl-4 text-right text-v2-mute max-md:hidden">
                   {series.metric === "profit_per_machine_month"
                     ? kr(series.baseline)
                     : series.metric === "stockout_days_month"
@@ -307,14 +309,14 @@ export function BaselinesSection({
           {baselines.map((r) => (
             <li
               key={r.id}
-              className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-3 last:border-b"
+              className="flex flex-wrap items-center justify-between gap-3 border-t border-v2-line py-3 last:border-b"
             >
               <div className="flex min-w-0 flex-col gap-0.5">
-                <p className="text-base text-fg">
+                <p className="text-v2-md text-v2-ink">
                   {METRIC_LABEL[r.metric]}:{" "}
                   <span className="tnum">{metricValue(r.metric, r.value)}</span>
                 </p>
-                <p className="meta text-subtle">
+                <p className="meta text-v2-mute">
                   {scopeLabel(r, stores, machines)}
                   {r.measuredFrom && r.measuredTo
                     ? ` · mätt ${r.measuredFrom} – ${r.measuredTo}`
@@ -403,7 +405,7 @@ export function MeasurementsSection({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="meta text-muted">
+        <p className="meta text-v2-mute">
           Timkostnad{" "}
           {settings.hourlyCostOre === null ? "ej angiven" : `${kr(settings.hourlyCostOre)}/h`}
           {" · "}
@@ -430,16 +432,16 @@ export function MeasurementsSection({
         />
       ) : (
         <div className="relative min-w-0 overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-base">
+          <table className="w-full min-w-[560px] border-collapse text-v2-md">
             <caption className="sr-only">Mätvärden per månad</caption>
             <thead>
-              <tr className="border-b border-line-strong">
+              <tr className="border-b border-v2-line3">
                 {["Månad", "Mått", "Gäller", "Värde", ""].map((h, i) => (
                   <th
                     key={h || "x"}
                     scope="col"
                     className={cn(
-                      "label h-9 font-normal text-subtle",
+                      "label h-9 font-normal text-v2-mute",
                       i === 3 ? "pl-4 text-right" : "text-left",
                     )}
                   >
@@ -450,10 +452,10 @@ export function MeasurementsSection({
             </thead>
             <tbody>
               {measurements.map((r) => (
-                <tr key={r.id} className="h-11 border-b border-line">
+                <tr key={r.id} className="h-11 border-b border-v2-line">
                   <td className="pr-4">{monthLabel(r.month)}</td>
-                  <td className="pr-4 text-muted">{METRIC_LABEL[r.metric]}</td>
-                  <td className="pr-4 text-muted">{scopeLabel(r, stores, machines)}</td>
+                  <td className="pr-4 text-v2-mute">{METRIC_LABEL[r.metric]}</td>
+                  <td className="pr-4 text-v2-mute">{scopeLabel(r, stores, machines)}</td>
                   <td className="tnum pl-4 text-right">{metricValue(r.metric, r.value)}</td>
                   <td className="text-right">
                     {canEdit ? (

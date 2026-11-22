@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import type { AssortmentChange } from "@/analytics/assortment";
 import { Panel, PanelSection } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt } from "@/lib/format";
@@ -21,6 +20,7 @@ import { Evidence } from "./evidence";
 import { ImplementButton } from "./implement-button";
 import { SlotsEditorButton, type SlotLine } from "./slots-editor";
 import { Cell, Row, Table } from "./table";
+import { SectionHead } from "./section-head";
 
 /** Fackfördelning i dag, förifyllning och fackhistorikens gränser per automat. */
 export type SlotInfo = Readonly<
@@ -72,11 +72,11 @@ function MachineCard({
       <article aria-labelledby={headingId} className="flex min-w-0 flex-col gap-5">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-col gap-1">
-            <p className="label text-subtle">
+            <p className="label text-v2-mute">
               {formatInt(view.currentSlots)} av {formatInt(view.capacity)} fack
             </p>
-            <h3 id={headingId} className="text-lg font-medium text-balance">
-              <span className="meta text-fg">{view.code}</span>
+            <h3 id={headingId} className="text-v2-lg font-[550] text-balance">
+              <span className="meta text-v2-ink">{view.code}</span>
               {done
                 ? // Genomförd: visa det sparade värdet från när ändringen gjordes,
                   // inte förslaget räknat om på dagens period.
@@ -105,7 +105,7 @@ function MachineCard({
 
         {rec ? (
           <>
-            <p className="max-w-3xl text-muted">
+            <p className="max-w-3xl text-v2-mute">
               {done && rec.changes.length === 0
                 ? "Ändringen är genomförd. Utfallet följs upp under Uppföljning."
                 : done
@@ -125,9 +125,9 @@ function MachineCard({
                     className="flex flex-wrap items-baseline justify-between gap-x-4"
                   >
                     <span>
-                      <span className="label mr-2 text-subtle">{changeWord(c)}</span>
+                      <span className="label mr-2 text-v2-mute">{changeWord(c)}</span>
                       {ctx.names.title[c.titleId] ?? c.titleId}{" "}
-                      <span className="meta text-subtle">
+                      <span className="meta text-v2-mute">
                         {formatInt(c.fromSlots)} → {formatInt(c.toSlots)} fack
                       </span>
                     </span>
@@ -159,10 +159,10 @@ function MachineCard({
                       ? formatInt(l.recommendedSlots)
                       : `${formatInt(l.currentSlots)} → ${formatInt(l.recommendedSlots)}`}
                   </Cell>
-                  <Cell numeric className="text-muted">
+                  <Cell numeric className="text-v2-mute">
                     {l.demandPerWeekTenths === null ? "–" : tenthsNumber(l.demandPerWeekTenths)}
                   </Cell>
-                  <Cell numeric hideOnMobile className="text-muted">
+                  <Cell numeric hideOnMobile className="text-v2-mute">
                     {l.contributionPerPackOre === null ? "–" : kronor(l.contributionPerPackOre)}
                   </Cell>
                   <Cell numeric hideOnMobile>
@@ -170,7 +170,7 @@ function MachineCard({
                       ? "–"
                       : kronor(l.recommendedContributionPerWeekOre)}
                   </Cell>
-                  <Cell hideOnMobile className="text-sm text-muted">
+                  <Cell hideOnMobile className="text-v2-sm text-v2-mute">
                     {l.locked === "missing-price"
                       ? "Saknar inköpspris, låst"
                       : l.locked === "too-little-data"
@@ -183,7 +183,7 @@ function MachineCard({
               ))}
             </Table>
             {rec.action === "keep" && rec.potentialEffectPerWeekOre > 0 ? (
-              <p className="text-sm text-subtle">
+              <p className="text-v2-sm text-v2-mute">
                 Bästa omfördelningen ger {signedKronorWhole(rec.potentialEffectPerWeekOre)}/vecka,
                 under gränsen för att föreslå en ändring.
               </p>
@@ -199,7 +199,7 @@ function MachineCard({
         )}
 
         {ctx.canEdit ? (
-          <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+          <div className="flex flex-wrap gap-2 border-t border-v2-line pt-4">
             {rec?.action === "change" && !view.implemented ? (
               <ImplementButton
                 machineId={view.machineId}
@@ -283,11 +283,11 @@ export function AssortmentSection({
   return (
     <section
       aria-labelledby="sortiment-rubrik"
-      className="rise flex scroll-mt-28 flex-col gap-8"
+      className="flex scroll-mt-28 flex-col gap-3.5"
       id="sortiment"
       style={{ "--i": 1 } as React.CSSProperties}
     >
-      <SectionHeader
+      <SectionHead
         id="sortiment-rubrik"
         eyebrow="Sortiment"
         title={title}
@@ -302,7 +302,7 @@ export function AssortmentSection({
           action={
             <Link
               href={`?${periodQuery.toString()}#sortiment`}
-              className="rounded-xs text-fg underline underline-offset-4"
+              className="rounded-v2-sm text-v2-ink underline underline-offset-4"
             >
               Visa 30 dagar →
             </Link>
@@ -321,7 +321,7 @@ export function AssortmentSection({
             return (
               <li
                 key={m.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-2"
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-v2-line pb-2"
               >
                 <StateMessage
                   kind="not-configured"
@@ -371,12 +371,15 @@ export function AssortmentSection({
         <PanelSection label={`Uppföljning · ${formatInt(followUps.length)} genomförda`}>
           <ul className="flex flex-col gap-6">
             {followUps.map(({ change, followUp }) => (
-              <li key={change.id} className="flex min-w-0 flex-col gap-3 border-b border-line pb-4">
+              <li
+                key={change.id}
+                className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4"
+              >
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="meta text-fg">
+                  <span className="meta text-v2-ink">
                     {ctx.names.machine[change.machineId] ?? change.machineId}
                   </span>
-                  <span className="meta text-subtle">
+                  <span className="meta text-v2-mute">
                     Genomförd {dayText(change.implementedOn, ctx.today)} · väntat{" "}
                     {signedKronorWhole(change.expectedEffectPerWeekOre)}/vecka
                   </span>
@@ -396,26 +399,26 @@ export function AssortmentSection({
                     followUp.value.status === "not-started" ? null : (
                       <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
                         <div className="flex flex-col gap-1">
-                          <dt className="label text-subtle">Bidrag/vecka före</dt>
-                          <dd className="tnum text-lg">
+                          <dt className="label text-v2-mute">Bidrag/vecka före</dt>
+                          <dd className="tnum text-v2-lg">
                             {kronor(followUp.value.contributionPerWeekBeforeOre)}
                           </dd>
                         </div>
                         <div className="flex flex-col gap-1">
-                          <dt className="label text-subtle">Efter</dt>
-                          <dd className="tnum text-lg">
+                          <dt className="label text-v2-mute">Efter</dt>
+                          <dd className="tnum text-v2-lg">
                             {kronor(followUp.value.contributionPerWeekAfterOre)}
                           </dd>
                         </div>
                         <div className="flex flex-col gap-1">
-                          <dt className="label text-subtle">Justerad förändring</dt>
-                          <dd className="tnum text-lg">
+                          <dt className="label text-v2-mute">Justerad förändring</dt>
+                          <dd className="tnum text-v2-lg">
                             {signedKronorWhole(followUp.value.adjustedChangePerWeekOre)}
                           </dd>
                         </div>
                         <div className="flex flex-col gap-1">
-                          <dt className="label text-subtle">Av väntad effekt</dt>
-                          <dd className="tnum text-lg">
+                          <dt className="label text-v2-mute">Av väntad effekt</dt>
+                          <dd className="tnum text-v2-lg">
                             {followUp.value.achievedBp === null
                               ? "–"
                               : percentOfBp(followUp.value.achievedBp, 0)}
@@ -423,7 +426,7 @@ export function AssortmentSection({
                         </div>
                       </dl>
                     )}
-                    <p className="max-w-3xl text-muted">{followUp.value.text}</p>
+                    <p className="max-w-3xl text-v2-mute">{followUp.value.text}</p>
                     <Evidence evidence={followUp.value.evidence} names={ctx.names} />
                     {followUp.value.control.machineIds.length > 0 ? (
                       <Evidence

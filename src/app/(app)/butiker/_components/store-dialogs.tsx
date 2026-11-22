@@ -90,11 +90,11 @@ function StoreFields({ store }: { store?: StoreDetail }) {
         <div className="flex flex-col gap-0.5">
           <label
             htmlFor={`${idBase}-example`}
-            className="text-base text-fg max-md:-mt-3.5 max-md:-mb-2 max-md:tap"
+            className="text-v2-md text-v2-ink max-md:-mt-3.5 max-md:-mb-2 max-md:tap"
           >
             Exempelbutik
           </label>
-          <p id={`${idBase}-example-hint`} className="text-sm text-muted">
+          <p id={`${idBase}-example-hint`} className="text-v2-sm text-v2-mute">
             Visas med etiketten Exempel i listor och rapporter.
           </p>
         </div>
@@ -254,9 +254,9 @@ export function StoreActions({
         }
       >
         {archiveError ? (
-          <p role="alert" className="flex items-start gap-2 text-sm">
-            <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-signal" />
-            <span className="text-fg">
+          <p role="alert" className="flex items-start gap-2 text-v2-sm">
+            <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-v2-crit" />
+            <span className="text-v2-ink">
               <span className="sr-only">Kräver åtgärd: </span>
               {archiveError}
             </span>

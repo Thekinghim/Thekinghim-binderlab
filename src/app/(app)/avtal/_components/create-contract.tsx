@@ -162,14 +162,11 @@ export function CreateContract({
       toast({ title: "Signerat", tone: "ok" });
     });
 
-  const big = "h-11 px-5 text-base";
+  const big = "h-11 px-5 text-v2-md";
 
   if (options.length === 0) {
     return (
-      <Link
-        href="/butiker/ny"
-        className="inline-flex h-11 items-center gap-2 rounded-sm border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
-      >
+      <Link href="/butiker/ny" className="v2-btn act touch">
         <span aria-hidden>+</span>
         Ny butik
       </Link>
@@ -193,15 +190,18 @@ export function CreateContract({
         <ol aria-label="Steg" className="mb-6 grid grid-cols-4 gap-2">
           {STEPS.map((s, i) => (
             <li key={s} className="flex min-w-0 flex-col gap-1.5">
-              <span className="h-1 overflow-hidden rounded-xs bg-line">
+              <span className="h-1 overflow-hidden rounded-full bg-v2-line">
                 <span
-                  className="block h-full origin-left bg-fg transition-transform duration-500 ease-out"
+                  className="block h-full origin-left bg-v2-ink transition-transform duration-300 ease-out"
                   style={{ transform: `scaleX(${i <= step ? 1 : 0})` }}
                 />
               </span>
               <span
                 aria-current={i === step ? "step" : undefined}
-                className={cn("label truncate", i <= step ? "text-fg" : "text-subtle")}
+                className={cn(
+                  "truncate text-v2-sm font-[550]",
+                  i <= step ? "text-v2-ink" : "text-v2-faint",
+                )}
               >
                 {s}
               </span>
@@ -210,14 +210,16 @@ export function CreateContract({
         </ol>
 
         {step === 3 && done ? (
-          <div className="rise flex flex-col gap-6">
+          <div className="v2-enter flex flex-col gap-6">
             <div className="flex items-center gap-4">
-              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-up text-bg">
+              <span className="text-white grid size-11 shrink-0 place-items-center rounded-full bg-v2-profit">
                 <Icon name="check" size={20} />
               </span>
               <div className="flex min-w-0 flex-col">
-                <p className="text-lg font-medium text-fg">Klart! Kontrakt med {done.storeName}.</p>
-                <p className="text-base text-muted">
+                <p className="text-v2-lg font-[650] text-v2-ink">
+                  Klart! Kontrakt med {done.storeName}.
+                </p>
+                <p className="text-v2-md text-v2-mute">
                   {signed ? "Signerat." : checked.ok ? checked.plain : null}
                 </p>
               </div>
@@ -227,7 +229,7 @@ export function CreateContract({
                 href={done.pdf ? `/avtal/${done.id}/fil` : `/avtal/${done.id}/mall`}
                 target={done.pdf ? undefined : "_blank"}
                 rel="noreferrer"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-sm border border-line-strong bg-surface px-5 text-base font-medium text-fg hover:bg-hover"
+                className="v2-btn lg"
               >
                 <Icon name="download" size={16} />
                 {done.pdf ? "Ladda ner PDF" : "Skriv ut"}
@@ -249,7 +251,7 @@ export function CreateContract({
             </div>
           </div>
         ) : (
-          <form key={step} onSubmit={submit} noValidate className="rise flex flex-col gap-5">
+          <form key={step} onSubmit={submit} noValidate className="v2-enter flex flex-col gap-5">
             {step === 0 ? (
               <>
                 <Select
@@ -280,14 +282,14 @@ export function CreateContract({
                       setValidFrom(option.firstSale ?? validFrom);
                       setConfirm(undefined);
                     }}
-                    className="-mt-2 w-fit rounded-xs text-sm font-medium text-fg underline underline-offset-4 max-md:min-h-11"
+                    className="-mt-2 w-fit rounded-v2-sm text-v2-sm font-[550] text-v2-ink underline underline-offset-4 max-md:min-h-11"
                   >
                     {firstSaleLabel}
                   </button>
                 ) : null}
                 <Link
                   href="/butiker/ny"
-                  className="meta w-fit rounded-xs text-subtle underline-offset-4 hover:text-fg hover:underline max-md:tap"
+                  className="w-fit rounded-v2-sm text-v2-sm text-v2-mute underline-offset-4 hover:text-v2-ink hover:underline max-md:tap"
                 >
                   Ny butik{" "}→
                 </Link>
@@ -307,30 +309,30 @@ export function CreateContract({
 
             {step === 2 && checked.ok ? (
               <>
-                <p className="text-lg font-medium text-fg">{checked.plain}</p>
+                <p className="text-v2-lg font-[550] text-v2-ink">{checked.plain}</p>
                 <iframe
                   title="Kontraktet"
                   srcDoc={previewHtml(preview)}
                   sandbox=""
-                  className="bg-white h-[46dvh] w-full rounded-sm border border-line"
+                  className="bg-white h-[46dvh] w-full rounded-v2 border border-v2-line"
                 />
                 {operatorGaps.length > 0 || orgNumberMissing ? (
-                  <p className="text-sm text-signal-fg">
+                  <p className="text-v2-sm text-v2-crit-text">
                     Era uppgifter saknas i kontraktet (
                     {(operatorGaps.length > 0 ? operatorGaps : ["org.nr"]).join(", ")}).{" "}
                     <Link
                       href="/installningar#foretaget"
-                      className="font-medium underline underline-offset-2"
+                      className="font-[550] underline underline-offset-2"
                     >
                       Fyll i dem
                     </Link>
                   </p>
                 ) : null}
                 {firstContract ? (
-                  <p className="meta text-subtle">Låt Talenom läsa mallen en gång.</p>
+                  <p className="text-v2-sm text-v2-mute">Låt Talenom läsa mallen en gång.</p>
                 ) : null}
                 {confirm ? (
-                  <p role="status" className="text-sm text-fg">
+                  <p role="status" className="text-v2-sm text-v2-ink">
                     {confirm}
                   </p>
                 ) : null}

@@ -1,13 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { FormError } from "@/app/logga-in/form-error";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
+import { Button as V2Button, ButtonLink } from "@/components/v2/button";
 import { cn } from "@/lib/cn";
 import { contractHtml, type ContractParty } from "@/reports/contract-pdf";
 
@@ -66,22 +65,24 @@ function Choice({
       aria-checked={checked}
       onClick={onSelect}
       className={cn(
-        "flex min-h-14 w-full items-center gap-3 rounded-md border px-4 py-3 text-left transition-[border-color,background-color,transform] duration-fast active:scale-[0.99]",
-        checked ? "border-fg bg-hover" : "border-line-control hover:bg-hover",
+        "flex min-h-14 w-full items-center gap-3 rounded-v2 border bg-v2-panel px-4 py-3 text-left transition-[border-color,background-color,transform] duration-150 active:scale-[0.99]",
+        checked
+          ? "border-v2-ink bg-v2-hover shadow-[inset_0_0_0_1px_var(--v2-ink)]"
+          : "border-v2-line3 hover:bg-v2-hover",
       )}
     >
       <span
         aria-hidden
         className={cn(
           "grid size-5 shrink-0 place-items-center rounded-full border",
-          checked ? "border-fg bg-fg text-bg" : "border-line-control",
+          checked ? "text-white border-v2-ink bg-v2-ink" : "border-v2-line3",
         )}
       >
         {checked ? <Icon name="check" size={12} /> : null}
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="text-base font-medium text-fg">{title}</span>
-        {hint ? <span className="text-sm text-muted">{hint}</span> : null}
+        <span className="text-v2-md font-[550] text-v2-ink">{title}</span>
+        {hint ? <span className="text-v2-sm text-v2-mute">{hint}</span> : null}
       </span>
     </button>
   );
@@ -220,19 +221,22 @@ export function StoreGuide({
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <ol aria-label="Steg" className="grid grid-cols-5 gap-2">
         {STEPS.map((label, i) => (
           <li key={label} className="flex min-w-0 flex-col gap-2">
-            <span className="h-1 overflow-hidden rounded-xs bg-line">
+            <span className="h-1 overflow-hidden rounded-full bg-v2-line">
               <span
-                className="block h-full origin-left bg-fg transition-transform duration-500 ease-out"
+                className="block h-full origin-left bg-v2-ink transition-transform duration-300 ease-out"
                 style={{ transform: `scaleX(${i <= step ? 1 : 0})` }}
               />
             </span>
             <span
               aria-current={i === step ? "step" : undefined}
-              className={cn("label truncate", i <= step ? "text-fg" : "text-subtle")}
+              className={cn(
+                "truncate text-v2-sm font-[550]",
+                i <= step ? "text-v2-ink" : "text-v2-faint",
+              )}
             >
               {label}
             </span>
@@ -241,14 +245,14 @@ export function StoreGuide({
       </ol>
 
       {step === 4 && store && contract ? (
-        <div key="klart" className="rise flex flex-col gap-6">
+        <div key="klart" className="v2-enter flex flex-col gap-6">
           <div className="flex items-center gap-4">
-            <span className="grid size-12 shrink-0 place-items-center rounded-full bg-up text-bg">
+            <span className="text-white grid size-11 shrink-0 place-items-center rounded-full bg-v2-profit">
               <Icon name="check" size={20} />
             </span>
             <div className="flex min-w-0 flex-col">
-              <p className="text-xl font-medium text-fg">Klart! {name.trim()} är tillagd.</p>
-              <p className="text-base text-muted">
+              <p className="text-v2-lg font-[650] text-v2-ink">Klart! {name.trim()} är tillagd.</p>
+              <p className="text-v2-md text-v2-mute">
                 {store.code ? `${store.code} står där. ` : ""}
                 {signed ? "Kontraktet är signerat." : checked.ok ? `${checked.plain}.` : null}
               </p>
@@ -259,7 +263,7 @@ export function StoreGuide({
               href={contract.pdf ? `/avtal/${contract.id}/fil` : `/avtal/${contract.id}/mall`}
               target={contract.pdf ? undefined : "_blank"}
               rel="noreferrer"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-sm border border-line-strong bg-surface px-5 text-base font-medium text-fg hover:bg-hover"
+              className="v2-btn lg"
             >
               <Icon name="download" size={16} />
               {contract.pdf ? "Ladda ner kontrakt" : "Skriv ut kontrakt"}
@@ -267,27 +271,19 @@ export function StoreGuide({
             {!signed ? (
               <>
                 <SignOnSite contractId={contract.id} storeName={name.trim()} large />
-                <Button
-                  variant="ghost"
-                  loading={pending}
-                  onClick={markSigned}
-                  className="h-11 px-5 text-base"
-                >
+                <V2Button variant="plain" size="lg" pending={pending} onClick={markSigned}>
                   Markera som signerat
-                </Button>
+                </V2Button>
               </>
             ) : null}
-            <Link
-              href={`/butiker/${store.storeId}`}
-              className="inline-flex h-11 items-center justify-center rounded-sm border border-line-strong bg-surface px-5 text-base font-medium text-fg hover:bg-hover"
-            >
+            <ButtonLink href={`/butiker/${store.storeId}`} size="lg">
               Öppna butiken
-            </Link>
+            </ButtonLink>
           </div>
           <FormError message={error} />
         </div>
       ) : (
-        <form key={step} onSubmit={next} noValidate className="rise flex flex-col gap-6">
+        <form key={step} onSubmit={next} noValidate className="v2-enter flex flex-col gap-5">
           {step === 0 ? (
             <>
               <Input
@@ -347,12 +343,12 @@ export function StoreGuide({
 
           {step === 3 && checked.ok ? (
             <>
-              <p className="text-lg font-medium text-fg">{checked.plain}</p>
+              <p className="text-v2-lg font-[550] text-v2-ink">{checked.plain}</p>
               <iframe
                 title="Kontraktet"
                 srcDoc={previewHtml(preview)}
                 sandbox=""
-                className="bg-white h-[46dvh] w-full rounded-sm border border-line"
+                className="bg-white h-[46dvh] w-full rounded-v2 border border-v2-line"
               />
             </>
           ) : null}
@@ -360,15 +356,20 @@ export function StoreGuide({
           <FormError message={error} />
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
             {step > 0 && !store ? (
-              <Button type="button" onClick={() => setStep(step - 1)} disabled={pending}>
+              <V2Button
+                type="button"
+                size="lg"
+                onClick={() => setStep(step - 1)}
+                disabled={pending}
+              >
                 Tillbaka
-              </Button>
+              </V2Button>
             ) : (
               <span />
             )}
-            <Button type="submit" variant="primary" loading={pending} className="h-11 px-6">
+            <V2Button type="submit" variant="act" size="lg" pending={pending} className="px-6">
               {step === 3 ? "Skapa kontrakt" : "Nästa"}
-            </Button>
+            </V2Button>
           </div>
         </form>
       )}

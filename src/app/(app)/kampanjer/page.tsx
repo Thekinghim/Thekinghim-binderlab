@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Suspense, type CSSProperties } from "react";
+import { Suspense } from "react";
 
-import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { Badge, type BadgeTone } from "@/components/v2/badge";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { cn } from "@/lib/cn";
 import { formatInt, formatSek } from "@/lib/format";
 import { businessDateOf } from "@/import/zoned";
 import { CAMPAIGN_STATE_LABEL, type CampaignState } from "@/server/campaigns/model";
@@ -28,13 +33,12 @@ export const metadata: Metadata = { title: "Kampanjer" };
 type SearchParams = Record<string, string | string[] | undefined>;
 
 const VIEWS = ["kampanjer", "gratis-pack"] as const;
-const rise = (i: number) => ({ "--i": i }) as CSSProperties;
 const kr = (ore: number) => formatSek(ore / 100);
 
-const STATE_TONE: Record<CampaignState, Status> = {
-  live: "ok",
+const STATE_TONE: Record<CampaignState, BadgeTone> = {
+  live: "success",
   partial: "warning",
-  scheduled: "neutral",
+  scheduled: "info",
   failed: "critical",
   ended: "neutral",
   stopped: "neutral",
@@ -56,7 +60,7 @@ export default async function KampanjerPage({
   const viewer = await requireViewer();
   const view = pickView(sp.vy, VIEWS);
   return (
-    <div className="mx-auto flex w-full max-w-[960px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
+    <div className={cn(PAGE_BODY, "max-w-[1000px]")}>
       {view === "kampanjer" ? (
         <CampaignsView
           viewer={viewer}
@@ -78,12 +82,15 @@ export default async function KampanjerPage({
 
 function NotConnected() {
   return (
-    <p className="rounded-md border border-line-strong bg-raised px-4 py-3 text-base">
-      Koppla Awish först.{" "}
-      <Link href="/datakallor" className="underline underline-offset-4">
-        Datakällor →
-      </Link>
-    </p>
+    <Notice
+      tone="info"
+      title="Koppla Awish först."
+      action={
+        <ButtonLink href="/datakallor" touch>
+          Datakällor →
+        </ButtonLink>
+      }
+    />
   );
 }
 
@@ -109,56 +116,55 @@ async function CampaignsView({
 
   return (
     <>
-      <header className="rise flex flex-col gap-4 max-md:gap-3" style={rise(0)}>
-        <p className="label text-subtle">Kampanjer på skärmen</p>
-        <h1 className="text-3xl font-medium max-md:text-2xl md:text-4xl">
-          {live.length === 0 ? (
+      <PageIntro
+        title={
+          live.length === 0 ? (
             "Ingen kampanj visas nu."
           ) : (
             <>
               <BigNumber value={live.length} id="kampanjer-live" />{" "}
               {live.length === 1 ? "kampanj visas" : "kampanjer visas"} nu.
             </>
-          )}
-        </h1>
-        <p className="text-base text-muted">
-          {data.linked.length === 0
+          )
+        }
+        aside={
+          data.linked.length === 0
             ? "Ingen automat är kopplad till Awish."
-            : `På ${formatInt(liveMachines.size)} av ${formatInt(data.linked.length)} ${data.linked.length === 1 ? "automat" : "automater"}.`}
-        </p>
-        {!data.connected ? <NotConnected /> : null}
-        <div className="flex flex-col items-start gap-3">
-          <CampaignComposer
-            machines={data.linked.map((m) => ({
-              machineId: m.machineId,
-              code: m.code,
-              name: m.name,
-            }))}
-            suggestions={data.suggestions.map((s) => ({
-              titleId: s.titleId,
-              text: s.text,
-              titleName: s.titleName,
-              machineIds: s.machineIds,
-              sinceLabel: dayLabel(s.since, today),
-            }))}
-            library={data.library}
-            today={today}
-            canEdit={canEdit && data.connected && data.linked.length > 0}
-          />
-        </div>
-      </header>
+            : `På ${formatInt(liveMachines.size)} av ${formatInt(data.linked.length)} ${data.linked.length === 1 ? "automat" : "automater"}.`
+        }
+      />
+      {!data.connected ? <NotConnected /> : null}
+      {canEdit && data.connected && data.linked.length > 0 ? (
+        <Card as="section" title="Kampanjer på skärmen">
+          <CardBody className="flex flex-col items-start gap-3">
+            <CampaignComposer
+              machines={data.linked.map((m) => ({
+                machineId: m.machineId,
+                code: m.code,
+                name: m.name,
+              }))}
+              suggestions={data.suggestions.map((s) => ({
+                titleId: s.titleId,
+                text: s.text,
+                titleName: s.titleName,
+                machineIds: s.machineIds,
+                sinceLabel: dayLabel(s.since, today),
+              }))}
+              library={data.library}
+              today={today}
+              canEdit={canEdit && data.connected && data.linked.length > 0}
+            />
+          </CardBody>
+        </Card>
+      ) : null}
 
       {data.current.length > 0 ? (
-        <section aria-labelledby="nu-h" className="rise flex flex-col gap-3" style={rise(1)}>
-          <h2 id="nu-h" className="label text-subtle">
-            Nu och planerade
-          </h2>
-          <ul className="flex flex-col gap-3">
-            {data.current.map((c, i) => (
+        <Card as="section" title="Nu och planerade" count={data.current.length}>
+          <ul aria-label="Nu och planerade" className="flex flex-col">
+            {data.current.map((c) => (
               <CampaignCard
                 key={c.id}
                 c={c}
-                i={i}
                 canEdit={canEdit}
                 when={
                   c.state === "scheduled" && firstDay(c) > today
@@ -173,20 +179,28 @@ async function CampaignsView({
               />
             ))}
           </ul>
-        </section>
+        </Card>
       ) : null}
 
       {data.past.length > 0 ? (
-        <details className="rise group" style={rise(2)}>
-          <summary className="label cursor-pointer text-subtle">
-            Tidigare ({formatInt(data.past.length)})
+        <details className="v2-card group">
+          <summary className="v2-card-hd cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <h2>
+              Tidigare<span aria-hidden="true">·</span>
+              <span className="n">{formatInt(data.past.length)}</span>
+            </h2>
+            <span
+              aria-hidden="true"
+              className="text-v2-mute transition-transform duration-150 group-open:rotate-90"
+            >
+              ›
+            </span>
           </summary>
-          <ul className="mt-3 flex flex-col gap-3">
-            {data.past.map((c, i) => (
+          <ul className="flex flex-col">
+            {data.past.map((c) => (
               <CampaignCard
                 key={c.id}
                 c={c}
-                i={i}
                 canEdit={false}
                 when={`${dayLabel(firstDay(c), today)} – ${dayLabel(lastDay(c), today)}`}
               />
@@ -203,7 +217,7 @@ async function CampaignStats({ viewer, id }: { viewer: Viewer; id: string }) {
   const s = stats[id];
   if (!s) return null;
   return (
-    <span className="tnum text-sm text-muted">
+    <span className="tnum text-v2-sm text-v2-mute">
       {formatInt(s.views)} visningar · {formatInt(s.hits)} tryck
     </span>
   );
@@ -211,13 +225,11 @@ async function CampaignStats({ viewer, id }: { viewer: Viewer; id: string }) {
 
 function CampaignCard({
   c,
-  i,
   canEdit,
   when,
   stats,
 }: {
   c: CampaignView;
-  i: number;
   canEdit: boolean;
   when: string;
   stats?: React.ReactNode;
@@ -225,26 +237,23 @@ function CampaignCard({
   const failed = c.machines.filter((m) => m.status === "failed");
   const active = c.state !== "ended" && c.state !== "stopped";
   return (
-    <li
-      className="rise flex flex-col gap-3 rounded-md border border-line-strong bg-raised p-3 sm:flex-row sm:items-center"
-      style={rise(i)}
-    >
+    <li className="flex flex-col gap-3 border-t border-v2-line2 px-[18px] py-3 first:border-t-0 max-[900px]:px-4 sm:flex-row sm:items-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={`/kampanjer/bild/${c.id}`}
         alt=""
-        className="h-28 w-full shrink-0 rounded-sm bg-bg object-cover sm:h-20 sm:w-32"
+        className="h-28 w-full shrink-0 rounded-v2 border border-v2-line2 bg-v2-hover object-cover sm:h-16 sm:w-28"
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-base font-medium">{c.title}</span>
-          <StatusTag status={STATE_TONE[c.state]}>{CAMPAIGN_STATE_LABEL[c.state]}</StatusTag>
+          <span className="text-v2-md font-[550]">{c.title}</span>
+          <Badge tone={STATE_TONE[c.state]}>{CAMPAIGN_STATE_LABEL[c.state]}</Badge>
         </div>
-        <span className="text-sm text-muted">
+        <span className="text-v2-sm text-v2-mute">
           {when} · {c.machines.map((m) => m.code).join(", ")}
         </span>
         {failed.length > 0 && active ? (
-          <span className="text-sm text-signal-fg">
+          <span className="text-v2-sm text-v2-crit-text">
             Kom inte fram: {failed.map((m) => m.code).join(", ")}
             {failed[0]?.error ? ` (${failed[0].error})` : ""}
           </span>
@@ -284,19 +293,19 @@ async function FreePacksView({
   });
   return (
     <>
-      <header className="rise flex flex-col gap-4" style={rise(0)}>
-        <p className="label text-subtle">Gratis-pack</p>
-        <h1 className="text-3xl font-medium md:text-4xl">
-          <BigNumber value={data.month.packs} id="gratis-pack-manad" />{" "}
-          {data.month.packs === 1 ? "pack" : "pack"} bortgivna i {month}.
-        </h1>
-        <p className="text-base text-muted">
-          {kr(data.month.costOre)} till inköpspris
-          {data.month.unpriced > 0 ? ` · ${formatInt(data.month.unpriced)} utan pris` : ""}.
-        </p>
-        {!data.connected ? <NotConnected /> : null}
-        {data.canCreate && data.connected ? (
-          <div>
+      <PageIntro
+        title={
+          <>
+            <BigNumber value={data.month.packs} id="gratis-pack-manad" />{" "}
+            {data.month.packs === 1 ? "pack" : "pack"} bortgivna i {month}.
+          </>
+        }
+        aside={`${kr(data.month.costOre)} till inköpspris${data.month.unpriced > 0 ? ` · ${formatInt(data.month.unpriced)} utan pris` : ""}.`}
+      />
+      {!data.connected ? <NotConnected /> : null}
+      {data.canCreate && data.connected ? (
+        <Card as="section" title="Gratis-pack">
+          <CardBody>
             <FreePackGiver
               machines={data.linked.map((m) => ({
                 machineId: m.machineId,
@@ -307,38 +316,35 @@ async function FreePacksView({
               initialMachineId={initialMachineId}
               initialReason={reason}
             />
-          </div>
-        ) : null}
-      </header>
+          </CardBody>
+        </Card>
+      ) : null}
 
       {data.batches.length > 0 ? (
-        <section aria-labelledby="senaste-h" className="rise flex flex-col gap-3" style={rise(1)}>
-          <h2 id="senaste-h" className="label text-subtle">
-            Senaste
-          </h2>
-          <ul className="flex flex-col divide-y divide-line rounded-md border border-line-strong bg-raised">
+        <Card as="section" title="Senaste" count={data.batches.length}>
+          <ul aria-label="Senaste gratis-pack" className="flex flex-col divide-y divide-v2-line2">
             {data.batches.map((b) => (
               <li
                 key={b.id}
-                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3 max-[900px]:px-4"
               >
                 <div className="flex min-w-0 flex-col">
-                  <span className="text-base font-medium">
+                  <span className="text-v2-md font-[550]">
                     {b.quantity} × {b.goodName}
                   </span>
-                  <span className="text-sm text-muted">
+                  <span className="text-v2-sm text-v2-mute">
                     {dayLabel(b.day, today)} · {b.machine.code} · {REASON_LABEL[b.reason]}
                     {b.recipient ? ` · till ${b.recipient}` : ""}
                     {b.createdBy ? ` · ${b.createdBy}` : ""}
                   </span>
                   {b.status === "failed" ? (
-                    <span className="text-sm text-signal-fg">Misslyckades: {b.error}</span>
+                    <span className="text-v2-sm text-v2-crit-text">Misslyckades: {b.error}</span>
                   ) : b.error ? (
-                    <span className="text-sm text-muted">{b.error}</span>
+                    <span className="text-v2-sm text-v2-mute">{b.error}</span>
                   ) : null}
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="tnum text-sm text-muted">
+                  <span className="tnum text-v2-sm text-v2-mute">
                     {b.status !== "created"
                       ? "–"
                       : b.costOre === null
@@ -360,9 +366,11 @@ async function FreePacksView({
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       ) : (
-        <p className="text-base text-muted">Inga gratis-pack än.</p>
+        <Card>
+          <Empty title="Inga gratis-pack än." />
+        </Card>
       )}
     </>
   );

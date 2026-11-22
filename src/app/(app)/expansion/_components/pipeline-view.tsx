@@ -172,13 +172,14 @@ export function PipelineView({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <ol className="flex flex-wrap gap-x-5 gap-y-2" aria-label="Platser per steg">
           {counts.map(({ s, n }, i) => (
-            <li key={s} className="meta tnum flex items-center gap-1.5 text-muted">
+            <li key={s} className="meta tnum flex items-center gap-1.5 text-v2-mute">
               {i > 0 ? (
-                <span aria-hidden className="text-faint">
+                <span aria-hidden className="text-v2-faint">
                   →
                 </span>
               ) : null}
-              <span className="text-fg">{formatInt(n)}</span> {LEAD_STAGE_LABEL[s].toLowerCase()}
+              <span className="text-v2-ink">{formatInt(n)}</span>{" "}
+              {LEAD_STAGE_LABEL[s].toLowerCase()}
             </li>
           ))}
         </ol>
@@ -205,19 +206,19 @@ export function PipelineView({
             return (
               <li
                 key={p.leadId}
-                className="flex flex-col gap-3 border-t border-line py-4 last:border-b"
+                className="flex flex-col gap-3 border-t border-v2-line py-4 last:border-b"
               >
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start">
                   <div className="flex min-w-0 flex-col gap-1 lg:col-span-5">
-                    <p className="label flex items-center gap-2 text-subtle">
-                      <span className="tnum text-fg">{String(p.rank).padStart(2, "0")}</span>
-                      <span aria-hidden className="text-faint">
+                    <p className="label flex items-center gap-2 text-v2-mute">
+                      <span className="tnum text-v2-ink">{String(p.rank).padStart(2, "0")}</span>
+                      <span aria-hidden className="text-v2-faint">
                         /
                       </span>
                       <span>{LEAD_STAGE_LABEL[lead.stage]}</span>
                     </p>
-                    <p className="text-md text-fg">{lead.name}</p>
-                    <p className="text-sm text-muted">
+                    <p className="text-v2-lg text-v2-ink">{lead.name}</p>
+                    <p className="text-v2-sm text-v2-mute">
                       {[
                         lead.storeType,
                         lead.city,
@@ -228,14 +229,14 @@ export function PipelineView({
                         .join(" · ") || "Attribut saknas"}
                     </p>
                     {lead.contactName || lead.contactPhone || lead.contactEmail ? (
-                      <p className="text-sm text-muted">
+                      <p className="text-v2-sm text-v2-mute">
                         {[lead.contactName, lead.contactPhone, lead.contactEmail]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
                     ) : null}
                     {lead.nextStep || lead.nextStepOn ? (
-                      <p className={cn("text-sm", overdue ? "text-fg" : "text-muted")}>
+                      <p className={cn("text-v2-sm", overdue ? "text-v2-ink" : "text-v2-mute")}>
                         Nästa steg: {lead.nextStep ?? "–"}
                         {lead.nextStepOn ? (
                           <span className="meta tnum">
@@ -249,22 +250,22 @@ export function PipelineView({
                   </div>
                   <dl className="grid grid-cols-3 gap-4 lg:col-span-4">
                     <div className="flex flex-col gap-1">
-                      <dt className="label text-subtle">Vinst/mån</dt>
-                      <dd className="tnum text-lg text-fg">
+                      <dt className="label text-v2-mute">Vinst/mån</dt>
+                      <dd className="tnum text-v2-lg text-v2-ink">
                         {ok ? kr(e.profitPerMonthOre!.expected) : MISSING}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <dt className="label text-subtle">Återbet.</dt>
-                      <dd className="tnum text-lg text-fg">
+                      <dt className="label text-v2-mute">Återbet.</dt>
+                      <dd className="tnum text-v2-lg text-v2-ink">
                         {ok && e.investmentOre > 0
                           ? paybackShort(e.paybackTenths?.expected)
                           : MISSING}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <dt className="label text-subtle">Investering</dt>
-                      <dd className="tnum text-lg text-fg">
+                      <dt className="label text-v2-mute">Investering</dt>
+                      <dd className="tnum text-v2-lg text-v2-ink">
                         {e.investmentOre > 0 ? kr(e.investmentOre) : MISSING}
                       </dd>
                     </div>
@@ -283,7 +284,7 @@ export function PipelineView({
                         </Button>
                         <Link
                           href={`/avtal?skapa=${lead.storeId ? `store:${lead.storeId}` : `lead:${lead.id}`}`}
-                          className="inline-flex h-8 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
+                          className="inline-flex h-8 items-center rounded-v2 border border-v2-line3 bg-v2-panel px-3 text-v2-sm font-[550] text-v2-ink transition-colors duration-fast ease-instrument hover:border-v2-line3 hover:bg-v2-hover max-md:min-h-11"
                         >
                           Skapa avtal
                         </Link>
@@ -293,7 +294,7 @@ export function PipelineView({
                 </div>
                 <div className="flex flex-wrap items-start gap-3">
                   <EstimateTag />
-                  <p className="min-w-0 flex-1 text-sm text-muted">{e.text}</p>
+                  <p className="min-w-0 flex-1 text-v2-sm text-v2-mute">{e.text}</p>
                 </div>
                 <EvidenceDetails evidence={e.evidence} links={links[p.leadId] ?? []} />
               </li>
@@ -304,8 +305,8 @@ export function PipelineView({
 
       {closed.length > 0 ? (
         <details className="group">
-          <summary className="meta cursor-pointer list-none text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
-            <span aria-hidden className="text-faint">
+          <summary className="meta cursor-pointer list-none text-v2-mute hover:text-v2-ink [&::-webkit-details-marker]:hidden">
+            <span aria-hidden className="text-v2-faint">
               ›{" "}
             </span>
             Avslutade platser · {formatInt(closed.length)}
@@ -314,10 +315,10 @@ export function PipelineView({
             {closed.map((c) => (
               <li
                 key={c.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-2"
+                className="flex flex-wrap items-center justify-between gap-3 border-t border-v2-line py-2"
               >
-                <span className="text-sm text-fg">
-                  {c.name} <span className="text-muted">· {LEAD_STAGE_LABEL[c.stage]}</span>
+                <span className="text-v2-sm text-v2-ink">
+                  {c.name} <span className="text-v2-mute">· {LEAD_STAGE_LABEL[c.stage]}</span>
                 </span>
                 {canEdit ? (
                   <span className="flex gap-1">
@@ -340,8 +341,8 @@ export function PipelineView({
       ) : null}
       {archived.length > 0 ? (
         <details className="group">
-          <summary className="meta cursor-pointer list-none text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
-            <span aria-hidden className="text-faint">
+          <summary className="meta cursor-pointer list-none text-v2-mute hover:text-v2-ink [&::-webkit-details-marker]:hidden">
+            <span aria-hidden className="text-v2-faint">
               ›{" "}
             </span>
             Arkiverade platser · {formatInt(archived.length)}
@@ -350,10 +351,10 @@ export function PipelineView({
             {archived.map((c) => (
               <li
                 key={c.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-2"
+                className="flex flex-wrap items-center justify-between gap-3 border-t border-v2-line py-2"
               >
-                <span className="text-sm text-fg">
-                  {c.name} <span className="text-muted">· {LEAD_STAGE_LABEL[c.stage]}</span>
+                <span className="text-v2-sm text-v2-ink">
+                  {c.name} <span className="text-v2-mute">· {LEAD_STAGE_LABEL[c.stage]}</span>
                 </span>
                 {canEdit ? (
                   <span className="flex gap-1">
@@ -416,16 +417,16 @@ export function StoreProfilesView({
   return (
     <div className="min-w-0">
       <div className="relative min-w-0 overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse text-base">
+        <table className="w-full min-w-[560px] border-collapse text-v2-md">
           <caption className="sr-only">Platsprofiler för befintliga butiker</caption>
           <thead>
-            <tr className="border-b border-line-strong">
+            <tr className="border-b border-v2-line3">
               {["Butik", "Typ", "Ort", "Öppet/vecka", "Yta", ""].map((h, i) => (
                 <th
                   key={h || "x"}
                   scope="col"
                   className={cn(
-                    "label h-9 font-normal text-subtle",
+                    "label h-9 font-normal text-v2-mute",
                     i >= 3 ? "pl-4 text-right" : "text-left",
                   )}
                 >
@@ -436,10 +437,10 @@ export function StoreProfilesView({
           </thead>
           <tbody>
             {active.map((p) => (
-              <tr key={p.id} className="h-11 border-b border-line">
-                <td className="pr-4 text-fg">{p.name}</td>
-                <td className="pr-4 text-muted">{p.storeType ?? MISSING}</td>
-                <td className="pr-4 text-muted">{p.city ?? MISSING}</td>
+              <tr key={p.id} className="h-11 border-b border-v2-line">
+                <td className="pr-4 text-v2-ink">{p.name}</td>
+                <td className="pr-4 text-v2-mute">{p.storeType ?? MISSING}</td>
+                <td className="pr-4 text-v2-mute">{p.city ?? MISSING}</td>
                 <td className="tnum pl-4 text-right">
                   {p.openHoursPerWeek === null ? MISSING : `${p.openHoursPerWeek} h`}
                 </td>

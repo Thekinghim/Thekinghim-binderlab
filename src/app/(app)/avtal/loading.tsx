@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/ui/route-loading";
+import { PageSkeleton } from "@/components/v2/page-intro";
 
-/** Medan sidan hämtar och räknar: rubriken och innehållet som skeleton. */
+/** Medan sidan hämtar och räknar: rubriken och korten som skeleton (V2). */
 export default function AvtalLoading() {
-  return <RouteLoading label="Laddar avtal" blocks={["kpi", "table"]} />;
+  return <PageSkeleton label="Laddar avtal" main={[8]} />;
 }

@@ -47,13 +47,13 @@ function agreementColumns(
       hideable: false,
       render: (a) => (
         <span className="flex flex-col">
-          <span className="tnum text-fg">
+          <span className="tnum text-v2-ink">
             {day(a.validFrom, today)}
             {SPACED_RANGE_DASH}
             {a.validTo ? day(a.validTo, today) : "tills vidare"}
           </span>
-          <span className="text-sm text-muted md:hidden">{a.termsLabel}</span>
-          {a.note ? <span className="text-sm text-muted">{a.note}</span> : null}
+          <span className="text-v2-sm text-v2-mute md:hidden">{a.termsLabel}</span>
+          {a.note ? <span className="text-v2-sm text-v2-mute">{a.note}</span> : null}
         </span>
       ),
     },
@@ -150,10 +150,10 @@ function machineColumns(todayIso: string): Column<StoreMachineRow>[] {
       render: (m) => (
         <Link
           href={m.href}
-          className="flex max-w-36 min-w-0 flex-col rounded-xs py-1 hover:text-fg md:max-w-none"
+          className="flex max-w-36 min-w-0 flex-col rounded-v2-sm py-1 hover:text-v2-ink md:max-w-none"
         >
-          <span className="meta text-fg">{m.code.replace(/-/g, "‑")}</span>
-          <span className="truncate text-sm text-muted" title={m.name}>
+          <span className="meta text-v2-ink">{m.code.replace(/-/g, "‑")}</span>
+          <span className="truncate text-v2-sm text-v2-mute" title={m.name}>
             {m.name}
           </span>
         </Link>
@@ -167,14 +167,14 @@ function machineColumns(todayIso: string): Column<StoreMachineRow>[] {
         m.current ? (
           <span className="flex flex-col items-start gap-1">
             <StatusTag status="ok">Står här</StatusTag>
-            <span className="meta text-subtle">sedan {day(m.from, today)}</span>
+            <span className="meta text-v2-mute">sedan {day(m.from, today)}</span>
           </span>
         ) : (
           <span className="flex flex-col items-start gap-1">
             <StatusTag status={m.from > todayIso ? "neutral" : "offline"}>
               {m.from > todayIso ? "Kommande" : "Flyttad"}
             </StatusTag>
-            <span className="meta text-subtle">
+            <span className="meta text-v2-mute">
               {day(m.from, today)}
               {SPACED_RANGE_DASH}
               {m.to ? day(m.to, today) : ""}
@@ -238,8 +238,8 @@ function recipientColumns(timeZone: string, now: Date, canEdit: boolean): Column
         // max-w under md: adressen kortas med ellips (hela står i title) i stället för att
         // göra tabellen bredare än skärmen.
         <span className="flex max-w-32 min-w-0 flex-col md:max-w-none">
-          <span className="text-fg">{r.name}</span>
-          <span className="meta truncate text-muted" title={r.email}>
+          <span className="text-v2-ink">{r.name}</span>
+          <span className="meta truncate text-v2-mute" title={r.email}>
             {r.email}
           </span>
         </span>
@@ -259,7 +259,7 @@ function recipientColumns(timeZone: string, now: Date, canEdit: boolean): Column
           ) : (
             <StatusTag status="offline">Pausad</StatusTag>
           )}
-          <span className="meta text-subtle">
+          <span className="meta text-v2-mute">
             {r.lastSentAt
               ? `Senast ${formatDate(wallClockIn(new Date(r.lastSentAt), timeZone), {
                   year: "auto",

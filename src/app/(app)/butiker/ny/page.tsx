@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { day } from "@/analytics/todos/text";
+import { Card, CardBody } from "@/components/v2/card";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 import { loadContractSetupFor } from "@/server/contracts";
 import { requireRoute, requireViewer } from "@/server/data/core";
@@ -10,7 +13,6 @@ import { nextMachineCode } from "@/app/(app)/automater/_lib/model";
 import { loadMasterData } from "@/server/data/core";
 
 import { loadLeadsFor } from "../../expansion/_lib/service";
-import { PageHead } from "../_components/page-head";
 import { StoreGuide, type GuideLead, type GuideMachine } from "./store-guide";
 
 export const metadata: Metadata = { title: "Ny butik" };
@@ -63,16 +65,20 @@ export default async function NyButikPage({
       }
     : null;
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <PageHead eyebrow="Butiker" title="Ny butik." aside="Klart på en minut." />
-      <StoreGuide
-        found={found}
-        preselected={found.some((m) => m.id === wanted) ? wanted : null}
-        newCode={nextMachineCode(master.machines.map((m) => m.code))}
-        lead={lead}
-        operator={setup.operator}
-        today={ctx.today}
-      />
+    <div className={cn(PAGE_BODY, "max-w-[760px]")}>
+      <PageIntro title="Ny butik." aside="Klart på en minut." />
+      <Card>
+        <CardBody>
+          <StoreGuide
+            found={found}
+            preselected={found.some((m) => m.id === wanted) ? wanted : null}
+            newCode={nextMachineCode(master.machines.map((m) => m.code))}
+            lead={lead}
+            operator={setup.operator}
+            today={ctx.today}
+          />
+        </CardBody>
+      </Card>
     </div>
   );
 }

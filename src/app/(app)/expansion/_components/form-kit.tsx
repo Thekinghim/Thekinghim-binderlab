@@ -75,7 +75,7 @@ export function useActionRunner() {
 }
 
 const textareaCls =
-  "min-h-24 w-full min-w-0 rounded-sm border border-line-control bg-bg px-3 py-2 text-base text-fg transition-[border-color] duration-fast ease-instrument placeholder:text-subtle enabled:hover:border-muted";
+  "min-h-24 w-full min-w-0 rounded-v2 border border-v2-line3 bg-v2-panel px-3 py-2 text-v2-md text-v2-ink transition-[border-color] duration-fast ease-instrument placeholder:text-v2-mute enabled:hover:border-muted";
 
 function TextArea({
   label,
@@ -93,7 +93,7 @@ function TextArea({
   const id = useId();
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <label htmlFor={id} className="label text-muted">
+      <label htmlFor={id} className="label text-v2-mute">
         {label}
       </label>
       <textarea
@@ -102,15 +102,15 @@ function TextArea({
         onChange={(e) => onChange(e.target.value)}
         aria-invalid={error ? true : undefined}
         aria-describedby={error || hint ? `${id}-msg` : undefined}
-        className={cn(textareaCls, error && "border-signal")}
+        className={cn(textareaCls, error && "border-v2-crit")}
         rows={4}
       />
       {error ? (
-        <p id={`${id}-msg`} className="text-xs text-signal-fg">
+        <p id={`${id}-msg`} className="text-v2-xs text-v2-crit-text">
           ! {error}
         </p>
       ) : hint ? (
-        <p id={`${id}-msg`} className="text-xs text-subtle">
+        <p id={`${id}-msg`} className="text-v2-xs text-v2-mute">
           {hint}
         </p>
       ) : null}
@@ -210,7 +210,7 @@ export function FormModal<T>({
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
         {formError ? (
-          <p role="alert" className="text-sm text-signal-fg sm:col-span-2">
+          <p role="alert" className="text-v2-sm text-v2-crit-text sm:col-span-2">
             ! {formError}
           </p>
         ) : null}

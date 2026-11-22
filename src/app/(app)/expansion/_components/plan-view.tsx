@@ -64,11 +64,11 @@ function Stat({
 }) {
   return (
     <article
-      className="rise lift flex min-w-0 flex-col gap-2 rounded-md border border-line bg-surface p-4 md:p-5"
+      className="flex min-w-0 flex-col gap-2 rounded-v2-lg border border-v2-line bg-v2-panel p-4 md:p-5"
       style={{ "--i": i } as React.CSSProperties}
     >
-      <h3 className="label truncate text-muted">{label}</h3>
-      <p className={cn("tnum text-2xl font-medium", tone === "signal" && "text-signal-fg")}>
+      <h3 className="label truncate text-v2-mute">{label}</h3>
+      <p className={cn("tnum text-v2-xl font-[550]", tone === "signal" && "text-v2-crit-text")}>
         {text !== undefined ? (
           text
         ) : value === null ? (
@@ -80,7 +80,7 @@ function Stat({
           </>
         )}
       </p>
-      {sub ? <p className="text-sm text-muted">{sub}</p> : null}
+      {sub ? <p className="text-v2-sm text-v2-mute">{sub}</p> : null}
     </article>
   );
 }
@@ -234,7 +234,7 @@ export function PlanView({
     <div className="flex flex-col gap-10">
       <section aria-label="Per ny automat" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-md font-medium text-fg">Per ny automat</h2>
+          <h2 className="text-v2-lg font-[550] text-v2-ink">Per ny automat</h2>
           {canEdit ? (
             <PlanSettings saved={saved} plan={plan} open={editing} setOpen={setEditing} />
           ) : null}
@@ -295,25 +295,25 @@ export function PlanView({
       {plan.timeline.length > 0 ? (
         <section
           aria-labelledby="tidslinje-h"
-          className="rise flex flex-col gap-4"
+          className="flex flex-col gap-4"
           style={{ "--i": 5 } as React.CSSProperties}
         >
-          <h2 id="tidslinje-h" className="text-md font-medium text-fg">
+          <h2 id="tidslinje-h" className="text-v2-lg font-[550] text-v2-ink">
             Tidslinje
           </h2>
-          <div className="overflow-x-auto rounded-md border border-line bg-surface p-4 md:p-5">
+          <div className="overflow-x-auto rounded-v2-lg border border-v2-line bg-v2-panel p-4 md:p-5">
             <ol
               className="flex h-40 min-w-max items-end gap-1.5 sm:min-w-0"
               aria-label="Automater per månad"
             >
               <li className="flex h-full w-11 flex-col items-center justify-end gap-1 sm:w-auto sm:flex-1">
-                <span className="tnum text-xs text-muted">{formatInt(plan.machinesNow)}</span>
+                <span className="tnum text-v2-xs text-v2-mute">{formatInt(plan.machinesNow)}</span>
                 <span
-                  className="grow-y w-full rounded-t-xs bg-line-strong"
+                  className="grow-y w-full rounded-t-xs bg-v2-line3"
                   style={{ height: `${(plan.machinesNow / maxMachines) * 100}%`, minHeight: 2 }}
                   aria-hidden
                 />
-                <span className="text-xs text-subtle">Nu</span>
+                <span className="text-v2-xs text-v2-mute">Nu</span>
               </li>
               {plan.timeline.map((t, i) => (
                 <li
@@ -321,11 +321,11 @@ export function PlanView({
                   className="flex h-full w-11 flex-col items-center justify-end gap-1 sm:w-auto sm:flex-1"
                   title={`${monthLabel(t.month)}: ${formatInt(t.machines)} automater, ${hoursText(t.minutesPerPersonWeek)}/vecka var`}
                 >
-                  <span className="tnum text-xs text-muted">{formatInt(t.machines)}</span>
+                  <span className="tnum text-v2-xs text-v2-mute">{formatInt(t.machines)}</span>
                   <span
                     className={cn(
                       "grow-y w-full rounded-t-xs",
-                      t.needsHelp ? "bg-signal" : "bg-fg",
+                      t.needsHelp ? "bg-v2-crit" : "bg-v2-ink",
                     )}
                     style={
                       {
@@ -335,15 +335,15 @@ export function PlanView({
                     }
                     aria-hidden
                   />
-                  <span className="text-xs whitespace-nowrap text-subtle">
+                  <span className="text-v2-xs whitespace-nowrap text-v2-mute">
                     {shortMonth(t.month, i === 0)}
                   </span>
                 </li>
               ))}
             </ol>
             {plan.helpMonth ? (
-              <p className="mt-3 flex items-center gap-2 text-sm text-muted">
-                <span aria-hidden className="inline-block size-2.5 rounded-xs bg-signal" />
+              <p className="mt-3 flex items-center gap-2 text-v2-sm text-v2-mute">
+                <span aria-hidden className="inline-block size-2.5 rounded-v2-sm bg-v2-crit" />
                 Hjälp behövs
               </p>
             ) : null}
@@ -401,10 +401,10 @@ export function PlanView({
               : `${formatInt(plan.packsPerMonth)} pack per automat.`
           }
         />
-        <li className="lift flex list-none flex-col gap-1.5 rounded-md border border-line bg-surface p-4">
-          <span className="label text-muted">Antagande</span>
+        <li className="flex list-none flex-col gap-1.5 rounded-v2-lg border border-v2-line bg-v2-panel p-4">
+          <span className="label text-v2-mute">Antagande</span>
           <span className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="text-base font-medium text-fg">
+            <span className="text-v2-md font-[550] text-v2-ink">
               {formatInt(plan.refillMinutesPerMachineWeek)}
               {NBSP}min per automat och vecka
             </span>
@@ -412,24 +412,24 @@ export function PlanView({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="rounded-xs text-sm text-fg underline underline-offset-4 hover:text-muted max-md:tap"
+                className="rounded-v2-sm text-v2-sm text-v2-ink underline underline-offset-4 hover:text-v2-mute max-md:tap"
               >
                 Ändra
               </button>
             ) : null}
           </span>
           {refillWarn ? (
-            <span className="text-sm text-signal-fg">
+            <span className="text-v2-sm text-v2-crit-text">
               {refillWarn.text}{" "}
               {refillWarn.href ? (
-                <Link href={refillWarn.href} className="font-medium underline underline-offset-4">
+                <Link href={refillWarn.href} className="font-[550] underline underline-offset-4">
                   {refillWarn.cta}
                   {NBSP}→
                 </Link>
               ) : null}
             </span>
           ) : (
-            <span className="text-sm text-muted">
+            <span className="text-v2-sm text-v2-mute">
               {plan.refillSource === "data"
                 ? "Från er mätning."
                 : plan.refillSource === "saved"
@@ -442,23 +442,23 @@ export function PlanView({
 
       {steps.length > 0 ? (
         <section aria-labelledby="nasta-h" className="flex flex-col gap-3">
-          <h2 id="nasta-h" className="text-md font-medium text-fg">
+          <h2 id="nasta-h" className="text-v2-lg font-[550] text-v2-ink">
             Nästa steg
           </h2>
-          <ol className="flex flex-col divide-y divide-line rounded-md border border-line bg-surface">
+          <ol className="flex flex-col divide-y divide-v2-line2 rounded-v2-lg border border-v2-line bg-v2-panel">
             {steps.map((s, i) => (
               <li
                 key={s.key}
-                className="rise flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
                 style={{ "--i": i } as React.CSSProperties}
               >
-                <span className={cn("text-base", s.signal ? "text-signal-fg" : "text-fg")}>
+                <span className={cn("text-v2-md", s.signal ? "text-v2-crit-text" : "text-v2-ink")}>
                   {s.text}
                 </span>
                 {s.href && s.cta ? (
                   <Link
                     href={s.href}
-                    className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
+                    className="inline-flex h-9 items-center rounded-v2 border border-v2-line3 bg-v2-panel px-3.5 text-v2-sm font-[550] text-v2-ink transition-colors duration-fast ease-instrument hover:border-v2-line3 hover:bg-v2-hover max-md:min-h-11"
                   >
                     {s.cta}
                   </Link>
@@ -484,11 +484,13 @@ function Fact({
   signal?: boolean;
 }) {
   return (
-    <li className="lift flex list-none flex-col gap-1.5 rounded-md border border-line bg-surface p-4">
-      <span className="label text-muted">{label}</span>
-      <span className="text-base font-medium text-fg">{text}</span>
+    <li className="flex list-none flex-col gap-1.5 rounded-v2-lg border border-v2-line bg-v2-panel p-4">
+      <span className="label text-v2-mute">{label}</span>
+      <span className="text-v2-md font-[550] text-v2-ink">{text}</span>
       {sub ? (
-        <span className={cn("text-sm", signal ? "text-signal-fg" : "text-muted")}>{sub}</span>
+        <span className={cn("text-v2-sm", signal ? "text-v2-crit-text" : "text-v2-mute")}>
+          {sub}
+        </span>
       ) : null}
     </li>
   );

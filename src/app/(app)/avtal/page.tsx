@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type React from "react";
 
 import type { ContractReminder, ContractStatus, ExpiringCategory } from "@/analytics/contracts";
-import { Panel, PanelSection } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StateMessage } from "@/components/ui/state-message";
-import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { Badge, type BadgeTone } from "@/components/v2/badge";
+import { ButtonLink } from "@/components/v2/button";
+import { Card, CardBody } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { Notice } from "@/components/v2/notice";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { Table } from "@/components/v2/table";
 import { cn } from "@/lib/cn";
 import { formatDate, formatInt, formatPercent } from "@/lib/format";
 import {
@@ -25,7 +27,7 @@ import {
 import { loadMasterData, requireRoute } from "@/server/data/core";
 
 import { pickTab, ViewTabs } from "../automater/_components/view-tabs";
-import { PageHead } from "../butiker/_components/page-head";
+import { splitNumber } from "../butiker/_lib/head";
 import { EvidenceDetails } from "../ekonomi/_components/evidence";
 import { isoToDate, periodText, plural, sek } from "../ekonomi/_lib/view";
 import { ContractArchive } from "./_components/contract-archive";
@@ -60,14 +62,14 @@ const TABS = [
   { value: "arkiv", label: "Arkiv" },
 ] as const;
 
-const REMINDER: Record<ContractStatus, { status: Status; label: string }> = {
-  "not-started": { status: "neutral", label: "Ej påbörjat" },
-  "open-ended": { status: "ok", label: "Tills vidare" },
-  scheduled: { status: "ok", label: "Gäller" },
-  due: { status: "warning", label: "Säg upp eller förläng" },
-  "notice-passed": { status: "neutral", label: "Uppsägningstid passerad" },
-  terminated: { status: "offline", label: "Uppsagt" },
-  expired: { status: "offline", label: "Utgånget" },
+const REMINDER: Record<ContractStatus, { tone: BadgeTone; label: string }> = {
+  "not-started": { tone: "neutral", label: "Ej påbörjat" },
+  "open-ended": { tone: "success", label: "Tills vidare" },
+  scheduled: { tone: "success", label: "Gäller" },
+  due: { tone: "warning", label: "Säg upp eller förläng" },
+  "notice-passed": { tone: "neutral", label: "Uppsägningstid passerad" },
+  terminated: { tone: "plain", label: "Uppsagt" },
+  expired: { tone: "plain", label: "Utgånget" },
 };
 
 const CATEGORY: Record<ExpiringCategory, string> = {
@@ -76,14 +78,14 @@ const CATEGORY: Record<ExpiringCategory, string> = {
   "no-contract": "Utan signerat kontrakt",
 };
 
-const TONE: Record<ContractRow["status"], string> = {
-  missing: "border-signal-line text-signal-fg",
-  draft: "border-line-control text-fg",
-  sent: "border-line-control text-fg",
-  due: "border-line-control text-fg",
-  terminated: "border-dashed border-line-control text-muted",
-  upcoming: "border-up-line text-up",
-  signed: "border-up-line text-up",
+const TONE: Record<ContractRow["status"], BadgeTone> = {
+  missing: "critical",
+  draft: "neutral",
+  sent: "info",
+  due: "warning",
+  terminated: "plain",
+  upcoming: "success",
+  signed: "success",
 };
 
 /** Kontraktsdatum skrivs alltid med år (ett kontrakt löper ofta över årsskiftet). */
@@ -134,9 +136,6 @@ function noticeText(c: ContractRecord): string {
   if (c.noticePeriodDays) parts.push(plural(c.noticePeriodDays, "dag", "dagar"));
   return parts.length > 0 ? parts.join(" och ") : "Ingen";
 }
-
-const link =
-  "inline-flex h-9 items-center gap-1.5 rounded-sm px-2.5 text-sm text-fg underline-offset-4 hover:underline";
 
 /**
  * Kontrakt: "X av Y butiker har signerat kontrakt", stor knapp Skapa kontrakt och en lista
@@ -257,14 +256,27 @@ export default async function KontraktPage({
   // Andra raden: nästa åtgärd (listan står redan med röda först), inte samma tal igen.
   const firstAlert = missing > 0 ? (list.rows.find((r) => r.alert) ?? null) : null;
   const firstOfStore = new Set<string>();
-  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
+  const headParts = splitNumber(contractHeadline(list.signed, list.total));
 
   return (
-    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8 px-4 pt-8 pb-16 md:gap-10 md:px-8 md:pt-12">
-      <PageHead
-        eyebrow="Kontrakt"
-        title={contractHeadline(list.signed, list.total)}
-        tone={list.total === 0 ? undefined : missing === 0 ? "good" : "bad"}
+    <div className={PAGE_BODY}>
+      <PageIntro
+        title={
+          <>
+            {headParts.before}
+            {headParts.value !== null ? (
+              <span
+                className={cn(
+                  "tnum",
+                  list.total > 0 && (missing === 0 ? "text-v2-profit-text" : "text-v2-crit-text"),
+                )}
+              >
+                {formatInt(headParts.value)}
+              </span>
+            ) : null}
+            {headParts.after}
+          </>
+        }
         aside={
           firstAlert
             ? firstAlert.status === "missing"
@@ -290,178 +302,205 @@ export default async function KontraktPage({
         }
       />
 
-      <div className="rise" style={rise(1)}>
+      <div>
         <ViewTabs tabs={TABS} value={tab} basePath="/avtal" query="" label="Visa" />
       </div>
 
-      <div key={tab} className="fade-in flex flex-col gap-8">
+      <div key={tab} className="v2-enter v2-stack">
         {tab === "lista" ? (
-          list.rows.length === 0 ? (
-            <StateMessage kind="empty" message="Inga butiker än." />
-          ) : (
-            <ul aria-label="Kontrakt per butik" className="flex flex-col gap-2">
-              {list.rows.map((row, i) => {
-                const anchor = !firstOfStore.has(row.storeId);
-                firstOfStore.add(row.storeId);
-                const c = row.contractId ? contractById.get(row.contractId) : undefined;
-                return (
-                  <ContractItem
-                    key={row.key}
-                    i={i}
-                    row={row}
-                    contract={c}
-                    anchor={anchor}
-                    uncovered={uncoveredByRow.get(row.key) ?? null}
-                    canEdit={canEdit}
-                    template={c ? statusOf(c.id) : null}
-                    signedAt={c ? (statuses.get(c.id)?.signedAt ?? null) : null}
-                    signature={c ? (signatures.get(c.id) ?? null) : null}
-                    reminder={c ? (reminderOf.get(c.id) ?? null) : null}
-                    stores={stores}
-                    agreementOptions={agreementOptions}
-                    agreements={data.agreements}
-                  />
-                );
-              })}
-            </ul>
-          )
-        ) : null}
-
-        {tab === "lista" && canEdit && stores.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <ContractDialog
-              stores={stores}
-              agreements={agreementOptions}
-              trigger={{ label: "Lägg in ett kontrakt ni redan har", variant: "ghost", size: "sm" }}
-            />
-          </div>
+          <Card title="Kontrakt per butik" count={list.rows.length > 0 ? list.rows.length : null}>
+            {list.rows.length === 0 ? (
+              <Empty title="Inga butiker än." />
+            ) : (
+              <ul aria-label="Kontrakt per butik" className="flex flex-col">
+                {list.rows.map((row) => {
+                  const anchor = !firstOfStore.has(row.storeId);
+                  firstOfStore.add(row.storeId);
+                  const c = row.contractId ? contractById.get(row.contractId) : undefined;
+                  return (
+                    <ContractItem
+                      key={row.key}
+                      row={row}
+                      contract={c}
+                      anchor={anchor}
+                      uncovered={uncoveredByRow.get(row.key) ?? null}
+                      canEdit={canEdit}
+                      template={c ? statusOf(c.id) : null}
+                      signedAt={c ? (statuses.get(c.id)?.signedAt ?? null) : null}
+                      signature={c ? (signatures.get(c.id) ?? null) : null}
+                      reminder={c ? (reminderOf.get(c.id) ?? null) : null}
+                      stores={stores}
+                      agreementOptions={agreementOptions}
+                      agreements={data.agreements}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+            {canEdit && stores.length > 0 ? (
+              <div className="border-t border-v2-line2 px-[18px] py-2.5 max-[900px]:px-4">
+                <ContractDialog
+                  stores={stores}
+                  agreements={agreementOptions}
+                  trigger={{
+                    label: "Lägg in ett kontrakt ni redan har",
+                    variant: "ghost",
+                    size: "sm",
+                  }}
+                />
+              </div>
+            ) : null}
+          </Card>
         ) : null}
         {tab === "lista" && !data.fileStore.configured ? (
-          <StateMessage compact kind="not-configured" message={data.fileStore.detail} />
+          <Notice tone="info">{data.fileStore.detail}</Notice>
         ) : null}
 
         {tab === "uppsagning" ? (
-          <section aria-labelledby="att-atgarda" className="flex flex-col gap-6">
-            <SectionHeader
-              id="att-atgarda"
-              size="md"
-              title={
-                due.length === 0
-                  ? "Inget att säga upp nu."
-                  : `${plural(due.length, "kontrakt", "kontrakt")} behöver beslut.`
-              }
-              aside={
-                due[0]?.term.noticeDeadline
-                  ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, ${day(due[0].term.noticeDeadline)}.`
-                  : "Påminnelse 90 dagar innan."
-              }
-            />
-            {due.length > 0 ? (
-              <ol className="flex flex-col">
-                {due.map((r) => (
-                  <li
-                    key={r.key}
-                    className="flex flex-col gap-2 border-t border-line py-4 first:border-t-0 first:pt-0"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <a
-                        href={`/avtal#avtal-${r.contractId}`}
-                        className="rounded-xs text-base text-fg hover:underline max-md:tap"
-                      >
-                        {r.title}
-                      </a>
-                      <StatusTag status={REMINDER[r.status].status}>
-                        {REMINDER[r.status].label}
-                      </StatusTag>
-                    </div>
-                    <p className="text-sm text-muted">{r.detail}</p>
-                    <EvidenceDetails evidence={r.evidence} />
-                  </li>
-                ))}
-              </ol>
-            ) : null}
-          </section>
+          <Card as="section" title="Uppsägning" count={due.length > 0 ? due.length : null}>
+            <CardBody className="flex flex-col gap-4">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <h2 id="att-atgarda" className="text-v2-md font-[550] text-v2-ink">
+                  {due.length === 0
+                    ? "Inget att säga upp nu."
+                    : `${plural(due.length, "kontrakt", "kontrakt")} behöver beslut.`}
+                </h2>
+                <p className="text-v2-sm text-v2-mute">
+                  {due[0]?.term.noticeDeadline
+                    ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, ${day(due[0].term.noticeDeadline)}.`
+                    : "Påminnelse 90 dagar innan."}
+                </p>
+              </div>
+              {due.length > 0 ? (
+                <ol className="flex flex-col">
+                  {due.map((r) => (
+                    <li
+                      key={r.key}
+                      className="flex flex-col gap-2 border-t border-v2-line2 py-3 first:border-t-0 first:pt-0"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <a
+                          href={`/avtal#avtal-${r.contractId}`}
+                          className="rounded-v2-sm text-v2-md font-[550] text-v2-ink hover:underline max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
+                        >
+                          {r.title}
+                        </a>
+                        <Badge tone={REMINDER[r.status].tone} dot>
+                          {REMINDER[r.status].label}
+                        </Badge>
+                      </div>
+                      <p className="text-v2-sm text-v2-mute">{r.detail}</p>
+                      <EvidenceDetails evidence={r.evidence} />
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </CardBody>
+          </Card>
         ) : null}
 
         {tab === "intakt" ? (
           o ? (
-            <section aria-labelledby="intakt-per-butik" className="flex flex-col gap-6">
-              <SectionHeader
-                id="intakt-per-butik"
-                size="md"
-                eyebrow={periodText(o.window)}
-                title={revenueRiskHeadline(o)}
-                aside={
-                  o.noContractRevenueOre > 0
-                    ? `${sek(o.noContractRevenueOre)} av ${sek(o.totalRevenueOre)}. Signera kontrakten först.`
-                    : `${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)}.`
-                }
-              />
-              <Panel>
-                <PanelSection label="Butiker" meta={formatInt(o.stores.length)}>
-                  <ul className="flex flex-col">
-                    {o.stores.map((row) => (
-                      <li
-                        key={row.storeId}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-t border-line py-3 first:border-t-0 first:pt-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem_6rem]"
-                      >
-                        {/* Under sm: namn och belopp på första raden, läget och andelen under. */}
-                        <span className="min-w-0 [overflow-wrap:anywhere] text-fg sm:truncate">
-                          {storeName.get(row.storeId) ?? "Okänd butik"}
-                        </span>
-                        <span className="meta text-subtle max-sm:order-3 sm:order-none">
-                          {CATEGORY[row.category]}
-                          {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
-                        </span>
-                        <span className="tnum text-right text-fg max-sm:order-2">
-                          {sek(row.revenueOre)}
-                        </span>
-                        <span className="tnum text-right text-muted max-sm:order-4">
-                          {row.shareBp === null ? "–" : formatPercent(row.shareBp / 10_000)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </PanelSection>
-                <PanelSection label="Så räknas det">
-                  <EvidenceDetails evidence={o.evidence} />
-                </PanelSection>
-              </Panel>
-            </section>
+            <div className="v2-cols">
+              <div className="v2-stack">
+                <Card as="section" title={`Intäkt per butik · ${periodText(o.window)}`}>
+                  <CardBody className="flex flex-col gap-4">
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <h2 id="intakt-per-butik" className="text-v2-md font-[550] text-v2-ink">
+                        {revenueRiskHeadline(o)}
+                      </h2>
+                      <p className="text-v2-sm text-v2-mute">
+                        {o.noContractRevenueOre > 0
+                          ? `${sek(o.noContractRevenueOre)} av ${sek(o.totalRevenueOre)}. Signera kontrakten först.`
+                          : `${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)}.`}
+                      </p>
+                    </div>
+                  </CardBody>
+                  <Table
+                    caption="Intäkt per butik och kontraktets läge"
+                    rows={o.stores}
+                    rowKey={(row) => row.storeId}
+                    columns={[
+                      {
+                        key: "butik",
+                        header: "Butik",
+                        cell: (row) => (
+                          <span className="flex min-w-0 flex-col">
+                            <span className="[overflow-wrap:anywhere] text-v2-ink">
+                              {storeName.get(row.storeId) ?? "Okänd butik"}
+                            </span>
+                            <span className="text-v2-xs text-v2-mute">
+                              {CATEGORY[row.category]}
+                              {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
+                            </span>
+                          </span>
+                        ),
+                      },
+                      {
+                        key: "intakt",
+                        header: "Intäkt",
+                        align: "right",
+                        cell: (row) => sek(row.revenueOre),
+                      },
+                      {
+                        key: "andel",
+                        header: "Andel",
+                        align: "right",
+                        cell: (row) =>
+                          row.shareBp === null ? "–" : formatPercent(row.shareBp / 10_000),
+                      },
+                    ]}
+                  />
+                </Card>
+              </div>
+              <div className="v2-stack">
+                <Card as="section" title="Så räknas det">
+                  <CardBody>
+                    <EvidenceDetails evidence={o.evidence} />
+                  </CardBody>
+                </Card>
+              </div>
+            </div>
           ) : (
-            <StateMessage
-              kind="error"
-              message={data.overviewError ?? "Intäkten kunde inte räknas."}
-            />
+            <Notice tone="critical" title="Intäkten kunde inte räknas.">
+              {data.overviewError ?? undefined}
+            </Notice>
           )
         ) : null}
 
         {tab === "arkiv" ? (
-          archivedContracts.length === 0 ? (
-            <StateMessage kind="empty" compact message="Inget arkiv." />
-          ) : (
-            <ul className="flex flex-col">
-              {archivedContracts.map((c) => (
-                <li
-                  key={c.id}
-                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line py-3 first:border-t-0 first:pt-0"
-                >
-                  <span className="min-w-0 text-sm text-muted">
-                    <span className="text-fg">{storeName.get(c.storeId) ?? "Okänd butik"}</span>
-                    {" · "}
-                    {day(c.validFrom)} – {c.validTo ? day(c.validTo) : "tills vidare"}
-                  </span>
-                  {canEdit ? (
-                    <ContractArchive
-                      id={c.id}
-                      archived
-                      label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Kontrakt"}`}
-                    />
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )
+          <Card
+            title="Arkiv"
+            count={archivedContracts.length > 0 ? archivedContracts.length : null}
+          >
+            {archivedContracts.length === 0 ? (
+              <Empty title="Inget arkiv." />
+            ) : (
+              <ul className="flex flex-col">
+                {archivedContracts.map((c) => (
+                  <li
+                    key={c.id}
+                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-v2-line2 px-[18px] py-3 first:border-t-0"
+                  >
+                    <span className="min-w-0 text-v2-sm text-v2-mute">
+                      <span className="text-v2-md text-v2-ink">
+                        {storeName.get(c.storeId) ?? "Okänd butik"}
+                      </span>
+                      {" · "}
+                      {day(c.validFrom)} – {c.validTo ? day(c.validTo) : "tills vidare"}
+                    </span>
+                    {canEdit ? (
+                      <ContractArchive
+                        id={c.id}
+                        archived
+                        label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Kontrakt"}`}
+                      />
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         ) : null}
       </div>
     </div>
@@ -486,7 +525,6 @@ interface UncoveredCard {
 
 /** En rad: butik, villkor, status, PDF och nästa steg. Resten under "Mer". */
 function ContractItem({
-  i,
   row,
   contract: c,
   anchor,
@@ -500,7 +538,6 @@ function ContractItem({
   agreementOptions,
   agreements,
 }: {
-  i: number;
   row: ContractRow;
   contract: ContractRecord | undefined;
   anchor: boolean;
@@ -534,165 +571,155 @@ function ContractItem({
   return (
     <li
       id={id}
-      className={cn(
-        "rise lift scroll-mt-28 rounded-md border bg-surface p-4",
-        row.alert || uncovered ? "border-signal-line" : "border-line",
-      )}
-      style={{ "--i": Math.min(i, 12) } as React.CSSProperties}
+      className="scroll-mt-28 border-t border-v2-line2 px-[18px] py-3.5 first:border-t-0 max-[900px]:px-4"
     >
       {/* Rutan med QR-koden ligger här och inte i knappen: knappen "Ändra start" försvinner
           när kortet laddas om efter flytten, men rutan ska stå kvar. */}
       <SignScope contractId={c?.id ?? ""} storeName={row.storeName}>
         {anchor ? <span id={`butik-${row.storeId}`} className="block scroll-mt-28" /> : null}
         {uncovered ? (
-          <div
-            role="status"
-            data-uncovered
-            className="mb-4 flex flex-col gap-3 border-b border-line pb-4"
-          >
-            <p className="flex items-start gap-2 text-base font-medium text-fg">
-              <span aria-hidden className="mt-2 size-2 shrink-0 rounded-full bg-signal" />
-              {uncovered.text}
-            </p>
-            {uncovered.fix ? (
-              <>
-                <p className="text-sm text-muted">
+          <div role="status" data-uncovered className="mb-3">
+            <Notice
+              tone="critical"
+              title={uncovered.text}
+              action={
+                uncovered.fix && canEdit && c && !signedAt && !c.terminatedOn ? (
+                  <SignButton fixStart={{ label: uncovered.fix.label }} large />
+                ) : undefined
+              }
+            >
+              {uncovered.fix ? (
+                <>
                   {uncovered.fix.now}
                   {uncovered.termsMove ? " Villkoren får samma dag." : ""}
                   {uncovered.sent ? " Butiken ser den nya dagen innan de signerar." : ""}
-                </p>
-                {canEdit && c && !signedAt && !c.terminatedOn ? (
-                  <div>
-                    <SignButton fixStart={{ label: uncovered.fix.label }} large />
-                  </div>
-                ) : null}
-              </>
-            ) : uncovered.blocked ? (
-              <p className="text-sm text-muted">
-                {uncovered.blocked}{" "}
-                <Link
-                  href={`/butiker/${row.storeId}?vy=avtal`}
-                  className="whitespace-nowrap text-fg underline underline-offset-4"
-                >
-                  Öppna villkoren{"\u00a0→"}
-                </Link>
-              </p>
-            ) : uncovered.next === "sign" ? (
-              <p className="text-sm text-muted">Signera kontraktet.</p>
-            ) : (
-              <p className="text-sm text-muted">
-                Skapa ett kontrakt för den tiden.
-                {canEdit ? (
-                  <>
-                    {" "}
-                    <Link
-                      href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
-                      scroll={false}
-                      className="whitespace-nowrap text-fg underline underline-offset-4"
-                    >
-                      Skapa kontrakt{"\u00a0→"}
-                    </Link>
-                  </>
-                ) : null}
-              </p>
-            )}
+                </>
+              ) : uncovered.blocked ? (
+                <>
+                  {uncovered.blocked}{" "}
+                  <Link
+                    href={`/butiker/${row.storeId}?vy=avtal`}
+                    className="font-[550] whitespace-nowrap text-v2-ink underline underline-offset-4"
+                  >
+                    Öppna villkoren{" →"}
+                  </Link>
+                </>
+              ) : uncovered.next === "sign" ? (
+                "Signera kontraktet."
+              ) : (
+                <>
+                  Skapa ett kontrakt för den tiden.
+                  {canEdit ? (
+                    <>
+                      {" "}
+                      <Link
+                        href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
+                        scroll={false}
+                        className="font-[550] whitespace-nowrap text-v2-ink underline underline-offset-4"
+                      >
+                        Skapa kontrakt{" →"}
+                      </Link>
+                    </>
+                  ) : null}
+                </>
+              )}
+            </Notice>
           </div>
         ) : null}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-col">
             <Link
               href={`/butiker/${row.storeId}`}
-              className="truncate rounded-xs text-md font-medium text-fg hover:underline max-md:inline-block max-md:min-h-11 max-md:py-3"
+              className="truncate rounded-v2-sm text-v2-md font-[550] text-v2-ink hover:underline max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
             >
               {row.storeName}
             </Link>
-            <span className={cn("text-sm", row.terms ? "text-muted" : "text-subtle")}>
+            <span className={cn("text-v2-sm", row.terms ? "text-v2-mute" : "text-v2-faint")}>
               {row.terms ?? "Inga villkor"}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={cn(
-                "label inline-flex h-7 items-center gap-1.5 rounded-xs border px-2",
-                TONE[row.status],
-              )}
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  "size-1.5 rounded-full",
-                  st.tone === "ok" ? "bg-up" : st.tone === "critical" ? "bg-signal" : "bg-current",
-                )}
-              />
+            <Badge tone={TONE[row.status]} dot={row.alert || row.status === "due"}>
               {st.label}
               {/* "Löper ut" säger när: annars ser det ut som att avtalet redan har gått ut. */}
               {row.status === "due" && (c?.terminatedOn ?? c?.validTo)
                 ? ` ${day((c?.terminatedOn ?? c?.validTo)!)}`
                 : ""}
-            </span>
+            </Badge>
             {pdf ? (
-              <Link href={pdf.href} prefetch={false} target="_blank" className={link}>
+              <ButtonLink
+                href={pdf.href}
+                prefetch={false}
+                target="_blank"
+                size="sm"
+                variant="quiet"
+                touch
+              >
                 {pdf.label}
-              </Link>
+              </ButtonLink>
             ) : null}
             {canEdit && row.status === "missing" ? (
-              <Link
+              <ButtonLink
                 href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
                 scroll={false}
-                className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-sm font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11"
+                variant="act"
+                size="sm"
+                touch
               >
                 Skapa kontrakt
-              </Link>
+              </ButtonLink>
             ) : null}
             {canSign && c ? <SignButton quiet={Boolean(uncovered?.fix)} /> : null}
           </div>
         </div>
         {c ? (
-          <details className="group mt-3">
-            <summary className="label w-fit cursor-pointer list-none text-subtle hover:text-fg">
+          <details className="group mt-2">
+            <summary className="inline-flex min-h-7 w-fit cursor-pointer list-none items-center gap-1 rounded-v2-sm text-v2-sm font-[550] text-v2-mute hover:text-v2-ink max-[900px]:min-h-11 [&::-webkit-details-marker]:hidden">
               <span
-                aria-hidden
-                className="mr-1 inline-block transition-transform duration-fast group-open:rotate-90"
+                aria-hidden="true"
+                className="inline-block transition-transform duration-150 group-open:rotate-90"
               >
                 ›
               </span>
               Mer
             </summary>
-            <div className="fade-in mt-4 flex flex-col gap-4">
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+            <div className="v2-enter mt-3 flex flex-col gap-4 rounded-v2 bg-v2-hover p-3.5">
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-v2-sm sm:grid-cols-4">
                 <div className="flex flex-col gap-0.5">
-                  <dt className="label text-subtle">Gäller</dt>
-                  <dd className="text-fg">
+                  <dt className="text-v2-xs text-v2-mute">Gäller</dt>
+                  <dd className="tnum text-v2-ink">
                     {day(c.validFrom)} –{" "}
                     {r?.term.currentEnd ? day(r.term.currentEnd) : "tills vidare"}
                   </dd>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <dt className="label text-subtle">Uppsägning</dt>
-                  <dd className="text-fg">
+                  <dt className="text-v2-xs text-v2-mute">Uppsägning</dt>
+                  <dd className="text-v2-ink">
                     {noticeText(c)}
                     {r?.term.noticeDeadline ? (
-                      <span className="meta block text-subtle">
+                      <span className="block text-v2-xs text-v2-mute">
                         Senast {day(r.term.noticeDeadline)}
                       </span>
                     ) : null}
                   </dd>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <dt className="label text-subtle">Förlängning</dt>
-                  <dd className="text-fg">
+                  <dt className="text-v2-xs text-v2-mute">Förlängning</dt>
+                  <dd className="text-v2-ink">
                     {c.renewalMonths ? plural(c.renewalMonths, "månad", "månader") : "Ingen"}
                     {c.terminatedOn ? (
-                      <span className="meta block text-subtle">Uppsagt {day(c.terminatedOn)}</span>
+                      <span className="block text-v2-xs text-v2-mute">
+                        Uppsagt {day(c.terminatedOn)}
+                      </span>
                     ) : null}
                   </dd>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <dt className="label text-subtle">Status</dt>
-                  <dd className="text-fg">
+                  <dt className="text-v2-xs text-v2-mute">Status</dt>
+                  <dd className="text-v2-ink">
                     {r ? REMINDER[r.status].label : "–"}
                     {signature ? (
-                      <span className="meta block text-subtle">
+                      <span className="block text-v2-xs text-v2-mute">
                         {signature.signerName} {formatDate(new Date(signature.signedAt))}
                       </span>
                     ) : null}

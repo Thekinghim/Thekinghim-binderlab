@@ -1,5 +1,4 @@
 import { Panel, PanelSection } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt, NBSP } from "@/lib/format";
@@ -12,6 +11,7 @@ import { ActionButton } from "./action-button";
 import { Evidence } from "./evidence";
 import { ReleaseFormButton, type ReleaseFormValues } from "./release-form";
 import { Cell, Row, Table } from "./table";
+import { SectionHead } from "./section-head";
 
 function daysText(n: number): string {
   return `${formatInt(n)}${NBSP}${n === 1 ? "dag" : "dagar"}`;
@@ -84,14 +84,14 @@ function Suggestion({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <p className="tnum text-2xl font-medium">Köp {packs(s.purchaseUnits)}</p>
-        <p className="meta text-subtle">
+        <p className="tnum text-v2-xl font-[550]">Köp {packs(s.purchaseUnits)}</p>
+        <p className="meta text-v2-mute">
           {s.boxSize > 1 ? `${formatInt(s.boxes)} lådor à ${formatInt(s.boxSize)} · ` : ""}
           {formatInt(s.machineUnits)} till automaterna
           {s.warehouseUnits > 0 ? ` · ${formatInt(s.warehouseUnits)} till lagret` : ""}
         </p>
       </div>
-      <p className="max-w-3xl text-muted">{s.text}</p>
+      <p className="max-w-3xl text-v2-mute">{s.text}</p>
       <Table
         caption={`Fördelning per automat för ${view.row.name}`}
         head={[
@@ -103,14 +103,14 @@ function Suggestion({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
       >
         {s.allocations.map((a) => (
           <Row key={a.machineId}>
-            <Cell header className="meta text-fg">
+            <Cell header className="meta text-v2-ink">
               {ctx.names.machine[a.machineId] ?? a.machineId}
             </Cell>
             <Cell numeric>{formatInt(a.units)}</Cell>
-            <Cell numeric className="text-muted">
+            <Cell numeric className="text-v2-mute">
               {tenthsNumber(a.expectedTenths)}
             </Cell>
-            <Cell hideOnMobile className="text-sm text-muted">
+            <Cell hideOnMobile className="text-v2-sm text-v2-mute">
               {a.source === "history"
                 ? `Median av egna släpp: ${a.historyUnits.join(", ")} pack`
                 : "Typisk automat (ingen egen släpphistorik)"}
@@ -119,7 +119,7 @@ function Suggestion({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
         ))}
       </Table>
       {s.weeklyUnits.length > 0 ? (
-        <p className="meta text-subtle">
+        <p className="meta text-v2-mute">
           Väntad försäljning per vecka:{" "}
           {s.weeklyUnits.map((u, i) => `v${i + 1} ${formatInt(u)}`).join(" · ")}
         </p>
@@ -129,7 +129,7 @@ function Suggestion({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
         names={ctx.names}
         extra={
           view.suggestionAsOf < ctx.today ? (
-            <p className="text-sm text-subtle">
+            <p className="text-v2-sm text-v2-mute">
               Förslaget räknat per {dayText(view.suggestionAsOf, ctx.today)}, dagen före släppet.
             </p>
           ) : null
@@ -145,20 +145,20 @@ function Plan({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <p className="tnum text-2xl font-medium">Köp {packs(r.planPurchaseUnits ?? 0)}</p>
-        <p className="meta text-subtle">
+        <p className="tnum text-v2-xl font-[550]">Köp {packs(r.planPurchaseUnits ?? 0)}</p>
+        <p className="meta text-v2-mute">
           Fastställt {r.planLockedAt ? dayText(r.planLockedAt.slice(0, 10), ctx.today) : ""} ·{" "}
           {formatInt(plan.reduce((sum, a) => sum + a.units, 0))} till automaterna
         </p>
       </div>
-      {r.planText ? <p className="max-w-3xl text-muted">{r.planText}</p> : null}
+      {r.planText ? <p className="max-w-3xl text-v2-mute">{r.planText}</p> : null}
       <Table
         caption={`Fastställd fördelning för ${r.name}`}
         head={[{ label: "Automat" }, { label: "Pack", numeric: true }]}
       >
         {plan.map((a) => (
           <Row key={a.id}>
-            <Cell header className="meta text-fg">
+            <Cell header className="meta text-v2-ink">
               {ctx.names.machine[a.machineId] ?? a.machineId}
             </Cell>
             <Cell numeric>{formatInt(a.units)}</Cell>
@@ -182,27 +182,27 @@ function Outcome({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
     <div className="flex min-w-0 flex-col gap-4">
       <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
         <div className="flex flex-col gap-1">
-          <dt className="label text-subtle">Sålt</dt>
-          <dd className="tnum text-xl font-medium">{packs(o.actual)}</dd>
+          <dt className="label text-v2-mute">Sålt</dt>
+          <dd className="tnum text-v2-xl font-[550]">{packs(o.actual)}</dd>
         </div>
         <div className="flex flex-col gap-1">
-          <dt className="label text-subtle">Väntat hittills</dt>
-          <dd className="tnum text-xl font-medium">{tenthsNumber(o.expectedByNowTenths)}</dd>
+          <dt className="label text-v2-mute">Väntat hittills</dt>
+          <dd className="tnum text-v2-xl font-[550]">{tenthsNumber(o.expectedByNowTenths)}</dd>
         </div>
         <div className="flex flex-col gap-1">
-          <dt className="label text-subtle">Lika mot lika</dt>
-          <dd className="tnum text-xl font-medium">
+          <dt className="label text-v2-mute">Lika mot lika</dt>
+          <dd className="tnum text-v2-xl font-[550]">
             {o.plannedDiffBp === null ? "–" : deltaOfBp(o.plannedDiffBp)}
           </dd>
         </div>
         <div className="flex flex-col gap-1">
-          <dt className="label text-subtle">Läge</dt>
-          <dd className="text-xl font-medium">{paceText(o.pace)}</dd>
+          <dt className="label text-v2-mute">Läge</dt>
+          <dd className="text-v2-xl font-[550]">{paceText(o.pace)}</dd>
         </div>
       </dl>
-      <p className="max-w-3xl text-muted">{o.text}</p>
+      <p className="max-w-3xl text-v2-mute">{o.text}</p>
       {view.outcomeBasis === "suggestion" ? (
-        <p className="text-sm text-subtle">
+        <p className="text-v2-sm text-v2-mute">
           Förslaget fastställdes inte; utfallet jämförs med förslaget per{" "}
           {dayText(view.suggestionAsOf, ctx.today)}.
         </p>
@@ -221,18 +221,18 @@ function Outcome({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
         >
           {o.machines.map((m) => (
             <Row key={m.machineId}>
-              <Cell header className="meta text-fg">
+              <Cell header className="meta text-v2-ink">
                 {ctx.names.machine[m.machineId] ?? m.machineId}
               </Cell>
               <Cell numeric>{formatInt(m.allocated)}</Cell>
-              <Cell numeric className="text-muted">
+              <Cell numeric className="text-v2-mute">
                 {tenthsNumber(m.expectedByNowTenths)}
               </Cell>
               <Cell numeric>{formatInt(m.actual)}</Cell>
               <Cell numeric hideOnMobile>
                 {m.diffBp === null ? "–" : deltaOfBp(m.diffBp)}
               </Cell>
-              <Cell hideOnMobile className="text-sm text-muted">
+              <Cell hideOnMobile className="text-v2-sm text-v2-mute">
                 {m.soldOutDate ? dayText(m.soldOutDate, ctx.today) : "–"}
               </Cell>
             </Row>
@@ -259,14 +259,14 @@ function ReleaseCard({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) 
       <article aria-labelledby={headingId} className="flex min-w-0 flex-col gap-5">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-col gap-1">
-            <p className="label text-subtle">
+            <p className="label text-v2-mute">
               {dayText(r.releaseDate, ctx.today)}
               {r.series ? ` · ${r.series}` : ""}
             </p>
-            <h3 id={headingId} className="text-lg font-medium text-balance">
+            <h3 id={headingId} className="text-v2-lg font-[550] text-balance">
               {r.name}.
             </h3>
-            <p className="meta text-subtle">
+            <p className="meta text-v2-mute">
               {view.titleName ? `Titel: ${view.titleName}` : "Ingen titel kopplad"}
               {view.supplierName ? ` · ${view.supplierName}` : ""}
               {r.scaleBp !== 10_000 ? ` · storlek ${formatInt(r.scaleBp / 100)}${NBSP}%` : ""}
@@ -297,7 +297,7 @@ function ReleaseCard({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) 
         )}
 
         {ctx.canEdit ? (
-          <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+          <div className="flex flex-wrap gap-2 border-t border-v2-line pt-4">
             {canLock ? (
               <ActionButton
                 action={lockReleasePlan}
@@ -398,11 +398,11 @@ export function ReleasesSection({
   return (
     <section
       aria-labelledby="releaser-rubrik"
-      className="rise flex scroll-mt-28 flex-col gap-8"
+      className="flex scroll-mt-28 flex-col gap-3.5"
       id="releaser"
       style={{ "--i": 1 } as React.CSSProperties}
     >
-      <SectionHeader
+      <SectionHead
         id="releaser-rubrik"
         eyebrow="Releasekalender"
         title={title}

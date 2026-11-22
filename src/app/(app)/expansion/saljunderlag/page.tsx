@@ -58,14 +58,21 @@ export default async function SalesDeckPage({
           body:has([data-sales-deck]) [data-sales-deck] { position: absolute; left: 0; top: 0; }
         }
       `}</style>
-      <div data-print="hide" className="border-b border-line bg-bg">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">
-          <nav aria-label="Sökväg" className="label flex min-w-0 items-center gap-2 text-subtle">
-            <Link href="/expansion" className="rounded-xs text-muted hover:text-fg">
+      <div data-print="hide" className="bg-v2-bg">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-[22px] py-3 max-[900px]:px-3">
+          <nav
+            aria-label="Sökväg"
+            className="flex min-w-0 items-center gap-2 text-v2-sm text-v2-mute"
+          >
+            <Link
+              href="/expansion"
+              className="inline-flex min-h-7 items-center gap-1 rounded-v2-sm font-[550] text-v2-ink hover:underline max-[900px]:min-h-11"
+            >
+              <span aria-hidden="true">←</span>
               Expansion
             </Link>
-            <span aria-hidden className="text-faint">
-              /
+            <span aria-hidden="true" className="text-v2-faint">
+              ·
             </span>
             <span className="truncate">Säljunderlag · A4 · {periodText(data.period)}</span>
           </nav>
@@ -143,7 +150,7 @@ export default async function SalesDeckPage({
                         key={i}
                         className="grid grid-cols-[7mm_1fr] items-baseline border-t border-line py-[2.4mm] text-[12px] leading-[17px] text-fg last:border-b"
                       >
-                        <span className="tnum font-mono text-[9.5px] text-subtle">{i + 1}</span>
+                        <span className="tnum text-[9.5px] text-subtle">{i + 1}</span>
                         <span>{t}</span>
                       </li>
                     ))}

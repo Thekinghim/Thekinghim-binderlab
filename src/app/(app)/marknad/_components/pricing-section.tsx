@@ -4,7 +4,6 @@ import {
   type PriceEffectVerdict,
 } from "@/analytics/pricing";
 import { Panel, PanelSection } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { formatInt, formatNumber } from "@/lib/format";
@@ -23,6 +22,7 @@ import { startExperiment, stopExperiment } from "../actions";
 import type { SectionContext } from "../_lib/context";
 import { ActionButton } from "./action-button";
 import { Evidence } from "./evidence";
+import { SectionHead } from "./section-head";
 
 const VERDICT: Record<PriceEffectVerdict, { label: string; status: Status }> = {
   clear: { label: "Tydlig effekt", status: "ok" },
@@ -67,27 +67,27 @@ function EffectFigures({ effect }: { effect: PriceChangeEffect }) {
   return (
     <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
       <div className="flex flex-col gap-1">
-        <dt className="label text-subtle">Pack före / efter</dt>
-        <dd className="tnum text-lg">
+        <dt className="label text-v2-mute">Pack före / efter</dt>
+        <dd className="tnum text-v2-lg">
           {formatInt(effect.unitsBefore)} / {formatInt(effect.unitsAfter)}
         </dd>
       </div>
       <div className="flex flex-col gap-1">
-        <dt className="label text-subtle">Väntat utan ändring</dt>
-        <dd className="tnum text-lg">
+        <dt className="label text-v2-mute">Väntat utan ändring</dt>
+        <dd className="tnum text-v2-lg">
           {effect.expectedUnitsAfterTenths === null
             ? "–"
             : tenthsNumber(effect.expectedUnitsAfterTenths)}
         </dd>
       </div>
       <div className="flex flex-col gap-1">
-        <dt className="label text-subtle">Volym mot väntat</dt>
+        <dt className="label text-v2-mute">Volym mot väntat</dt>
         {sure || volume === null || !showEstimate ? (
-          <dd className="tnum text-lg">{sure ? (volume ?? "–") : "–"}</dd>
+          <dd className="tnum text-v2-lg">{sure ? (volume ?? "–") : "–"}</dd>
         ) : (
           <dd className="flex flex-col gap-0.5">
-            <span className="tnum text-lg text-subtle">–</span>
-            <span className="tnum text-sm text-muted">
+            <span className="tnum text-v2-lg text-v2-mute">–</span>
+            <span className="tnum text-v2-sm text-v2-mute">
               Skattat {volume}
               {noise}
             </span>
@@ -95,13 +95,13 @@ function EffectFigures({ effect }: { effect: PriceChangeEffect }) {
         )}
       </div>
       <div className="flex flex-col gap-1">
-        <dt className="label text-subtle">Bidrag/vecka</dt>
+        <dt className="label text-v2-mute">Bidrag/vecka</dt>
         {sure || contribution === null || !showEstimate ? (
-          <dd className="tnum text-lg">{sure ? (contribution ?? "–") : "–"}</dd>
+          <dd className="tnum text-v2-lg">{sure ? (contribution ?? "–") : "–"}</dd>
         ) : (
           <dd className="flex flex-col gap-0.5">
-            <span className="tnum text-lg text-subtle">–</span>
-            <span className="tnum text-sm text-muted">Skattat {contribution}</span>
+            <span className="tnum text-v2-lg text-v2-mute">–</span>
+            <span className="tnum text-v2-sm text-v2-mute">Skattat {contribution}</span>
           </dd>
         )}
       </div>
@@ -129,20 +129,20 @@ function EffectBlock({ effect, ctx }: { effect: PriceChangeEffect; ctx: SectionC
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <EffectFigures effect={effect} />
-      <p className="max-w-3xl text-muted">{effectSentence(effect)}</p>
+      <p className="max-w-3xl text-v2-mute">{effectSentence(effect)}</p>
       <Evidence
         evidence={effect.evidence}
         names={ctx.names}
         extra={
-          <div className="flex max-w-3xl flex-col gap-1 border-t border-line pt-3">
+          <div className="flex max-w-3xl flex-col gap-1 border-t border-v2-line pt-3">
             {/* Uträkningen i ord, bara när siffrorna går att lita på något. */}
             {plausible(effect) ? (
-              <p className="text-muted">{effect.text}</p>
+              <p className="text-v2-mute">{effect.text}</p>
             ) : (
-              <p className="text-muted">{effectSentence(effect)}</p>
+              <p className="text-v2-mute">{effectSentence(effect)}</p>
             )}
             {effect.elasticityHundredths !== null && effect.verdict === "clear" ? (
-              <p className="text-subtle">
+              <p className="text-v2-mute">
                 Priskänslighet {formatNumber(effect.elasticityHundredths / 100, 2)}
                 {effect.noiseBp !== null
                   ? `, vanlig variation upp till ${percentOfBp(effect.noiseBp, 0)}`
@@ -201,7 +201,7 @@ function PriceCheck({ view, ctx }: { view: ExperimentView; ctx: SectionContext }
           message={check.text}
         />
       ) : (
-        <p className={check.status === "partial" ? "max-w-3xl text-fg" : "meta text-subtle"}>
+        <p className={check.status === "partial" ? "max-w-3xl text-v2-ink" : "meta text-v2-mute"}>
           {check.text}
         </p>
       )}
@@ -245,11 +245,11 @@ export function PricingSection({
   return (
     <section
       aria-labelledby="prissattning-rubrik"
-      className="rise flex scroll-mt-28 flex-col gap-8"
+      className="flex scroll-mt-28 flex-col gap-3.5"
       id="prissattning"
       style={{ "--i": 1 } as React.CSSProperties}
     >
-      <SectionHeader id="prissattning-rubrik" eyebrow="Prissättning" title={title} aside={aside} />
+      <SectionHead id="prissattning-rubrik" eyebrow="Prissättning" title={title} aside={aside} />
 
       {!pricing.changes.ok ? <StateMessage kind="error" message={pricing.changes.message} /> : null}
 
@@ -260,11 +260,11 @@ export function PricingSection({
               <article className="flex min-w-0 flex-col gap-4" aria-label={change.text}>
                 <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex min-w-0 flex-col gap-1">
-                    <p className="label text-subtle">
+                    <p className="label text-v2-mute">
                       {dayText(change.date, ctx.today)} · {kronor(change.fromOre)} →{" "}
                       {kronor(change.toOre)}
                     </p>
-                    <h3 className="text-lg font-medium text-balance">{change.text}</h3>
+                    <h3 className="text-v2-lg font-[550] text-balance">{change.text}</h3>
                   </div>
                   {effect.ok ? (
                     <StatusTag status={VERDICT[effect.value.verdict].status}>
@@ -286,7 +286,7 @@ export function PricingSection({
             </Panel>
           ))}
           {pricing.moreChanges > 0 ? (
-            <p className="text-sm text-subtle">
+            <p className="text-v2-sm text-v2-mute">
               och {formatInt(pricing.moreChanges)} äldre i perioden.
             </p>
           ) : null}
@@ -311,33 +311,33 @@ export function PricingSection({
         ) : (
           <ul className="flex flex-col gap-6">
             {proposals.map((p) => (
-              <li key={p.key} className="flex min-w-0 flex-col gap-3 border-b border-line pb-4">
+              <li key={p.key} className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="label border border-dashed border-line-control px-2 py-0.5 text-fg">
+                  <span className="label border border-dashed border-v2-line3 px-2 py-0.5 text-v2-ink">
                     {p.label}
                   </span>
-                  <span className="meta text-subtle">
+                  <span className="meta text-v2-mute">
                     {ctx.names.title[p.titleId] ?? p.titleId} · {kronor(p.fromOre)} →{" "}
                     {kronor(p.toOre)} · {periodLabel(p.period)}
                   </span>
                 </div>
-                <p className="max-w-3xl text-muted">{p.text}</p>
-                <dl className="meta flex flex-wrap gap-x-6 gap-y-1 text-subtle">
+                <p className="max-w-3xl text-v2-mute">{p.text}</p>
+                <dl className="meta flex flex-wrap gap-x-6 gap-y-1 text-v2-mute">
                   <div>
                     <dt className="inline">Test: </dt>
-                    <dd className="inline text-muted">
+                    <dd className="inline text-v2-mute">
                       {p.testMachineIds.map((id) => ctx.names.machine[id] ?? id).join(", ")}
                     </dd>
                   </div>
                   <div>
                     <dt className="inline">Kontroll: </dt>
-                    <dd className="inline text-muted">
+                    <dd className="inline text-v2-mute">
                       {p.controlMachineIds.map((id) => ctx.names.machine[id] ?? id).join(", ")}
                     </dd>
                   </div>
                   <div>
                     <dt className="inline">Väntade pack: </dt>
-                    <dd className="inline text-muted">
+                    <dd className="inline text-v2-mute">
                       {formatInt(p.expectedTestUnits)} / {formatInt(p.expectedControlUnits)}
                     </dd>
                   </div>
@@ -370,18 +370,21 @@ export function PricingSection({
         <PanelSection label={`Startade pristester · ${formatInt(pricing.experiments.length)}`}>
           <ul className="flex flex-col gap-6">
             {pricing.experiments.map((e) => (
-              <li key={e.row.id} className="flex min-w-0 flex-col gap-3 border-b border-line pb-4">
+              <li
+                key={e.row.id}
+                className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4"
+              >
                 <div className="flex flex-wrap items-center gap-3">
                   <StatusTag status={EXPERIMENT_STATUS[e.status].status}>
                     {EXPERIMENT_STATUS[e.status].label}
                   </StatusTag>
-                  <span className="meta text-subtle">
+                  <span className="meta text-v2-mute">
                     {ctx.names.title[e.row.titleId] ?? e.row.titleId} · {kronor(e.row.fromOre)} →{" "}
                     {kronor(e.row.toOre)} · {dayText(e.row.startedOn, ctx.today)}–
                     {dayText(e.row.stoppedOn ?? e.endsOn, ctx.today)}
                   </span>
                 </div>
-                {e.row.text ? <p className="max-w-3xl text-muted">{e.row.text}</p> : null}
+                {e.row.text ? <p className="max-w-3xl text-v2-mute">{e.row.text}</p> : null}
                 <PriceCheck view={e} ctx={ctx} />
                 {e.evaluation === null ? null : e.evaluation.ok ? (
                   <EffectBlock effect={e.evaluation.value} ctx={ctx} />

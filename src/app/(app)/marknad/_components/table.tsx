@@ -19,16 +19,16 @@ export function Table({
 }) {
   return (
     <div className={cn("min-w-0 overflow-x-auto", className)}>
-      <table className="w-full border-collapse text-base">
+      <table className="w-full border-collapse text-v2-md">
         <caption className="sr-only">{caption}</caption>
         <thead>
-          <tr className="h-9 border-b border-line-strong">
+          <tr className="h-9 border-b border-v2-line3">
             {head.map((h) => (
               <th
                 key={h.label}
                 scope="col"
                 className={cn(
-                  "label px-3 text-left font-normal whitespace-nowrap text-subtle first:pl-0 last:pr-0",
+                  "label px-3 text-left font-normal whitespace-nowrap text-v2-mute first:pl-0 last:pr-0",
                   h.numeric && "text-right",
                   h.hideOnMobile && "hidden md:table-cell",
                 )}
@@ -45,7 +45,7 @@ export function Table({
 }
 
 export function Row({ children, className }: { children: ReactNode; className?: string }) {
-  return <tr className={cn("h-11 border-b border-line align-middle", className)}>{children}</tr>;
+  return <tr className={cn("h-11 border-b border-v2-line align-middle", className)}>{children}</tr>;
 }
 
 export function Cell({

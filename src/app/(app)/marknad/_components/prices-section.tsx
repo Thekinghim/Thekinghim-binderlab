@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import type { TitlePriceTrend } from "@/analytics/pricing";
 import { Panel, PanelSection } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt, NBSP } from "@/lib/format";
@@ -16,6 +15,7 @@ import { Evidence } from "./evidence";
 import { PriceChart } from "./price-chart";
 import { QuoteFormButton } from "./quote-form";
 import { Cell, Row, Table } from "./table";
+import { SectionHead } from "./section-head";
 
 /** Läget för externa marknadspriser, som sidan visar det. */
 export interface MarketSourceView {
@@ -50,7 +50,7 @@ function SourceStatus({ source }: { source: MarketSourceView }) {
       );
     }
     return (
-      <p className="text-sm text-subtle">
+      <p className="text-v2-sm text-v2-mute">
         Marknadspris: {source.sourceName} · {formatInt(Object.keys(source.latest).length)} titlar
         med pris. Testdata, inte riktiga marknadspriser.
       </p>
@@ -90,7 +90,7 @@ function Trend({
       <div className="min-w-0 lg:col-span-7">
         <Panel>
           <div className="flex flex-col gap-4">
-            <p className="label text-subtle">
+            <p className="label text-v2-mute">
               Inköpspris per pack · {name} · {formatInt(trend.purchases)} inköp
             </p>
             {trend.points.length >= 3 ? (
@@ -110,13 +110,13 @@ function Trend({
               <dl className="grid grid-cols-2 gap-x-8 gap-y-3" aria-label={`Priser för ${name}`}>
                 {trend.points.map((p, i) => (
                   <div key={p.id} className="flex flex-col gap-1">
-                    <dt className="label text-subtle">
+                    <dt className="label text-v2-mute">
                       {i === 0 ? "Först" : "Senast"} · {dayText(p.date, ctx.today)}
                     </dt>
-                    <dd className="tnum text-lg">
+                    <dd className="tnum text-v2-lg">
                       {kronor(p.unitCostOre)}
                       {markerIndex === i ? (
-                        <span className="meta ml-2 text-signal-fg">! Dyrt</span>
+                        <span className="meta ml-2 text-v2-crit-text">! Dyrt</span>
                       ) : null}
                     </dd>
                   </div>
@@ -130,7 +130,7 @@ function Trend({
                 message={`${name} har ett registrerat pris (${kronor(trend.first.unitCostOre)}, ${dayText(trend.first.date, ctx.today)}). Utvecklingen visas från två priser.`}
               />
             )}
-            <p className="max-w-3xl text-muted">{trend.text}</p>
+            <p className="max-w-3xl text-v2-mute">{trend.text}</p>
             <Evidence evidence={trend.evidence} names={ctx.names} />
           </div>
         </Panel>
@@ -150,16 +150,16 @@ function Trend({
               <Cell header>
                 {ctx.names.supplier[s.supplierId] ?? s.supplierId}
                 {i === 0 && trend.suppliers.length > 1 ? (
-                  <span className="meta ml-2 text-subtle">billigast</span>
+                  <span className="meta ml-2 text-v2-mute">billigast</span>
                 ) : null}
               </Cell>
               <Cell numeric>{kronor(s.medianOre)}</Cell>
-              <Cell numeric className="text-muted">
+              <Cell numeric className="text-v2-mute">
                 {deltaOfBp(s.vsTitleMedianBp)}
               </Cell>
-              <Cell numeric hideOnMobile className="text-muted">
+              <Cell numeric hideOnMobile className="text-v2-mute">
                 {kronor(s.lastOre)}
-                <span className="meta ml-2 text-subtle">{dayText(s.lastDate, ctx.today)}</span>
+                <span className="meta ml-2 text-v2-mute">{dayText(s.lastDate, ctx.today)}</span>
               </Cell>
             </Row>
           ))}
@@ -209,10 +209,10 @@ export function PricesSection({
   return (
     <section
       aria-labelledby="priser-rubrik"
-      className="flex scroll-mt-28 flex-col gap-8"
+      className="flex scroll-mt-28 flex-col gap-3.5"
       id="priser"
     >
-      <SectionHeader
+      <SectionHead
         id="priser-rubrik"
         eyebrow="Marknadspriser"
         title={title}
@@ -238,16 +238,16 @@ export function PricesSection({
             .slice()
             .reverse()
             .map((a) => (
-              <li key={a.key} className="flex min-w-0 flex-col gap-2 border-b border-line pb-4">
+              <li key={a.key} className="flex min-w-0 flex-col gap-2 border-b border-v2-line pb-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <StatusTag status="warning">
                     {a.direction === "expensive" ? "Dyrt" : "Billigt"}
                   </StatusTag>
-                  <span className="meta text-subtle">
+                  <span className="meta text-v2-mute">
                     {deltaOfBp(a.deviationBp)} mot medianen · {dayText(a.date, ctx.today)}
                   </span>
                 </div>
-                <p className="max-w-3xl text-muted">{a.text}</p>
+                <p className="max-w-3xl text-v2-mute">{a.text}</p>
                 <Evidence evidence={a.evidence} names={ctx.names} />
               </li>
             ))}
@@ -278,7 +278,7 @@ export function PricesSection({
                     <Link
                       href={titleHref(ctx, t.titleId)}
                       aria-current={isSelected ? "true" : undefined}
-                      className="rounded-xs underline decoration-line-strong underline-offset-4 hover:decoration-fg aria-[current=true]:font-medium aria-[current=true]:no-underline"
+                      className="rounded-v2-sm underline decoration-line-strong underline-offset-4 hover:decoration-fg aria-[current=true]:font-[550] aria-[current=true]:no-underline"
                     >
                       {ctx.names.title[t.titleId] ?? t.titleId}
                     </Link>
@@ -287,12 +287,12 @@ export function PricesSection({
                     {formatInt(t.purchases)}
                   </Cell>
                   <Cell numeric>{kronor(t.medianOre)}</Cell>
-                  <Cell numeric hideOnMobile className="text-muted">
+                  <Cell numeric hideOnMobile className="text-v2-mute">
                     {kronor(t.last.unitCostOre)}
                   </Cell>
                   <Cell numeric>{t.changeBp === null ? "–" : deltaOfBp(t.changeBp)}</Cell>
                   {source.kind === "ready" ? (
-                    <Cell numeric className="text-muted">
+                    <Cell numeric className="text-v2-mute">
                       {ext
                         ? ext.currency === "SEK"
                           ? kronor(ext.priceMinor)
@@ -323,7 +323,7 @@ export function PricesSection({
               .map((e) => (
                 <Row key={e.titleId}>
                   <Cell header>{ctx.names.title[e.titleId] ?? e.titleId}</Cell>
-                  <Cell className="meta whitespace-nowrap text-muted">
+                  <Cell className="meta whitespace-nowrap text-v2-mute">
                     {dayText(e.validFrom, ctx.today)}
                   </Cell>
                   <Cell numeric>{kronor(e.unitCostOre)}</Cell>
@@ -347,18 +347,18 @@ export function PricesSection({
           >
             {recentQuotes.map((q) => (
               <Row key={q.id}>
-                <Cell className="meta whitespace-nowrap text-muted">
+                <Cell className="meta whitespace-nowrap text-v2-mute">
                   {dayText(q.date, ctx.today)}
-                  <span className="block text-subtle">{q.isPurchase ? "Inköp" : "Offert"}</span>
+                  <span className="block text-v2-mute">{q.isPurchase ? "Inköp" : "Offert"}</span>
                 </Cell>
                 <Cell header>{ctx.names.title[q.titleId] ?? q.titleId}</Cell>
-                <Cell hideOnMobile className="text-muted">
+                <Cell hideOnMobile className="text-v2-mute">
                   {ctx.names.supplier[q.supplierId] ?? q.supplierId}
                 </Cell>
                 <Cell numeric>
                   {kronor(q.unitCostOre)}
                   {q.quantity > 1 ? (
-                    <span className="meta ml-2 text-subtle">× {formatInt(q.quantity)}</span>
+                    <span className="meta ml-2 text-v2-mute">× {formatInt(q.quantity)}</span>
                   ) : null}
                 </Cell>
                 {ctx.canEdit ? (

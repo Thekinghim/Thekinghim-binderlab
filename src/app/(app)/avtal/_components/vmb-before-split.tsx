@@ -39,10 +39,10 @@ export function VmbBeforeSplitCheckbox({
         className="mt-0.5 size-4 shrink-0 accent-current"
       />
       <div className="flex flex-col gap-0.5">
-        <label htmlFor={id} className="text-base text-fg">
+        <label htmlFor={id} className="text-v2-md text-v2-ink">
           {VMB_BEFORE_SPLIT_LABEL}
         </label>
-        <p id={`${id}-hint`} className="text-sm text-muted">
+        <p id={`${id}-hint`} className="text-v2-sm text-v2-mute">
           {on ? "Andelen räknas efter VMB-moms." : "Andelen räknas före VMB-moms."}
         </p>
       </div>
@@ -65,7 +65,7 @@ export function VmbBeforeSplitMore({
 }) {
   return (
     <details open={checked ? true : undefined} className="group">
-      <summary className="label inline-flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:tap [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-v2-sm text-v2-sm font-[550] text-v2-mute hover:text-v2-ink max-md:tap [&::-webkit-details-marker]:hidden">
         <span
           aria-hidden
           className="inline-block transition-transform duration-fast group-open:rotate-90"

@@ -5,7 +5,6 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/cn";
 
 import { setStorePowerHours } from "../actions";
 
@@ -67,40 +66,26 @@ export function PowerHoursSetting({
   }
 
   return (
-    <div
-      id="strom"
-      className="flex scroll-mt-24 flex-col gap-3 rounded-md border border-line-strong px-4 py-3"
-    >
-      <div className="flex items-center justify-between gap-4">
-        <span className="flex min-w-0 flex-col">
-          <span className="text-base text-fg">Strömmen till automaten</span>
-          <span className="meta text-subtle">
+    <div id="strom" className="bt-setting scroll-mt-24">
+      <button
+        type="button"
+        role="switch"
+        className="bt-switch"
+        aria-checked={on}
+        aria-label={`Butiken stänger av strömmen till automaten på natten, ${storeName}`}
+        disabled={!canEdit || pending}
+        onClick={toggle}
+      >
+        <span className="min-w-0">
+          <b>Strömmen till automaten</b>
+          <small>
             {on
               ? "Butiken stänger av strömmen till automaten på natten."
               : "Alltid på. Slå på om butiken stänger av strömmen på natten."}
-          </span>
+          </small>
         </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          aria-label={`Butiken stänger av strömmen till automaten på natten, ${storeName}`}
-          disabled={!canEdit || pending}
-          onClick={toggle}
-          className={cn(
-            "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors duration-fast ease-instrument disabled:opacity-60 max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1.5 max-md:before:content-['']",
-            on ? "border-up bg-up" : "border-line-control bg-raised",
-          )}
-        >
-          <span
-            aria-hidden
-            className={cn(
-              "shadow inline-block size-6 rounded-full bg-fg transition-transform duration-fast ease-instrument",
-              on ? "translate-x-7 bg-bg" : "translate-x-1",
-            )}
-          />
-        </button>
-      </div>
+        <span className="tg" aria-hidden="true" />
+      </button>
       {on ? (
         <form
           className="flex flex-col gap-3"
@@ -129,11 +114,11 @@ export function PowerHoursSetting({
               onChange={(e) => setHours((h) => ({ ...h, on: e.target.value }))}
             />
           </div>
-          <p className="text-xs text-subtle">
+          <p className="text-v2-sm text-v2-mute">
             Ingen offline-varning medan strömmen är av, och en halvtimme efter att den gått på.
             Efter påfyllning påminner Fyll på om att starta om automaten.
           </p>
-          {error ? <p className="text-xs text-signal-fg">{error}</p> : null}
+          {error ? <p className="text-v2-sm text-v2-crit-text">{error}</p> : null}
           {canEdit && dirty ? (
             <div>
               <Button
