@@ -426,7 +426,14 @@
     font-weight: 650;
     letter-spacing: -0.01em;
   }
+  /* Långa namn (en butik) kapas med … i stället för att gå in i verktygen. */
+  .v2-top h1 .ttl {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .v2-top h1 .date {
+    flex: none;
     color: var(--v2-mute);
     font-size: var(--v2-t-md);
     font-weight: 400;
@@ -461,10 +468,15 @@
       display: block;
       padding: 6px 12px 0;
     }
-    .v2-mperiod .v2-seg-period,
-    .v2-mperiod .v2-seg {
+    .v2-mperiod .v2-seg-period {
       display: flex;
       width: 100%;
+    }
+    /* Segmentet tar resten av raden (efter "Eget" vid ett eget datumintervall). */
+    .v2-mperiod .v2-seg {
+      display: flex;
+      flex: 1;
+      min-width: 0;
     }
     .v2-mperiod .v2-seg button {
       flex: 1;
@@ -553,11 +565,11 @@
     .v2-filters .v2-filter-select {
       width: 100%;
       max-width: none;
-      height: 40px;
+      height: 44px;
       font-size: 16px;
     }
     .v2-filters .v2-filter-vmb {
-      height: 40px;
+      height: 44px;
       padding: 0 10px;
     }
     .v2-filters:has(.v2-filter-vmb) {

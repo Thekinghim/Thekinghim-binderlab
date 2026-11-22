@@ -49,7 +49,7 @@ export function V2Page({
           <span className="mlogo" aria-hidden="true">
             <V2Logo size={24} />
           </span>
-          {title}
+          <span className="ttl">{title}</span>
           {date ? <span className="date">{date}</span> : null}
         </h1>
         <div className="flex min-w-0 items-center gap-2">
