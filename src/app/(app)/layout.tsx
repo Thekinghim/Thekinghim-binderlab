@@ -93,14 +93,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const hasTodos = routeById("hem").roles.includes(ctx.role);
   // Räknaren i menyn väntas inte in: den skickas som ett löfte och strömmar in när
   // punkterna är räknade (Att göra läser order och lager och tar längst tid i skalet).
-  // Räknarna sparas en kort stund per organisation och användare (countCache): annars räknar
-  // varje sidbyte hela Hem (flottan, besöksplanen, Att göra) bara för två siffror i menyn.
-  const countKey = `${ctx.organization.id}:${ctx.user.id}:${ctx.role}`;
-  const todoCount = hasTodos ? cachedCount(`hem:${countKey}`, countTodos) : undefined;
+  const todoCount = hasTodos ? countTodos() : undefined;
   // Räknaren vid Rutt: stoppen i dagens rutt (samma laddare som Hem och Rutt, strömmar in).
-  const routeCount = routeById("rutt").roles.includes(ctx.role)
-    ? cachedCount(`rutt:${countKey}`, countRouteStops)
-    : undefined;
+  const routeCount = routeById("rutt").roles.includes(ctx.role) ? countRouteStops() : undefined;
   const [master, sync, dataStart, machineCounts] = await shellP;
   const buildId = await liveBuildId();
 
@@ -145,29 +140,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       </AppFrame>
     </AppFrameRoot>
   );
-}
-
-/** Så länge en räknare i menyn återanvänds (ms). Sidan själv räknar alltid färskt. */
-const COUNT_TTL_MS = 30_000;
-const countCache = new Map<string, { at: number; value: Promise<number | undefined> }>();
-
-function cachedCount(
-  key: string,
-  load: () => Promise<number | undefined>,
-): Promise<number | undefined> {
-  const now = Date.now();
-  const hit = countCache.get(key);
-  if (hit && now - hit.at < COUNT_TTL_MS) return hit.value;
-  const value = load();
-  countCache.set(key, { at: now, value });
-  // Ett fel (undefined) sparas inte: nästa sidbyte försöker igen.
-  void value.then((v) => {
-    if (v === undefined) countCache.delete(key);
-  });
-  if (countCache.size > 500) {
-    for (const [k, v] of countCache) if (now - v.at >= COUNT_TTL_MS) countCache.delete(k);
-  }
-  return value;
 }
 
 /**
