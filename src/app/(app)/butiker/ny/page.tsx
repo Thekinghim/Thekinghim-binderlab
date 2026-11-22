@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { day } from "@/analytics/todos/text";
 import { Card, CardBody } from "@/components/v2/card";
-import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { PAGE_BODY } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 import { loadContractSetupFor } from "@/server/contracts";
@@ -65,20 +67,34 @@ export default async function NyButikPage({
       }
     : null;
   return (
-    <div className={cn(PAGE_BODY, "max-w-[760px]")}>
-      <PageIntro title="Ny butik." aside="Klart på en minut." />
-      <Card>
-        <CardBody>
-          <StoreGuide
-            found={found}
-            preselected={found.some((m) => m.id === wanted) ? wanted : null}
-            newCode={nextMachineCode(master.machines.map((m) => m.code))}
-            lead={lead}
-            operator={setup.operator}
-            today={ctx.today}
-          />
-        </CardBody>
-      </Card>
-    </div>
+    <V2Page
+      title="Ny butik"
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      sub={
+        <>
+          <Link href="/butiker" className="font-[550] text-v2-ink hover:underline">
+            <span aria-hidden="true">← </span>
+            Butiker
+          </Link>
+          <span aria-hidden="true">·</span>
+          <span>Klart på en minut.</span>
+        </>
+      }
+    >
+      <div className={cn(PAGE_BODY, "max-w-[760px]")}>
+        <Card>
+          <CardBody>
+            <StoreGuide
+              found={found}
+              preselected={found.some((m) => m.id === wanted) ? wanted : null}
+              newCode={nextMachineCode(master.machines.map((m) => m.code))}
+              lead={lead}
+              operator={setup.operator}
+              today={ctx.today}
+            />
+          </CardBody>
+        </Card>
+      </div>
+    </V2Page>
   );
 }

@@ -8,6 +8,8 @@ import { Card, CardBody } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
 import { Notice } from "@/components/v2/notice";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { Table } from "@/components/v2/table";
 import { cn } from "@/lib/cn";
 import { formatDate, formatInt, formatPercent } from "@/lib/format";
@@ -259,251 +261,256 @@ export default async function KontraktPage({
   const headParts = splitNumber(contractHeadline(list.signed, list.total));
 
   return (
-    <div className={PAGE_BODY}>
-      <PageIntro
-        title={
-          <>
-            {headParts.before}
-            {headParts.value !== null ? (
-              <span
-                className={cn(
-                  "tnum",
-                  list.total > 0 && (missing === 0 ? "text-v2-profit-text" : "text-v2-crit-text"),
-                )}
-              >
-                {formatInt(headParts.value)}
-              </span>
-            ) : null}
-            {headParts.after}
-          </>
-        }
-        aside={
-          firstAlert
-            ? firstAlert.status === "missing"
-              ? `Nästa: skapa kontrakt med ${firstAlert.storeName}.`
-              : `Nästa: få ${firstAlert.storeName} att signera.`
-            : undefined
-        }
-        actions={
-          canEdit && setup ? (
-            <CreateContract
-              key={skapa ?? "ny"}
-              options={setup.options}
-              operator={setup.operator}
-              today={ctx.today}
-              orgNumberMissing={setup.orgNumberMissing}
-              operatorGaps={setup.operatorGaps}
-              firstContract={firstContract}
-              initialTarget={skapa}
-              autoOpen={Boolean(skapa)}
-              large
-            />
-          ) : undefined
-        }
-      />
+    <V2Page
+      title="Kontrakt"
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      tools={
+        canEdit && setup ? (
+          <CreateContract
+            key={skapa ?? "ny"}
+            options={setup.options}
+            operator={setup.operator}
+            today={ctx.today}
+            orgNumberMissing={setup.orgNumberMissing}
+            operatorGaps={setup.operatorGaps}
+            firstContract={firstContract}
+            initialTarget={skapa}
+            autoOpen={Boolean(skapa)}
+          />
+        ) : undefined
+      }
+    >
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <PageIntro
+          title={
+            <>
+              {headParts.before}
+              {headParts.value !== null ? (
+                <span
+                  className={cn(
+                    "tnum",
+                    list.total > 0 && (missing === 0 ? "text-v2-profit-text" : "text-v2-crit-text"),
+                  )}
+                >
+                  {formatInt(headParts.value)}
+                </span>
+              ) : null}
+              {headParts.after}
+            </>
+          }
+          aside={
+            firstAlert
+              ? firstAlert.status === "missing"
+                ? `Nästa: skapa kontrakt med ${firstAlert.storeName}.`
+                : `Nästa: få ${firstAlert.storeName} att signera.`
+              : undefined
+          }
+        />
 
-      <div>
-        <ViewTabs tabs={TABS} value={tab} basePath="/avtal" query="" label="Visa" />
-      </div>
+        <div>
+          <ViewTabs tabs={TABS} value={tab} basePath="/avtal" query="" label="Visa" />
+        </div>
 
-      <div key={tab} className="v2-enter v2-stack">
-        {tab === "lista" ? (
-          <Card title="Kontrakt per butik" count={list.rows.length > 0 ? list.rows.length : null}>
-            {list.rows.length === 0 ? (
-              <Empty title="Inga butiker än." />
-            ) : (
-              <ul aria-label="Kontrakt per butik" className="flex flex-col">
-                {list.rows.map((row) => {
-                  const anchor = !firstOfStore.has(row.storeId);
-                  firstOfStore.add(row.storeId);
-                  const c = row.contractId ? contractById.get(row.contractId) : undefined;
-                  return (
-                    <ContractItem
-                      key={row.key}
-                      row={row}
-                      contract={c}
-                      anchor={anchor}
-                      uncovered={uncoveredByRow.get(row.key) ?? null}
-                      canEdit={canEdit}
-                      template={c ? statusOf(c.id) : null}
-                      signedAt={c ? (statuses.get(c.id)?.signedAt ?? null) : null}
-                      signature={c ? (signatures.get(c.id) ?? null) : null}
-                      reminder={c ? (reminderOf.get(c.id) ?? null) : null}
-                      stores={stores}
-                      agreementOptions={agreementOptions}
-                      agreements={data.agreements}
-                    />
-                  );
-                })}
-              </ul>
-            )}
-            {canEdit && stores.length > 0 ? (
-              <div className="border-t border-v2-line2 px-[18px] py-2.5 max-[900px]:px-4">
-                <ContractDialog
-                  stores={stores}
-                  agreements={agreementOptions}
-                  trigger={{
-                    label: "Lägg in ett kontrakt ni redan har",
-                    variant: "ghost",
-                    size: "sm",
-                  }}
-                />
-              </div>
-            ) : null}
-          </Card>
-        ) : null}
-        {tab === "lista" && !data.fileStore.configured ? (
-          <Notice tone="info">{data.fileStore.detail}</Notice>
-        ) : null}
+        <div key={tab} className="v2-enter v2-stack">
+          {tab === "lista" ? (
+            <Card title="Kontrakt per butik" count={list.rows.length > 0 ? list.rows.length : null}>
+              {list.rows.length === 0 ? (
+                <Empty title="Inga butiker än." />
+              ) : (
+                <ul aria-label="Kontrakt per butik" className="flex flex-col">
+                  {list.rows.map((row) => {
+                    const anchor = !firstOfStore.has(row.storeId);
+                    firstOfStore.add(row.storeId);
+                    const c = row.contractId ? contractById.get(row.contractId) : undefined;
+                    return (
+                      <ContractItem
+                        key={row.key}
+                        row={row}
+                        contract={c}
+                        anchor={anchor}
+                        uncovered={uncoveredByRow.get(row.key) ?? null}
+                        canEdit={canEdit}
+                        template={c ? statusOf(c.id) : null}
+                        signedAt={c ? (statuses.get(c.id)?.signedAt ?? null) : null}
+                        signature={c ? (signatures.get(c.id) ?? null) : null}
+                        reminder={c ? (reminderOf.get(c.id) ?? null) : null}
+                        stores={stores}
+                        agreementOptions={agreementOptions}
+                        agreements={data.agreements}
+                      />
+                    );
+                  })}
+                </ul>
+              )}
+              {canEdit && stores.length > 0 ? (
+                <div className="border-t border-v2-line2 px-[18px] py-2.5 max-[900px]:px-4">
+                  <ContractDialog
+                    stores={stores}
+                    agreements={agreementOptions}
+                    trigger={{
+                      label: "Lägg in ett kontrakt ni redan har",
+                      variant: "ghost",
+                      size: "sm",
+                    }}
+                  />
+                </div>
+              ) : null}
+            </Card>
+          ) : null}
+          {tab === "lista" && !data.fileStore.configured ? (
+            <Notice tone="info">{data.fileStore.detail}</Notice>
+          ) : null}
 
-        {tab === "uppsagning" ? (
-          <Card as="section" title="Uppsägning" count={due.length > 0 ? due.length : null}>
-            <CardBody className="flex flex-col gap-4">
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <h2 id="att-atgarda" className="text-v2-md font-[550] text-v2-ink">
-                  {due.length === 0
-                    ? "Inget att säga upp nu."
-                    : `${plural(due.length, "kontrakt", "kontrakt")} behöver beslut.`}
-                </h2>
-                <p className="text-v2-sm text-v2-mute">
-                  {due[0]?.term.noticeDeadline
-                    ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, ${day(due[0].term.noticeDeadline)}.`
-                    : "Påminnelse 90 dagar innan."}
-                </p>
-              </div>
-              {due.length > 0 ? (
-                <ol className="flex flex-col">
-                  {due.map((r) => (
-                    <li
-                      key={r.key}
-                      className="flex flex-col gap-2 border-t border-v2-line2 py-3 first:border-t-0 first:pt-0"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <a
-                          href={`/avtal#avtal-${r.contractId}`}
-                          className="rounded-v2-sm text-v2-md font-[550] text-v2-ink hover:underline max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
-                        >
-                          {r.title}
-                        </a>
-                        <Badge tone={REMINDER[r.status].tone} dot>
-                          {REMINDER[r.status].label}
-                        </Badge>
+          {tab === "uppsagning" ? (
+            <Card as="section" title="Uppsägning" count={due.length > 0 ? due.length : null}>
+              <CardBody className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <h2 id="att-atgarda" className="text-v2-md font-[550] text-v2-ink">
+                    {due.length === 0
+                      ? "Inget att säga upp nu."
+                      : `${plural(due.length, "kontrakt", "kontrakt")} behöver beslut.`}
+                  </h2>
+                  <p className="text-v2-sm text-v2-mute">
+                    {due[0]?.term.noticeDeadline
+                      ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, ${day(due[0].term.noticeDeadline)}.`
+                      : "Påminnelse 90 dagar innan."}
+                  </p>
+                </div>
+                {due.length > 0 ? (
+                  <ol className="flex flex-col">
+                    {due.map((r) => (
+                      <li
+                        key={r.key}
+                        className="flex flex-col gap-2 border-t border-v2-line2 py-3 first:border-t-0 first:pt-0"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <a
+                            href={`/avtal#avtal-${r.contractId}`}
+                            className="rounded-v2-sm text-v2-md font-[550] text-v2-ink hover:underline max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
+                          >
+                            {r.title}
+                          </a>
+                          <Badge tone={REMINDER[r.status].tone} dot>
+                            {REMINDER[r.status].label}
+                          </Badge>
+                        </div>
+                        <p className="text-v2-sm text-v2-mute">{r.detail}</p>
+                        <EvidenceDetails evidence={r.evidence} />
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {tab === "intakt" ? (
+            o ? (
+              <div className="v2-cols">
+                <div className="v2-stack">
+                  <Card as="section" title={`Intäkt per butik · ${periodText(o.window)}`}>
+                    <CardBody className="flex flex-col gap-4">
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <h2 id="intakt-per-butik" className="text-v2-md font-[550] text-v2-ink">
+                          {revenueRiskHeadline(o)}
+                        </h2>
+                        <p className="text-v2-sm text-v2-mute">
+                          {o.noContractRevenueOre > 0
+                            ? `${sek(o.noContractRevenueOre)} av ${sek(o.totalRevenueOre)}. Signera kontrakten först.`
+                            : `${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)}.`}
+                        </p>
                       </div>
-                      <p className="text-v2-sm text-v2-mute">{r.detail}</p>
-                      <EvidenceDetails evidence={r.evidence} />
+                    </CardBody>
+                    <Table
+                      caption="Intäkt per butik och kontraktets läge"
+                      rows={o.stores}
+                      rowKey={(row) => row.storeId}
+                      columns={[
+                        {
+                          key: "butik",
+                          header: "Butik",
+                          cell: (row) => (
+                            <span className="flex min-w-0 flex-col">
+                              <span className="[overflow-wrap:anywhere] text-v2-ink">
+                                {storeName.get(row.storeId) ?? "Okänd butik"}
+                              </span>
+                              <span className="text-v2-xs text-v2-mute">
+                                {CATEGORY[row.category]}
+                                {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
+                              </span>
+                            </span>
+                          ),
+                        },
+                        {
+                          key: "intakt",
+                          header: "Intäkt",
+                          align: "right",
+                          cell: (row) => sek(row.revenueOre),
+                        },
+                        {
+                          key: "andel",
+                          header: "Andel",
+                          align: "right",
+                          cell: (row) =>
+                            row.shareBp === null ? "–" : formatPercent(row.shareBp / 10_000),
+                        },
+                      ]}
+                    />
+                  </Card>
+                </div>
+                <div className="v2-stack">
+                  <Card as="section" title="Så räknas det">
+                    <CardBody>
+                      <EvidenceDetails evidence={o.evidence} />
+                    </CardBody>
+                  </Card>
+                </div>
+              </div>
+            ) : (
+              <Notice tone="critical" title="Intäkten kunde inte räknas.">
+                {data.overviewError ?? undefined}
+              </Notice>
+            )
+          ) : null}
+
+          {tab === "arkiv" ? (
+            <Card
+              title="Arkiv"
+              count={archivedContracts.length > 0 ? archivedContracts.length : null}
+            >
+              {archivedContracts.length === 0 ? (
+                <Empty title="Inget arkiv." />
+              ) : (
+                <ul className="flex flex-col">
+                  {archivedContracts.map((c) => (
+                    <li
+                      key={c.id}
+                      className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-v2-line2 px-[18px] py-3 first:border-t-0"
+                    >
+                      <span className="min-w-0 text-v2-sm text-v2-mute">
+                        <span className="text-v2-md text-v2-ink">
+                          {storeName.get(c.storeId) ?? "Okänd butik"}
+                        </span>
+                        {" · "}
+                        {day(c.validFrom)} – {c.validTo ? day(c.validTo) : "tills vidare"}
+                      </span>
+                      {canEdit ? (
+                        <ContractArchive
+                          id={c.id}
+                          archived
+                          label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Kontrakt"}`}
+                        />
+                      ) : null}
                     </li>
                   ))}
-                </ol>
-              ) : null}
-            </CardBody>
-          </Card>
-        ) : null}
-
-        {tab === "intakt" ? (
-          o ? (
-            <div className="v2-cols">
-              <div className="v2-stack">
-                <Card as="section" title={`Intäkt per butik · ${periodText(o.window)}`}>
-                  <CardBody className="flex flex-col gap-4">
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <h2 id="intakt-per-butik" className="text-v2-md font-[550] text-v2-ink">
-                        {revenueRiskHeadline(o)}
-                      </h2>
-                      <p className="text-v2-sm text-v2-mute">
-                        {o.noContractRevenueOre > 0
-                          ? `${sek(o.noContractRevenueOre)} av ${sek(o.totalRevenueOre)}. Signera kontrakten först.`
-                          : `${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)}.`}
-                      </p>
-                    </div>
-                  </CardBody>
-                  <Table
-                    caption="Intäkt per butik och kontraktets läge"
-                    rows={o.stores}
-                    rowKey={(row) => row.storeId}
-                    columns={[
-                      {
-                        key: "butik",
-                        header: "Butik",
-                        cell: (row) => (
-                          <span className="flex min-w-0 flex-col">
-                            <span className="[overflow-wrap:anywhere] text-v2-ink">
-                              {storeName.get(row.storeId) ?? "Okänd butik"}
-                            </span>
-                            <span className="text-v2-xs text-v2-mute">
-                              {CATEGORY[row.category]}
-                              {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
-                            </span>
-                          </span>
-                        ),
-                      },
-                      {
-                        key: "intakt",
-                        header: "Intäkt",
-                        align: "right",
-                        cell: (row) => sek(row.revenueOre),
-                      },
-                      {
-                        key: "andel",
-                        header: "Andel",
-                        align: "right",
-                        cell: (row) =>
-                          row.shareBp === null ? "–" : formatPercent(row.shareBp / 10_000),
-                      },
-                    ]}
-                  />
-                </Card>
-              </div>
-              <div className="v2-stack">
-                <Card as="section" title="Så räknas det">
-                  <CardBody>
-                    <EvidenceDetails evidence={o.evidence} />
-                  </CardBody>
-                </Card>
-              </div>
-            </div>
-          ) : (
-            <Notice tone="critical" title="Intäkten kunde inte räknas.">
-              {data.overviewError ?? undefined}
-            </Notice>
-          )
-        ) : null}
-
-        {tab === "arkiv" ? (
-          <Card
-            title="Arkiv"
-            count={archivedContracts.length > 0 ? archivedContracts.length : null}
-          >
-            {archivedContracts.length === 0 ? (
-              <Empty title="Inget arkiv." />
-            ) : (
-              <ul className="flex flex-col">
-                {archivedContracts.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-v2-line2 px-[18px] py-3 first:border-t-0"
-                  >
-                    <span className="min-w-0 text-v2-sm text-v2-mute">
-                      <span className="text-v2-md text-v2-ink">
-                        {storeName.get(c.storeId) ?? "Okänd butik"}
-                      </span>
-                      {" · "}
-                      {day(c.validFrom)} – {c.validTo ? day(c.validTo) : "tills vidare"}
-                    </span>
-                    {canEdit ? (
-                      <ContractArchive
-                        id={c.id}
-                        archived
-                        label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Kontrakt"}`}
-                      />
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        ) : null}
+                </ul>
+              )}
+            </Card>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </V2Page>
   );
 }
 

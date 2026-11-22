@@ -56,7 +56,7 @@ const V2_CLASSES: typeof OLD_CLASSES = {
   empty: "text-v2-sm text-v2-mute",
   todoLink: "v2-btn touch mt-1 self-start",
   hint: "px-0.5 text-v2-xs text-v2-mute",
-  close: "v2-btn lg w-full",
+  close: "v2-btn self-start",
   dt: "text-v2-sm text-v2-mute",
   dd: "tnum text-right text-v2-md font-[550] text-v2-ink",
   ddStrong: "tnum text-right text-v2-2xl font-[650] text-v2-ink",

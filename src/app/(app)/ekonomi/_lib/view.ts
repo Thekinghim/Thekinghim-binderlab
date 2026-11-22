@@ -29,6 +29,15 @@ export function kr(ore: number | null | undefined): string {
   return ore === null || ore === undefined ? MISSING : formatKronor(ore / 100);
 }
 
+/**
+ * Öre → "425 817 kr", med ören bara när de finns ("129,50 kr"): enskilda belopp på sidan,
+ * som på V2-sidorna. Verifikationer och bokföring behåller två decimaler (kr).
+ */
+export function amount(ore: number | null | undefined): string {
+  if (ore === null || ore === undefined) return MISSING;
+  return formatKronor(ore / 100, { decimals: ore % 100 === 0 ? 0 : 2 });
+}
+
 /** Öre → "1 235 kr" (hela kronor, rubriker och KPI). */
 export function sek(ore: number | null | undefined): string {
   return ore === null || ore === undefined ? MISSING : formatSek(ore / 100);

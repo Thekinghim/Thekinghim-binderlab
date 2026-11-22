@@ -1155,8 +1155,9 @@ function NetPill({
     <span
       role="status"
       aria-live="polite"
+      data-net={online ? (waiting > 0 ? "sending" : "online") : "offline"}
       className={cn(
-        "label inline-flex min-h-8 items-center gap-2 rounded-full border px-3",
+        "net label inline-flex min-h-8 items-center gap-2 rounded-full border px-3",
         online ? "border-line text-subtle" : "border-signal-line text-signal-fg",
       )}
     >
@@ -2257,7 +2258,7 @@ function CountForm({
           setDraft(String(r.now));
           onToggle();
         }}
-        className="min-h-8 text-v2-sm text-v2-mute underline-offset-4 hover:text-v2-ink hover:underline"
+        className="min-h-8 text-left text-v2-sm whitespace-nowrap text-v2-mute underline-offset-4 hover:text-v2-ink hover:underline"
       >
         {t.fill.wrongCount}
       </button>

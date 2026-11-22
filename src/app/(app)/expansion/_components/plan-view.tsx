@@ -11,6 +11,7 @@ import { useState } from "react";
 
 import type { GrowthPlan } from "@/analytics/expansion";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/v2/card";
 import { CountUp } from "@/components/ui/count-up";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
@@ -64,11 +65,16 @@ function Stat({
 }) {
   return (
     <article
-      className="flex min-w-0 flex-col gap-2 rounded-v2-lg border border-v2-line bg-v2-panel p-4 md:p-5"
+      className="flex min-w-0 flex-col gap-0.5 bg-v2-panel px-[18px] py-3.5"
       style={{ "--i": i } as React.CSSProperties}
     >
-      <h3 className="label truncate text-v2-mute">{label}</h3>
-      <p className={cn("tnum text-v2-xl font-[550]", tone === "signal" && "text-v2-crit-text")}>
+      <h3 className="truncate text-v2-xs font-[550] text-v2-mute">{label}</h3>
+      <p
+        className={cn(
+          "tnum text-v2-xl leading-7 font-[650] tracking-[-0.01em]",
+          tone === "signal" && "text-v2-crit-text",
+        )}
+      >
         {text !== undefined ? (
           text
         ) : value === null ? (
@@ -80,7 +86,7 @@ function Stat({
           </>
         )}
       </p>
-      {sub ? <p className="text-v2-sm text-v2-mute">{sub}</p> : null}
+      {sub ? <p className="text-v2-xs text-v2-mute">{sub}</p> : null}
     </article>
   );
 }
@@ -231,15 +237,16 @@ export function PlanView({
   }
 
   return (
-    <div className="flex flex-col gap-10">
-      <section aria-label="Per ny automat" className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-v2-lg font-[550] text-v2-ink">Per ny automat</h2>
-          {canEdit ? (
+    <div className="v2-stack">
+      <Card
+        title="Per ny automat"
+        actions={
+          canEdit ? (
             <PlanSettings saved={saved} plan={plan} open={editing} setOpen={setEditing} />
-          ) : null}
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          ) : undefined
+        }
+      >
+        <div className="grid grid-cols-2 gap-px bg-v2-line2 xl:grid-cols-4">
           <Stat
             i={1}
             label="Vinst per månad"
@@ -290,18 +297,11 @@ export function PlanView({
             }
           />
         </div>
-      </section>
+      </Card>
 
       {plan.timeline.length > 0 ? (
-        <section
-          aria-labelledby="tidslinje-h"
-          className="flex flex-col gap-4"
-          style={{ "--i": 5 } as React.CSSProperties}
-        >
-          <h2 id="tidslinje-h" className="text-v2-lg font-[550] text-v2-ink">
-            Tidslinje
-          </h2>
-          <div className="overflow-x-auto rounded-v2-lg border border-v2-line bg-v2-panel p-4 md:p-5">
+        <Card title="Tidslinje">
+          <div className="overflow-x-auto px-[18px] py-4">
             <ol
               className="flex h-40 min-w-max items-end gap-1.5 sm:min-w-0"
               aria-label="Automater per månad"
@@ -309,7 +309,7 @@ export function PlanView({
               <li className="flex h-full w-11 flex-col items-center justify-end gap-1 sm:w-auto sm:flex-1">
                 <span className="tnum text-v2-xs text-v2-mute">{formatInt(plan.machinesNow)}</span>
                 <span
-                  className="grow-y w-full rounded-t-xs bg-v2-line3"
+                  className="v2-bar-grow w-full rounded-t-xs bg-v2-line3"
                   style={{ height: `${(plan.machinesNow / maxMachines) * 100}%`, minHeight: 2 }}
                   aria-hidden
                 />
@@ -324,7 +324,7 @@ export function PlanView({
                   <span className="tnum text-v2-xs text-v2-mute">{formatInt(t.machines)}</span>
                   <span
                     className={cn(
-                      "grow-y w-full rounded-t-xs",
+                      "v2-bar-grow w-full rounded-t-xs",
                       t.needsHelp ? "bg-v2-crit" : "bg-v2-ink",
                     )}
                     style={
@@ -348,7 +348,7 @@ export function PlanView({
               </p>
             ) : null}
           </div>
-          <ul className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-px border-t border-v2-line2 bg-v2-line2 md:grid-cols-3">
             <Fact
               label="Pengar"
               text={
@@ -384,89 +384,88 @@ export function PlanView({
               signal={plan.helpFrom !== null}
             />
           </ul>
-        </section>
+        </Card>
       ) : null}
 
-      <ul aria-label="Inköp och påfyllning" className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Fact
-          label={`Inköp vid ${formatInt(plan.atTarget.machines)}`}
-          text={
-            plan.atTarget.packsPerMonth === null
-              ? "Ingen försäljning än."
-              : `${formatInt(plan.atTarget.packsPerMonth)} pack, ${kr(plan.atTarget.purchasePerMonthOre ?? 0)} per månad.`
-          }
-          sub={
-            plan.packsPerMonth === null
-              ? undefined
-              : `${formatInt(plan.packsPerMonth)} pack per automat.`
-          }
-        />
-        <li className="flex list-none flex-col gap-1.5 rounded-v2-lg border border-v2-line bg-v2-panel p-4">
-          <span className="label text-v2-mute">Antagande</span>
-          <span className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="text-v2-md font-[550] text-v2-ink">
-              {formatInt(plan.refillMinutesPerMachineWeek)}
-              {NBSP}min per automat och vecka
-            </span>
-            {canEdit ? (
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="rounded-v2-sm text-v2-sm text-v2-ink underline underline-offset-4 hover:text-v2-mute max-md:tap"
-              >
-                Ändra
-              </button>
-            ) : null}
-          </span>
-          {refillWarn ? (
-            <span className="text-v2-sm text-v2-crit-text">
-              {refillWarn.text}{" "}
-              {refillWarn.href ? (
-                <Link href={refillWarn.href} className="font-[550] underline underline-offset-4">
-                  {refillWarn.cta}
-                  {NBSP}→
-                </Link>
+      <Card title="Inköp och påfyllning">
+        <ul
+          aria-label="Inköp och påfyllning"
+          className="grid grid-cols-1 gap-px bg-v2-line2 md:grid-cols-2"
+        >
+          <Fact
+            label={`Inköp vid ${formatInt(plan.atTarget.machines)}`}
+            text={
+              plan.atTarget.packsPerMonth === null
+                ? "Ingen försäljning än."
+                : `${formatInt(plan.atTarget.packsPerMonth)} pack, ${kr(plan.atTarget.purchasePerMonthOre ?? 0)} per månad.`
+            }
+            sub={
+              plan.packsPerMonth === null
+                ? undefined
+                : `${formatInt(plan.packsPerMonth)} pack per automat.`
+            }
+          />
+          <li className="flex list-none flex-col gap-1 bg-v2-panel px-[18px] py-3.5">
+            <span className="text-v2-xs font-[550] text-v2-mute">Antagande</span>
+            <span className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-v2-md font-[550] text-v2-ink">
+                {formatInt(plan.refillMinutesPerMachineWeek)}
+                {NBSP}min per automat och vecka
+              </span>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="rounded-v2-sm text-v2-sm text-v2-ink underline underline-offset-4 hover:text-v2-mute max-md:tap"
+                >
+                  Ändra
+                </button>
               ) : null}
             </span>
-          ) : (
-            <span className="text-v2-sm text-v2-mute">
-              {plan.refillSource === "data"
-                ? "Från er mätning."
-                : plan.refillSource === "saved"
-                  ? "Ert värde."
-                  : "Förval."}
-            </span>
-          )}
-        </li>
-      </ul>
+            {refillWarn ? (
+              <span className="text-v2-sm text-v2-crit-text">
+                {refillWarn.text}{" "}
+                {refillWarn.href ? (
+                  <Link href={refillWarn.href} className="font-[550] underline underline-offset-4">
+                    {refillWarn.cta}
+                    {NBSP}→
+                  </Link>
+                ) : null}
+              </span>
+            ) : (
+              <span className="text-v2-sm text-v2-mute">
+                {plan.refillSource === "data"
+                  ? "Från er mätning."
+                  : plan.refillSource === "saved"
+                    ? "Ert värde."
+                    : "Förval."}
+              </span>
+            )}
+          </li>
+        </ul>
+      </Card>
 
       {steps.length > 0 ? (
-        <section aria-labelledby="nasta-h" className="flex flex-col gap-3">
-          <h2 id="nasta-h" className="text-v2-lg font-[550] text-v2-ink">
-            Nästa steg
-          </h2>
-          <ol className="flex flex-col divide-y divide-v2-line2 rounded-v2-lg border border-v2-line bg-v2-panel">
+        <Card title="Nästa steg" count={steps.length}>
+          <ol aria-label="Nästa steg" className="flex flex-col divide-y divide-v2-line2">
             {steps.map((s, i) => (
               <li
                 key={s.key}
-                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3"
                 style={{ "--i": i } as React.CSSProperties}
               >
                 <span className={cn("text-v2-md", s.signal ? "text-v2-crit-text" : "text-v2-ink")}>
                   {s.text}
                 </span>
                 {s.href && s.cta ? (
-                  <Link
-                    href={s.href}
-                    className="inline-flex h-9 items-center rounded-v2 border border-v2-line3 bg-v2-panel px-3.5 text-v2-sm font-[550] text-v2-ink transition-colors duration-fast ease-instrument hover:border-v2-line3 hover:bg-v2-hover max-md:min-h-11"
-                  >
+                  <Link href={s.href} className="v2-btn max-md:min-h-11">
                     {s.cta}
                   </Link>
                 ) : null}
               </li>
             ))}
           </ol>
-        </section>
+        </Card>
       ) : null}
     </div>
   );
@@ -484,8 +483,8 @@ function Fact({
   signal?: boolean;
 }) {
   return (
-    <li className="flex list-none flex-col gap-1.5 rounded-v2-lg border border-v2-line bg-v2-panel p-4">
-      <span className="label text-v2-mute">{label}</span>
+    <li className="flex list-none flex-col gap-1 bg-v2-panel px-[18px] py-3.5">
+      <span className="text-v2-xs font-[550] text-v2-mute">{label}</span>
       <span className="text-v2-md font-[550] text-v2-ink">{text}</span>
       {sub ? (
         <span className={cn("text-v2-sm", signal ? "text-v2-crit-text" : "text-v2-mute")}>

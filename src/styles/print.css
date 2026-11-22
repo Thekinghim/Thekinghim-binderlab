@@ -104,6 +104,30 @@
   --bl-desk-edge: #b9b6af;
 }
 
+/*
+ * V2-typen på arket (skärm, utskrift och PDF): Google Sans överallt, inga monospace-
+ * typsnitt och inga versaletiketter med spärrning. Samma värden som V2-skalet sätter
+ * (v2.css), så att förhandsvisningen på /rapporter och /rapport/… och PDF:en ser likadana ut.
+ */
+.bl-report {
+  --bl-report-sans:
+    var(--font-google-sans), "Google Sans", "V2 Google Sans Fallback", system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --bl-font-sans: var(--bl-report-sans);
+  --bl-font-mono: var(--bl-report-sans);
+  --bl-caps-transform: none;
+  --bl-caps-tracking: 0;
+  font-family: var(--bl-report-sans);
+}
+.bl-report .label {
+  font-family: var(--bl-report-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.bl-report .meta {
+  font-family: var(--bl-report-sans);
+}
+
 /* --- 2. Sidsystem ---------------------------------------------------- */
 
 @page bl-report {

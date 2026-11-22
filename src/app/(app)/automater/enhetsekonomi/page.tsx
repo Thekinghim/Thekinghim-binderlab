@@ -3,7 +3,9 @@ import { Suspense } from "react";
 
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
-import { requestStoreShareView } from "@/server/data/core";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
+import { loadContext, requestStoreShareView } from "@/server/data/core";
 import { formatInt } from "@/lib/format";
 
 import { DataStartNote, EvidenceDetails } from "../../expansion/_components/evidence";
@@ -38,9 +40,10 @@ export default async function EnhetsekonomiPage({
   searchParams: Promise<SearchParamsInput>;
 }) {
   const sp = await searchParams;
-  const [data, shareToggle] = await Promise.all([
+  const [data, shareToggle, ctx] = await Promise.all([
     loadUnitEconomicsPage(sp),
     requestStoreShareView(),
+    loadContext(),
   ]);
   // Länken "Registrera investering" från en automat (?automat=) öppnar investeringarna.
   const param = (name: string): string | undefined => {
@@ -101,12 +104,12 @@ export default async function EnhetsekonomiPage({
       : `Vinst ${kr(comparison.averageProfitPerDayOre)} per automat och dag.`;
 
   return (
-    // Skalets kontextrad (period, Eget intervall, Butik/Automat) gäller här och står kvar
-    // ovanför; sidan själv är V2-kort (ingen V2Page, så att filtret inte döljs).
-    <div className="v2-page-body" data-testid="enhetsekonomi-v2">
-      <div className="v2-stack">
-        <div className="flex flex-col gap-1 px-0.5">
-          <h1 className="text-v2-xl font-[650] text-v2-ink">{title}</h1>
+    // Period och filtret Butik/Automat står i sidhuvudet (V2Page med period och filters).
+    <V2Page title="Enhetsekonomi" date={headerDate(new Date(ctx.now), ctx.timeZone)} period filters>
+      <SubNav />
+      <div className="v2-stack" data-testid="enhetsekonomi-v2">
+        <div className="flex flex-col gap-0.5 px-0.5">
+          <h2 className="text-v2-md font-[550] text-v2-ink">{title}</h2>
           <p className="ops-p">{comparison.text}</p>
         </div>
 
@@ -229,7 +232,7 @@ export default async function EnhetsekonomiPage({
           </details>
         </section>
       </div>
-    </div>
+    </V2Page>
   );
 }
 

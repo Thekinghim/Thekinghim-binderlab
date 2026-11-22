@@ -5,9 +5,12 @@ import { MobileFold } from "@/components/ui/mobile-fold";
 import { Card, CardBody } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { daysInMonth } from "@/domain";
 import { formatInt } from "@/lib/format";
+import { loadContext } from "@/server/data/core";
 
 import { loadEffectPage, type Names } from "../expansion/_lib/data";
 import { withOrderCounts } from "../expansion/_lib/slim";
@@ -41,6 +44,8 @@ export default async function EffektPage({
   searchParams: Promise<SearchParamsInput>;
 }) {
   const data = await loadEffectPage(await searchParams);
+  // Sidhuvudets datum (sammanhanget är redan läst, cache per anrop).
+  const ctx = await loadContext();
   const names = lookups(data.names);
   const scopeOf = (s: { scope: string; scopeId: string | null }) =>
     s.scope === "store"
@@ -82,92 +87,95 @@ export default async function EffektPage({
       : "Lägg in mätvärden per månad.";
 
   return (
-    <div className={PAGE_BODY}>
-      <PageIntro
-        title={title}
-        aside={aside}
-        facts={[
-          { label: "Månader", value: monthsText },
-          // day() slutar med punkt ("13 okt.")
-          ...(data.dataStartInMonth
-            ? [{ label: "Data från", value: day(data.dataStartInMonth) }]
-            : []),
-        ]}
-      />
+    <V2Page title="Effekt" date={headerDate(new Date(ctx.now), ctx.timeZone)}>
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <PageIntro
+          title={title}
+          aside={aside}
+          facts={[
+            { label: "Månader", value: monthsText },
+            // day() slutar med punkt ("13 okt.")
+            ...(data.dataStartInMonth
+              ? [{ label: "Data från", value: day(data.dataStartInMonth) }]
+              : []),
+          ]}
+        />
 
-      <Card
-        as="section"
-        title="Förbättring"
-        actions={
-          data.period.key !== "allt" ? (
-            <Link
-              href="?period=allt"
-              className="inline-flex min-h-7 items-center rounded-v2-sm text-v2-sm font-[550] text-v2-ink hover:underline max-[900px]:min-h-11"
-            >
-              Visa alla månader →
-            </Link>
-          ) : undefined
-        }
-      >
-        <CardBody className="flex flex-col gap-5">
-          <p id="forbattring" className="text-v2-md text-v2-mute">
-            Per månad, {monthsText}.
-          </p>
-          {data.series.length === 0 ? (
-            <Empty title="Lägg in utgångsläget." />
-          ) : (
-            <div className="flex flex-col divide-y divide-v2-line2 [&>*]:pt-6 [&>*]:pb-6 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-              {data.series.map((s) => (
-                <SeriesView
-                  key={s.baselineId}
-                  series={withOrderCounts(s)}
-                  scope={scopeOf(s)}
-                  links={evidenceLinks(s.latest?.evidence ?? s.evidence, names)}
+        <Card
+          as="section"
+          title="Förbättring"
+          actions={
+            data.period.key !== "allt" ? (
+              <Link
+                href="?period=allt"
+                className="inline-flex min-h-7 items-center rounded-v2-sm text-v2-sm font-[550] text-v2-ink hover:underline max-[900px]:min-h-11"
+              >
+                Visa alla månader →
+              </Link>
+            ) : undefined
+          }
+        >
+          <CardBody className="flex flex-col gap-5">
+            <p id="forbattring" className="text-v2-md text-v2-mute">
+              Per månad, {monthsText}.
+            </p>
+            {data.series.length === 0 ? (
+              <Empty title="Lägg in utgångsläget." />
+            ) : (
+              <div className="flex flex-col divide-y divide-v2-line2 [&>*]:pt-6 [&>*]:pb-6 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+                {data.series.map((s) => (
+                  <SeriesView
+                    key={s.baselineId}
+                    series={withOrderCounts(s)}
+                    scope={scopeOf(s)}
+                    links={evidenceLinks(s.latest?.evidence ?? s.evidence, names)}
+                  />
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        <div className="v2-stack">
+          <Card as="section" title="Utgångsläge" count={data.baselines.length}>
+            <CardBody className="flex flex-col gap-4">
+              <p id="utgangslage" className="text-v2-md text-v2-mute">
+                {data.baselines.length === 0
+                  ? "Så var det före Binderlab."
+                  : `Så var det före Binderlab: ${formatInt(data.baselines.length)} mått.`}
+              </p>
+              {/* Inställningar för mätningen: fällda på mobilen, siffrorna ovan är det viktiga. */}
+              <MobileFold summary="Visa och ändra">
+                <BaselinesSection
+                  baselines={data.baselines}
+                  stores={data.names.stores}
+                  machines={data.names.machines}
+                  canEdit={data.ctx.canEdit}
                 />
-              ))}
-            </div>
-          )}
-        </CardBody>
-      </Card>
+              </MobileFold>
+            </CardBody>
+          </Card>
 
-      <div className="v2-stack">
-        <Card as="section" title="Utgångsläge" count={data.baselines.length}>
-          <CardBody className="flex flex-col gap-4">
-            <p id="utgangslage" className="text-v2-md text-v2-mute">
-              {data.baselines.length === 0
-                ? "Så var det före Binderlab."
-                : `Så var det före Binderlab: ${formatInt(data.baselines.length)} mått.`}
-            </p>
-            {/* Inställningar för mätningen: fällda på mobilen, siffrorna ovan är det viktiga. */}
-            <MobileFold summary="Visa och ändra">
-              <BaselinesSection
-                baselines={data.baselines}
-                stores={data.names.stores}
-                machines={data.names.machines}
-                canEdit={data.ctx.canEdit}
-              />
-            </MobileFold>
-          </CardBody>
-        </Card>
-
-        <Card as="section" title="Inmatade siffror">
-          <CardBody className="flex flex-col gap-4">
-            <p id="matvarden" className="text-v2-md text-v2-mute">
-              Per månad.
-            </p>
-            <MobileFold summary="Visa och ändra">
-              <MeasurementsSection
-                measurements={data.measurements}
-                settings={data.settings}
-                stores={data.names.stores}
-                machines={data.names.machines}
-                canEdit={data.ctx.canEdit}
-                defaultMonth={monthOfDate(data.ctx.today)}
-              />
-            </MobileFold>
-          </CardBody>
-        </Card>
+          <Card as="section" title="Inmatade siffror">
+            <CardBody className="flex flex-col gap-4">
+              <p id="matvarden" className="text-v2-md text-v2-mute">
+                Per månad.
+              </p>
+              <MobileFold summary="Visa och ändra">
+                <MeasurementsSection
+                  measurements={data.measurements}
+                  settings={data.settings}
+                  stores={data.names.stores}
+                  machines={data.names.machines}
+                  canEdit={data.ctx.canEdit}
+                  defaultMonth={monthOfDate(data.ctx.today)}
+                />
+              </MobileFold>
+            </CardBody>
+          </Card>
+        </div>
       </div>
-    </div>
+    </V2Page>
   );
 }

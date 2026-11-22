@@ -8,9 +8,12 @@ import { describePeriod, toURLSearchParams, wallClockIn } from "@/components/she
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { StateMessage } from "@/components/ui/state-message";
 import { ButtonLink } from "@/components/v2/button";
+import { formatAmountOre } from "@/components/v2/format";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { priceHistory, profitability, storeShareDeducted, type PurchasePrice } from "@/domain";
-import { MISSING, formatDate, formatInt, formatKronor } from "@/lib/format";
+import { MISSING, formatDate, formatInt } from "@/lib/format";
 import { ALL_COST_LINES } from "@/lib/cost-lines";
 import { messages } from "@/i18n";
 import {
@@ -39,7 +42,6 @@ import { currentPriceEconomics } from "./_lib/price-economics";
 import {
   costLabel,
   CUSTOMER_PRICE_TEXT,
-  kr,
   PRICE_EDITOR_ID,
   pageHeadline,
   priceTodos,
@@ -87,7 +89,7 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 /** Ett pris i kronor, eller strecket när det saknas (aldrig 0 kr). */
 function money(ore: number | null | undefined): string {
-  return ore === null || ore === undefined ? MISSING : formatKronor(kr(ore));
+  return ore === null || ore === undefined ? MISSING : formatAmountOre(ore);
 }
 
 function one(v: string | string[] | undefined): string | null {
@@ -222,256 +224,271 @@ export default async function PurchasePricesPage({
     : "Aldrig";
 
   return (
-    <div className={PAGE_BODY}>
-      <PageIntro
-        title={headline.title}
-        aside={headline.aside}
-        facts={[
-          { label: "Period", value: periodLabel },
-          {
-            label: "Med pris",
-            value: `${formatInt(pricedCount)} av ${formatInt(allRows.length)}`,
-          },
-          { label: "Senast ändrat", value: lastChange },
-        ]}
-        actions={
+    <V2Page
+      title="Inköpspriser"
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      period
+      filters
+      tools={
+        canAddProduct ? (
           <>
-            {canAddProduct ? (
-              <>
-                <ButtonLink href="/inkopspriser/ny-produkt" touch>
+            <ButtonLink href="/inkopspriser/ny-produkt" size="sm" className="max-[900px]:hidden">
+              Varor i Awish
+            </ButtonLink>
+            <ButtonLink href="/inkopspriser/ny-produkt?flik=ny" size="sm" variant="act">
+              + Ny produkt
+            </ButtonLink>
+          </>
+        ) : undefined
+      }
+    >
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <PageIntro
+          title={headline.title}
+          aside={headline.aside}
+          facts={[
+            { label: "Period", value: periodLabel },
+            {
+              label: "Med pris",
+              value: `${formatInt(pricedCount)} av ${formatInt(allRows.length)}`,
+            },
+            { label: "Senast ändrat", value: lastChange },
+          ]}
+          actions={
+            <>
+              {canAddProduct ? (
+                <ButtonLink href="/inkopspriser/ny-produkt" touch className="min-[901px]:hidden">
                   Varor i Awish
                 </ButtonLink>
-                <ButtonLink href="/inkopspriser/ny-produkt?flik=ny" touch>
-                  + Ny produkt
-                </ButtonLink>
-              </>
-            ) : null}
-            {/* Vald butik: andelen visas alltid, knappen behövs inte. Utan andel: ingen knapp. */}
-            {filtered || !anyShare ? null : (
-              <MobileMore label="Fler val för inköpspriser">
-                <Suspense fallback={null}>
-                  <StoreShareToggle on={shareToggle} menuItem />
-                </Suspense>
-              </MobileMore>
-            )}
-          </>
-        }
-      >
-        <AiPageLine metric="marginalen per titel" route="inkopspriser" />
-      </PageIntro>
-      <TodoList items={todos} done="Alla titlar har pris." moreHref={undefined} />
-      {mysteryDrifts.map((d) => (
-        <CostNotice
-          key={d.titleId}
-          titleId={d.titleId}
-          name={d.name}
-          currentOre={d.currentOre}
-          calculatedOre={d.calculatedOre}
-          canUpdate={ctx.canEdit}
-          href={`/vart-lager/mystery/${d.titleId}#kalkyl`}
-        />
-      ))}
-
-      <section aria-labelledby="per-titel" className="v2-card">
-        <div className="v2-card-hd flex-wrap gap-y-1">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <h2 id="per-titel">
-              Per titel <span className="font-[450] text-v2-mute">· {periodLabel}</span>
-            </h2>
-            {/* Vem andelen gäller syns vid tabellen (beskrivningen läses bara av skärmläsare). */}
-            {shareColumns ? (
-              <p className="text-v2-sm text-v2-mute">
-                {shareColumns.header} och vår del: {shareColumns.scope}
-              </p>
-            ) : null}
-          </div>
-          {onlyMissing ? (
-            <Link className="lk" href={showAllHref}>
-              Visa alla titlar <span aria-hidden="true">→</span>
-            </Link>
-          ) : null}
-        </div>
-        {rows.length === 0 ? (
-          <div className="v2-card-body">
-            <StateMessage
-              kind="empty"
-              message={onlyMissing ? "Alla titlar har inköpspris." : "Inga titlar ännu."}
-              action={
-                onlyMissing
-                  ? { label: "Visa alla titlar", href: showAllHref }
-                  : { label: "Importera order", href: "/datakallor" }
-              }
-            />
-          </div>
-        ) : (
-          <div className="px-[18px] pt-2 pb-3">
-            <TitleTable
-              rows={rows}
-              selectedId={selectedRow?.id ?? null}
-              baseQuery={baseQuery}
-              today={today}
-              periodLabel={periodLabel}
-              criticalIds={signalIds}
-              rent={(input.costLines ?? ALL_COST_LINES).rent}
-              share={shareColumns}
-              note={
-                anyShare && !shareColumns ? "Kvar per order är före butikernas andel." : undefined
-              }
-            />
-          </div>
-        )}
-      </section>
-
-      {selectedTitle && titleHead ? (
-        <section
-          id={PRICE_EDITOR_ID}
-          aria-labelledby="titel-rubrik"
-          tabIndex={-1}
-          className="v2-card scroll-mt-28 outline-none md:scroll-mt-44"
-        >
-          <ScrollIntoView
-            targetId={PRICE_EDITOR_ID}
-            titleId={selectedTitle.id}
-            active={requested !== null}
-          />
-          <div className="v2-card-hd">
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <h2 id="titel-rubrik">{titleHead.title}</h2>
-              <p className="text-v2-sm text-v2-mute">
-                {selectedTitle.series ? `${selectedTitle.series} · ` : ""}
-                {titleAside}
-              </p>
-            </div>
-          </div>
-
-          {/* Vårt pris och pris mot kund i dag, också på mobil (där tabellen döljer dem). */}
-          <div className="flex flex-col gap-2 border-b border-v2-line2 px-[18px] py-3">
-            <dl
-              aria-label={`Priser för ${selectedTitle.name}`}
-              className="flex flex-wrap gap-x-8 gap-y-2"
-            >
-              {[
-                {
-                  label: own ? "Vår kostnad" : CUSTOMER_PRICE_TEXT.ours,
-                  value: money(todayPrice?.unitCostOre),
-                },
-                {
-                  label: CUSTOMER_PRICE_TEXT.customer,
-                  value: money(todayPrice?.customerPriceOre),
-                },
-                {
-                  label: CUSTOMER_PRICE_TEXT.gap,
-                  value: priceGapText(
-                    priceGap(todayPrice?.unitCostOre, todayPrice?.customerPriceOre),
-                  ),
-                },
-              ].map((x) => (
-                <div key={x.label} className="flex flex-col">
-                  <dt className="text-v2-xs font-[550] text-v2-mute">{x.label}</dt>
-                  <dd className="tnum text-v2-lg font-[650] text-v2-ink">{x.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="text-v2-xs text-v2-mute">{CUSTOMER_PRICE_TEXT.helper}</p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12">
-            {/* Redigeraren först: ett klick på en titel rullar hit och sätter markören i priset. */}
-            <div className="flex min-w-0 flex-col gap-4 px-[18px] py-4 lg:col-span-5 lg:border-r lg:border-v2-line2">
-              {canAddProduct ? (
-                <div className="flex flex-wrap gap-x-6">
-                  <Link
-                    href={`/inkopspriser/ny-produkt?titel=${selectedTitle.id}`}
-                    className="inline-flex min-h-11 w-fit items-center text-v2-sm font-[550] text-v2-ink hover:underline md:min-h-7"
-                  >
-                    Redigera namn, pris och bild i Awish →
-                  </Link>
-                  <Link
-                    href={`/inkopspriser/ny-produkt?flik=fack&titel=${selectedTitle.id}`}
-                    className="inline-flex min-h-11 w-fit items-center text-v2-sm font-[550] text-v2-ink hover:underline md:min-h-7"
-                  >
-                    Lägg i fack →
-                  </Link>
-                </div>
               ) : null}
-              <OwnProductToggle
-                key={`own-${selectedTitle.id}`}
-                titleId={selectedTitle.id}
-                titleName={selectedTitle.name}
-                initial={own}
-                canEdit={ctx.canEdit}
-              />
-              <h3 className="text-v2-md font-[650] text-v2-ink">
-                {own ? "Ändra kostnad" : "Ändra inköpspris"}
-              </h3>
-              <ClosedMonthsNote months={data.closedMonths} />
-              {ctx.canEdit && detail ? (
-                <PriceForm
-                  key={selectedTitle.id}
-                  titleId={selectedTitle.id}
-                  titleName={selectedTitle.name}
-                  prices={titlePrices.map((p) => ({
-                    unitCostOre: p.unitCostOre,
-                    validFrom: p.validFrom,
-                  }))}
-                  orderDays={detail.orderDays}
-                  closedMonths={data.closedMonths}
-                  today={today}
-                  label={costLabel(own)}
-                  currentCostOre={todayPrice?.unitCostOre ?? null}
-                  customerPriceOre={todayPrice?.customerPriceOre ?? null}
-                  current={
-                    selectedRow
-                      ? {
-                          leftBeforeOre: selectedRow.leftBeforeOre,
-                          storeShareOre: selectedRow.storeShareOre,
-                          leftOre: selectedRow.leftOre,
-                        }
-                      : null
-                  }
-                  query={baseQuery}
-                  showShare={shareColumns?.header ?? null}
-                />
-              ) : (
-                <StateMessage kind="denied" compact message="Gäller från datumet." />
+              {/* Vald butik: andelen visas alltid, knappen behövs inte. Utan andel: ingen knapp. */}
+              {filtered || !anyShare ? null : (
+                <MobileMore label="Fler val för inköpspriser">
+                  <Suspense fallback={null}>
+                    <StoreShareToggle on={shareToggle} menuItem />
+                  </Suspense>
+                </MobileMore>
               )}
-            </div>
+            </>
+          }
+        >
+          <AiPageLine metric="marginalen per titel" route="inkopspriser" />
+        </PageIntro>
+        <TodoList items={todos} done="Alla titlar har pris." moreHref={undefined} />
+        {mysteryDrifts.map((d) => (
+          <CostNotice
+            key={d.titleId}
+            titleId={d.titleId}
+            name={d.name}
+            currentOre={d.currentOre}
+            calculatedOre={d.calculatedOre}
+            canUpdate={ctx.canEdit}
+            href={`/vart-lager/mystery/${d.titleId}#kalkyl`}
+          />
+        ))}
 
-            <div className="flex min-w-0 flex-col gap-4 border-t border-v2-line2 px-[18px] py-4 lg:col-span-7 lg:border-t-0">
-              <h3 className="text-v2-md font-[650] text-v2-ink">Prishistorik</h3>
-              {timeline.length === 0 ? (
-                <StateMessage
-                  kind="not-configured"
-                  code="Inget pris"
-                  compact
-                  message={`${selectedTitle.name} saknar pris. Räknas inte i vinsten.`}
-                />
-              ) : (
-                <PriceHistory entries={timeline} today={today} />
-              )}
+        <section aria-labelledby="per-titel" className="v2-card">
+          <div className="v2-card-hd flex-wrap gap-y-1">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <h2 id="per-titel">
+                Per titel <span className="font-[450] text-v2-mute">· {periodLabel}</span>
+              </h2>
+              {/* Vem andelen gäller syns vid tabellen (beskrivningen läses bara av skärmläsare). */}
+              {shareColumns ? (
+                <p className="text-v2-sm text-v2-mute">
+                  {shareColumns.header} och vår del: {shareColumns.scope}
+                </p>
+              ) : null}
             </div>
+            {onlyMissing ? (
+              <Link className="lk" href={showAllHref}>
+                Visa alla titlar <span aria-hidden="true">→</span>
+              </Link>
+            ) : null}
           </div>
-
-          <div className="flex flex-col gap-4 border-t border-v2-line2 px-[18px] py-4">
-            <h3 className="text-v2-md font-[650] text-v2-ink">Ändringslogg</h3>
-            {log.length === 0 ? (
+          {rows.length === 0 ? (
+            <div className="v2-card-body">
               <StateMessage
                 kind="empty"
-                compact
-                message={`Inga ändringar av inköpspriset för ${selectedTitle.name}.`}
+                message={onlyMissing ? "Alla titlar har inköpspris." : "Inga titlar ännu."}
+                action={
+                  onlyMissing
+                    ? { label: "Visa alla titlar", href: showAllHref }
+                    : { label: "Importera order", href: "/datakallor" }
+                }
               />
-            ) : (
-              <PriceLog
-                entries={log}
-                timeZone={ctx.timeZone}
-                now={ctx.now}
+            </div>
+          ) : (
+            <div className="px-[18px] pt-2 pb-3">
+              <TitleTable
+                rows={rows}
+                selectedId={selectedRow?.id ?? null}
+                baseQuery={baseQuery}
                 today={today}
-                titleName={selectedTitle.name}
+                periodLabel={periodLabel}
+                criticalIds={signalIds}
+                rent={(input.costLines ?? ALL_COST_LINES).rent}
+                share={shareColumns}
+                note={
+                  anyShare && !shareColumns ? "Kvar per order är före butikernas andel." : undefined
+                }
               />
-            )}
-          </div>
+            </div>
+          )}
         </section>
-      ) : null}
-    </div>
+
+        {selectedTitle && titleHead ? (
+          <section
+            id={PRICE_EDITOR_ID}
+            aria-labelledby="titel-rubrik"
+            tabIndex={-1}
+            className="v2-card scroll-mt-28 outline-none md:scroll-mt-44"
+          >
+            <ScrollIntoView
+              targetId={PRICE_EDITOR_ID}
+              titleId={selectedTitle.id}
+              active={requested !== null}
+            />
+            <div className="v2-card-hd">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <h2 id="titel-rubrik">{titleHead.title}</h2>
+                <p className="text-v2-sm text-v2-mute">
+                  {selectedTitle.series ? `${selectedTitle.series} · ` : ""}
+                  {titleAside}
+                </p>
+              </div>
+            </div>
+
+            {/* Vårt pris och pris mot kund i dag, också på mobil (där tabellen döljer dem). */}
+            <div className="flex flex-col gap-2 border-b border-v2-line2 px-[18px] py-3">
+              <dl
+                aria-label={`Priser för ${selectedTitle.name}`}
+                className="flex flex-wrap gap-x-8 gap-y-2"
+              >
+                {[
+                  {
+                    label: own ? "Vår kostnad" : CUSTOMER_PRICE_TEXT.ours,
+                    value: money(todayPrice?.unitCostOre),
+                  },
+                  {
+                    label: CUSTOMER_PRICE_TEXT.customer,
+                    value: money(todayPrice?.customerPriceOre),
+                  },
+                  {
+                    label: CUSTOMER_PRICE_TEXT.gap,
+                    value: priceGapText(
+                      priceGap(todayPrice?.unitCostOre, todayPrice?.customerPriceOre),
+                    ),
+                  },
+                ].map((x) => (
+                  <div key={x.label} className="flex flex-col">
+                    <dt className="text-v2-xs font-[550] text-v2-mute">{x.label}</dt>
+                    <dd className="tnum text-v2-lg font-[650] text-v2-ink">{x.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="text-v2-xs text-v2-mute">{CUSTOMER_PRICE_TEXT.helper}</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12">
+              {/* Redigeraren först: ett klick på en titel rullar hit och sätter markören i priset. */}
+              <div className="flex min-w-0 flex-col gap-4 px-[18px] py-4 lg:col-span-5 lg:border-r lg:border-v2-line2">
+                {canAddProduct ? (
+                  <div className="flex flex-wrap gap-x-6">
+                    <Link
+                      href={`/inkopspriser/ny-produkt?titel=${selectedTitle.id}`}
+                      className="inline-flex min-h-11 w-fit items-center text-v2-sm font-[550] text-v2-ink hover:underline md:min-h-7"
+                    >
+                      Redigera namn, pris och bild i Awish →
+                    </Link>
+                    <Link
+                      href={`/inkopspriser/ny-produkt?flik=fack&titel=${selectedTitle.id}`}
+                      className="inline-flex min-h-11 w-fit items-center text-v2-sm font-[550] text-v2-ink hover:underline md:min-h-7"
+                    >
+                      Lägg i fack →
+                    </Link>
+                  </div>
+                ) : null}
+                <OwnProductToggle
+                  key={`own-${selectedTitle.id}`}
+                  titleId={selectedTitle.id}
+                  titleName={selectedTitle.name}
+                  initial={own}
+                  canEdit={ctx.canEdit}
+                />
+                <h3 className="text-v2-md font-[650] text-v2-ink">
+                  {own ? "Ändra kostnad" : "Ändra inköpspris"}
+                </h3>
+                <ClosedMonthsNote months={data.closedMonths} />
+                {ctx.canEdit && detail ? (
+                  <PriceForm
+                    key={selectedTitle.id}
+                    titleId={selectedTitle.id}
+                    titleName={selectedTitle.name}
+                    prices={titlePrices.map((p) => ({
+                      unitCostOre: p.unitCostOre,
+                      validFrom: p.validFrom,
+                    }))}
+                    orderDays={detail.orderDays}
+                    closedMonths={data.closedMonths}
+                    today={today}
+                    label={costLabel(own)}
+                    currentCostOre={todayPrice?.unitCostOre ?? null}
+                    customerPriceOre={todayPrice?.customerPriceOre ?? null}
+                    current={
+                      selectedRow
+                        ? {
+                            leftBeforeOre: selectedRow.leftBeforeOre,
+                            storeShareOre: selectedRow.storeShareOre,
+                            leftOre: selectedRow.leftOre,
+                          }
+                        : null
+                    }
+                    query={baseQuery}
+                    showShare={shareColumns?.header ?? null}
+                  />
+                ) : (
+                  <StateMessage kind="denied" compact message="Gäller från datumet." />
+                )}
+              </div>
+
+              <div className="flex min-w-0 flex-col gap-4 border-t border-v2-line2 px-[18px] py-4 lg:col-span-7 lg:border-t-0">
+                <h3 className="text-v2-md font-[650] text-v2-ink">Prishistorik</h3>
+                {timeline.length === 0 ? (
+                  <StateMessage
+                    kind="not-configured"
+                    code="Inget pris"
+                    compact
+                    message={`${selectedTitle.name} saknar pris. Räknas inte i vinsten.`}
+                  />
+                ) : (
+                  <PriceHistory entries={timeline} today={today} />
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 border-t border-v2-line2 px-[18px] py-4">
+              <h3 className="text-v2-md font-[650] text-v2-ink">Ändringslogg</h3>
+              {log.length === 0 ? (
+                <StateMessage
+                  kind="empty"
+                  compact
+                  message={`Inga ändringar av inköpspriset för ${selectedTitle.name}.`}
+                />
+              ) : (
+                <PriceLog
+                  entries={log}
+                  timeZone={ctx.timeZone}
+                  now={ctx.now}
+                  today={today}
+                  titleName={selectedTitle.name}
+                />
+              )}
+            </div>
+          </section>
+        ) : null}
+      </div>
+    </V2Page>
   );
 }

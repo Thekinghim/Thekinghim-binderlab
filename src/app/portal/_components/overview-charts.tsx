@@ -2,6 +2,7 @@
 
 import { BarChart, type BarDatum } from "@/components/charts/bar-chart";
 import { Badge, DeltaBadge } from "@/components/v2/badge";
+import { BarChart as V2BarChart } from "@/components/v2/bars";
 import { Sparkline } from "@/components/v2/sparkline";
 import { formatInt, formatSek, NBSP } from "@/lib/format";
 
@@ -67,31 +68,29 @@ export function PortalKpis({ kpis, comparison }: { kpis: PortalKpi[]; comparison
   );
 }
 
-/** Försäljning per månad (staplar, värden i kronor). Vald månad annoteras, aldrig signal. */
+/**
+ * Försäljning per månad som V2:s staplar (som Pengar): vald månad mörk, de andra ljusa, en
+ * etikett per månad och tooltip. Skärmläsaren får talen som tabell.
+ */
 export function TrendChart({
   data,
   summary,
   selectedIndex,
-  mean,
 }: {
   data: BarDatum[];
   summary: string;
   selectedIndex: number;
-  /** Snitt för hela månader i kronor; utan värde ritas ingen snittlinje. */
+  /** Snitt för hela månader i kronor (står i texten under, inte som linje). */
   mean?: number;
 }) {
   return (
-    <BarChart
-      data={data}
-      orientation="vertical"
+    <V2BarChart
+      data={data.map((d, i) => ({ key: `${i}-${d.label}`, label: d.label, value: d.value }))}
       format={(v) => formatSek(v)}
-      unit="kr"
-      height={240}
-      peakIndex={selectedIndex}
-      highlightNote="Vald månad"
-      showMean={mean !== undefined}
-      meanValue={mean}
-      summary={summary}
+      valueLabel="Försäljning"
+      height={200}
+      selectedIndex={selectedIndex}
+      ariaLabel={summary}
     />
   );
 }

@@ -14,7 +14,7 @@ import {
 import { Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { formatKronor } from "@/lib/format";
+import { formatAmountOre } from "@/components/v2/format";
 
 import { getOrderDetail, setTestPurchase } from "../actions";
 import { formatAt } from "../_lib/headline";
@@ -250,7 +250,7 @@ export function OrderBrowser(props: OrderBrowserProps) {
         ? ((r.titleId ? titleName.get(r.titleId) : null) ?? r.rawTitle ?? null)
         : null;
     const amount = d?.amountOre ?? r?.amountOre;
-    if (name && amount !== undefined) modalTitle = `${name}, ${formatKronor(amount / 100)}.`;
+    if (name && amount !== undefined) modalTitle = `${name}, ${formatAmountOre(amount)}.`;
     else if (name) modalTitle = `${name}.`;
     const orderedAt = d?.orderedAt ?? r?.orderedAt;
     const machine = d

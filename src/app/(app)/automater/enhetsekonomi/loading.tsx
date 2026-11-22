@@ -1,14 +1,6 @@
-import { Skeleton, SkeletonCard } from "@/components/v2/skeleton";
+import { V2PageSkeleton } from "@/components/v2/skeleton";
 
-/** Medan enhetsekonomin räknas: rubriken och korten som skeleton (under skalets huvud). */
+/** Medan enhetsekonomin räknas: sidhuvudet och korten som skeleton. */
 export default function Loading() {
-  return (
-    <div className="v2-page-body" aria-busy="true" aria-label="Laddar enhetsekonomi" role="status">
-      <div className="v2-stack">
-        <Skeleton width={280} height={20} />
-        <SkeletonCard rows={2} />
-        <SkeletonCard rows={6} />
-      </div>
-    </div>
-  );
+  return <V2PageSkeleton label="Laddar enhetsekonomi" sub main={[2, 6]} />;
 }

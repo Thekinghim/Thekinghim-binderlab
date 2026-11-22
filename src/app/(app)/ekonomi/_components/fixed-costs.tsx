@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatCsvNumber, formatDate } from "@/lib/format";
 
 import { archiveFixedCost, saveFixedCost } from "../actions";
-import { FIXED_COST_CATEGORY_LABEL, INTERVAL_LABEL, isoToDate, kr } from "../_lib/view";
+import { FIXED_COST_CATEGORY_LABEL, INTERVAL_LABEL, isoToDate, amount } from "../_lib/view";
 import { DialogButtons, FormError, TextArea } from "./bits";
 
 export type FixedCostRow = {
@@ -175,7 +175,7 @@ export function FixedCosts({
         sortValue: (r) => r.amountOre,
         render: (r) => (
           <span className="flex flex-col items-end gap-0.5">
-            <span>{kr(r.amountOre)}</span>
+            <span>{amount(r.amountOre)}</span>
             <span className="meta text-subtle">{INTERVAL_LABEL[r.interval]}</span>
           </span>
         ),
@@ -202,7 +202,7 @@ export function FixedCosts({
         hideOnMobile: true,
         sortValue: (r) => r.accruedOre,
         render: (r) =>
-          r.archived ? <StatusTag status="offline">Arkiverad</StatusTag> : kr(r.accruedOre),
+          r.archived ? <StatusTag status="offline">Arkiverad</StatusTag> : amount(r.accruedOre),
         csv: (r) => formatCsvNumber(r.accruedOre / 100),
       },
       ...(canEdit

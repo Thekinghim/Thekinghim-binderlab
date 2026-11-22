@@ -70,6 +70,15 @@
       display: none;
     }
   }
+  @media (min-width: 901px) {
+    /* Datorn: sidomenyn leder tillbaka; sidhuvudet som V2-sidornas (.v2-top). */
+    .v2-fill-app .top {
+      min-height: 49px;
+    }
+    .v2-fill-app .top .back {
+      display: none;
+    }
+  }
   .v2-fill-app .top .tools {
     margin-left: auto;
     display: flex;
@@ -217,10 +226,9 @@
     order: -1;
   }
   .v2-fill-app .say h2 {
-    font-size: var(--v2-t-2xl);
+    font-size: var(--v2-t-lg);
     font-weight: 650;
-    letter-spacing: -0.03em;
-    line-height: 1.1;
+    line-height: 22px;
   }
   .v2-fill-app .after {
     display: flex;
@@ -315,8 +323,8 @@
     grid-template-columns: 40px minmax(0, 1fr) auto;
     grid-template-areas:
       "pk info step"
-      "pk meter fill"
-      "pk cnt cnt";
+      "pk cnt step"
+      "pk meter fill";
     column-gap: 14px;
     row-gap: 8px;
     align-items: center;
@@ -344,10 +352,12 @@
      (prototypen); bilden står överst. */
   @media (max-width: 600px) {
     .v2-fill-app .row {
+      /* "Fel antal i automaten?" på en rad under titeln, stegare och Fyll fack under. */
       grid-template-areas:
         "pk info info"
+        "pk cnt cnt"
         "pk meter step"
-        "pk cnt fill";
+        "pk fill fill";
       align-items: center;
     }
     .v2-fill-app .row > .v2-pk {
@@ -357,6 +367,9 @@
       margin-left: 0;
     }
     .v2-fill-app .row .meter {
+      padding-left: 0;
+    }
+    .v2-fill-app .row .cnt {
       padding-left: 0;
     }
   }
@@ -485,6 +498,8 @@
   .v2-fill-app .row .cnt {
     grid-area: cnt;
     padding-left: 26px;
+    margin-top: -6px;
+    min-width: 0;
   }
   .v2-fill-app .row .cnt:empty {
     display: none;
@@ -517,8 +532,11 @@
     gap: 12px;
     padding-bottom: 32px;
   }
+  /* Listans sammanfattning: en rad under rubriken (som sidhuvudets rad på Hem), inget kort. */
   .v2-fill-app .say-list {
-    padding: 14px 18px 15px;
+    padding: 0 2px;
+    background: none;
+    border: 0;
   }
   .v2-fill-app .mcard .bar {
     flex: none;
@@ -526,9 +544,9 @@
     width: 100%;
   }
   .v2-fill-app .say-list h2 {
-    font-size: var(--v2-t-2xl);
-    font-weight: 650;
-    letter-spacing: -0.03em;
+    font-size: var(--v2-t-md);
+    font-weight: 550;
+    line-height: 20px;
   }
   .v2-fill-app .mcard {
     display: flex;
@@ -670,8 +688,8 @@
       grid-template-columns: 44px minmax(0, 1fr) auto auto;
       grid-template-areas:
         "pk info fill step"
-        "pk meter fill step"
-        "pk cnt cnt cnt";
+        "pk cnt fill step"
+        "pk meter fill step";
     }
     .v2-fill-app .list {
       display: grid;
@@ -681,13 +699,15 @@
   }
   /* Bred dator (prototypen .pg-fyll vid 1 100 px): sidan intill sidomenyn, fack 640 px och
      sammanfattningen 320 px. */
+  /* Bred dator: hela bredden bredvid sidomenyn (som de andra V2-sidorna), facken i
+     huvudspalten och sammanfattningen 376 px till höger (.v2-cols). */
   @media (min-width: 1100px) {
     .v2-fill-app {
-      max-width: 1018px;
+      max-width: 1280px;
       margin: 0;
     }
     .v2-fill-app .work {
-      grid-template-columns: minmax(0, 640px) 320px;
+      grid-template-columns: minmax(0, 1fr) 376px;
       gap: 14px;
     }
   }
@@ -765,4 +785,20 @@
     gap: 8px;
     margin-top: 16px;
   }
+}
+
+/* Uppkopplingen som sidhuvudets "Uppdaterad": lugn grå text när nätet finns. Utanför
+   lagret, så att den går före pillrets verktygsklasser (ram, luft, färg). */
+.v2-fill-app .top .net[data-net="online"] {
+  border-color: transparent;
+  padding: 0 4px;
+  color: var(--v2-faint);
+}
+
+/* Klar innan något är valt: en lugn, ljus knapp (V2:s avstängda läge), inte en tung grå. */
+.v2-fill-app .foot .v2-btn.act[disabled] {
+  opacity: 1;
+  background: var(--v2-dis);
+  color: var(--v2-faint);
+  box-shadow: none;
 }

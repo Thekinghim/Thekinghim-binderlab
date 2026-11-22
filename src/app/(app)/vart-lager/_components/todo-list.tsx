@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
@@ -23,9 +22,9 @@ export interface TodoItem {
 }
 
 /**
- * Listan under sidans stora siffra: en rad per sak att göra, stora tryckytor, rött för
- * det som måste göras nu. Tom lista: grön bock och `done`. Korten glider in i tur och
- * ordning (rise) och lyfter vid hover (lift).
+ * Saker att göra i ett V2-kort ("Att göra · 3"): en rad per sak med verbet i rött (måste
+ * göras nu) eller gult (snart), titeln, läget i grått och antalet till höger. Tom lista:
+ * grön bock och `done`.
  */
 export function TodoList({
   items,
@@ -44,10 +43,7 @@ export function TodoList({
 }) {
   if (items.length === 0) {
     return (
-      <p
-        className="rise inline-flex items-center gap-2 text-base text-up"
-        style={{ "--i": 1 } as CSSProperties}
-      >
+      <p className="inline-flex items-center gap-2 text-v2-md text-v2-profit-text">
         <Icon name="check" size={16} />
         {done}
       </p>
@@ -56,57 +52,77 @@ export function TodoList({
   const shown = items.slice(0, max);
   const rest = items.length - shown.length;
   return (
-    <section aria-label={label} className="flex flex-col gap-2">
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {shown.map((t, i) => (
-          <li key={t.key} className="rise" style={{ "--i": i + 1 } as CSSProperties}>
+    <section aria-label={label} className="v2-card">
+      <div className="v2-card-hd">
+        <h2>
+          {label}
+          <span aria-hidden="true">·</span>
+          <span className="n">{formatInt(items.length)}</span>
+        </h2>
+      </div>
+      <ul className="flex flex-col divide-y divide-v2-line2">
+        {shown.map((t) => (
+          <li key={t.key}>
             <Link
               href={t.href}
-              className={cn(
-                "lift flex min-h-16 items-center justify-between gap-3 rounded-md border px-4 py-3",
-                t.tone === "critical"
-                  ? "border-signal-line bg-signal-soft"
-                  : "border-line-strong bg-surface",
-              )}
+              className="flex min-h-14 items-center justify-between gap-3 px-[18px] py-2.5 transition-colors duration-150 hover:bg-v2-hover"
             >
-              <span className="flex min-w-0 flex-col">
+              <span className="flex min-w-0 items-start gap-2.5">
                 <span
-                  className={cn("label", t.tone === "critical" ? "text-signal-fg" : "text-subtle")}
-                >
-                  {t.verb}
+                  aria-hidden="true"
+                  className={cn(
+                    "v2-dot mt-[7px] shrink-0",
+                    t.tone === "critical" ? "critical" : "warning",
+                  )}
+                />
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-v2-md [overflow-wrap:anywhere] text-v2-ink">
+                    <span
+                      className={cn(
+                        "font-[550]",
+                        t.tone === "critical" ? "text-v2-crit-text" : "text-v2-warn-text",
+                      )}
+                    >
+                      {t.verb}
+                    </span>{" "}
+                    {t.title}
+                  </span>
+                  {t.note ? (
+                    <span className="text-v2-sm font-[550] text-v2-ink">{t.note}</span>
+                  ) : null}
+                  {t.fact ? <span className="tnum text-v2-sm text-v2-mute">{t.fact}</span> : null}
                 </span>
-                <span className="truncate text-base text-fg">{t.title}</span>
-                {t.note ? <span className="text-sm font-medium text-fg">{t.note}</span> : null}
-                {t.fact ? <span className="tnum text-sm text-muted">{t.fact}</span> : null}
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 {t.qty !== undefined && t.qty !== null ? (
-                  <span className="tnum text-2xl font-medium text-fg">
+                  <span className="tnum text-v2-md font-[550] text-v2-ink">
                     {formatInt(t.qty)}
-                    <span className="text-base text-muted">
+                    <span className="font-normal text-v2-mute">
                       {NBSP}
                       {t.unit ?? "st"}
                     </span>
                   </span>
                 ) : null}
-                <Icon name="chevronRight" size={14} className="text-subtle" />
+                <Icon name="chevronRight" size={14} className="text-v2-faint" />
               </span>
             </Link>
           </li>
         ))}
       </ul>
       {rest > 0 ? (
-        moreHref ? (
-          <Link href={moreHref} className="meta w-fit text-muted hover:text-fg max-md:tap">
-            +{NBSP}
-            {formatInt(rest)} till
-          </Link>
-        ) : (
-          <p className="meta text-muted">
-            +{NBSP}
-            {formatInt(rest)} till
-          </p>
-        )
+        <div className="border-t border-v2-line2 px-[18px] py-2.5 text-v2-sm text-v2-mute">
+          {moreHref ? (
+            <Link href={moreHref} className="hover:text-v2-ink max-md:tap">
+              +{NBSP}
+              {formatInt(rest)} till
+            </Link>
+          ) : (
+            <>
+              +{NBSP}
+              {formatInt(rest)} till
+            </>
+          )}
+        </div>
       ) : null}
     </section>
   );

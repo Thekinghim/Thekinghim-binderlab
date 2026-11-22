@@ -3,12 +3,12 @@ import Link from "next/link";
 import type { FinanceEvidence } from "@/analytics/reconciliation";
 import { formatInt, formatPercent } from "@/lib/format";
 
-import { kr, periodText, plural } from "../_lib/view";
+import { amount, periodText, plural } from "../_lib/view";
 
 function figureText(f: FinanceEvidence["figures"][number]): string {
   switch (f.unit) {
     case "ore":
-      return kr(f.value);
+      return amount(f.value);
     case "bp":
       return formatPercent(f.value / 10_000);
     case "days":

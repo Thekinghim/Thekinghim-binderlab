@@ -59,12 +59,11 @@ export async function BokforingSection({
   viewer,
   today,
   canEdit,
-  asPage = false,
 }: {
   viewer: Viewer;
   today: string;
   canEdit: boolean;
-  /** Egen sida (underfliken Bokföring): stor rubrik (h1) överst. */
+  /** Äldre val: sidans rubrik (h1) står nu i V2-sidhuvudet, avsnittet har alltid h2. */
   asPage?: boolean;
 }) {
   let view: BokforingView;
@@ -94,7 +93,7 @@ export async function BokforingSection({
     <section id="bokforing" aria-labelledby="bokforing-rubrik" className={SECTION}>
       <PageIntro
         id="bokforing-rubrik"
-        as={asPage ? "h1" : "h2"}
+        as="h2"
         title={
           nextMissing
             ? `${capitalize(monthText(next!.month))} är inte klar.`

@@ -2,7 +2,10 @@
 
 import { usePathname } from "next/navigation";
 
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Card } from "@/components/v2/card";
+import { Empty } from "@/components/v2/empty";
+import { V2Page } from "@/components/v2/shell/page";
 
 /** Koden ur sökvägen (/automater/bl-999 → BL-999), eller null för ett id eller tom väg. */
 function codeOf(pathname: string | null): string | null {
@@ -18,17 +21,19 @@ export default function MachineNotFound() {
   const code = codeOf(usePathname());
   const message = code ? `Automaten ${code} finns inte.` : "Automaten finns inte.";
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      {/* Sidans rubrik för skärmläsare; blocket nedan säger samma sak synligt. */}
-      <h1 className="sr-only">{message}</h1>
-      <StateMessage
-        kind="empty"
-        code="Ingen automat"
-        message={message}
-        detail="Länken kan vara fel, eller så hör automaten till en annan organisation."
-        action={{ label: "Alla automater", href: "/automater" }}
-        className="rounded-md border border-line bg-surface"
-      />
-    </div>
+    <V2Page title="Automaten finns inte">
+      <Card>
+        <Empty
+          title={message}
+          action={
+            <ButtonLink href="/automater" touch>
+              Alla automater
+            </ButtonLink>
+          }
+        >
+          Länken kan vara fel, eller så hör automaten till en annan organisation.
+        </Empty>
+      </Card>
+    </V2Page>
   );
 }

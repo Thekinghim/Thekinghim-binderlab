@@ -491,13 +491,13 @@ function ReportFooter({ meta, position }: { meta: ReportMeta; position: PagePosi
   const wall = wallClockIn(meta.generatedAt, meta.timeZone ?? DEFAULT_TIME_ZONE);
   const generated = `${formatDate(wall)} ${formatTime(wall)}`;
   return (
-    <footer className="tnum grid grid-cols-[1fr_auto_1fr] items-baseline gap-[6mm] border-t border-line pt-[2.5mm] font-mono text-[8.5px] leading-[12px] tracking-[0.02em] text-subtle">
-      <span>Genererad {generated}</span>
-      <span className="text-center">
+    <footer className="tnum grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-[6mm] border-t border-line pt-[2.5mm] font-mono text-[8.5px] leading-[12px] tracking-[0.02em] text-subtle">
+      <span className="whitespace-nowrap">Genererad {generated}</span>
+      <span className="text-center text-balance">
         {meta.confidentiality ??
           `Konfidentiellt · ${meta.sender ? `från ${meta.sender} ` : ""}för ${meta.recipient}`}
       </span>
-      <span className="text-right text-fg">
+      <span className="text-right whitespace-nowrap text-fg">
         Sida {position.number} av {position.total}
       </span>
     </footer>

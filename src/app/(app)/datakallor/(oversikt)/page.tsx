@@ -132,17 +132,17 @@ export default async function DatakallorPage() {
           </CardBody>
         </FoldCard>
 
-        <Section
-          id="kallor"
-          title="Källor"
-          sub={
-            data.queue.length === 0
-              ? `Alla automater kopplade${data.lastMapped ? ` · senast ${data.lastMapped.machineCode}` : ""}.`
-              : undefined
-          }
-        >
+        <div className="v2-stack" role="region" aria-labelledby="kallor">
+          {/* Rubriken i ett kort (som de andra korten), källorna under. */}
+          <Card title={<span id="kallor">Källor</span>} count={data.sources.length}>
+            <p className="px-[18px] py-3 text-v2-md text-v2-mute">
+              {data.queue.length === 0
+                ? `Alla automater kopplade${data.lastMapped ? ` · senast ${data.lastMapped.machineCode}` : ""}.`
+                : `${formatInt(data.queue.length)} ${data.queue.length === 1 ? "automat väntar" : "automater väntar"} på koppling.`}
+            </p>
+          </Card>
           <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} />
-        </Section>
+        </div>
 
         <Card
           id="importlogg"

@@ -5,12 +5,13 @@ import { useRef, useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/cn";
 import { formatInt } from "@/lib/format";
 
 import { uploadPayoutFile } from "../actions";
 import { devicesText, nayaxPaysText, nayaxSoldText, salesMatchText } from "../_lib/nayax";
 import type { PayoutUploadResult } from "../_lib/types";
-import { kr, periodText } from "../_lib/view";
+import { amount, periodText } from "../_lib/view";
 import { FormError } from "./bits";
 import { CardFeeFix } from "./card-fee-fix";
 
@@ -113,7 +114,7 @@ export function PayoutUpload({
     <div className="flex flex-col gap-4">
       <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end" noValidate>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span id="payout-file-label" className="label text-muted">
+          <span id="payout-file-label" className="text-v2-sm font-[550] text-v2-ink">
             Rapport från Nayax (PDF)
           </span>
           {/* Webbläsarens filväljare visar text på webbläsarens språk; knappen är på svenska. */}
@@ -130,23 +131,27 @@ export function PayoutUpload({
               setError(undefined);
             }}
           />
-          <div className="flex min-w-0 items-center gap-3 rounded-sm border border-line-control bg-bg pr-3">
-            <Button
+          <div className="flex min-w-0 items-center gap-3 rounded-v2 border border-v2-faint bg-v2-panel p-[3px] pr-3">
+            <button
               type="button"
-              size="sm"
-              variant="ghost"
-              className="max-md:min-h-11"
+              className="v2-btn shrink-0 max-md:min-h-11"
               aria-labelledby="payout-file-label payout-file-button"
               aria-describedby="payout-file-name payout-file-hint"
               onClick={() => input.current?.click()}
             >
               <span id="payout-file-button">Välj fil</span>
-            </Button>
-            <span id="payout-file-name" className="min-w-0 truncate text-sm text-muted">
+            </button>
+            <span
+              id="payout-file-name"
+              className={cn(
+                "min-w-0 truncate text-v2-md",
+                fileName ? "text-v2-ink" : "text-v2-mute",
+              )}
+            >
               {fileName ?? "Ingen fil vald"}
             </span>
           </div>
-          <p id="payout-file-hint" className="text-xs text-subtle">
+          <p id="payout-file-hint" className="text-v2-xs text-v2-mute">
             Nayax mejlar rapporten varje månad. Den heter Reimbursement Statement.
           </p>
           <details className="text-xs text-subtle">
@@ -171,9 +176,9 @@ export function PayoutUpload({
           className="flex flex-col gap-3 border-t border-line pt-3"
         >
           <p className="text-sm text-fg">
-            Du har redan skrivit in {kr(clash.info.manualAmountOre)} för hand för{" "}
-            {periodText(clash.info.period)}. Rapporten från Nayax säger {kr(clash.info.totalOre)}.
-            Inget är ändrat ännu.
+            Du har redan skrivit in {amount(clash.info.manualAmountOre)} för hand för{" "}
+            {periodText(clash.info.period)}. Rapporten från Nayax säger{" "}
+            {amount(clash.info.totalOre)}. Inget är ändrat ännu.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button

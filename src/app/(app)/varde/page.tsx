@@ -5,6 +5,8 @@ import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { ButtonLink } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatInt } from "@/lib/format";
 import { requestStoreShareView, requireRoute, requireViewer } from "@/server/data/core";
 import { loadValueFor } from "@/server/varde/load";
@@ -26,7 +28,7 @@ type SearchParams = Record<string, string | string[] | undefined>;
  * Allt läses med RLS för den aktiva organisationen. Regler: docs/berakningar.md, avsnitt 27.
  */
 export default async function VardePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const [, sp] = await Promise.all([requireRoute("varde"), searchParams]);
+  const [ctx, sp] = await Promise.all([requireRoute("varde"), searchParams]);
   const manad = typeof sp.manad === "string" ? sp.manad : null;
   const [data, showStoreShare] = await Promise.all([
     requireViewer().then((viewer) => loadValueFor(viewer, manad)),
@@ -39,83 +41,86 @@ export default async function VardePage({ searchParams }: { searchParams: Promis
   };
 
   return (
-    <div className={PAGE_BODY}>
-      <PageIntro
-        title={view.headline.title}
-        aside={view.headline.aside}
-        facts={[{ label: "Månad", value: view.monthLabel }]}
-        actions={
-          data.hasData ? (
-            <ButtonLink href={`/rapport/varde?manad=${data.month}`} touch>
-              Månadsrapport
-            </ButtonLink>
-          ) : undefined
-        }
-      >
-        <MonthPicker
-          months={data.months.map((m) => ({ month: m, label: shortLabel(m) }))}
-          selected={data.month}
-          label={monthLabel}
-        />
-      </PageIntro>
-
-      <ValueCards cards={view.cards} />
-
-      <div className="v2-stack">
-        <Card
-          title="Bästa åtgärder"
-          count={view.actions.length > 0 ? view.actions.length : undefined}
+    <V2Page title="Värde" date={headerDate(new Date(ctx.now), ctx.timeZone)}>
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <PageIntro
+          title={view.headline.title}
+          aside={view.headline.aside}
+          facts={[{ label: "Månad", value: view.monthLabel }]}
+          actions={
+            data.hasData ? (
+              <ButtonLink href={`/rapport/varde?manad=${data.month}`} touch>
+                Månadsrapport
+              </ButtonLink>
+            ) : undefined
+          }
         >
-          <ActionList actions={view.actions} />
-        </Card>
+          <MonthPicker
+            months={data.months.map((m) => ({ month: m, label: shortLabel(m) }))}
+            selected={data.month}
+            label={monthLabel}
+          />
+        </PageIntro>
 
-        <Card title="Mer siffror" as="section">
-          <Fold
-            id="utveckling"
-            title="Utveckling"
-            meta={`${formatInt(view.trend.rows.length)} mån`}
+        <ValueCards cards={view.cards} />
+
+        <div className="v2-stack">
+          <Card
+            title="Bästa åtgärder"
+            count={view.actions.length > 0 ? view.actions.length : undefined}
           >
-            <ValueTable
-              {...view.trend}
-              caption="Utveckling per månad"
-              empty="Ingen försäljning än."
-            />
-            {view.trend.rows.some((r) => r.cells[0]?.endsWith("*")) ? (
-              <p className="mt-2 px-[18px] text-v2-xs text-v2-mute">* Månaden pågår.</p>
-            ) : null}
-          </Fold>
-          <Fold id="automater" title="Per automat" meta={formatInt(view.machines.rows.length)}>
-            <ValueTable
-              {...view.machines}
-              caption={`Per automat, ${view.monthLabel}`}
-              empty="Ingen försäljning i månaden."
-            />
-          </Fold>
-          <Fold id="butiker" title="Per butik" meta={formatInt(view.stores.rows.length)}>
-            {/* Butikens andel och vår del per butik visas med knappen (som övriga sidor). */}
-            <div className="px-[18px] pb-3">
-              <Suspense fallback={null}>
-                <StoreShareToggle on={showStoreShare} />
-              </Suspense>
-            </div>
-            <ValueTable
-              {...view.stores}
-              caption={`Per butik, ${view.monthLabel}`}
-              empty="Ingen försäljning i månaden."
-            />
-          </Fold>
-          <Fold id="tid" title="Tid sparad" meta={view.cards.find((c) => c.id === "time")?.value}>
-            <ValueTable {...view.time} caption="Sparad tid per uppgift" empty="Inget ännu." />
-          </Fold>
-          <Fold id="sa-raknas-det" title="Så räknas det">
-            <ul className="flex max-w-[72ch] list-disc flex-col gap-2 pr-[18px] pl-9 text-v2-sm text-v2-mute">
-              {view.assumptions.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ul>
-          </Fold>
-        </Card>
+            <ActionList actions={view.actions} />
+          </Card>
+
+          <Card title="Mer siffror" as="section">
+            <Fold
+              id="utveckling"
+              title="Utveckling"
+              meta={`${formatInt(view.trend.rows.length)} mån`}
+            >
+              <ValueTable
+                {...view.trend}
+                caption="Utveckling per månad"
+                empty="Ingen försäljning än."
+              />
+              {view.trend.rows.some((r) => r.cells[0]?.endsWith("*")) ? (
+                <p className="mt-2 px-[18px] text-v2-xs text-v2-mute">* Månaden pågår.</p>
+              ) : null}
+            </Fold>
+            <Fold id="automater" title="Per automat" meta={formatInt(view.machines.rows.length)}>
+              <ValueTable
+                {...view.machines}
+                caption={`Per automat, ${view.monthLabel}`}
+                empty="Ingen försäljning i månaden."
+              />
+            </Fold>
+            <Fold id="butiker" title="Per butik" meta={formatInt(view.stores.rows.length)}>
+              {/* Butikens andel och vår del per butik visas med knappen (som övriga sidor). */}
+              <div className="px-[18px] pb-3">
+                <Suspense fallback={null}>
+                  <StoreShareToggle on={showStoreShare} />
+                </Suspense>
+              </div>
+              <ValueTable
+                {...view.stores}
+                caption={`Per butik, ${view.monthLabel}`}
+                empty="Ingen försäljning i månaden."
+              />
+            </Fold>
+            <Fold id="tid" title="Tid sparad" meta={view.cards.find((c) => c.id === "time")?.value}>
+              <ValueTable {...view.time} caption="Sparad tid per uppgift" empty="Inget ännu." />
+            </Fold>
+            <Fold id="sa-raknas-det" title="Så räknas det">
+              <ul className="flex max-w-[72ch] list-disc flex-col gap-2 pr-[18px] pl-9 text-v2-sm text-v2-mute">
+                {view.assumptions.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </Fold>
+          </Card>
+        </div>
       </div>
-    </div>
+    </V2Page>
   );
 }

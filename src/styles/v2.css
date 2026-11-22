@@ -507,6 +507,63 @@
       margin: 2px 16px 0;
     }
   }
+  /* Sidans filter (V2Page med filters): Butik, Automat och Med VMB i en rad under rubriken */
+  .v2-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 22px 0;
+  }
+  .v2-filters .v2-filter-select {
+    height: 32px;
+    width: auto;
+    max-width: 240px;
+    font-size: var(--v2-t-sm);
+    padding-left: 10px;
+    padding-right: 30px;
+    background-position: right 10px center;
+    border-color: var(--v2-line);
+    text-overflow: ellipsis;
+  }
+  .v2-filter-vmb {
+    color: var(--v2-mute);
+  }
+  .v2-filter-vmb .box {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    border: 1.5px solid currentColor;
+  }
+  .v2-filter-vmb[aria-pressed="true"] {
+    color: var(--v2-ink);
+    background: var(--v2-sel);
+  }
+  .v2-filter-vmb[aria-pressed="true"] .box {
+    background: currentColor;
+  }
+  @media (max-width: 900px) {
+    /* Telefon: en rad, Butik och Automat delar bredden och VMB-knappen står sist. */
+    .v2-filters {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      margin: 8px 12px 0;
+    }
+    .v2-filters .v2-filter-select {
+      width: 100%;
+      max-width: none;
+      height: 40px;
+      font-size: 16px;
+    }
+    .v2-filters .v2-filter-vmb {
+      height: 40px;
+      padding: 0 10px;
+    }
+    .v2-filters:has(.v2-filter-vmb) {
+      grid-auto-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    }
+  }
   .v2-page-body {
     padding: 16px 22px 24px;
   }
@@ -1163,6 +1220,26 @@
       white-space: normal;
       align-items: flex-start;
       line-height: 1.3;
+    }
+  }
+
+  /* Band med få rutor (data-stack): på telefon under varandra i stället för i sidled */
+  @media (max-width: 900px) {
+    .v2-band-wrap[data-stack] {
+      overflow: visible;
+      margin: 0;
+      padding: 0;
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+    .v2-band-wrap[data-stack] .v2-band {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      width: auto;
+      padding-right: 0;
+    }
+    .v2-band-wrap[data-stack] .v2-kt {
+      width: auto;
     }
   }
 

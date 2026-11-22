@@ -9,7 +9,8 @@ import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
-import { formatDateTime, formatInt, formatKronor, MISSING } from "@/lib/format";
+import { formatAmountOre } from "@/components/v2/format";
+import { formatDateTime, formatInt, MISSING } from "@/lib/format";
 
 import {
   CANCEL_LABEL,
@@ -265,7 +266,7 @@ export function OrderDetailView({
           <span className="tnum">{at(detail.orderedAt, timeZone)}</span>
         </Row>
         <Row label="Belopp">
-          <span className="tnum">{formatKronor(detail.amountOre / 100)}</span>
+          <span className="tnum">{formatAmountOre(detail.amountOre)}</span>
         </Row>
         <Row label="Betalsätt">
           {detail.paymentMethod ? (

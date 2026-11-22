@@ -27,3 +27,11 @@ export function formatValue(value: number, unit: ValueUnit): string {
       return formatInt(Math.round(value));
   }
 }
+
+/**
+ * Ett enskilt belopp i öre som kronor, som på V2-sidorna: hela kronor utan decimaler
+ * (12 900 → "129 kr"), och med ören bara när de finns (12 950 → "129,50 kr").
+ */
+export function formatAmountOre(ore: number): string {
+  return formatKronor(ore / 100, { decimals: ore % 100 === 0 ? 0 : 2 });
+}

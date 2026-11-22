@@ -1,5 +1,6 @@
+import { formatAmountOre } from "@/components/v2/format";
 import { KpiTile } from "@/components/v2/kpi-tile";
-import { formatInt, formatKronor } from "@/lib/format";
+import { formatInt } from "@/lib/format";
 
 /** Nyckeltalen i Inkorg (V2-bandet, som Hem). Öppna ärenden står först. */
 export function InboxKpis({
@@ -25,7 +26,7 @@ export function InboxKpis({
         <KpiTile label="Lösta i perioden" value={formatInt(resolved)} />
         <KpiTile
           label={`Återbetalt · ${formatInt(refundCount)} st`}
-          value={formatKronor(refundedOre / 100, { decimals: 2 })}
+          value={formatAmountOre(refundedOre)}
         />
       </div>
     </section>

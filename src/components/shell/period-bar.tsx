@@ -255,6 +255,7 @@ function CompactSelect({
   optionsLabel,
   allLabel,
   compactLabel = false,
+  v2 = false,
   className,
 }: {
   label: string;
@@ -268,9 +269,52 @@ function CompactSelect({
   allLabel: string;
   /** Etiketten bara för skärmläsare under xl (värdet "Alla butiker" bär betydelsen). */
   compactLabel?: boolean;
+  /** V2-sidhuvudet: etiketten bara för skärmläsare, fältet i V2:s stil. */
+  v2?: boolean;
   className?: string;
 }) {
   const id = useId();
+  if (v2) {
+    return (
+      <div className={cn("min-w-0", className)}>
+        <label htmlFor={id} className="sr-only">
+          {label}
+        </label>
+        <select
+          id={id}
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value || null)}
+          className={cn("v2-select v2-filter-select", !value && "text-v2-mute")}
+        >
+          <option value="">{allLabel}</option>
+          {groups.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+          {groups.length > 0 && optionsLabel ? (
+            <optgroup label={optionsLabel}>
+              {options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          ) : (
+            options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))
+          )}
+        </select>
+      </div>
+    );
+  }
   return (
     <div className={cn("flex min-w-0 items-center gap-2", className)}>
       <label
@@ -335,10 +379,13 @@ export function ScopeFilter({
   stores,
   machines,
   compact = false,
+  v2 = false,
   className,
 }: {
-  stores: ShellStore[];
-  machines: ShellMachine[];
+  stores: ReadonlyArray<ShellStore>;
+  machines: ReadonlyArray<ShellMachine>;
+  /** V2-sidhuvudet (V2Page med `filters`). */
+  v2?: boolean;
   /** Kontextraden på skrivbord: etiketterna visas först från xl, så att raden får plats. */
   compact?: boolean;
   className?: string;
@@ -365,13 +412,14 @@ export function ScopeFilter({
       ? machines.filter((m) => inOwner(m.storeId))
       : machines;
   return (
-    <div className={cn("flex min-w-0 items-center gap-4", className)}>
+    <div className={cn(v2 ? "contents" : "flex min-w-0 items-center gap-4", className)}>
       {stores.length > 0 ? (
         <CompactSelect
           label="Butik"
           value={storeValue}
           allLabel="Alla butiker"
           compactLabel={compact}
+          v2={v2}
           groups={
             owners.length > 0
               ? [
@@ -400,7 +448,7 @@ export function ScopeFilter({
             const keep = next && machineStore === next;
             setScope({ butik: next, agare: null, automat: keep ? scope.automat : null });
           }}
-          className="sm:max-w-[200px]"
+          className={v2 ? undefined : "sm:max-w-[200px]"}
         />
       ) : null}
       {machines.length > 0 ? (
@@ -409,6 +457,7 @@ export function ScopeFilter({
           value={scope.automat}
           allLabel="Alla automater"
           compactLabel={compact}
+          v2={v2}
           options={visibleMachines.map((m) => ({
             value: m.id,
             label: m.code ? `${m.code} ${m.name}` : m.name,
@@ -425,7 +474,7 @@ export function ScopeFilter({
               agare: keepOwner ? scope.agare : null,
             });
           }}
-          className="sm:max-w-[220px]"
+          className={v2 ? undefined : "sm:max-w-[220px]"}
         />
       ) : null}
     </div>

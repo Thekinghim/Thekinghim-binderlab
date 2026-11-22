@@ -113,8 +113,10 @@ const columns: Column<HealthRow>[] = [
     header: "Underlag",
     render: (r) => (
       <details className="group max-w-xl">
+        {/* Två rader och "Mer"; utfällt hela texten och regeln (raderna blir inte höga). */}
         <summary className="cursor-pointer list-none text-v2-sm text-v2-ink [&::-webkit-details-marker]:hidden">
-          {r.detail}
+          <span className="line-clamp-2 group-open:line-clamp-none">{r.detail}</span>
+          <span className="text-v2-xs font-[550] text-v2-mute group-open:hidden">Mer</span>
         </summary>
         <dl className="ops-dl mt-2">
           <dt>Regel</dt>
@@ -230,16 +232,22 @@ export function HealthTable({ rows }: { rows: HealthRow[] }) {
 }
 
 function DataTableFull({ rows }: { rows: HealthRow[] }) {
+  // Utan fyllnad från Awish för någon automat: ingen tom kolumn med bara streck.
+  const hasFill = rows.some((r) => r.fillBp !== null);
   return (
     <DataTable
-      columns={columns}
+      columns={hasFill ? columns : columns.filter((c) => c.key !== "fill")}
       rows={rows}
       rowKey={(r) => r.machineId}
       caption="Status per automat"
-      defaultSort={[
-        { key: "status", dir: "asc" },
-        { key: "fill", dir: "asc" },
-      ]}
+      defaultSort={
+        hasFill
+          ? [
+              { key: "status", dir: "asc" },
+              { key: "fill", dir: "asc" },
+            ]
+          : [{ key: "status", dir: "asc" }]
+      }
       exportFileName="maskinhalsa"
     />
   );

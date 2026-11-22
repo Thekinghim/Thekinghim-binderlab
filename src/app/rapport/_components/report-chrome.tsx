@@ -7,8 +7,8 @@ import "./report-chrome.css";
 /**
  * Ytan runt en rapport i appen (V2): ljust grått skrivbord, en vit verktygsrad med vägen
  * tillbaka, var man är och knapparna (filer, Skriv ut). Bara på skärmen: verktygsraden har
- * data-print="hide" och CSS:en gäller @media screen, så utskriften och PDF:en (samma sida i
- * headless Chromium, print-media) ser ut som förut. Arket (ReportDocument) ändras inte.
+ * data-print="hide" och CSS:en gäller @media screen. Arket (ReportDocument) har V2:s typ
+ * (Google Sans, inga monospace-etiketter, print.css) på skärmen, i utskriften och i PDF:en.
  */
 export function ReportChrome({
   back,

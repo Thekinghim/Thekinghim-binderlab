@@ -33,7 +33,7 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
   );
   return (
     <V2Page title={t.week.title} date={headerDate(new Date(ctx.now), ctx.timeZone)}>
-      <div className="mx-auto w-full max-w-[640px]">
+      <div className="w-full max-w-[880px]">
         <WeekSummary
           summary={summary}
           today={ctx.today}

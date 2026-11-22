@@ -5,6 +5,9 @@ import { Suspense } from "react";
 import { periodText } from "@/analytics/todos/text";
 import { ButtonLink } from "@/components/v2/button";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
+import { loadContext } from "@/server/data/core";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { formatInt } from "@/lib/format";
 
@@ -50,7 +53,11 @@ export default async function ExpansionPage({
   searchParams: Promise<SearchParamsInput>;
 }) {
   const sp = await searchParams;
-  const [data, growth] = await Promise.all([loadExpansionPage(sp), loadGrowthPlanPage()]);
+  const [data, growth, ctx] = await Promise.all([
+    loadExpansionPage(sp),
+    loadGrowthPlanPage(),
+    loadContext(),
+  ]);
   const names = lookups(data.names);
   const { estimate } = data.newMachine;
   const top = data.pipeline.find((p) => p.estimate.status === "ok" && p.estimate.investmentOre > 0);
@@ -143,214 +150,228 @@ export default async function ExpansionPage({
     }));
 
   return (
-    <div className={PAGE_BODY}>
-      <div className="flex flex-col gap-3">
-        <PageIntro
-          title={title}
-          aside={aside}
-          facts={
-            view === "plan" && growth.basisPeriod
-              ? [{ label: "Underlag", value: periodText(growth.basisPeriod) }]
-              : undefined
-          }
-          actions={
-            <ButtonLink
-              href={`/expansion/saljunderlag?from=${data.period.period.start}&to=${data.period.period.end}`}
-              touch
-            >
-              Säljunderlag (PDF)
-            </ButtonLink>
-          }
-        />
-        {view === "plan" ? null : (
-          <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
-        )}
-        <ViewTabs
-          label="Vy"
-          value={view}
-          hrefFor={hrefFor}
-          tabs={[
-            { value: "plan", label: "Plan" },
-            { value: "pipeline", label: "Nya platser", count: openLeads },
-            { value: "scenarier", label: "Scenarier" },
-            { value: "mal", label: "Mål", count: data.goals.progress.length },
-          ]}
-        />
-      </div>
-
-      {view === "plan" ? (
-        <section aria-label="Plan" className="flex flex-col gap-6">
-          <PlanView
-            plan={g}
-            saved={growth.saved}
-            canEdit={growth.canEdit}
-            leads={planLeads}
-            openLeads={openLeads}
-            pipelineHref={hrefFor("pipeline")}
-            refillMeasurement={growth.refillMeasurement}
+    <V2Page
+      title="Expansion"
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      period={view !== "plan"}
+      tools={
+        <ButtonLink
+          href={`/expansion/saljunderlag?from=${data.period.period.start}&to=${data.period.period.end}`}
+          size="sm"
+        >
+          Säljunderlag (PDF)
+        </ButtonLink>
+      }
+    >
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <div className="flex flex-col gap-3">
+          <PageIntro
+            title={title}
+            aside={aside}
+            facts={
+              view === "plan" && growth.basisPeriod
+                ? [{ label: "Underlag", value: periodText(growth.basisPeriod) }]
+                : undefined
+            }
           />
-        </section>
-      ) : null}
+          {view === "plan" ? null : (
+            <DataStartNote
+              clippedFrom={data.period.clippedFrom}
+              requested={data.period.requested}
+            />
+          )}
+          <ViewTabs
+            label="Vy"
+            value={view}
+            hrefFor={hrefFor}
+            tabs={[
+              { value: "plan", label: "Plan" },
+              { value: "pipeline", label: "Nya platser", count: openLeads },
+              { value: "scenarier", label: "Scenarier" },
+              { value: "mal", label: "Mål", count: data.goals.progress.length },
+            ]}
+          />
+        </div>
 
-      {view === "scenarier" ? (
-        <>
-          <section id="ny-automat" aria-labelledby="ny-automat-h" className="v2-card scroll-mt-28">
-            <div className="v2-card-body flex min-w-0 flex-col gap-5">
-              <SectionLead
-                id="ny-automat-h"
-                title="Ny automat på ny plats."
-                aside={
-                  data.newMachine.lead
-                    ? endSentence(
-                        `${data.newMachine.lead.name} i pipelinen, räknat på liknande butiker ${periodLabel}`,
-                      )
-                    : `Räknat på ${periodLabel}, hela flottan.`
-                }
-                description={`Tomma investeringsfält = ${invText}.`}
-              />
-              <Suspense>
-                <NewMachineForm
-                  stores={storeOptions}
-                  initial={{
-                    lik: data.newMachine.likeStoreId ?? "",
-                    inkop: data.params.purchase,
-                    installation: data.params.installation,
-                    hyra: data.params.rent,
-                  }}
-                  errors={errs(data.newMachine.errors)}
-                  placeholders={{
-                    inkop: inv ? oreToInput(inv.plan.purchaseOre) : "",
-                    installation: inv ? oreToInput(inv.plan.installationOre) : "",
-                  }}
-                />
-              </Suspense>
-              {estimate ? (
-                <SiteEstimateView
-                  estimate={estimate}
-                  links={evidenceLinks(estimate.evidence, names)}
-                  investmentNote={
-                    estimate.investmentOre === 0
-                      ? "Ange investeringen för återbetalningstid."
-                      : undefined
+        {view === "plan" ? (
+          <section aria-label="Plan" className="flex flex-col gap-6">
+            <PlanView
+              plan={g}
+              saved={growth.saved}
+              canEdit={growth.canEdit}
+              leads={planLeads}
+              openLeads={openLeads}
+              pipelineHref={hrefFor("pipeline")}
+              refillMeasurement={growth.refillMeasurement}
+            />
+          </section>
+        ) : null}
+
+        {view === "scenarier" ? (
+          <>
+            <section
+              id="ny-automat"
+              aria-labelledby="ny-automat-h"
+              className="v2-card scroll-mt-28"
+            >
+              <div className="v2-card-body flex min-w-0 flex-col gap-5">
+                <SectionLead
+                  id="ny-automat-h"
+                  title="Ny automat på ny plats."
+                  aside={
+                    data.newMachine.lead
+                      ? endSentence(
+                          `${data.newMachine.lead.name} i pipelinen, räknat på liknande butiker ${periodLabel}`,
+                        )
+                      : `Räknat på ${periodLabel}, hela flottan.`
                   }
+                  description={`Tomma investeringsfält = ${invText}.`}
                 />
-              ) : (
-                <p className="text-v2-sm text-v2-mute">
-                  Ange investeringen.{" "}
-                  <Link className="underline underline-offset-4" href="/automater/enhetsekonomi">
-                    Enhetsekonomi →
-                  </Link>
-                </p>
-              )}
-            </div>
-          </section>
-
-          <section
-            id="prisandring"
-            aria-labelledby="prisandring-h"
-            className="v2-card scroll-mt-28"
-          >
-            <div className="v2-card-body flex min-w-0 flex-col gap-5">
-              <SectionLead
-                id="prisandring-h"
-                title="Prisändring."
-                aside="På periodens sålda pack."
-              />
-              <Suspense>
-                <PriceChangeForm
-                  titles={titleOptions}
-                  initial={{
-                    titel: data.price.titleId ?? "",
-                    andring: data.params.delta || oreToInput(data.price.deltaOre),
-                    elasticitet: data.params.elasticity || "0",
-                  }}
-                  errors={errs(data.price.errors)}
-                />
-              </Suspense>
-              {data.price.scenario ? (
-                <PriceChangeView
-                  scenario={data.price.scenario}
-                  links={evidenceLinks(data.price.scenario.evidence, names)}
-                />
-              ) : (
-                <p className="text-v2-sm text-v2-mute">Ingen försäljning i perioden.</p>
-              )}
-            </div>
-          </section>
-        </>
-      ) : null}
-
-      {view === "mal" ? (
-        <section id="mal" aria-labelledby="mal-h" className="v2-card scroll-mt-28">
-          <div className="v2-card-body flex min-w-0 flex-col gap-5">
-            <SectionLead
-              id="mal-h"
-              title={
-                data.goals.progress.length === 0
-                  ? "Inga mål satta."
-                  : goalsBehind === 0
-                    ? "Alla mål är i fas eller nådda."
-                    : `${formatInt(goalsBehind)} ${goalsBehind === 1 ? "mål ligger" : "mål ligger"} efter.`
-              }
-              aside={goalsFact(data.goals.progress, monthOfDate(data.ctx.today))}
-            />
-            <GoalsView
-              goals={data.goals.records}
-              progress={withOrderCounts(data.goals.progress)}
-              links={goalLinks}
-              stores={data.names.stores}
-              machines={data.names.machines}
-              canEdit={data.ctx.canEdit}
-              defaultMonth={monthOfDate(data.ctx.today)}
-            />
-          </div>
-        </section>
-      ) : null}
-
-      {view === "pipeline" ? (
-        <>
-          <section id="pipeline" aria-labelledby="pipeline-h" className="v2-card scroll-mt-28">
-            <div className="v2-card-body flex min-w-0 flex-col gap-5">
-              <SectionLead
-                id="pipeline-h"
-                title={
-                  openLeads === 0
-                    ? "Pipelinen är tom."
-                    : `${formatInt(openLeads)} ${openLeads === 1 ? "öppen plats" : "öppna platser"}.`
-                }
-                aside={pipelineFact(
-                  data.leads,
-                  top ? { name: top.name, payback: top.estimate.paybackTenths?.expected } : null,
+                <Suspense>
+                  <NewMachineForm
+                    stores={storeOptions}
+                    initial={{
+                      lik: data.newMachine.likeStoreId ?? "",
+                      inkop: data.params.purchase,
+                      installation: data.params.installation,
+                      hyra: data.params.rent,
+                    }}
+                    errors={errs(data.newMachine.errors)}
+                    placeholders={{
+                      inkop: inv ? oreToInput(inv.plan.purchaseOre) : "",
+                      installation: inv ? oreToInput(inv.plan.installationOre) : "",
+                    }}
+                  />
+                </Suspense>
+                {estimate ? (
+                  <SiteEstimateView
+                    estimate={estimate}
+                    links={evidenceLinks(estimate.evidence, names)}
+                    investmentNote={
+                      estimate.investmentOre === 0
+                        ? "Ange investeringen för återbetalningstid."
+                        : undefined
+                    }
+                  />
+                ) : (
+                  <p className="text-v2-sm text-v2-mute">
+                    Ange investeringen.{" "}
+                    <Link className="underline underline-offset-4" href="/automater/enhetsekonomi">
+                      Enhetsekonomi →
+                    </Link>
+                  </p>
                 )}
+              </div>
+            </section>
+
+            <section
+              id="prisandring"
+              aria-labelledby="prisandring-h"
+              className="v2-card scroll-mt-28"
+            >
+              <div className="v2-card-body flex min-w-0 flex-col gap-5">
+                <SectionLead
+                  id="prisandring-h"
+                  title="Prisändring."
+                  aside="På periodens sålda pack."
+                />
+                <Suspense>
+                  <PriceChangeForm
+                    titles={titleOptions}
+                    initial={{
+                      titel: data.price.titleId ?? "",
+                      andring: data.params.delta || oreToInput(data.price.deltaOre),
+                      elasticitet: data.params.elasticity || "0",
+                    }}
+                    errors={errs(data.price.errors)}
+                  />
+                </Suspense>
+                {data.price.scenario ? (
+                  <PriceChangeView
+                    scenario={data.price.scenario}
+                    links={evidenceLinks(data.price.scenario.evidence, names)}
+                  />
+                ) : (
+                  <p className="text-v2-sm text-v2-mute">Ingen försäljning i perioden.</p>
+                )}
+              </div>
+            </section>
+          </>
+        ) : null}
+
+        {view === "mal" ? (
+          <section id="mal" aria-labelledby="mal-h" className="v2-card scroll-mt-28">
+            <div className="v2-card-body flex min-w-0 flex-col gap-5">
+              <SectionLead
+                id="mal-h"
+                title={
+                  data.goals.progress.length === 0
+                    ? "Inga mål satta."
+                    : goalsBehind === 0
+                      ? "Alla mål är i fas eller nådda."
+                      : `${formatInt(goalsBehind)} ${goalsBehind === 1 ? "mål ligger" : "mål ligger"} efter.`
+                }
+                aside={goalsFact(data.goals.progress, monthOfDate(data.ctx.today))}
               />
-              <PipelineView
-                leads={data.leads}
-                pipeline={withOrderCounts(data.pipeline)}
-                links={leadLinks}
+              <GoalsView
+                goals={data.goals.records}
+                progress={withOrderCounts(data.goals.progress)}
+                links={goalLinks}
                 stores={data.names.stores}
+                machines={data.names.machines}
                 canEdit={data.ctx.canEdit}
-                today={data.ctx.today}
-                defaultInvestmentText={invText}
+                defaultMonth={monthOfDate(data.ctx.today)}
               />
             </div>
           </section>
+        ) : null}
 
-          <details id="platsprofiler" className="v2-card group scroll-mt-28">
-            <summary className="v2-card-hd cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-              <h2>Platsprofiler</h2>
-              <span className="meta text-v2-mute">
-                {missingProfiles === 0
-                  ? "Alla har typ och ort"
-                  : `${formatInt(missingProfiles)} saknar typ eller ort`}
-              </span>
-            </summary>
-            <div className="v2-card-body">
-              <StoreProfilesView profiles={data.profiles} canEdit={data.ctx.canEdit} />
-            </div>
-          </details>
-        </>
-      ) : null}
-    </div>
+        {view === "pipeline" ? (
+          <>
+            <section id="pipeline" aria-labelledby="pipeline-h" className="v2-card scroll-mt-28">
+              <div className="v2-card-body flex min-w-0 flex-col gap-5">
+                <SectionLead
+                  id="pipeline-h"
+                  title={
+                    openLeads === 0
+                      ? "Pipelinen är tom."
+                      : `${formatInt(openLeads)} ${openLeads === 1 ? "öppen plats" : "öppna platser"}.`
+                  }
+                  aside={pipelineFact(
+                    data.leads,
+                    top ? { name: top.name, payback: top.estimate.paybackTenths?.expected } : null,
+                  )}
+                />
+                <PipelineView
+                  leads={data.leads}
+                  pipeline={withOrderCounts(data.pipeline)}
+                  links={leadLinks}
+                  stores={data.names.stores}
+                  canEdit={data.ctx.canEdit}
+                  today={data.ctx.today}
+                  defaultInvestmentText={invText}
+                />
+              </div>
+            </section>
+
+            <details id="platsprofiler" className="v2-card group scroll-mt-28">
+              <summary className="v2-card-hd cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <h2>Platsprofiler</h2>
+                <span className="meta text-v2-mute">
+                  {missingProfiles === 0
+                    ? "Alla har typ och ort"
+                    : `${formatInt(missingProfiles)} saknar typ eller ort`}
+                </span>
+              </summary>
+              <div className="v2-card-body">
+                <StoreProfilesView profiles={data.profiles} canEdit={data.ctx.canEdit} />
+              </div>
+            </details>
+          </>
+        ) : null}
+      </div>
+    </V2Page>
   );
 }
 

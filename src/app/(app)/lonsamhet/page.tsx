@@ -8,6 +8,8 @@ import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { StateMessage } from "@/components/ui/state-message";
 import { Card, CardBody } from "@/components/v2/card";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { loadProfitAdjustments } from "@/server/data/adjustments";
 import { requestPageLoaders } from "@/server/data/page-loaders";
 import {
@@ -145,132 +147,133 @@ export default async function LonsamhetPage({
   ];
 
   return (
-    <div className={PAGE_BODY} data-testid="lonsamhet">
-      <PageIntro
-        title={model.headline.title}
-        aside={model.headline.aside}
-        warning={model.headline.warning}
-        facts={meta}
-        actions={
-          // Mobil: AI-frågan och butikernas andel bakom "⋯".
-          <MobileMore label="Fler val för lönsamhet">
-            <AiPageLine metric="vinsten" route="lonsamhet" menuItem />
-            {/* Med vald butik eller ägare dras andelen alltid; knappen behövs bara utan. */}
-            {((p.scope.storeId || p.scope.ownerId) && !p.scope.machineId) ||
-            model.bridge.compensationOre === 0 ? null : (
-              <Suspense fallback={null}>
-                <StoreShareToggle on={shareToggle} menuItem />
-              </Suspense>
-            )}
-          </MobileMore>
-        }
-      >
-        {stale ? <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} /> : null}
-      </PageIntro>
+    <V2Page title="Lönsamhet" date={headerDate(new Date(ctx.now), ctx.timeZone)} period filters>
+      <SubNav />
+      <div className={PAGE_BODY} data-testid="lonsamhet">
+        <PageIntro
+          title={model.headline.title}
+          aside={model.headline.aside}
+          warning={model.headline.warning}
+          facts={meta}
+          actions={
+            // Mobil: AI-frågan och butikernas andel bakom "⋯".
+            <MobileMore label="Fler val för lönsamhet">
+              <AiPageLine metric="vinsten" route="lonsamhet" menuItem />
+              {/* Med vald butik eller ägare dras andelen alltid; knappen behövs bara utan. */}
+              {((p.scope.storeId || p.scope.ownerId) && !p.scope.machineId) ||
+              model.bridge.compensationOre === 0 ? null : (
+                <Suspense fallback={null}>
+                  <StoreShareToggle on={shareToggle} menuItem />
+                </Suspense>
+              )}
+            </MobileMore>
+          }
+        >
+          {stale ? <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} /> : null}
+        </PageIntro>
 
-      {model.orders > 0 ? (
-        <LonsamhetKpis
-          kpis={model.kpis}
-          label={`Nyckeltal · ${model.periodLabel}`}
-          comparison={model.comparisonLabel}
-        />
-      ) : null}
+        {model.orders > 0 ? (
+          <LonsamhetKpis
+            kpis={model.kpis}
+            label={`Nyckeltal · ${model.periodLabel}`}
+            comparison={model.comparisonLabel}
+          />
+        ) : null}
 
-      {model.orders === 0 ? (
-        <div className="v2-cols">
-          <div className="v2-stack">
-            <Card as="section" title="Ingen försäljning">
-              <CardBody>
-                <StateMessage
-                  kind="empty"
-                  message={
-                    model.scopeLabel
-                      ? `Ingen försäljning för ${model.scopeLabel} i perioden.`
-                      : "Ingen försäljning i perioden."
-                  }
-                  action={
-                    p.dataStart
-                      ? { label: "Visa hela historiken", href: allHistoryHref(sp) }
-                      : { label: "Gå till datakällor", href: "/datakallor" }
-                  }
-                />
-              </CardBody>
-            </Card>
+        {model.orders === 0 ? (
+          <div className="v2-cols">
+            <div className="v2-stack">
+              <Card as="section" title="Ingen försäljning">
+                <CardBody>
+                  <StateMessage
+                    kind="empty"
+                    message={
+                      model.scopeLabel
+                        ? `Ingen försäljning för ${model.scopeLabel} i perioden.`
+                        : "Ingen försäljning i perioden."
+                    }
+                    action={
+                      p.dataStart
+                        ? { label: "Visa hela historiken", href: allHistoryHref(sp) }
+                        : { label: "Gå till datakällor", href: "/datakallor" }
+                    }
+                  />
+                </CardBody>
+              </Card>
+            </div>
+            <div className="v2-stack">
+              {advice ? <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} /> : null}
+            </div>
           </div>
-          <div className="v2-stack">
-            {advice ? <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} /> : null}
-          </div>
-        </div>
-      ) : (
-        <div className="v2-cols">
-          <div className="v2-stack">
-            <Card title="Från intäkt till vinst" className="scroll-mt-28" id="till-vinst">
-              <CardBody>
+        ) : (
+          <div className="v2-cols">
+            <div className="v2-stack">
+              <Card title="Från intäkt till vinst" className="scroll-mt-28" id="till-vinst">
                 <LonsamhetBridge bridge={b} />
-              </CardBody>
-            </Card>
-            <AnalysisSection
-              table={{
-                initialView,
-                views: model.views,
-                titles: model.viewTitles,
-                totals: model.totals,
-                periodLabel: model.periodLabel,
-                days: model.days,
-                fileStem,
-                selectedTitle,
-                showStoreShare: model.showStoreShare,
-                storeShareLabel: b.storeShareLabel,
-              }}
-              trend={{
-                initialTrend,
-                trend: model.trend,
-                days: model.days,
-                showStoreShare: model.showStoreShare,
-                total: { profitOre: b.profitOre, marginBp: b.marginBp },
-              }}
-              initialTab={parseAnalysisTab(sp.visa)}
-              rhythm={
-                // Managerpaket 6: försäljningsrytm och topplista med förändring (samma order).
-                <RhythmSection
-                  heat={salesHeatmap(input.current.orders, ctx.timeZone)}
-                  days={model.days}
-                  movers={buildMovers({
-                    current: input.current,
-                    previous: input.previous,
-                    names: moverNames(input),
-                    hrefs: {
-                      machine: (code) => machineHref(code, carriedQuery(sp)),
-                      store: (id) => `/butiker/${encodeURIComponent(id)}${carriedQuery(sp)}`,
-                    },
-                  })}
-                  compareLabel={
-                    input.previous && input.previous.orders.length > 0
-                      ? `mot ${periodText(input.previous.period, ctx.today)}`
-                      : null
-                  }
-                />
-              }
-            />
+              </Card>
+              <AnalysisSection
+                table={{
+                  initialView,
+                  views: model.views,
+                  titles: model.viewTitles,
+                  totals: model.totals,
+                  periodLabel: model.periodLabel,
+                  days: model.days,
+                  fileStem,
+                  selectedTitle,
+                  showStoreShare: model.showStoreShare,
+                  storeShareLabel: b.storeShareLabel,
+                }}
+                trend={{
+                  initialTrend,
+                  trend: model.trend,
+                  days: model.days,
+                  showStoreShare: model.showStoreShare,
+                  total: { profitOre: b.profitOre, marginBp: b.marginBp },
+                }}
+                initialTab={parseAnalysisTab(sp.visa)}
+                rhythm={
+                  // Managerpaket 6: försäljningsrytm och topplista med förändring (samma order).
+                  <RhythmSection
+                    heat={salesHeatmap(input.current.orders, ctx.timeZone)}
+                    days={model.days}
+                    movers={buildMovers({
+                      current: input.current,
+                      previous: input.previous,
+                      names: moverNames(input),
+                      hrefs: {
+                        machine: (code) => machineHref(code, carriedQuery(sp)),
+                        store: (id) => `/butiker/${encodeURIComponent(id)}${carriedQuery(sp)}`,
+                      },
+                    })}
+                    compareLabel={
+                      input.previous && input.previous.orders.length > 0
+                        ? `mot ${periodText(input.previous.period, ctx.today)}`
+                        : null
+                    }
+                  />
+                }
+              />
+            </div>
+            <div className="v2-stack">
+              <Card title="Efter vinsten">
+                <CardBody className="flex flex-col gap-4">
+                  <ResultAfterProfitPanel
+                    result={result}
+                    costLines={input.costLines}
+                    profitLabel={b.profitLabel}
+                  />
+                  {model.showStoreShare ? (
+                    <CompensationBreakdown bridge={b} costLines={input.costLines} />
+                  ) : null}
+                  <UnpricedSummary unpriced={model.unpriced} />
+                </CardBody>
+              </Card>
+              {advice ? <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} /> : null}
+            </div>
           </div>
-          <div className="v2-stack">
-            <Card title="Efter vinsten">
-              <CardBody className="flex flex-col gap-4">
-                <ResultAfterProfitPanel
-                  result={result}
-                  costLines={input.costLines}
-                  profitLabel={b.profitLabel}
-                />
-                {model.showStoreShare ? (
-                  <CompensationBreakdown bridge={b} costLines={input.costLines} />
-                ) : null}
-                <UnpricedSummary unpriced={model.unpriced} />
-              </CardBody>
-            </Card>
-            {advice ? <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} /> : null}
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </V2Page>
   );
 }

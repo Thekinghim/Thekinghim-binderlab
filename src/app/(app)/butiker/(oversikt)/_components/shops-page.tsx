@@ -4,6 +4,7 @@ import { ButtonLink } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatInt, NBSP } from "@/lib/format";
 import { loadPeriod, requireRoute } from "@/server/data/core";
 import { loadShops } from "@/server/data/v2/analytics/shops";
@@ -35,6 +36,7 @@ export async function ShopsPage({ sp }: { sp: SearchParams }) {
         ) : undefined
       }
     >
+      <SubNav />
       {!data || data.rows.length === 0 ? (
         <Card title="Butiker">
           <Empty

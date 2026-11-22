@@ -3,6 +3,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { Role } from "@/components/shell/nav";
+import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
 import type { SyncState } from "@/components/shell/side-nav";
 
 /** Det sidhuvudet behöver från skalet (V2). */
@@ -15,6 +16,11 @@ export type V2ShellInfo = {
   readonly openCommand: () => void;
   /** Organisationens tidszon. */
   readonly timeZone: string;
+  /** Butiker och automater för sidhuvudets filter (V2Page med `filters`). */
+  readonly stores?: ReadonlyArray<ShellStore>;
+  readonly machines?: ReadonlyArray<ShellMachine>;
+  /** Vyknappen "Med VMB": användarens id (null för roller utan ekonomi). */
+  readonly vmbUserKey?: string | null;
 };
 
 const ShellContext = createContext<V2ShellInfo | null>(null);

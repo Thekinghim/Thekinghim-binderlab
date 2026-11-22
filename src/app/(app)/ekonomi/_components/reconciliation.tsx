@@ -17,7 +17,7 @@ import {
   nayaxSoldText,
   salesMatchText,
 } from "../_lib/nayax";
-import { isoToDate, kr, periodText, signedKr } from "../_lib/view";
+import { isoToDate, amount, periodText, signedKr } from "../_lib/view";
 import { CardFeeFix } from "./card-fee-fix";
 import { DeviationReview } from "./deviation-review";
 import { PayoutArchive } from "./payout-archive";
@@ -177,11 +177,11 @@ function PayoutBlock({
         <dl className="grid grid-cols-3 gap-4 md:col-span-5">
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">Väntat</dt>
-            <dd className="tnum text-v2-md text-fg">{kr(p.expected.payoutOre)}</dd>
+            <dd className="tnum text-v2-md text-fg">{amount(p.expected.payoutOre)}</dd>
           </div>
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">Utbetalt</dt>
-            <dd className="tnum text-v2-md text-fg">{kr(p.actual.payoutOre)}</dd>
+            <dd className="tnum text-v2-md text-fg">{amount(p.actual.payoutOre)}</dd>
           </div>
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">Skillnad</dt>

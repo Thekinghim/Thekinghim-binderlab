@@ -7,7 +7,8 @@ import { DataTable, type Column, type SortKey } from "@/components/ui/data-table
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
-import { formatInt, formatKronor, formatSek, MISSING, NBSP } from "@/lib/format";
+import { formatAmountOre } from "@/components/v2/format";
+import { formatInt, formatSek, MISSING, NBSP } from "@/lib/format";
 
 import { loadMoreOrders } from "../actions";
 import { formatAt } from "../_lib/headline";
@@ -335,7 +336,7 @@ export function OrderList({
         numeric: true,
         width: 120,
         sortValue: (r) => r.amountOre,
-        render: (r) => formatKronor(r.amountOre / 100),
+        render: (r) => formatAmountOre(r.amountOre),
         // Hela kronor, som rubriken (design.md: summaraden säger samma belopp som rubriken).
         footer: formatSek(totals.amountOre / 100),
       },

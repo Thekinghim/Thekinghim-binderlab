@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 
 /**
- * Rubriken för ett avsnitt på Marknad (V2, som Section i src/components/v2): avsnittets namn
- * 16 px halvfet, läget i en grå rad under och knappar till höger. Ersätter SectionHeader
- * med etikett ovanför ("eyebrow"): namnet står i rubriken, meningen i raden under.
+ * Rubriken för ett avsnitt på Marknad (V2): ett kort med avsnittets namn i rubrikraden,
+ * knappar till höger och läget i en grå rad under. Namnet står i rubriken, meningen i raden
+ * under (ingen etikett ovanför, "eyebrow").
  */
 export function SectionHead({
   id,
@@ -19,23 +19,25 @@ export function SectionHead({
   aside?: ReactNode;
   actions?: ReactNode;
 }) {
+  // Ett kort med avsnittets namn i rubrikraden (som korten på Pengar) och läget i en rad
+  // under, i stället för en rubrik som står fritt ovanför avsnittets kort.
   return (
-    <div className="v2-section-hd">
-      <div className="min-w-0">
+    <div className="v2-card">
+      <div className="v2-card-hd">
         <h2 id={id}>{eyebrow ?? title}</h2>
-        {eyebrow || aside ? (
-          <p>
-            {eyebrow ? (
-              <>
-                <span className="font-[550] text-v2-ink">{title}</span>
-                {aside ? " " : null}
-              </>
-            ) : null}
-            {aside}
-          </p>
-        ) : null}
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
-      {actions ? <div className="acts">{actions}</div> : null}
+      {eyebrow || aside ? (
+        <p className="px-[18px] py-3 text-v2-md text-v2-mute">
+          {eyebrow ? (
+            <>
+              <span className="font-[550] text-v2-ink">{title}</span>
+              {aside ? " " : null}
+            </>
+          ) : null}
+          {aside}
+        </p>
+      ) : null}
     </div>
   );
 }

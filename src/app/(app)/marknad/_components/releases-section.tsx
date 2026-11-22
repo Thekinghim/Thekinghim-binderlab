@@ -187,7 +187,9 @@ function Outcome({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
         </div>
         <div className="flex flex-col gap-1">
           <dt className="label text-v2-mute">Väntat hittills</dt>
-          <dd className="tnum text-v2-xl font-[550]">{tenthsNumber(o.expectedByNowTenths)}</dd>
+          <dd className="tnum text-v2-xl font-[550]">
+            {packs(Math.round(o.expectedByNowTenths / 10))}
+          </dd>
         </div>
         <div className="flex flex-col gap-1">
           <dt className="label text-v2-mute">Lika mot lika</dt>

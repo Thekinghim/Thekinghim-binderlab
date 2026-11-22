@@ -154,7 +154,8 @@ export function CompensationSection({
     <Card title="Er ersättning" id="ersattning">
       <CardBody className="flex flex-col gap-3">
         <Lead
-          strong={`${krExact(c.totalOre)} till ${report.store.name}.`}
+          // Hela kronor i meningen, som nyckeltalet; öret står i uträkningen under.
+          strong={`${kr(c.totalOre)} till ${report.store.name}.`}
           rest={hasAgreement ? withPeriod(c.modelText) : "Inget avtal är registrerat för månaden."}
         />
         {!hasAgreement ? (

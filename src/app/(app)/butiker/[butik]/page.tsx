@@ -11,6 +11,8 @@ import { Card, CardBody } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
 import { Notice } from "@/components/v2/notice";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatInt, MISSING, NBSP } from "@/lib/format";
 import { StorePortalAccess } from "@/app/portal/_components/store-portal-access";
 
@@ -117,140 +119,151 @@ export default async function StorePage({
   );
 
   return (
-    <div className={PAGE_BODY}>
-      <Suspense fallback={null}>
-        <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
-      </Suspense>
-      <nav aria-label="Brödsmulor">
-        <Link
-          href={`/butiker${data.query}`}
-          className="inline-flex min-h-7 items-center gap-1.5 rounded-v2-sm text-v2-sm text-v2-mute hover:text-v2-ink max-[900px]:min-h-11"
+    <V2Page
+      title={store.name}
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+      period
+      sub={
+        <nav aria-label="Brödsmulor">
+          <Link
+            href={`/butiker${data.query}`}
+            className="inline-flex min-h-7 items-center gap-1.5 rounded-v2-sm font-[550] text-v2-ink hover:underline max-[900px]:min-h-11"
+          >
+            <span aria-hidden="true">←</span>
+            Alla butiker
+          </Link>
+        </nav>
+      }
+    >
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <Suspense fallback={null}>
+          <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
+        </Suspense>
+        <PageIntro
+          title={headline.title}
+          aside={headline.aside}
+          facts={[
+            { label: "Kontrakt", value: contractFact },
+            { label: "Automater", value: formatInt(placed.length) },
+            { label: "Modell", value: current ? MODEL_LABEL[current.model] : MISSING },
+            {
+              label: "Ägare",
+              value: owner ? (
+                <span data-store-owner>
+                  {owner.legalName} <span className="tnum text-v2-mute">{owner.orgNumber}</span>
+                </span>
+              ) : (
+                MISSING
+              ),
+            },
+          ]}
+          actions={
+            ctx.canEdit ? (
+              <StoreActions store={store} machines={placed.map((m) => m.code)} />
+            ) : undefined
+          }
         >
-          <span aria-hidden="true">←</span>
-          Alla butiker
-        </Link>
-      </nav>
-      <PageIntro
-        title={headline.title}
-        aside={headline.aside}
-        facts={[
-          { label: "Kontrakt", value: contractFact },
-          { label: "Automater", value: formatInt(placed.length) },
-          { label: "Modell", value: current ? MODEL_LABEL[current.model] : MISSING },
-          {
-            label: "Ägare",
-            value: owner ? (
-              <span data-store-owner>
-                {owner.legalName} <span className="tnum text-v2-mute">{owner.orgNumber}</span>
-              </span>
-            ) : (
-              MISSING
-            ),
-          },
-        ]}
-        actions={
-          ctx.canEdit ? (
-            <StoreActions store={store} machines={placed.map((m) => m.code)} />
-          ) : undefined
-        }
-      >
-        {store.archived || store.isExample ? (
-          <p className="text-v2-sm text-v2-mute">
-            {store.archived ? "Butiken är arkiverad. Historiken finns kvar." : "Exempelbutik."}
-          </p>
-        ) : null}
-        <AiPageLine metric="butikens resultat och andel" route="butiker" />
-      </PageIntro>
+          {store.archived || store.isExample ? (
+            <p className="text-v2-sm text-v2-mute">
+              {store.archived ? "Butiken är arkiverad. Historiken finns kvar." : "Exempelbutik."}
+            </p>
+          ) : null}
+          <AiPageLine metric="butikens resultat och andel" route="butiker" />
+        </PageIntro>
 
-      {noAgreement && !store.archived ? (
-        <div data-no-agreement>
+        {noAgreement && !store.archived ? (
+          <div data-no-agreement>
+            <Notice
+              tone="critical"
+              title={
+                noAgreement.id === "no-agreement" || data.agreementGap?.whole
+                  ? NO_AGREEMENT_SHORT
+                  : data.agreementGap!.short
+              }
+              action={
+                ctx.canEdit ? (
+                  <AddAgreementButton
+                    storeId={store.id}
+                    storeName={store.name}
+                    defaultFrom={agreementFrom}
+                    defaultTo={gapEnd}
+                    className="max-sm:w-full"
+                  />
+                ) : undefined
+              }
+            >
+              {noAgreement.text}
+            </Notice>
+          </div>
+        ) : null}
+        {!store.archived && data.contract !== "signed" ? (
           <Notice
-            tone="critical"
+            tone={placed.length > 0 ? "critical" : "info"}
             title={
-              noAgreement.id === "no-agreement" || data.agreementGap?.whole
-                ? NO_AGREEMENT_SHORT
-                : data.agreementGap!.short
+              data.contract === "unsigned" ? "Kontraktet är inte signerat." : "Kontrakt saknas."
             }
             action={
               ctx.canEdit ? (
-                <AddAgreementButton
-                  storeId={store.id}
-                  storeName={store.name}
-                  defaultFrom={agreementFrom}
-                  defaultTo={gapEnd}
+                <ButtonLink
+                  href={contractAction(data.contract, store.id).href}
+                  variant="act"
+                  touch
                   className="max-sm:w-full"
-                />
+                >
+                  {contractAction(data.contract, store.id).label}
+                </ButtonLink>
               ) : undefined
             }
-          >
-            {noAgreement.text}
-          </Notice>
+          />
+        ) : null}
+        {/* Kontraktet står i rutan ovan; här resten. */}
+        {data.issues.some((i) => !BANNER_ISSUES.has(i.id)) ? <Issues data={data} /> : null}
+
+        <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+        {/* Till butiken är det vi betalar; vinsten räknar inte order utan inköpspris. */}
+        {data.unpricedNote ? (
+          <p className="-mt-1 text-v2-sm text-v2-mute" data-unpriced-note>
+            {data.unpricedNote}
+          </p>
+        ) : null}
+
+        <div className="pt-1">
+          <ViewTabs
+            tabs={TABS}
+            value={tab}
+            basePath={`/butiker/${encodeURIComponent(butik)}`}
+            query={data.query}
+            label="Visa"
+          />
         </div>
-      ) : null}
-      {!store.archived && data.contract !== "signed" ? (
-        <Notice
-          tone={placed.length > 0 ? "critical" : "info"}
-          title={data.contract === "unsigned" ? "Kontraktet är inte signerat." : "Kontrakt saknas."}
-          action={
-            ctx.canEdit ? (
-              <ButtonLink
-                href={contractAction(data.contract, store.id).href}
-                variant="act"
-                touch
-                className="max-sm:w-full"
-              >
-                {contractAction(data.contract, store.id).label}
-              </ButtonLink>
-            ) : undefined
-          }
-        />
-      ) : null}
-      {/* Kontraktet står i rutan ovan; här resten. */}
-      {data.issues.some((i) => !BANNER_ISSUES.has(i.id)) ? <Issues data={data} /> : null}
 
-      <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
-      {/* Till butiken är det vi betalar; vinsten räknar inte order utan inköpspris. */}
-      {data.unpricedNote ? (
-        <p className="-mt-1 text-v2-sm text-v2-mute" data-unpriced-note>
-          {data.unpricedNote}
-        </p>
-      ) : null}
-
-      <div className="pt-1">
-        <ViewTabs
-          tabs={TABS}
-          value={tab}
-          basePath={`/butiker/${encodeURIComponent(butik)}`}
-          query={data.query}
-          label="Visa"
-        />
+        <div key={tab} className="v2-enter v2-stack">
+          {tab === "oversikt" ? (
+            <>
+              <SalesSection data={data} days={days} />
+              <MachinesSection data={data} days={days} />
+            </>
+          ) : null}
+          {tab === "avtal" ? <CompensationSection data={data} /> : null}
+          {tab === "kontakt" ? (
+            <>
+              <ContactSection data={data} />
+              <OwnerSection data={data} owner={owner} choices={choices} />
+              {/* Butiksportalen (fas 10): vem i butiken som har tillgång. Bara ägare och admin. */}
+              {ctx.canEdit && !store.archived ? (
+                <StorePortalAccess
+                  storeId={store.id}
+                  storeName={store.name}
+                  defaultEmail={store.email}
+                  timeZone={ctx.timeZone}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
-
-      <div key={tab} className="v2-enter v2-stack">
-        {tab === "oversikt" ? (
-          <>
-            <SalesSection data={data} days={days} />
-            <MachinesSection data={data} days={days} />
-          </>
-        ) : null}
-        {tab === "avtal" ? <CompensationSection data={data} /> : null}
-        {tab === "kontakt" ? (
-          <>
-            <ContactSection data={data} />
-            <OwnerSection data={data} owner={owner} choices={choices} />
-            {/* Butiksportalen (fas 10): vem i butiken som har tillgång. Bara ägare och admin. */}
-            {ctx.canEdit && !store.archived ? (
-              <StorePortalAccess
-                storeId={store.id}
-                storeName={store.name}
-                defaultEmail={store.email}
-                timeZone={ctx.timeZone}
-              />
-            ) : null}
-          </>
-        ) : null}
-      </div>
-    </div>
+    </V2Page>
   );
 }
 

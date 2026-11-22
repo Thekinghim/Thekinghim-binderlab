@@ -16,6 +16,8 @@ import { Badge } from "@/components/v2/badge";
 import { Card } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { cn } from "@/lib/cn";
 import { EN_DASH, formatInt, MINUS, NBSP } from "@/lib/format";
 import {
@@ -62,63 +64,102 @@ export default async function SvinnPage({
   const value = shrinkageValueText(report.valueOre);
 
   return (
-    <div className={PAGE_BODY}>
-      <PageIntro
-        title={report.headline.title}
-        aside={report.headline.aside}
-        facts={[
-          { label: "Period", value: periodText(p.period) },
-          { label: "Saknas", value: value ?? formatInt(report.missing) },
-        ]}
-      />
+    <V2Page title="Svinn" date={headerDate(new Date(ctx.now), ctx.timeZone)} period filters>
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <PageIntro
+          title={report.headline.title}
+          aside={report.headline.aside}
+          facts={[
+            { label: "Period", value: periodText(p.period) },
+            { label: "Saknas", value: value ?? formatInt(report.missing) },
+          ]}
+        />
 
-      {report.flagged.length === 0 && report.ok.length === 0 ? (
-        <Card>
-          <Empty title="Ingen påfyllning eller försäljning i perioden." />
-        </Card>
-      ) : null}
+        {report.flagged.length === 0 && report.ok.length === 0 ? (
+          <Card>
+            <Empty title="Ingen påfyllning eller försäljning i perioden." />
+          </Card>
+        ) : null}
 
-      {report.flagged.length > 0 ? (
-        <section aria-labelledby="svinn-saknas" className="v2-stack">
-          <h2 id="svinn-saknas" className="sr-only">
-            Pack saknas
-          </h2>
-          {report.flagged.map((m) => (
-            <MachineCard key={m.machineId} machine={m} flagged canEdit={ctx.canEdit} />
-          ))}
-        </section>
-      ) : null}
+        {report.flagged.length > 0 ? (
+          <section aria-labelledby="svinn-saknas" className="v2-stack">
+            <h2 id="svinn-saknas" className="sr-only">
+              Pack saknas
+            </h2>
+            {report.flagged.map((m) => (
+              <MachineCard key={m.machineId} machine={m} flagged canEdit={ctx.canEdit} />
+            ))}
+          </section>
+        ) : null}
 
-      {report.ok.length > 0 ? (
-        <section aria-labelledby="svinn-stammer">
-          <details className="group v2-card" open={report.flagged.length === 0}>
-            <summary
-              id="svinn-stammer"
-              className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-[18px] py-3 text-v2-md font-[550] text-v2-ink [&::-webkit-details-marker]:hidden"
-            >
-              <span
-                aria-hidden
-                className="text-v2-mute transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
-              >
-                ›
-              </span>
-              {report.ok.some(compared) ? "Stämmer" : "Ej jämfört"}
-              <span className="tnum font-normal text-v2-mute">· {formatInt(report.ok.length)}</span>
-            </summary>
-            <div className="v2-stack border-t border-v2-line p-3 md:p-[14px]">
+        {report.ok.length > 0 ? (
+          // En nivå kort: en rad per automat som fälls ut till sin tabell. Ingen saknar pack,
+          // så raderna är hopfällda från början.
+          <Card
+            title={report.ok.some(compared) ? "Stämmer" : "Ej jämfört"}
+            count={report.ok.length}
+            id="svinn-stammer"
+          >
+            <ul className="flex flex-col divide-y divide-v2-line2">
               {report.ok.map((m) => (
-                <MachineCard key={m.machineId} machine={m} flagged={false} canEdit={ctx.canEdit} />
+                <li key={m.machineId}>
+                  <MachineRow machine={m} />
+                </li>
               ))}
-            </div>
-          </details>
-        </section>
-      ) : null}
+            </ul>
+          </Card>
+        ) : null}
 
-      <p className="max-w-2xl text-v2-sm text-v2-mute">
-        Väntat = förra räkningen + påfyllt {MINUS} sålt. Minst {formatInt(SHRINKAGE_MIN_PACKS)}
-        {NBSP}pack som saknas flaggas.
-      </p>
-    </div>
+        <p className="max-w-2xl text-v2-sm text-v2-mute">
+          Väntat = förra räkningen + påfyllt {MINUS} sålt. Minst {formatInt(SHRINKAGE_MIN_PACKS)}
+          {NBSP}pack som saknas flaggas.
+        </p>
+      </div>
+    </V2Page>
+  );
+}
+
+/** En automat utan saknade pack: rubrikrad (namn, märke, Saknas 0) som fälls ut till tabellen. */
+function MachineRow({ machine }: { machine: ShrinkageMachine }) {
+  return (
+    <details className="group">
+      <summary className="flex min-h-12 cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 gap-y-1 px-[18px] py-2.5 transition-colors duration-150 hover:bg-v2-hover [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            aria-hidden
+            className="text-v2-mute transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
+          >
+            ›
+          </span>
+          <span className="min-w-0 text-v2-md font-[550] text-v2-ink">
+            {machine.code}
+            {NBSP}
+            <span className="font-normal text-v2-mute">
+              {machine.name}
+              {machine.storeName ? ` · ${machine.storeName}` : ""}
+            </span>
+          </span>
+        </span>
+        <span className="flex items-center gap-3">
+          <span className="tnum text-v2-sm text-v2-mute">
+            Saknas {compared(machine) ? formatInt(Math.max(0, machine.missing)) : EN_DASH}
+          </span>
+          {compared(machine) ? <Badge tone="success">Stämmer</Badge> : <Badge>Ej jämfört</Badge>}
+        </span>
+      </summary>
+      <div className="border-t border-v2-line2">
+        <div className="flex justify-end px-[18px] pt-2">
+          <Link
+            href={machineHref(machine.code)}
+            className="text-v2-sm text-v2-mute underline-offset-4 hover:text-v2-ink hover:underline"
+          >
+            Till automaten <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+        <MachineBody machine={machine} lines={machine.lines} canEdit={false} />
+      </div>
+    </details>
   );
 }
 
@@ -163,6 +204,23 @@ function MachineCard({
           <Badge>Ej jämfört</Badge>
         )}
       </header>
+      <MachineBody machine={machine} lines={lines} canEdit={canEdit} />
+    </article>
+  );
+}
+
+/** Raden om saknade påfyllningar och tabellen per titel. */
+function MachineBody({
+  machine,
+  lines,
+  canEdit,
+}: {
+  machine: ShrinkageMachine;
+  lines: readonly ShrinkageLine[];
+  canEdit: boolean;
+}) {
+  return (
+    <>
       {machine.refilled === 0 ? (
         // Inga registrerade påfyllningar: "Påfyllt 0" bredvid allt som sålts ser ut som svinn.
         <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-v2-line px-[18px] py-3 text-v2-sm text-v2-mute">
@@ -215,7 +273,7 @@ function MachineCard({
           </tbody>
         </table>
       </div>
-    </article>
+    </>
   );
 }
 

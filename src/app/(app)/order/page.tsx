@@ -3,8 +3,11 @@ import type { Metadata } from "next";
 import { routeById } from "@/components/shell/nav";
 import { toURLSearchParams } from "@/components/shell/period-state";
 import { StateMessage } from "@/components/ui/state-message";
+import { formatValue } from "@/components/v2/format";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
-import { formatKronor, formatPeriodShort, MISSING } from "@/lib/format";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
+import { formatPeriodShort, MISSING } from "@/lib/format";
 import { OPERATOR_ROLES, requireRoute, scopeFiltered } from "@/server/data/core";
 
 import { OrderBrowser } from "./_components/order-browser";
@@ -111,41 +114,38 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
             value:
               list.averageOrderValueOre === null
                 ? MISSING
-                : formatKronor(list.averageOrderValueOre / 100),
+                : formatValue(list.averageOrderValueOre, "ore"),
           },
         ];
 
   return (
-    <div className={PAGE_BODY}>
-      <PageIntro
-        // Mobil: perioden står redan i raden överst; bara snittet visas.
-        className="max-md:[&_dl>div:first-child]:hidden"
-        title={headline.title}
-        aside={headline.aside}
-        facts={meta}
-      />
+    <V2Page title="Order" date={headerDate(now, ctx.timeZone)} period filters>
+      <SubNav />
+      <div className={PAGE_BODY}>
+        <PageIntro title={headline.title} aside={headline.aside} facts={meta} />
 
-      <section aria-label="Orderlista" className="flex min-w-0 flex-col">
-        <OrderBrowser
-          query={listSignature(sp)}
-          pageQuery={lockedListQuery(sp, list.period)}
-          rows={list.rows}
-          nextOffset={list.nextOffset}
-          totals={list.totals}
-          refs={list.refs}
-          titleOptions={titleChoices(list.refs.titles, params.titleId)}
-          q={params.q}
-          titleId={params.titleId}
-          sort={params.sort}
-          timeZone={ctx.timeZone}
-          now={ctx.now}
-          canOpenImport={canOpenImport}
-          canMarkTestPurchase={canMarkTestPurchase}
-          initialOrderId={params.orderId}
-          initialDetail={initialDetail}
-          empty={empty}
-        />
-      </section>
-    </div>
+        <section aria-label="Orderlista" className="flex min-w-0 flex-col">
+          <OrderBrowser
+            query={listSignature(sp)}
+            pageQuery={lockedListQuery(sp, list.period)}
+            rows={list.rows}
+            nextOffset={list.nextOffset}
+            totals={list.totals}
+            refs={list.refs}
+            titleOptions={titleChoices(list.refs.titles, params.titleId)}
+            q={params.q}
+            titleId={params.titleId}
+            sort={params.sort}
+            timeZone={ctx.timeZone}
+            now={ctx.now}
+            canOpenImport={canOpenImport}
+            canMarkTestPurchase={canMarkTestPurchase}
+            initialOrderId={params.orderId}
+            initialDetail={initialDetail}
+            empty={empty}
+          />
+        </section>
+      </div>
+    </V2Page>
   );
 }

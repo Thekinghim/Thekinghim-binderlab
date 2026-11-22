@@ -7,7 +7,8 @@ import { Card, CardBody } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
 import { Notice } from "@/components/v2/notice";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
-import { cn } from "@/lib/cn";
+import { V2Page, headerDate } from "@/components/v2/shell/page";
+import { SubNav } from "@/components/v2/sub-nav";
 import { formatInt, formatSek } from "@/lib/format";
 import { businessDateOf } from "@/import/zoned";
 import { CAMPAIGN_STATE_LABEL, type CampaignState } from "@/server/campaigns/model";
@@ -60,23 +61,29 @@ export default async function KampanjerPage({
   const viewer = await requireViewer();
   const view = pickView(sp.vy, VIEWS);
   return (
-    <div className={cn(PAGE_BODY, "max-w-[1000px]")}>
-      {view === "kampanjer" ? (
-        <CampaignsView
-          viewer={viewer}
-          canEdit={ctx.canEdit}
-          today={ctx.today}
-          timeZone={ctx.timeZone}
-        />
-      ) : (
-        <FreePacksView
-          viewer={viewer}
-          today={ctx.today}
-          initialMachineId={one(sp.automat) ?? null}
-          initialReason={one(sp.skal) ?? null}
-        />
-      )}
-    </div>
+    <V2Page
+      title={view === "kampanjer" ? "Kampanjer" : "Gratis-pack"}
+      date={headerDate(new Date(ctx.now), ctx.timeZone)}
+    >
+      <SubNav />
+      <div className={PAGE_BODY}>
+        {view === "kampanjer" ? (
+          <CampaignsView
+            viewer={viewer}
+            canEdit={ctx.canEdit}
+            today={ctx.today}
+            timeZone={ctx.timeZone}
+          />
+        ) : (
+          <FreePacksView
+            viewer={viewer}
+            today={ctx.today}
+            initialMachineId={one(sp.automat) ?? null}
+            initialReason={one(sp.skal) ?? null}
+          />
+        )}
+      </div>
+    </V2Page>
   );
 }
 
