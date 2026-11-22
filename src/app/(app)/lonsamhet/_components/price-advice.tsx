@@ -60,9 +60,9 @@ export function PriceAdviceSection({
           ) : null}
         </h2>
       </div>
-      <p id="prisrad-rubrik" className="px-[18px] pt-3 text-v2-md font-[550] text-v2-ink">
+      <h3 id="prisrad-rubrik" className="px-[18px] pt-3 text-v2-md font-[550] text-v2-ink">
         {adviceHeadline(rows.length, targetBp)}
-      </p>
+      </h3>
       {rows.length > 0 ? (
         <>
           <ul className="mt-2 flex flex-col border-y border-v2-line2">{first.map(row)}</ul>

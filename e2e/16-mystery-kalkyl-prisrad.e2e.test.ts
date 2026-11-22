@@ -340,7 +340,10 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     expect(versions!.n).toBe(1);
 
     await visit(page, "/inkopspriser");
+    // Inom main: medan sidan strömmas ligger en dold kopia av innehållet utanför (Reacts
+    // strömningsbuffert, #S:n) tills den flyttas in.
     const banner = page
+      .locator("main")
       .locator('[data-testid="mystery-kostnad-notis"]')
       .filter({ hasText: MYSTERY });
     await banner.getByText(notice).waitFor();
@@ -354,7 +357,10 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
     const notice = `${MYSTERY} now costs 192 kr, not 174 kr`;
 
     await visit(page, "/inkopspriser");
+    // Inom main: medan sidan strömmas ligger en dold kopia av innehållet utanför (Reacts
+    // strömningsbuffert, #S:n) tills den flyttas in.
     const banner = page
+      .locator("main")
       .locator('[data-testid="mystery-kostnad-notis"]')
       .filter({ hasText: MYSTERY });
     await banner.getByText(notice).waitFor();
@@ -566,7 +572,8 @@ describe("mystery-kalkylen och prisråd (iPhone SE)", () => {
 
       // Kalkylen: en enda knapp. Inget val mellan "från i dag" och "Rätta priset".
       await visit(page, `/vart-lager/mystery/${id}`);
-      const notice = page.locator('#kalkyl [data-testid="mystery-kostnad-notis"]');
+      // Inom main: medan sidan strömmas ligger en dold kopia utanför (Reacts strömningsbuffert).
+      const notice = page.locator('main #kalkyl [data-testid="mystery-kostnad-notis"]');
       await notice.getByText(`${NAME} kostar 192 kr men saknar inköpspris`).waitFor();
       const add = notice.getByRole("button", { name: /^Lägg in priset 192 kr/ });
       await add.waitFor();

@@ -243,7 +243,10 @@ function LineRow({
 }) {
   return (
     <tr>
-      <th scope="row" className="text-left font-normal text-v2-ink">
+      <th
+        scope="row"
+        className="h-auto border-v2-line2 bg-transparent py-2.5 text-left text-v2-sm font-normal whitespace-normal text-v2-ink"
+      >
         {line.titleName}
         {swap ? <span className="ml-3">{swap}</span> : null}
       </th>

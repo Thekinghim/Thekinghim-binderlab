@@ -42,8 +42,10 @@ afterAll(async () => {
 describe("påfyllning som påfyllare (375 px)", () => {
   it("Drift → Påfyllning visar dagens påfyllningar och leder till Fyll på", async () => {
     await page.goto("/drift/pafyllning");
+    // V2: avsnittets namn (Drift) är h1 och läget i dag står i raden under (som på Hem).
+    await page.getByRole("heading", { level: 1, name: "Drift" }).waitFor();
     await page
-      .getByRole("heading", { level: 1 })
+      .locator(".v2-sub")
       .filter({ hasText: /påfyllt i dag|påfyllda i dag/ })
       .waitFor();
     // Ett sätt att registrera: Fyll på (det gamla formuläret finns inte kvar).

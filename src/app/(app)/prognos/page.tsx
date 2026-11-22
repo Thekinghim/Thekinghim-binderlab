@@ -10,7 +10,7 @@ import { HashTab } from "@/components/ui/hash-tab";
 import { OpenOnHash } from "@/components/ui/open-on-hash";
 import { ButtonLink } from "@/components/v2/button";
 import { CardBody } from "@/components/v2/card";
-import { KpiTile } from "@/components/v2/kpi-tile";
+import { KpiBand, KpiTile } from "@/components/v2/kpi-tile";
 import { Notice } from "@/components/v2/notice";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { SubNav } from "@/components/v2/sub-nav";
@@ -328,11 +328,11 @@ export default async function PrognosPage({
               Prognos
             </h2>
             {forecastMeta.length > 0 ? (
-              <div className="v2-band">
+              <KpiBand ariaLabel="Prognosen">
                 {forecastMeta.map((x) => (
                   <KpiTile key={x.label} label={x.label} value={x.value} />
                 ))}
-              </div>
+              </KpiBand>
             ) : null}
             <ForecastView model={m.forecast} />
           </section>

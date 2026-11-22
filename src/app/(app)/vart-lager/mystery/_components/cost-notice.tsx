@@ -109,7 +109,7 @@ export function CostNotice({
               type="button"
               disabled={pending}
               onClick={() => run("correct")}
-              className="v2-btn act lg flex-1"
+              className="v2-btn act lg md:flex-1"
             >
               {busy === "correct" ? t.common.saving : t.mystery.fixYes}
             </button>
@@ -117,7 +117,7 @@ export function CostNotice({
               type="button"
               disabled={pending}
               onClick={() => setConfirming(false)}
-              className="v2-btn lg flex-1"
+              className="v2-btn lg md:flex-1"
             >
               {t.common.cancel}
             </button>

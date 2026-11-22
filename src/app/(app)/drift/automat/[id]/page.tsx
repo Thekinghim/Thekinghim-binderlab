@@ -10,7 +10,7 @@ import { ButtonLink } from "@/components/v2/button";
 import { Card, CardBody } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
 import { fillTone } from "@/components/v2/fill-bar";
-import { KpiTile } from "@/components/v2/kpi-tile";
+import { KpiBand, KpiTile } from "@/components/v2/kpi-tile";
 import type { IsoDate } from "@/domain";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
@@ -131,7 +131,7 @@ export default async function MachineTimelinePage({
         ) : null}
       </div>
 
-      <div className="v2-band">
+      <KpiBand>
         <KpiTile label="Sålda pack" value={formatInt(sold)} compare={`${formatInt(days)} d`} />
         <KpiTile
           label="Påfyllda pack"
@@ -146,7 +146,7 @@ export default async function MachineTimelinePage({
           />
         ) : null}
         {connection ? <KpiTile label="Awish" value={connection.text} /> : null}
-      </div>
+      </KpiBand>
 
       {fill ? (
         <Card

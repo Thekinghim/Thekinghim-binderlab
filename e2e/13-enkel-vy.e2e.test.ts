@@ -313,7 +313,8 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     const page = await newPage("en-GB");
     await page.goto("/logga-in");
     // Före inloggningen: webbläsarens språk.
-    await page.getByRole("heading", { name: "Sign in." }).waitFor();
+    // V2: rubrikerna på inloggningen har ingen punkt.
+    await page.getByRole("heading", { level: 1, name: "Sign in", exact: true }).waitFor();
     await screenshot(page, "13-delagare-logga-in-iphonese");
     await page.getByLabel("Email").fill(PARTNER);
     await page.getByLabel("Password").fill(PARTNER_PASSWORD);

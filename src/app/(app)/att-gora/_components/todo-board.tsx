@@ -384,7 +384,7 @@ function VisitRow({
               Ta med-lista
             </Link>
           </div>
-          <ol className="-mx-[18px] flex flex-col border-t border-v2-line2 max-md:-mx-4 md:pl-4">
+          <ol className="-mx-[18px] flex flex-col border-t border-v2-line2 max-md:mx-0 md:pl-4 max-md:[&>li]:px-0">
             {visit.items.map((item, i) => (
               <TodoRow
                 key={item.key}

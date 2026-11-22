@@ -399,9 +399,9 @@ export function PlanView({
       {others.length > 0 ? (
         <details
           aria-labelledby="alla-titlar"
-          className="group -mx-[18px] -mb-4 flex flex-col border-t border-v2-line2 max-[900px]:-mx-4"
+          className="group -mx-[18px] -mb-4 flex flex-col border-t border-v2-line2 max-[900px]:mx-0 max-[900px]:mb-0"
         >
-          <summary className="flex min-h-11 cursor-pointer items-baseline justify-between gap-4 px-[18px] py-3 max-[900px]:px-4 max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-0.5">
+          <summary className="flex min-h-11 cursor-pointer items-baseline justify-between gap-4 px-[18px] py-3 max-[900px]:px-0 max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-0.5">
             <h3 id="alla-titlar" className="text-v2-md font-[550] text-v2-ink">
               Alla titlar ({formatInt(others.length)})
             </h3>
@@ -414,7 +414,7 @@ export function PlanView({
                 : ""}
             </span>
           </summary>
-          <div className="border-t border-v2-line2 px-[18px] py-3 max-[900px]:px-4">
+          <div className="border-t border-v2-line2 px-[18px] py-3 max-[900px]:px-0">
             <DataTable
               surface="bg"
               columns={allColumns}

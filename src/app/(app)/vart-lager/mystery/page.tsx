@@ -175,7 +175,11 @@ function TitleCard({
   return (
     <Card
       title={
-        <Link href={`/vart-lager/mystery/${t.id}`} id={`mp-${t.id}`}>
+        <Link
+          href={`/vart-lager/mystery/${t.id}`}
+          id={`mp-${t.id}`}
+          className="inline-flex items-center max-[900px]:min-h-11"
+        >
           {t.name}
         </Link>
       }
