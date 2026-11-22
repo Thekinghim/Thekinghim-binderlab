@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import { Suspense, type CSSProperties, type ReactNode } from "react";
 
-import { isSingleDay, periodNameInline } from "@/components/shell/period-state";
+import {
+  isSingleDay,
+  periodNameInline,
+  periodQuery,
+  withPeriodHref,
+} from "@/components/shell/period-state";
 import { DaySalesCard } from "@/components/v2/day-sales";
 import { SkeletonCard } from "@/components/v2/skeleton";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
@@ -101,7 +106,7 @@ async function Sold({ sp }: { sp: SearchParams }) {
       sales={v.sales}
       title={`Sålt ${v.inline}`}
       inline={v.inline}
-      link={{ href: "/lonsamhet?vy=title", label: "Lönsamhet" }}
+      link={{ href: withPeriodHref("/lonsamhet?vy=title", periodQuery(sp)), label: "Lönsamhet" }}
     />
   );
 }

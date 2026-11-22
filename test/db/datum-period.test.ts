@@ -171,6 +171,11 @@ describe("I går", () => {
     const input = await loaders.domainInput({ period: { start: YESTERDAY, end: YESTERDAY } });
     expect(v.sales.profitOre).toBe(profitability(input.current, "title").totals.profitOre);
     expect(v.sales.profitOre).toBeGreaterThan(0);
+    // Intäkten utan inköpspris står på kortet: alla pack − den = KPI-bandets intäkt.
+    expect((v.sales.revenueOre ?? 0) - (v.sales.unpricedRevenueOre ?? 0)).toBe(
+      profitability(input.current, "title").totals.revenueOre,
+    );
+    expect(v.sales.unpricedRevenueOre).toBeGreaterThan(0);
   });
 
   it("läsaren får beloppen", async () => {
@@ -184,9 +189,10 @@ describe("I går", () => {
     expect(v.sales.economy).toBe(false);
     expect(v.sales.units).toBe(4);
     expect(v.sales.revenueOre).toBeNull();
+    expect(v.sales.unpricedRevenueOre).toBeNull();
     expect(v.sales.profitOre).toBeNull();
     expect(v.sales.hours).toEqual([]);
-    expect(JSON.stringify(v)).not.toMatch(/"(revenueOre|profitOre)":-?\d/);
+    expect(JSON.stringify(v)).not.toMatch(/"(revenueOre|profitOre|unpricedRevenueOre)":-?\d/);
     expect(v.sales.titles.map((t) => [t.name, t.units])).toEqual([
       ["Pokémon 151", 3],
       ["Prismatic", 1],
@@ -211,6 +217,12 @@ describe("eget intervall", () => {
     expect(model.orders).toBe(2);
   });
 
+  it("en dag i kalendern som är i går eller i dag är förvalet", async () => {
+    const loaders = viewerPageLoaders(await viewerFor(owner), { now: NOW, storeShare: false });
+    expect((await loaders.period({ from: YESTERDAY, to: YESTERDAY })).key).toBe("igar");
+    expect((await loaders.period({ from: "2025-06-20", to: "2025-06-20" })).key).toBe("idag");
+  });
+
   it("påfyllaren: samma antal i ett eget intervall", async () => {
     const v = await daySales(refiller, { from: "2025-06-10", to: "2025-06-12" });
     expect(v.sales.units).toBe(2);
@@ -221,6 +233,9 @@ describe("eget intervall", () => {
     const loaders = viewerPageLoaders(await viewerFor(owner), { now: NOW, storeShare: false });
     for (const sp of [
       { fran: "2025-13-40" },
+      { fran: "hem" },
+      { from: "2025-06-21" },
+      { from: "2025-06-01", to: "garbage" },
       { from: "2025-07-01", to: "2025-07-02" },
       { from: "2020-01-01", to: "2025-06-20" },
       { period: "forra_manaden" },

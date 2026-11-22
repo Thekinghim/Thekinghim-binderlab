@@ -52,7 +52,12 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
   // Många staplar (en månad per dag, ett halvår per vecka): tätare, utan belopp över
   // staplarna (de står i staplarnas text) och var n:e etikett.
   const dense = r.bars.length > 10;
-  const step = r.unit === "hour" ? 3 : dense ? Math.ceil(r.bars.length / 8) : 1;
+  const step = r.labelStep;
+  // 6–10 staplar: beloppen över staplarna i tusental ("117 tkr"), så att de inte krockar.
+  const amt = (ore: number) =>
+    r.bars.length > 5 && Math.abs(ore) >= 1_000_000
+      ? `${formatInt(Math.round(ore / 100_000))}${NBSP}tkr`
+      : kr(ore);
   return (
     <Card
       title={`Resultat · ${r.periodLabel}`}
@@ -168,7 +173,7 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
                             bottom: `calc(${Math.max(h, pace ?? 0) * 100}% + 4px)`,
                           }}
                         >
-                          {kr(b.profitOre)}
+                          {amt(b.profitOre)}
                         </span>
                       </div>
                     );

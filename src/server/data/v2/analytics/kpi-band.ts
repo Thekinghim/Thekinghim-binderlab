@@ -32,7 +32,11 @@ import {
   profitPerMachineDayOre,
   splitTodayYesterday,
 } from "@/analytics/home-v2";
-import { compareTextShort, type SearchParamsInput } from "@/components/shell/period-state";
+import {
+  compareTextShort,
+  periodQuery,
+  type SearchParamsInput,
+} from "@/components/shell/period-state";
 import { addDays, profitability, type IsoDate } from "@/domain";
 import { withUserDbFor } from "@/server/access";
 import {
@@ -225,7 +229,9 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
   ]);
   const kpis = new Map(home.model.kpis.map((k) => [k.id, k]));
   const compare = compareTextShort(p.resolved) ?? "mot förra";
-  const lp = (extra: string) => `/pengar${extra}`;
+  // Rutornas länkar bär periodvalet, så att sidan bakom visar samma period som Hem.
+  const pq = periodQuery(sp);
+  const lp = (extra: string) => `/pengar${extra || pq}`;
 
   // Vinsten: utan order i perioden 0 kr (inte "–").
   const profitKpi = kpis.get("profit");
@@ -263,7 +269,7 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
     deltaUnit: "pct",
     compare: p30?.delta != null ? "mot förra 30 d" : null,
     trend: days30.map((b) => b.profitOre),
-    href: lp(""),
+    href: lp("?period=30d"),
   };
 
   // Intäkten och marginalen ur Lönsamhets modell (samma som Pengar): intäkt med inköpspris.
@@ -315,8 +321,8 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
       : profitTile,
     isToday ? tile30 : todayTile,
     revenueTile,
-    fromKpi("orders", kpis.get("orders"), "Sålda pack", "/order", compare, "count"),
-    fromKpi("aov", kpis.get("aov"), "Snittköp", "/order", compare, "ore"),
+    fromKpi("orders", kpis.get("orders"), "Sålda pack", `/order${pq}`, compare, "count"),
+    fromKpi("aov", kpis.get("aov"), "Snittköp", `/order${pq}`, compare, "ore"),
     marginTile,
     {
       id: "per-machine",
@@ -335,7 +341,7 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
           })),
         input.machines,
       ),
-      href: "/automater",
+      href: `/automater${pq}`,
     },
     {
       id: "stock-value",
@@ -347,7 +353,7 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
       compare: stockDelta === null ? "till inköpspris" : "mot förra v.",
       neutral: true,
       trend: history.length === 8 ? [...history.slice(0, 7), stockNow] : [],
-      href: "/vart-lager",
+      href: `/vart-lager${pq}`,
     },
   ];
   return tiles;

@@ -10,9 +10,9 @@ import {
   parseVmbView,
   PERIOD_COOKIE,
   PERIOD_COOKIE_MAX_AGE,
-  PERIOD_PAGES,
   periodCookieValue,
   periodQuery,
+  withPeriodHref,
   STORE_SHARE_COOKIE,
   VMB_PARAM,
   withPeriod,
@@ -235,8 +235,5 @@ export function useCarriedQuery(): string {
  */
 export function usePeriodHref(href: string): string {
   const [sp] = useQuery();
-  return useMemo(
-    () => (PERIOD_PAGES.includes(href) ? `${href}${periodQuery(sp)}` : href),
-    [href, sp],
-  );
+  return useMemo(() => withPeriodHref(href, periodQuery(sp)), [href, sp]);
 }

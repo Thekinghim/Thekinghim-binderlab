@@ -40,6 +40,8 @@ export interface MoneyResult {
    */
   readonly unit: "hour" | "day" | "week" | "month" | null;
   readonly bars: readonly ProfitBar[];
+  /** Var n:e stapel får en etikett under (alla vid få staplar, var 3:e timme). */
+  readonly labelStep: number;
   readonly best: { readonly label: string; readonly profitOre: number } | null;
   readonly orders: number;
 }
@@ -76,7 +78,20 @@ export async function loadMoneyResult(sp: SearchParamsInput): Promise<MoneyResul
       paceOre: null,
     }));
   } else if (unit === "month") {
-    bars = profitBars(model.trend.month.buckets, "day", ctx.today);
+    const months = model.trend.month.buckets;
+    bars = profitBars(months, "day", ctx.today);
+    // Korta månadsnamn ("jan", "apr"); året bara på första etiketten och där året byts.
+    const step = labelStepFor(unit, bars.length);
+    let lastYear = "";
+    bars = bars.map((b, i) => {
+      const start = months[i]?.start ?? "";
+      const year = start.slice(0, 4);
+      const mon = MONTHS[Number(start.slice(5, 7)) - 1] ?? b.label;
+      const shown = i % step === 0;
+      const withYear = shown && year !== lastYear;
+      if (shown) lastYear = year;
+      return { ...b, label: withYear ? `${mon} ’${year.slice(2)}` : mon };
+    });
   } else {
     bars = profitBars(model.trend[unit].buckets, unit, ctx.today);
   }
@@ -100,6 +115,7 @@ export async function loadMoneyResult(sp: SearchParamsInput): Promise<MoneyResul
     compareText: prevProfit !== null ? (compareText(p.resolved) ?? "mot förra perioden") : null,
     unit: bars.length > 0 ? unit : null,
     bars,
+    labelStep: labelStepFor(unit, bars.length),
     best: best && best.profitOre > 0 ? { label: best.label, profitOre: best.profitOre } : null,
     orders: model.orders,
   };
@@ -141,4 +157,25 @@ export async function loadMoneyWaterfall(sp: SearchParamsInput): Promise<MoneyWa
     }),
     unpricedRevenueOre: b.unpricedRevenueOre,
   };
+}
+
+const MONTHS = [
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "maj",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "okt",
+  "nov",
+  "dec",
+] as const;
+
+/** Var n:e etikett under staplarna: var 3:e timme, högst 8 etiketter vid många staplar. */
+export function labelStepFor(unit: "hour" | "day" | "week" | "month", bars: number): number {
+  if (unit === "hour") return 3;
+  return bars > 8 ? Math.ceil(bars / 8) : 1;
 }

@@ -65,6 +65,11 @@ describe("salesFromLedger", () => {
     expect(s.titles.find((t) => t.id === "t-b")?.profitOre).toBeNull();
     expect(s.profitOre).toBe(profitability(inp, "title").totals.profitOre);
     expect(s.titles.find((t) => t.id === "t-a")?.profitOre).toBe(3 * (10_000 - 4_000));
+    // Skillnaden mot KPI-bandets intäkt (bara pack med inköpspris) står på kortet.
+    expect(s.unpricedRevenueOre).toBe(2 * 10_000);
+    expect((s.revenueOre ?? 0) - (s.unpricedRevenueOre ?? 0)).toBe(
+      profitability(inp, "title").totals.revenueOre,
+    );
   });
   it("med butikernas andel dras provisionen per order", () => {
     const inp = input(true);
@@ -125,6 +130,7 @@ describe("salesFromCounts (påfyllaren)", () => {
     expect(s.economy).toBe(false);
     expect(s.units).toBe(6);
     expect(s.revenueOre).toBeNull();
+    expect(s.unpricedRevenueOre).toBeNull();
     expect(s.profitOre).toBeNull();
     expect(s.hours).toEqual([]);
     for (const r of [...s.titles, ...s.machines]) {

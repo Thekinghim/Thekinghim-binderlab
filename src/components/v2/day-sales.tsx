@@ -55,10 +55,15 @@ export function DaySalesCard({
             </div>
             {economy && sales.revenueOre !== null ? (
               <div>
-                <dt title="Alla sålda pack, exkl. moms (KPI-bandets intäkt räknar bara pack med inköpspris)">
-                  Intäkt, alla pack
-                </dt>
+                <dt>Intäkt, alla pack</dt>
                 <dd>{kr(sales.revenueOre)}</dd>
+                {sales.unpricedRevenueOre ? (
+                  // Samma skillnad som mot KPI-bandets och Resultats intäkt (bara pack med
+                  // inköpspris), utskriven så att den syns även på telefonen.
+                  <dd className="sub" data-testid="day-sales-unpriced">
+                    varav {kr(sales.unpricedRevenueOre)} utan inköpspris
+                  </dd>
+                ) : null}
               </div>
             ) : null}
             {economy ? (

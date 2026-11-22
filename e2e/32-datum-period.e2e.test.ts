@@ -98,5 +98,8 @@ describe.each([
     await page.getByRole("heading", { name: /^Sålt i går/ }).waitFor();
     const text = await page.locator(".o-sold").innerText();
     expect(text).not.toMatch(/\bkr\b/);
+    // Fyll på:s retur (?fran=hem) är ingen period och skrivs aldrig om av proxyn.
+    await page.goto("/fyll-pa?fran=hem");
+    expect(new URL(page.url()).searchParams.get("fran")).toBe("hem");
   });
 });

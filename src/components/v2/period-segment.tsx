@@ -8,6 +8,7 @@ import {
   inclusiveDays,
   parseIsoDate,
   periodName,
+  periodNameCompact,
   toIsoDate,
   type DateRange,
   type PeriodSelection,
@@ -56,6 +57,8 @@ export function PeriodSegment({ className }: { className?: string }) {
   const choose = useCallback((selection: PeriodSelection) => setPeriod(selection), [setPeriod]);
 
   const name = periodName(period);
+  // Telefonens smala knapp: ett eget intervall med siffror (28/12–3/1), så att slutet syns.
+  const shown = phone ? periodNameCompact(period) : name;
   const triggerId = useId();
 
   const trigger = (
@@ -69,7 +72,9 @@ export function PeriodSegment({ className }: { className?: string }) {
       onClick={phone ? undefined : () => setOpen((o) => !o)}
     >
       <CalendarIcon />
-      <span className="lbl">{value === null ? name : "Datum"}</span>
+      <span className="lbl" title={value === null && shown !== name ? name : undefined}>
+        {value === null ? shown : "Datum"}
+      </span>
     </button>
   );
 
@@ -86,7 +91,11 @@ export function PeriodSegment({ className }: { className?: string }) {
       }}
       onRange={(r) => {
         setOpen(false);
-        choose({ key: "eget", range: r });
+        // En enda dag som är i dag eller i går är förvalet (samma jämförelse och knapp).
+        if (isSameDay(r.start, r.end) && isSameDay(r.start, today)) choose({ key: "idag" });
+        else if (isSameDay(r.start, r.end) && isSameDay(r.start, addDays(today, -1))) {
+          choose({ key: "igar" });
+        } else choose({ key: "eget", range: r });
       }}
       onCancel={close}
       phone={phone}

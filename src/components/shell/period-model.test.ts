@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  carriedQuery,
   chartUnitFor,
   compareText,
   DEFAULT_PERIOD,
@@ -14,14 +15,17 @@ import {
   isSingleDay,
   MAX_RANGE_DAYS,
   parsePeriod,
+  periodCookieFromUrl,
   periodCookieValue,
   periodFromCookie,
   periodName,
+  periodNameCompact,
   periodNameInline,
   periodQuery,
   periodRedirect,
   toIsoDate,
   withPeriod,
+  withPeriodHref,
   type DateRange,
 } from "./period-state";
 
@@ -121,9 +125,27 @@ describe("eget intervall", () => {
       "period=forra_manaden",
       "from=&to=",
       "till=2026-11-01",
+      // En start i framtiden utan slut, och ett slut som inte är ett datum.
+      "from=2026-11-23",
+      "from=2026-10-01&to=garbage",
     ]) {
       expect(parsePeriod(sp(q), { now: NOW }).key, q).toBe(DEFAULT_PERIOD);
     }
+  });
+  it("en dag som är i dag eller i går är förvalet (ingen halv dag mot en hel)", () => {
+    const today = parsePeriod(sp("from=2026-11-22&to=2026-11-22"), { now: NOW });
+    expect(today.key).toBe("idag");
+    expect(compareText(today)).toBe("mot i går");
+    expect(parsePeriod(sp("from=2026-11-21&to=2026-11-21"), { now: NOW }).key).toBe("igar");
+    expect(parsePeriod(sp("from=2026-11-20&to=2026-11-20"), { now: NOW }).key).toBe("eget");
+  });
+  it("telefonens korta namn visar slutet på ett långt intervall", () => {
+    const p = parsePeriod(sp("from=2025-12-28&to=2026-01-03"), { now: NOW });
+    expect(periodNameCompact(p)).toBe("28/12–3/1");
+    expect(periodNameCompact(parsePeriod(sp("period=igar"), { now: NOW }))).toBe("I går");
+    // Korta namn står kvar ("10 nov.").
+    const one = parsePeriod(sp("from=2026-11-10&to=2026-11-10"), { now: NOW });
+    expect(periodNameCompact(one)).toBe(periodName(one));
   });
   it("slut i framtiden kapas vid i dag", () => {
     expect(iso(parsePeriod(sp("from=2026-11-20&to=2026-12-31"), { now: NOW }).range)).toBe(
@@ -193,6 +215,39 @@ describe("valet mellan sidor", () => {
       expect(periodFromCookie(bad), String(bad)).toBeNull();
     }
   });
+  it("?fran=hem är ingen period (Fyll på), ?fran=<datum> är det", () => {
+    expect(hasPeriodParam(sp("fran=hem"))).toBe(false);
+    expect(periodQuery(sp("fran=hem"))).toBe("");
+    expect(parsePeriod(sp("fran=hem"), { now: NOW }).key).toBe(DEFAULT_PERIOD);
+    expect(carriedQuery(sp("fran=hem&butik=s1"))).toBe("?butik=s1");
+    expect(carriedQuery(sp("fran=2026-11-14&till=2026-11-20&butik=s1"))).toBe(
+      "?from=2026-11-14&to=2026-11-20&butik=s1",
+    );
+  });
+  it("kakan följer adressen på en periodsida (länk med ?period=idag)", () => {
+    expect(periodCookieFromUrl("/pengar", sp("period=idag"))).toBe("period=idag");
+    expect(periodCookieFromUrl("/pengar", sp("from=2026-11-20&to=2026-11-14"))).toBe(
+      "from=2026-11-14&to=2026-11-20",
+    );
+    expect(periodCookieFromUrl("/pengar", sp("period=30d"))).toBeNull();
+    expect(periodCookieFromUrl("/pengar", sp("butik=s1"))).toBeUndefined();
+    expect(periodCookieFromUrl("/fyll-pa", sp("fran=hem"))).toBeUndefined();
+    expect(periodCookieFromUrl("/rapporter", sp("fran=2026-10-01&till=2026-10-15"))).toBe(
+      undefined,
+    );
+  });
+  it("länkar till periodsidor får valet, andra lämnas", () => {
+    expect(withPeriodHref("/lonsamhet?vy=title", "?period=igar")).toBe(
+      "/lonsamhet?vy=title&period=igar",
+    );
+    expect(withPeriodHref("/order", "?period=igar")).toBe("/order?period=igar");
+    expect(withPeriodHref("/automater#rangordning", "?period=7d")).toBe(
+      "/automater?period=7d#rangordning",
+    );
+    expect(withPeriodHref("/pengar?period=idag", "?period=igar")).toBe("/pengar?period=idag");
+    expect(withPeriodHref("/fyll-pa/abc?fran=hem", "?period=igar")).toBe("/fyll-pa/abc?fran=hem");
+    expect(withPeriodHref("/pengar", "")).toBe("/pengar");
+  });
   it("periodQuery bär bara periodvalet, med appens namn", () => {
     expect(periodQuery(sp("period=igar&butik=s1&sort=x"))).toBe("?period=igar");
     expect(periodQuery(sp("fran=2026-11-14&till=2026-11-20"))).toBe(
@@ -205,10 +260,31 @@ describe("valet mellan sidor", () => {
 });
 
 describe("proxyns omdirigering", () => {
-  it("?fran/?till blir ?from/?to och övriga parametrar står kvar", () => {
+  it("?fran/?till skrivs aldrig om (Fyll på:s retur och Rapporters egna datum)", () => {
+    expect(periodRedirect("/fyll-pa/abc", sp("fran=hem"), undefined)).toBeNull();
+    expect(periodRedirect("/fyll-pa", sp("fran=automater&rutt=1"), "period=igar")).toBeNull();
     expect(
-      periodRedirect("/pengar", sp("fran=2026-11-14&till=2026-11-20&butik=s1"), undefined),
-    ).toBe("/pengar?butik=s1&from=2026-11-14&to=2026-11-20");
+      periodRedirect(
+        "/rapporter",
+        sp("typ=butik&manad=2026-10&butiken=x&fran=2026-10-01&till=2026-10-15"),
+        "period=igar",
+      ),
+    ).toBeNull();
+    // På en periodsida är ?fran=<datum> ett val: ingen kaka läggs på.
+    expect(
+      periodRedirect("/pengar", sp("fran=2026-11-14&till=2026-11-20&butik=s1"), "period=igar"),
+    ).toBeNull();
+  });
+  it("Next:s _rsc följer aldrig med i omdirigeringen", () => {
+    expect(periodRedirect("/pengar", sp("_rsc=7pN0Py"), "period=igar")).toBe("/pengar?period=igar");
+    expect(periodRedirect("/butiker", sp("sort=v&_rsc=abc"), "period=igar")).toBe(
+      "/butiker?sort=v&period=igar",
+    );
+  });
+  it("alla sidor med periodtal får valet, även /order och /ekonomi", () => {
+    for (const path of ["/order", "/ekonomi", "/lager", "/automater/svinn", "/inkorg"]) {
+      expect(periodRedirect(path, sp(""), "period=igar"), path).toBe(`${path}?period=igar`);
+    }
   });
   it("en periodsida utan val får kakans val", () => {
     expect(periodRedirect("/pengar", sp(""), "period=igar")).toBe("/pengar?period=igar");

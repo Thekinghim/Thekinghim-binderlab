@@ -1709,6 +1709,14 @@
   .v2-ds-tot dd.neg {
     color: var(--v2-crit-text);
   }
+  .v2-ds-tot dd.sub {
+    margin-top: 2px;
+    font-size: var(--v2-t-xs);
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--v2-mute);
+    white-space: normal;
+  }
   .v2-ds-hours .hd {
     display: flex;
     justify-content: space-between;

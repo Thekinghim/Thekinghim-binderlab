@@ -48,6 +48,11 @@ export interface DaySalesHour {
 export interface DaySales {
   readonly units: number;
   readonly revenueOre: number | null;
+  /**
+   * Den del av intäkten som kommer från pack utan inköpspris (öre). KPI-bandet och Resultat
+   * räknar bara pack med inköpspris, så skillnaden mot dem visas på kortet. null för påfyllaren.
+   */
+  readonly unpricedRevenueOre: number | null;
   readonly profitOre: number | null;
   /** Störst först (antal, sedan intäkt, sedan namn). */
   readonly titles: readonly DaySalesRow[];
@@ -103,6 +108,7 @@ export function salesFromLedger(
   const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, units: 0, revenueOre: 0 }));
   let anyHour = false;
   const total: Acc = { units: 0, revenueOre: 0, profitOre: 0, priced: 0 };
+  let unpricedRevenue = 0;
   const add = (map: Map<string, Acc>, key: string, revenue: number, profit: number | null) => {
     const a = map.get(key) ?? { units: 0, revenueOre: 0, profitOre: 0, priced: 0 };
     a.units += 1;
@@ -123,7 +129,7 @@ export function salesFromLedger(
     if (profit !== null) {
       total.profitOre += profit;
       total.priced += 1;
-    }
+    } else unpricedRevenue += revenue;
     if (singleDay) {
       const h = orderHour(e.order as { businessDate: IsoDate; orderedAt?: string }, timeZone);
       if (h !== null) {
@@ -155,6 +161,7 @@ export function salesFromLedger(
   return {
     units: total.units,
     revenueOre: total.revenueOre,
+    unpricedRevenueOre: unpricedRevenue,
     profitOre: total.priced > 0 ? total.profitOre : null,
     titles: rows(titles, "title"),
     machines: rows(machines, "machine"),
@@ -199,6 +206,7 @@ export function salesFromCounts(
   return {
     units,
     revenueOre: null,
+    unpricedRevenueOre: null,
     profitOre: null,
     titles: list(titles, "title"),
     machines: list(machines, "machine"),
