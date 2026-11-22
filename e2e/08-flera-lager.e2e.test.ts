@@ -154,7 +154,7 @@ describe("Flera lager på datorn (ägaren)", () => {
   afterEach(() => expectNoPageErrors(errors));
 
   it("+ Nytt lager: Kontoret", async () => {
-    await page.goto("/vart-lager");
+    await page.goto("/vart-lager?vy=andra");
     await page.getByRole("button", { name: "Nytt lager" }).click();
     await page.getByLabel("Namn").fill("Kontoret");
     await screenshot(page, "08-nytt-lager-desktop");
@@ -263,14 +263,14 @@ describe("Fyll på från Kontoret på iPhone 15", () => {
       .waitFor();
     await screenshot(page, "08-fyll-pa-lista-iphone15");
     await page.goto(`/fyll-pa/${target.machineId}`);
-    const chip = page.getByRole("button", { name: /^Från Hemma/ });
+    const chip = page.getByRole("button", { name: /^Från:? Hemma/ });
     await chip.waitFor();
     await chip.click();
     await page
       .getByRole("radiogroup", { name: "Ta pack från" })
       .getByRole("radio", { name: /Kontoret/ })
       .click();
-    await page.getByRole("button", { name: /^Från Kontoret/ }).waitFor();
+    await page.getByRole("button", { name: /^Från:? Kontoret/ }).waitFor();
     const input = page.getByLabel(target.title, { exact: true });
     // Förslaget: plats för 6, Kontoret har 15.
     expect(await input.inputValue()).toBe("6");
@@ -300,7 +300,7 @@ describe("Fyll på från Kontoret på iPhone 15", () => {
     const owner = await openPage(browser, e2e().baseUrl, { device: "iPhone 15", theme: "dark" });
     try {
       await login(owner.page, e2e().users.owner);
-      await owner.page.goto("/vart-lager");
+      await owner.page.goto("/vart-lager?vy=andra");
       const switcher = owner.page.getByRole("radiogroup", { name: "Visa lager" });
       await switcher.waitFor();
       await switcher.scrollIntoViewIfNeeded();

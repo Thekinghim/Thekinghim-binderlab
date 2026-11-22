@@ -14,10 +14,13 @@
  *    går inte att fylla i dag: dess senast-dag är tidigast i morgon.
  * 2. Besöksdag = senaste besöksdag (visitWeekdays) som är ≤ needBy, så att varje besök fyller
  *    på så sent som möjligt. Finns ingen sådan dag blir det första besöksdagen (sent besök).
- * 3. Fler än maxStopsPerDay: den minst brådskande flyttas till närmaste tidigare dag med plats,
- *    annars nästa senare dag (sent), annars hamnar den i `overflow`.
+ * 3. Fler än maxStopsPerDay, eller fler pack än maxPacksPerDay (när den ges; packen räknas
+ *    som i punkt 5 men utan att lagret begränsar): den minst brådskande flyttas till närmaste
+ *    tidigare dag med plats (både stopp och pack), annars nästa senare dag (sent), annars
+ *    hamnar den i `overflow`. Ett ensamt besök som är större än packgränsen stannar.
  * 4. Färre besök än minStopsPerTrip en dag: besöken flyttas till närmaste tidigare dag med
- *    besök och plats, så att antalet resor minskar. Att flytta tidigare bryter aldrig needBy.
+ *    besök och plats (stopp och pack), så att antalet resor minskar. Att flytta tidigare
+ *    bryter aldrig needBy.
  * 5. Packlista per besök och titel:
  *      lager vid besök = max(0, i lager − golv(sålda i fönstret × dagar till besöket / fönstrets dagar))
  *      mål             = kapacitet, eller tak(sålda × coverDays / fönstrets dagar) när den saknas
@@ -65,7 +68,9 @@ import type {
 } from "./types";
 
 /** Standardvärden för besöksplanen. */
-export const VISIT_DEFAULTS: Required<Omit<VisitPlanOptions, "start" | "stockDate">> = {
+export const VISIT_DEFAULTS: Required<
+  Omit<VisitPlanOptions, "start" | "stockDate" | "maxPacksPerDay">
+> & { readonly maxPacksPerDay: number | null } = {
   timeZone: DEFAULT_TIME_ZONE,
   visitWeekdays: [1, 2, 3, 4, 5],
   maxStopsPerDay: 8,
@@ -73,7 +78,10 @@ export const VISIT_DEFAULTS: Required<Omit<VisitPlanOptions, "start" | "stockDat
   bufferDays: 1,
   coverDays: 7,
   minStopsPerTrip: 2,
+  maxPacksPerDay: null,
 };
+
+type Opts = typeof VISIT_DEFAULTS;
 
 const PLAN_DAYS = 7;
 
@@ -123,11 +131,12 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
   const o = {
     ...VISIT_DEFAULTS,
     ...Object.fromEntries(Object.entries(input.options ?? {}).filter(([, v]) => v !== undefined)),
-  } as Required<Omit<VisitPlanOptions, "start" | "stockDate">> & {
+  } as Opts & {
     start?: IsoDate;
     stockDate?: IsoDate;
   };
   assertInt(o.maxStopsPerDay, "Besök per dag", 1);
+  if (o.maxPacksPerDay !== null) assertInt(o.maxPacksPerDay, "Pack per dag", 1);
   assertInt(o.windowDays, "Fönstret", 1);
   assertInt(o.bufferDays, "Marginalen", 0);
   assertInt(o.coverDays, "Dagar att fylla för", 1);
@@ -162,13 +171,25 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
     const fit = visitDays.filter((d) => d <= a.needBy);
     a.day = fit[fit.length - 1] ?? visitDays[0] ?? null;
   }
-  // 3. Kapacitet per dag.
+  // 3. Kapacitet per dag (stopp och, med gräns, pack).
   const overflow: string[] = [];
   const onDay = (d: IsoDate) => assignments.filter((a) => a.day === d);
+  const maxPacks = o.maxPacksPerDay;
+  const packsOn = (d: IsoDate, list: readonly Assignment[] = onDay(d)) =>
+    maxPacks === null ? 0 : list.reduce((s, a) => s + estimatePacks(a, d, stockDate, o), 0);
+  const fits = (d: IsoDate, extra: readonly Assignment[]) => {
+    const list = onDay(d);
+    if (list.length + extra.length > o.maxStopsPerDay) return false;
+    if (maxPacks === null) return true;
+    return packsOn(d, [...list, ...extra]) <= maxPacks;
+  };
+  const over = (d: IsoDate, list: readonly Assignment[]) =>
+    list.length > o.maxStopsPerDay ||
+    (maxPacks !== null && list.length > 1 && packsOn(d, list) > maxPacks);
   for (let di = 0; di < visitDays.length; di++) {
     const d = visitDays[di] as IsoDate;
     let list = onDay(d);
-    while (list.length > o.maxStopsPerDay) {
+    while (over(d, list)) {
       const least = [...list].sort(
         (x, y) =>
           compareDates(y.needBy, x.needBy) || (x.need.machine.id < y.need.machine.id ? 1 : -1),
@@ -176,8 +197,8 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
       const earlier = visitDays
         .slice(0, di)
         .reverse()
-        .find((e) => onDay(e).length < o.maxStopsPerDay);
-      const later = visitDays.slice(di + 1).find((e) => onDay(e).length < o.maxStopsPerDay);
+        .find((e) => fits(e, [least]));
+      const later = visitDays.slice(di + 1).find((e) => fits(e, [least]));
       least.day = earlier ?? later ?? null;
       if (least.day === null) overflow.push(least.need.machine.id);
       list = onDay(d);
@@ -191,10 +212,7 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
     const target = visitDays
       .slice(0, di)
       .reverse()
-      .find((e) => {
-        const n = onDay(e).length;
-        return n > 0 && n + list.length <= o.maxStopsPerDay;
-      });
+      .find((e) => onDay(e).length > 0 && fits(e, list));
     if (target) for (const a of list) a.day = target;
   }
 
@@ -249,7 +267,7 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
 function machineNeeds(
   input: VisitPlanInput,
   today: IsoDate,
-  o: Required<Omit<VisitPlanOptions, "start" | "stockDate">>,
+  o: Opts,
   titleName: (id: string) => string,
 ): MachineNeed[] {
   const capacity = new Map<string, number>();
@@ -354,11 +372,29 @@ function machineNeeds(
   return out;
 }
 
+/** Pack ett besök på dagen `day` behöver, utan att lagret begränsar (för dagens packgräns). */
+function estimatePacks(a: Assignment, day: IsoDate, stockDate: IsoDate, o: Opts): number {
+  const daysUntil = Math.max(0, daysBetween(stockDate, day));
+  let total = 0;
+  for (const t of a.need.titles) {
+    const v = t.velocity;
+    const soldUntil = v.days > 0 ? floorDiv(v.units * daysUntil, v.days) : 0;
+    const projected = Math.max(0, t.onHand - soldUntil);
+    if (t.batch !== null) {
+      total += projected === 0 ? t.batch : 0;
+      continue;
+    }
+    const target = t.capacity ?? (v.days > 0 ? ceilDiv(v.units * o.coverDays, v.days) : 0);
+    total += Math.max(0, target - projected);
+  }
+  return total;
+}
+
 function buildStop(
   a: Assignment,
   day: IsoDate,
   stockDate: IsoDate,
-  o: Required<Omit<VisitPlanOptions, "start" | "stockDate">>,
+  o: Opts,
   titleName: (id: string) => string,
   machineName: (id: string) => string,
   warehouse: Map<string, number> | null,

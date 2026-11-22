@@ -54,6 +54,11 @@ export interface VisitPlanOptions {
   readonly visitWeekdays?: readonly number[];
   /** Högst så många besök per dag. Standard 8. */
   readonly maxStopsPerDay?: number;
+  /**
+   * Högst så många pack per dag (dagens gräns i rutten, organization_settings.route_max_packs).
+   * Utelämnad: ingen gräns (som förut). Ett ensamt besök som behöver mer får ändå sin dag.
+   */
+  readonly maxPacksPerDay?: number;
   /** Fönster för försäljningstakten. Standard 14 dagar. */
   readonly windowDays?: number;
   /** Besök senast så här många dagar före beräknat slut. Standard 1. */

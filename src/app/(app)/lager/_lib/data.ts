@@ -8,6 +8,8 @@
 
 import "server-only";
 
+import { queryRoutePlanSettings } from "@/server/data/route-settings";
+
 import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 
 import { addDays, type IsoDate, type Period } from "@/domain";
@@ -216,6 +218,7 @@ async function modelFor(viewer: Viewer, scope: DataScope, now: Date) {
     places,
     capacities,
     weekShares,
+    route,
   ] = await Promise.all([
     loadMasterDataFor(viewer, now),
     loadStockFor(viewer),
@@ -229,6 +232,8 @@ async function modelFor(viewer: Viewer, scope: DataScope, now: Date) {
     withUserDbFor(viewer.user, (tx) => querySlotCapacities(tx, orgId, now)),
     // Veckans form per automat: samma karta som Att göra och Besök (samma slutdag).
     weekShapesInRequest(viewer, today),
+    // Dagens gräns (V2): samma veckoplan som Rutt, Hem och Drift.
+    withUserDbFor(viewer.user, (tx) => queryRoutePlanSettings(tx, orgId)),
   ]);
 
   const model = buildLagerModel({
@@ -246,6 +251,7 @@ async function modelFor(viewer: Viewer, scope: DataScope, now: Date) {
     awishSyncedAt,
     capacities,
     weekShares,
+    routeLimits: route.limits,
   });
   return { model, master, role, orgId, timeZone, today, places, stock };
 }

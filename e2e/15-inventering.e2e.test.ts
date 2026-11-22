@@ -94,6 +94,9 @@ async function expectTapTargets(page: Page, scope: string): Promise<void> {
     (sel: string) =>
       Array.from(document.querySelectorAll(sel)).flatMap((root) =>
         Array.from(root.querySelectorAll("a, button, input, select, [role=radio]"))
+          // V2: skalets sidhuvud ligger inne i main; det mäts i 11-mobil-layout (med den
+          // osynliga tryckytan runt små knappar), här bara sidans innehåll.
+          .filter((el) => el.closest("header") === null)
           .map((el) => {
             const r = el.getBoundingClientRect();
             const label = (el.getAttribute("aria-label") ?? el.textContent ?? "")
@@ -245,7 +248,8 @@ describe("Inventering (iPhone SE)", () => {
   it("ägaren räknar Hemma: en i taget, lista, utkastet överlever en stängd app, sparar", async () => {
     const { page, context } = await open("sv-SE");
     await login(page, e2e().users.owner);
-    await page.goto("/vart-lager");
+    // V2: inventeringen nås från vyn där antalen ändras (Ändra antal).
+    await page.goto("/vart-lager?vy=andra");
     const entry = page.getByRole("link", { name: "Inventera", exact: true });
     await entry.waitFor();
     expect(

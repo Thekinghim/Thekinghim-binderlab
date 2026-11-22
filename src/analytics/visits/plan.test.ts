@@ -164,6 +164,34 @@ describe("planVisits", () => {
     expect(plan.overflow).toEqual([]);
   });
 
+  it("högst maxPacksPerDay: den minst brådskande flyttas, och ingen sammanslagning bryter gränsen", () => {
+    // Onsdag: m1 13 + m2 6 = 19 pack > 15. m2 flyttas till tisdag (5 pack där).
+    const plan = planVisits(base({ options: { maxPacksPerDay: 15 } }), NOW);
+    expect(plan.days.map((d) => [d.date, d.stops.map((s) => s.machineId)])).toEqual([
+      ["2026-11-02", ["m4"]],
+      ["2026-11-03", ["m2"]],
+      ["2026-11-04", ["m1"]],
+    ]);
+    expect(plan.days.every((d) => d.totalPacks <= 15)).toBe(true);
+    expect(plan.overflow).toEqual([]);
+  });
+
+  it("maxPacksPerDay: ett ensamt besök större än gränsen får ändå sin dag", () => {
+    const plan = planVisits(base({ options: { maxPacksPerDay: 5 } }), NOW);
+    // m4 behöver 14 pack på måndag men är ensam där.
+    expect(plan.days[0]?.stops.map((s) => s.machineId)).toEqual(["m4"]);
+    expect(plan.days[0]?.totalPacks).toBe(14);
+  });
+
+  it("utan maxPacksPerDay: som förut (ingen packgräns)", () => {
+    const a = planVisits(base(), NOW);
+    const b = planVisits(base({ options: { maxPacksPerDay: 10_000 } }), NOW);
+    const shape = (p: typeof a) =>
+      p.days.map((d) => [d.date, d.totalPacks, d.stops.map((s) => s.machineId)]);
+    expect(shape(b)).toEqual(shape(a));
+    expect(() => planVisits(base({ options: { maxPacksPerDay: 0 } }), NOW)).toThrow();
+  });
+
   it("utan plats någonstans hamnar automaten i overflow", () => {
     const plan = planVisits(
       base({ options: { maxStopsPerDay: 1, minStopsPerTrip: 1, visitWeekdays: [1] } }),

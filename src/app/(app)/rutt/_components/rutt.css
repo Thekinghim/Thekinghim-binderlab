@@ -1,0 +1,513 @@
+/*
+ * Rutt i V2 (G3): prototypens regler för Rutt (docs/design/v2/prototyp.html, .pg-rutt) med
+ * V2:s färger (--v2-*, src/styles/v2.css). Bara under .v2-rutt (arket: .v2-rutt-limits), så att
+ * inget läcker till andra sidor. Kort, knappar och märken kommer från src/components/v2.
+ */
+
+.v2-rutt .rsum-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+}
+.v2-rutt .rsum b {
+  display: block;
+  font-size: var(--v2-t-xl);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.v2-rutt .rsum > span {
+  font-size: var(--v2-t-md);
+  color: var(--v2-body2);
+}
+.v2-rutt .rsum .o {
+  color: var(--v2-warn-text);
+  font-weight: 650;
+}
+.v2-rutt .rsum .pf {
+  color: var(--v2-profit);
+  font-weight: 650;
+}
+.v2-rutt .work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 376px;
+  gap: 14px;
+  align-items: start;
+  margin-top: 14px;
+}
+.v2-rutt .col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.v2-rutt .hd-note {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  white-space: nowrap;
+}
+.v2-rutt .hd-link {
+  text-decoration: underline;
+  text-decoration-color: var(--v2-line3);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* Städer och stopp */
+.v2-rutt .rcity {
+  border-bottom: 1px solid var(--v2-line);
+}
+.v2-rutt .rcity:last-of-type {
+  border-bottom: 0;
+}
+.v2-rutt .rch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 13px 18px 4px;
+}
+.v2-rutt .rch b {
+  font-size: var(--v2-t-lg);
+  font-weight: 650;
+}
+.v2-rutt .rch span {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-rutt .stop {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px 18px 14px;
+  align-items: start;
+  border-top: 1px solid var(--v2-line2);
+}
+.v2-rutt .rch + .stop {
+  border-top: 0;
+}
+.v2-rutt .sno {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1.5px solid var(--v2-ink);
+  display: grid;
+  place-items: center;
+  font-size: var(--v2-t-sm);
+  font-weight: 650;
+  margin-top: 1px;
+}
+.v2-rutt .stop.done .sno {
+  background: var(--v2-profit);
+  border-color: var(--v2-profit);
+  color: #fff;
+}
+.v2-rutt .stop.done .sb {
+  opacity: 0.75;
+}
+.v2-rutt .sb {
+  min-width: 0;
+}
+.v2-rutt .st1 {
+  display: flex;
+  gap: 8px 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.v2-rutt .st1 b {
+  font-size: var(--v2-t-md);
+  font-weight: 650;
+}
+.v2-rutt .sb > small {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  margin: 3px 0 6px;
+}
+.v2-rutt .sreason {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-body2);
+  margin: 6px 0 0;
+}
+.v2-rutt .stitles summary {
+  cursor: pointer;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-body2);
+  margin-top: 4px;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.v2-rutt .stitles summary::-webkit-details-marker {
+  display: none;
+}
+.v2-rutt .stitles summary::after {
+  content: "›";
+  color: var(--v2-faint);
+  transform: rotate(90deg);
+  transition: transform 0.15s var(--v2-ease);
+}
+.v2-rutt .stitles[open] summary::after {
+  transform: rotate(-90deg);
+}
+.v2-rutt .stitles summary b {
+  color: var(--v2-ink);
+  font-weight: 650;
+}
+.v2-rutt .stitles > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-body2);
+}
+.v2-rutt .stitles > div span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.v2-rutt .stitles .sub {
+  color: var(--v2-warn-text);
+  font-weight: 550;
+}
+.v2-rutt .sact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.v2-rutt .sact:empty {
+  display: none;
+}
+.v2-rutt .sgo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+  min-width: 112px;
+}
+.v2-rutt .chk {
+  list-style: none;
+  margin: 4px 0 2px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.v2-rutt .chk label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-body2);
+  cursor: pointer;
+}
+.v2-rutt .chk input {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  accent-color: var(--v2-ink);
+  flex: none;
+}
+.v2-rutt .rchanges {
+  border-top: 1px solid var(--v2-line);
+  background: var(--v2-hover);
+}
+
+/* Rader (kommande dagar, ändringar) */
+.v2-rutt .lrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--v2-line2);
+}
+.v2-rutt .lrow:last-child {
+  border-bottom: 0;
+}
+.v2-rutt .lrow > div:first-child {
+  min-width: 0;
+}
+.v2-rutt .lrow b {
+  display: block;
+  font-weight: 650;
+}
+.v2-rutt .lrow small {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-rutt .lgo {
+  display: flex;
+  flex: none;
+  max-width: 55%;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.v2-rutt .lurg {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  white-space: nowrap;
+}
+.v2-rutt .rempty {
+  padding: 18px;
+  color: var(--v2-mute);
+  margin: 0;
+}
+
+/* Packlistan */
+.v2-rutt .pw {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--v2-warn-soft);
+  border-bottom: 1px solid var(--v2-warn-line);
+}
+.v2-rutt .pw > div {
+  flex: 1;
+  min-width: 0;
+}
+.v2-rutt .pw b {
+  display: block;
+  color: var(--v2-warn-text);
+  font-weight: 650;
+  font-size: var(--v2-t-md);
+}
+.v2-rutt .pw small {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-body2);
+}
+.v2-rutt .plist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.v2-rutt .plist li + li {
+  border-top: 1px solid var(--v2-line2);
+}
+.v2-rutt .prow {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 18px;
+  min-height: 58px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+.v2-rutt .prow input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.v2-rutt .prow:has(input:focus-visible) {
+  outline: 2px solid var(--v2-ink);
+  outline-offset: -2px;
+}
+.v2-rutt .pkx {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1.5px solid var(--v2-faint);
+  display: grid;
+  place-items: center;
+  color: transparent;
+  background: var(--v2-panel);
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+.v2-rutt .pkb {
+  display: grid;
+  place-items: center;
+  width: 30px;
+}
+.v2-rutt .pkt {
+  min-width: 0;
+}
+.v2-rutt .pkt b {
+  display: block;
+  font-size: var(--v2-t-md);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v2-rutt .pkt small {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-rutt .pkq {
+  font-size: var(--v2-t-lg);
+  font-weight: 650;
+}
+.v2-rutt .prow.o .pkq,
+.v2-rutt .prow.o .pkt small {
+  color: var(--v2-warn-text);
+}
+.v2-rutt .prow.on .pkx {
+  background: var(--v2-ink);
+  border-color: var(--v2-ink);
+  color: #fff;
+}
+.v2-rutt .prow.on :is(.pkb, .pkt, .pkq) {
+  opacity: 0.45;
+}
+.v2-rutt .prow:active {
+  background: var(--v2-flash);
+}
+@media (hover: hover) and (pointer: fine) {
+  .v2-rutt .prow:hover {
+    background: var(--v2-hover);
+  }
+}
+.v2-rutt .pft {
+  margin: 0;
+  padding: 10px 18px 14px;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-faint);
+  border-top: 1px solid var(--v2-line);
+}
+
+/* Starta rutt */
+.v2-rutt .rgo {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+.v2-rutt .rgo .v2-btn.lg {
+  height: 48px;
+  padding: 0 24px;
+  font-size: var(--v2-t-lg);
+}
+.v2-rutt .rnote {
+  font-size: var(--v2-t-xs);
+  color: var(--v2-faint);
+  margin: 14px 0 0;
+  max-width: 80ch;
+}
+
+/* Dagens gräns (arket ligger i en portal) */
+.v2-rutt-limits {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.v2-rutt-limits .lim {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-weight: 550;
+}
+.v2-rutt-limits .lim.col {
+  flex-direction: column;
+  align-items: stretch;
+}
+.v2-rutt-limits .days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.v2-rutt-limits .day {
+  height: 40px;
+  border-radius: var(--v2-r-md);
+  box-shadow: 0 0 0 1px var(--v2-line);
+  background: var(--v2-panel);
+  font-weight: 550;
+  color: var(--v2-mute);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.14s var(--v2-ease);
+}
+.v2-rutt-limits .day:active {
+  transform: scale(0.97);
+}
+.v2-rutt-limits .day.on {
+  background: var(--v2-primary);
+  color: var(--v2-on-primary);
+  box-shadow: none;
+}
+.v2-rutt-limits .err {
+  color: var(--v2-crit-text);
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .v2-rutt .work {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+@media (max-width: 900px) {
+  .v2-rutt .rsum-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .v2-rutt .rsum b {
+    font-size: var(--v2-t-lg);
+  }
+  .v2-rutt .work {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 12px;
+  }
+  /* Telefon: packlistan först, sedan stoppen och kommande dagar (prototypen). */
+  .v2-rutt .work > .col:last-child {
+    order: -1;
+  }
+  .v2-rutt .rch {
+    padding: 12px 16px 4px;
+  }
+  .v2-rutt .stop {
+    padding: 12px 16px 14px;
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+  .v2-rutt .sgo {
+    grid-column: 2;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .v2-rutt .sgo .v2-btn:first-child {
+    flex: 1;
+  }
+  .v2-rutt .lrow {
+    padding: 12px 16px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .v2-rutt .lgo {
+    max-width: none;
+    justify-content: flex-start;
+  }
+  .v2-rutt .lurg {
+    flex-basis: 100%;
+  }
+  .v2-rutt .prow {
+    padding: 8px 16px;
+  }
+  .v2-rutt .rgo {
+    position: sticky;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    z-index: 6;
+    margin: 12px -12px 0;
+    padding: 12px 12px 10px;
+    background: linear-gradient(rgb(241 241 241 / 0), var(--v2-bg) 35%);
+  }
+  .v2-rutt .rgo .v2-btn {
+    flex: 1;
+  }
+}

@@ -45,6 +45,7 @@ import {
 } from "./core/loaders";
 import { ownStockTotals } from "./core/own-stock";
 import { ALL_ROLES, canSeeEconomy, OPERATOR_ROLES } from "./core/types";
+import { queryRoutePlanSettings } from "./route-settings";
 import { queryStorePlaces, type StorePlace } from "./team";
 import { weeklyVisitPlan } from "./visit-plan";
 import { weekShapesInRequest } from "./week-shapes";
@@ -258,10 +259,20 @@ export async function loadTodoVisitPlanFor(
       stockP,
       capacityP,
     ]);
+    // Dagens gräns och ruttens start (V2): samma plan på Att göra, Hem, Rutt och Drift.
+    const route = await queryRoutePlanSettings(tx, orgId);
     const warehouse = ownStockTotals(stockRows);
     const plan = weeklyVisitPlan({
       orders: data.orders,
-      machines: data.machines.filter((m) => !m.archived).map((m) => ({ ...m, location: null })),
+      // Butikens plats: med plats för alla dagens butiker ordnas dagen efter avstånd (Drift).
+      machines: data.machines
+        .filter((m) => !m.archived)
+        .map((m) => ({
+          ...m,
+          location: (m.storeId ? places.get(m.storeId)?.location : null) ?? null,
+        })),
+      limits: route.limits,
+      depot: route.depot?.location ?? null,
       titles: data.titles,
       stock: data.stock,
       warehouseStock: warehouse.length > 0 ? warehouse : null,

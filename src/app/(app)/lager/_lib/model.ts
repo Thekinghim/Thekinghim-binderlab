@@ -27,7 +27,7 @@ import { planVisits, type MachineCapacity, type VisitPlan } from "@/analytics/vi
 import { retiredPairs } from "@/analytics/todos/assortment";
 import { sumOwnStock } from "@/server/data/core/own-stock";
 import { storeInScope } from "@/server/data/core/scope";
-import { planNow, weeklyVisitPlan } from "@/server/data/visit-plan";
+import { planNow, weeklyVisitPlan, type WeeklyPlanInput } from "@/server/data/visit-plan";
 import { sellOut, type WeekShare } from "@/analytics/sellout";
 import {
   addDays,
@@ -77,6 +77,8 @@ export interface LagerModelInput {
    * i veckoplanen, precis som på Drift. Utelämnad = inga extra besök.
    */
   readonly health?: readonly Pick<MachineHealth, "machineId" | "status">[] | null;
+  /** Dagens gräns för veckoplanen (route_settings, V2). Utelämnad = planerarens standard. */
+  readonly routeLimits?: WeeklyPlanInput["limits"];
   /**
    * Sortimentets perioder (lager_slot_periods). En titel vars sista period har passerat
    * räknas som utgången i automaten (`StockCell.retired`). Utelämnad = inga utgångna.
@@ -297,6 +299,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     stock: machineStock,
     warehouseStock: hasWarehouse ? warehouseStock : null,
     health: input.health ?? null,
+    limits: input.routeLimits ?? null,
     slotPeriods: input.slotPeriods ?? null,
     capacities,
     weekShares,

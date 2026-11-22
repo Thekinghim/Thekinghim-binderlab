@@ -29,3 +29,9 @@ export {
   type CalendarDay,
   type RouteStop,
 } from "./links";
+export {
+  suggestSubstitutes,
+  type Substitute,
+  type SubstituteLine,
+  type SubstituteStop,
+} from "./substitutes";

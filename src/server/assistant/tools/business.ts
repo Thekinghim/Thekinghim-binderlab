@@ -12,6 +12,8 @@
 
 import "server-only";
 
+import { queryRoutePlanSettings } from "@/server/data/route-settings";
+
 import { z } from "zod";
 
 import {
@@ -819,7 +821,8 @@ async function driftData(ctx: ToolContext) {
     const stockRows = await queryStock(tx, orgId);
     const warehouse = ownStockTotals(stockRows);
     const slotPeriods = await querySlotPeriods(tx, orgId);
-    return { data, health, warehouse, slotPeriods };
+    const route = await queryRoutePlanSettings(tx, orgId);
+    return { data, health, warehouse, slotPeriods, route };
   });
 }
 
@@ -840,7 +843,7 @@ export const visitPlanTool = defineTool({
   input: visitInput,
   async run(ctx: ToolContext, input) {
     const scope = await resolveScope(ctx, input);
-    const [{ data, health, warehouse, slotPeriods }, weekShares] = await Promise.all([
+    const [{ data, health, warehouse, slotPeriods, route }, weekShares] = await Promise.all([
       driftData(ctx),
       weekShapesInRequest(ctx.viewer, ctx.today),
     ]);
@@ -854,6 +857,8 @@ export const visitPlanTool = defineTool({
       slotPeriods,
       // Samma veckoform som sidorna: assistenten nämner samma dag som Drift → Besök.
       weekShares,
+      // Samma dagsgräns som Rutt (inställningarna).
+      limits: route.limits,
       today: ctx.today,
       timeZone: ctx.timeZone,
       now: ctx.now,

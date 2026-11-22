@@ -30,6 +30,7 @@ import { loadPurchasePlanFor } from "@/server/purchasing/load";
 
 import { loadOurStockFor } from "../../lager/_lib/data";
 import { buildVartLagerModel, type VartLagerModel, type WarehouseEvent } from "./model";
+import type { BuyInfo } from "./v2-model";
 
 /** Roller som får skriva antal, inköp, flytt och ändra lagren (RLS: ägare och admin). */
 export const EDIT_ROLES = ["owner", "admin"] as const;
@@ -85,6 +86,16 @@ async function queryLatest(tx: Tx, orgId: string): Promise<Map<string, Warehouse
   return map;
 }
 
+/** Leverantörernas namn (V2 Köpa: "Japan Card Import"). */
+async function querySupplierNames(tx: Tx, orgId: string): Promise<Map<string, string>> {
+  const rows = Array.from(
+    await tx.execute(
+      sql`select id::text as id, name from public.suppliers where organization_id = ${orgId}::uuid`,
+    ),
+  ) as { id: string; name: string }[];
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
 /** "På väg" för en titel: beställt och inte framme än (inköpslistan). */
 export interface WayView {
   readonly titleId: string;
@@ -103,6 +114,8 @@ export interface VartLagerView extends VartLagerModel {
   readonly hasWarehouse: boolean;
   /** Ägare och admin: får skapa ett lager (även när inget finns än). */
   readonly canAddPlace: boolean;
+  /** V2 Köpa: ledtid och leverantör per titel ur inköpsplanen. */
+  readonly buyInfo: ReadonlyMap<string, BuyInfo>;
 }
 
 export async function loadVartLagerFor(
@@ -114,21 +127,23 @@ export async function loadVartLagerFor(
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
 
-  const [our, master, stock, sales, prices, latest, slotPeriods, plan] = await Promise.all([
-    loadOurStockFor(viewer, now),
-    loadMasterDataFor(viewer, now),
-    loadStockFor(viewer),
-    loadSalesCountsFor(viewer, { period: { start: addDays(today, -6), end: today } }),
-    withUserDbFor(viewer.user, (tx) => queryPrices(tx, orgId)),
-    withUserDbFor(viewer.user, (tx) => queryLatest(tx, orgId)),
-    loadSlotPeriodsFor(viewer),
-    // Inköps plan: "Beställ X st" med samma antal som /prognos. Kan den inte räknas
-    // (för lite data) visas titlarna som tar slut utan antal.
-    loadPurchasePlanFor(viewer, now).catch((error: unknown) => {
-      if (error instanceof DomainError) return null;
-      throw error;
-    }),
-  ]);
+  const [our, master, stock, sales, prices, latest, slotPeriods, plan, supplierNames] =
+    await Promise.all([
+      loadOurStockFor(viewer, now),
+      loadMasterDataFor(viewer, now),
+      loadStockFor(viewer),
+      loadSalesCountsFor(viewer, { period: { start: addDays(today, -6), end: today } }),
+      withUserDbFor(viewer.user, (tx) => queryPrices(tx, orgId)),
+      withUserDbFor(viewer.user, (tx) => queryLatest(tx, orgId)),
+      loadSlotPeriodsFor(viewer),
+      // Inköps plan: "Beställ X st" med samma antal som /prognos. Kan den inte räknas
+      // (för lite data) visas titlarna som tar slut utan antal.
+      loadPurchasePlanFor(viewer, now).catch((error: unknown) => {
+        if (error instanceof DomainError) return null;
+        throw error;
+      }),
+      withUserDbFor(viewer.user, (tx) => querySupplierNames(tx, orgId)),
+    ]);
 
   // Vårt lager: summan av alla egna lager per titel.
   const home = new Map(sumOwnStock(stock.rows).map((r) => [r.titleId, r.onHand]));
@@ -209,5 +224,14 @@ export async function loadVartLagerFor(
     onTheWay: way,
     hasWarehouse: our.hasWarehouse,
     canAddPlace: (EDIT_ROLES as readonly string[]).includes(role),
+    buyInfo: new Map(
+      (plan?.lines ?? []).map((l) => [
+        l.titleId,
+        {
+          leadTimeDays: l.leadTimeDays,
+          supplierName: l.supplierId ? (supplierNames.get(l.supplierId) ?? null) : null,
+        },
+      ]),
+    ),
   };
 }

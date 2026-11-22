@@ -9,7 +9,11 @@
  *              från saldot men räknas inte i takten (dagen är inte slut)
  *   saldo    = lagret just nu (`stockDate: today`): till ett besök i dag dras ingen
  *              försäljning, till ett besök i morgon en dags, osv. Samma packlista som Lager
- *   start    = i dag; besöksdagar mån–fre
+ *   start    = i dag; besöksdagar, stopp och pack per dag ur dagens gräns (`limits`,
+ *              organization_settings.route_*, standard mån–fre, 6 stopp, 350 pack). Utan
+ *              `limits` gäller planerarens gamla standard (mån–fre, 8 stopp, ingen packgräns)
+ *   depå     = standardlagrets plats (stock_locations.latitude/longitude) när den finns:
+ *              ruttens start och slut
  *   automater = de som är i drift i dag
  *   extra    = automater med misstänkt fel, fel eller ur drift (maskinhälsan, samma som
  *              Drift visar) ska besökas i dag
@@ -34,6 +38,7 @@ import {
   type VisitMachine,
   type VisitPlan,
 } from "@/analytics/visits";
+import type { GeoPoint } from "@/analytics/visits";
 import type { WeekShare } from "@/analytics/sellout";
 import { addDays, type IsoDate } from "@/domain";
 
@@ -83,10 +88,24 @@ export interface WeeklyPlanInput {
    * 28 dagars order; annars platt snitt).
    */
   readonly weekShares?: ReadonlyMap<string, WeekShare> | null;
+  /**
+   * Dagens gräns (route_settings): stopp och pack per dag och besöksdagar (1 = måndag).
+   * Utelämnad/null = planerarens standard.
+   */
+  readonly limits?: PlanLimits | null;
+  /** Ruttens start och slut (standardlagrets plats). null/utelämnad = ingen depå. */
+  readonly depot?: GeoPoint | null;
   /** Dagens affärsdatum i tidszonen. */
   readonly today: IsoDate;
   readonly timeZone: string;
   readonly now: Date;
+}
+
+/** Dagens gräns för besöksplanen (samma fält som V2:s RouteLimits). */
+export interface PlanLimits {
+  readonly maxStops: number;
+  readonly maxPacks: number;
+  readonly weekdays: readonly number[];
 }
 
 /** Veckans besöksplan, likadan på Lager och Drift. */
@@ -113,7 +132,19 @@ export function weeklyVisitPlan(input: WeeklyPlanInput): VisitPlan {
       ...(input.warehouseStock ? { warehouseStock: input.warehouseStock } : {}),
       extraVisits: input.health ? extraVisitsFromHealth(input.health, today) : [],
       ...(input.weekShares ? { weekShares: input.weekShares } : {}),
-      options: { timeZone, start: today, stockDate: today },
+      ...(input.depot ? { depot: input.depot } : {}),
+      options: {
+        timeZone,
+        start: today,
+        stockDate: today,
+        ...(input.limits
+          ? {
+              maxStopsPerDay: input.limits.maxStops,
+              maxPacksPerDay: input.limits.maxPacks,
+              ...(input.limits.weekdays.length > 0 ? { visitWeekdays: input.limits.weekdays } : {}),
+            }
+          : {}),
+      },
     },
     planNow(addDays(today, -1), timeZone, now),
   );

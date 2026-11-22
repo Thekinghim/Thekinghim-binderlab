@@ -439,7 +439,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
   });
 
   it("ägarens + Inköp på Vårt lager: pris med fråga vid konstigt pris", async () => {
-    const page = await ownerPage("/vart-lager");
+    const page = await ownerPage("/vart-lager?vy=andra");
     const row = page.locator(`#rad-${titleId}:visible`);
     await row.waitFor();
     await shot(page, "23-t3-vart-lager-iphonese");
@@ -540,7 +540,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
       fullPage: true,
       caret: "initial",
     });
-    await owner.goto("/vart-lager");
+    await owner.goto("/vart-lager?vy=andra");
     await owner.locator(`#rad-${titleId}:visible`).waitFor();
     await still(owner);
     await owner.screenshot({

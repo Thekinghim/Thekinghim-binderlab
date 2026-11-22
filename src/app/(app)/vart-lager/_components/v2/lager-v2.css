@@ -1,0 +1,555 @@
+/*
+ * Vårt lager i V2 (G3): prototypens regler (docs/design/v2/prototyp.html, .pg-lager) med V2:s
+ * färger (--v2-*, src/styles/v2.css). Bara under .v2-lager. Kort, knappar och märken kommer
+ * från src/components/v2.
+ */
+
+.v2-lager {
+  --auto: #cccccc;
+}
+.v2-lager .work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 376px;
+  gap: 14px;
+  align-items: start;
+}
+.v2-lager .col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.v2-lager .hd-note {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  white-space: nowrap;
+}
+.v2-lager .empty {
+  margin: 0;
+  padding: 16px 18px;
+  color: var(--v2-mute);
+}
+.v2-lager .dh,
+.v2-lager .da {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 8px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: var(--v2-ink);
+}
+.v2-lager .da {
+  background: var(--auto);
+}
+
+/* Dagens rutt mot lagret */
+.v2-lager .rtl {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--v2-r-lg);
+  background: var(--v2-panel);
+  box-shadow: 0 0 0 1px var(--v2-line);
+}
+.v2-lager .rtl.o {
+  background: var(--v2-warn-soft);
+  box-shadow: 0 0 0 1px var(--v2-warn-line);
+}
+.v2-lager .rtl b {
+  display: block;
+  font-weight: 650;
+}
+.v2-lager .rtl small {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-lager .rtl.o small {
+  color: var(--v2-warn-text);
+  font-weight: 550;
+}
+
+/* Hemma + På väg */
+.v2-lager .head2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+}
+.v2-lager .head2 .l {
+  padding: 20px 22px 18px;
+  border-right: 1px solid var(--v2-line);
+  min-width: 0;
+}
+.v2-lager .big {
+  font-size: var(--v2-t-3xl);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  margin-top: 6px;
+}
+.v2-lager .head2 .sub {
+  font-size: var(--v2-t-md);
+  color: var(--v2-mute);
+}
+.v2-lager .head2 .sub b {
+  color: var(--v2-ink);
+}
+.v2-lager .split {
+  position: relative;
+  height: 8px;
+  margin-top: 20px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--auto);
+}
+.v2-lager .val .split {
+  background: var(--v2-track);
+  margin-top: 12px;
+}
+.v2-lager .split i {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.4s var(--v2-ease);
+}
+.v2-lager .split .h {
+  background: var(--v2-ink);
+  transform-origin: left;
+}
+.v2-lager .split .a {
+  background: var(--auto);
+  transform-origin: right;
+}
+.v2-lager .leg {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  font-size: var(--v2-t-md);
+}
+.v2-lager .leg .m {
+  color: var(--v2-mute);
+}
+.v2-lager .head2 .r {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.v2-lager .way .hd {
+  font-weight: 650;
+}
+.v2-lager .way .n {
+  font-size: var(--v2-t-xl);
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  margin-top: 10px;
+}
+.v2-lager .way .n span {
+  color: var(--v2-mute);
+  font-size: var(--v2-t-md);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.v2-lager .way ul {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  border-top: 1px solid var(--v2-line);
+}
+.v2-lager .way li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--v2-line);
+  font-size: var(--v2-t-md);
+}
+.v2-lager .way li span:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.v2-lager .way li span:last-child {
+  color: var(--v2-mute);
+  white-space: nowrap;
+}
+.v2-lager .way .go {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.v2-lager .way .go small {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-lager .way .none {
+  font-size: var(--v2-t-md);
+  color: var(--v2-mute);
+  margin: 10px 0 0;
+}
+.v2-lager .way .none b {
+  display: block;
+  font-size: var(--v2-t-xl);
+  font-weight: 550;
+  color: var(--v2-ink);
+  margin-bottom: 6px;
+}
+
+/* Per titel */
+.v2-lager .lgd {
+  display: flex;
+  gap: 18px;
+  padding: 12px 18px 0;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-lager .tbl {
+  margin-top: 6px;
+}
+.v2-lager .tr {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.7fr) minmax(70px, 0.9fr) 60px 52px 98px 60px 96px;
+  gap: 12px;
+  align-items: center;
+  padding: 0 18px;
+  min-height: 52px;
+  border-top: 1px solid var(--v2-line2);
+}
+.v2-lager .tr.th {
+  min-height: 38px;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  border-top: 0;
+}
+.v2-lager .tr.th button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.v2-lager .tr.th button.on {
+  color: var(--v2-ink);
+  font-weight: 650;
+}
+.v2-lager .tr.sum {
+  font-weight: 650;
+  border-top: 1px solid var(--v2-line);
+}
+.v2-lager .tr.idle {
+  color: var(--v2-mute);
+}
+.v2-lager .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.v2-lager .days.crit {
+  color: var(--v2-crit-text);
+  font-weight: 650;
+}
+.v2-lager .days.warn {
+  color: var(--v2-warn-text);
+  font-weight: 650;
+}
+.v2-lager .act {
+  display: flex;
+  justify-content: flex-end;
+}
+.v2-lager .ti {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+.v2-lager .pkb {
+  width: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.v2-lager .nm {
+  min-width: 0;
+}
+.v2-lager .nm b {
+  display: block;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v2-lager .nm small {
+  display: block;
+  font-size: var(--v2-t-xs);
+  color: var(--v2-mute);
+}
+.v2-lager .nm small.mob {
+  display: none;
+}
+.v2-lager .bar {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+}
+.v2-lager .bar i {
+  display: block;
+  border-radius: 6px;
+  background: var(--v2-ink);
+  transform-origin: left;
+  animation: v2-lager-bar 0.5s var(--v2-ease) backwards;
+}
+.v2-lager .bar i.a {
+  background: var(--auto);
+}
+.v2-lager .dash {
+  display: block;
+  height: 0;
+  border-top: 2px dotted var(--v2-line3);
+  width: 40px;
+}
+@keyframes v2-lager-bar {
+  from {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v2-lager .bar i {
+    animation: none;
+  }
+}
+.v2-lager .foot {
+  margin: 0;
+  padding: 12px 18px 14px;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  border-top: 1px solid var(--v2-line);
+}
+
+/* Köpa */
+.v2-lager .buy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+  border-top: 1px solid var(--v2-line2);
+}
+.v2-lager .buy:first-of-type {
+  border-top: 0;
+}
+.v2-lager .bt b {
+  font-weight: 650;
+}
+.v2-lager .bt > b {
+  display: block;
+}
+.v2-lager .bm {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-lager .bm b {
+  color: var(--v2-ink);
+  margin-right: 6px;
+}
+.v2-lager .bm .neg {
+  color: var(--v2-crit-text);
+  font-weight: 650;
+}
+.v2-lager .bt small {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+
+/* Räkna lagret, Lagervärde, Senaste händelser */
+.v2-lager .cnt {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--v2-line2);
+}
+.v2-lager .cnt:first-of-type {
+  border-top: 0;
+}
+.v2-lager .cnt b {
+  display: block;
+  font-weight: 650;
+}
+.v2-lager .cnt small {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-lager .val {
+  padding: 14px 18px 16px;
+}
+.v2-lager .val p {
+  margin: 0;
+}
+.v2-lager .vr {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--v2-line2);
+}
+.v2-lager .vr:last-of-type {
+  border-bottom: 0;
+}
+.v2-lager .vr b {
+  font-weight: 650;
+}
+.v2-lager .unp {
+  display: block;
+  font-size: var(--v2-t-xs);
+  color: var(--v2-faint);
+  margin-top: 6px;
+}
+.v2-lager .ev {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.v2-lager .ev li {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 11px 18px;
+  border-top: 1px solid var(--v2-line2);
+}
+.v2-lager .ev li:first-child {
+  border-top: 0;
+}
+.v2-lager .ev .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 6px;
+  background: var(--v2-line3);
+  margin-top: 7px;
+}
+.v2-lager .ev b {
+  display: block;
+  font-weight: 650;
+}
+.v2-lager .ev small {
+  display: block;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+}
+.v2-lager .ev time {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-faint);
+  white-space: nowrap;
+}
+
+@media (max-width: 1240px) {
+  .v2-lager .tr {
+    grid-template-columns: minmax(130px, 1.4fr) minmax(60px, 0.8fr) 56px 48px 90px 56px 90px;
+    gap: 10px;
+  }
+}
+@media (max-width: 1100px) {
+  /* En kolumn i prototypens ordning: rutten, Hemma, Köpa, Per titel, resten. */
+  .v2-lager .work {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .v2-lager .col {
+    display: contents;
+  }
+  .v2-lager .rtl {
+    order: 1;
+  }
+  .v2-lager .head2 {
+    order: 2;
+  }
+  .v2-lager .o-buy {
+    order: 3;
+  }
+  .v2-lager .o-titles {
+    order: 4;
+  }
+  .v2-lager .col > .v2-card:not(.head2, .o-buy, .o-titles) {
+    order: 5;
+  }
+}
+@media (max-width: 900px) {
+  .v2-lager .head2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .v2-lager .head2 .l {
+    border-right: 0;
+    border-bottom: 1px solid var(--v2-line);
+    padding: 16px;
+  }
+  .v2-lager .head2 .r {
+    padding: 16px;
+  }
+  .v2-lager .big {
+    font-size: var(--v2-t-2xl);
+  }
+  /* Telefon: tabellen blir rader (namn, fakta, stapel och knapp). */
+  .v2-lager .tr.th,
+  .v2-lager .tr.sum {
+    display: none;
+  }
+  .v2-lager .tr {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "ti days"
+      "dist act";
+    gap: 8px 12px;
+    padding: 12px 16px;
+  }
+  .v2-lager .tr > .ti {
+    grid-area: ti;
+    align-items: flex-start;
+  }
+  .v2-lager .tr > .dist {
+    grid-area: dist;
+    padding-left: 26px;
+  }
+  .v2-lager .tr > .days {
+    grid-area: days;
+  }
+  .v2-lager .tr > .act {
+    grid-area: act;
+  }
+  .v2-lager .tr > .num:not(.days) {
+    display: none;
+  }
+  .v2-lager .tr > .act:empty {
+    display: none;
+  }
+  .v2-lager .pkb {
+    width: 16px;
+    padding-top: 2px;
+  }
+  .v2-lager .nm small.mob {
+    display: block;
+  }
+  .v2-lager .rtl {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .v2-lager .rtl .v2-btn {
+    justify-content: center;
+  }
+  .v2-lager .buy {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .v2-lager .buy > .v2-btn {
+    grid-column: 1 / -1;
+  }
+  .v2-lager .card-hd-wrap {
+    flex-wrap: wrap;
+  }
+}

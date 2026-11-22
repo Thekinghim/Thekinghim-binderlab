@@ -42,6 +42,7 @@ import {
   queryTeam,
   type StorePlace,
 } from "@/server/data/team";
+import { queryRoutePlanSettings } from "@/server/data/route-settings";
 import { withUserDb } from "@/server/session";
 import { ownStockTotals } from "@/server/data/core/own-stock";
 
@@ -188,8 +189,12 @@ function buildPlan(
   weekShares: ReadonlyMap<string, WeekShare>,
   places?: ReadonlyMap<string, StorePlace>,
   only?: ReadonlySet<string>,
+  route?: Awaited<ReturnType<typeof queryRoutePlanSettings>>,
 ): VisitPlan {
   return weeklyVisitPlan({
+    // Dagens gräns och ruttens start (V2, inställningarna): samma plan som Rutt och Hem.
+    limits: route?.limits ?? null,
+    depot: route?.depot?.location ?? null,
     orders: data.orders,
     machines: data.machines
       .filter((m) => !m.archived && (!only || only.has(m.id)))
@@ -224,6 +229,7 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
     const warehouse = ownStockTotals(stockRows);
     const slotPeriods = await querySlotPeriods(tx, orgId);
     const capacities = await querySlotCapacities(tx, orgId, now);
+    const route = await queryRoutePlanSettings(tx, orgId);
     const plan = buildPlan(
       data,
       health,
@@ -232,6 +238,9 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
       capacities,
       ctx,
       await loadWeekShapes(tx, orgId, ctx.today, data.machines),
+      undefined,
+      undefined,
+      route,
     );
     const retired = retiredPairs(slotPeriods, ctx.today);
     return {
@@ -300,6 +309,7 @@ export async function loadVisitPlan(
       await loadWeekShapes(tx, orgId, ctx.today, data.machines),
       places,
       only,
+      await queryRoutePlanSettings(tx, orgId),
     );
     return {
       data,

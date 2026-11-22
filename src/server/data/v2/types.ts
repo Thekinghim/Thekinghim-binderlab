@@ -7,7 +7,7 @@
 
 import type { FleetStatus, FleetStatusTone, MachineFill } from "@/analytics/fleet-status";
 import type { GeoPoint } from "@/analytics/visits";
-import type { VisitDay, VisitStop } from "@/analytics/visits";
+import type { Substitute, VisitDay, VisitStop } from "@/analytics/visits";
 import type { IsoDate } from "@/domain";
 
 /** Butiken automaten står i (aktuell placering). Kontaktuppgifter syns för alla roller. */
@@ -93,6 +93,8 @@ export interface RouteStop {
   readonly sequence: number;
   readonly store: FleetStore | null;
   readonly status: FleetStatus | null;
+  /** Flottans statustext ("Fyll på i dag", "Tom om 2 d"). */
+  readonly statusLabel: string | null;
   /** Pack att ta med. */
   readonly packs: number;
   readonly lines: VisitStop["packs"];
@@ -101,6 +103,46 @@ export interface RouteStop {
   readonly done: boolean;
   /** Bara ekonomiroller: förlorad vinst per dag (3.6). */
   readonly lossProfitPerDayOre: number | null;
+  /** fill = fyll på; check = offline, kolla på plats (checklista). */
+  readonly kind: "fill" | "check";
+  /** Fack som väntas vara tomma vid besöket. */
+  readonly emptySlots: number;
+  /** Hela dagar till tom (flottans läge). */
+  readonly daysLeft: number | null;
+  /** Besöket görs efter senaste dag. */
+  readonly late: boolean;
+  /** Lagd i rutten för hand (eller flyttad från i går). */
+  readonly added: boolean;
+  /** "Strömmen av 21:00–08:00: fyll före 21:00", null = alltid på. */
+  readonly power: string | null;
+}
+
+/** En gällande ändring i dagens rutt (route_day_changes). */
+export interface RouteDayChangeRow {
+  readonly id: string;
+  readonly day: IsoDate;
+  readonly machineId: string;
+  readonly change: "skip" | "add" | "later";
+}
+
+/** En ändring som visas med Ångra. */
+export interface RouteChange {
+  readonly id: string;
+  readonly machineId: string;
+  readonly name: string;
+  readonly change: "skip" | "add" | "later";
+}
+
+export interface RouteUpcomingDay {
+  readonly date: IsoDate;
+  readonly cities: readonly string[];
+  readonly packs: number;
+  readonly stops: readonly {
+    readonly machineId: string;
+    readonly name: string;
+    readonly city: string | null;
+    readonly daysLeft: number | null;
+  }[];
 }
 
 export interface DayRoute {
@@ -108,18 +150,51 @@ export interface DayRoute {
   readonly stops: readonly RouteStop[];
   /** Städerna i stoppordning ("Borås → Trollhättan"). */
   readonly cities: readonly string[];
+  /** Stopp i följd i samma stad. */
+  readonly groups: readonly {
+    readonly city: string | null;
+    readonly machineIds: readonly string[];
+    readonly packs: number;
+  }[];
   readonly totalPacks: number;
-  /** Total sträcka (meter) med återresa, null utan koordinater. */
+  /** Total sträcka (meter, fågelväg) med återresa, null utan koordinater. */
   readonly totalMeters: number | null;
+  /** Vägsträckan "ca" i hela km (× 1,25), null utan koordinater. */
+  readonly km: number | null;
+  /** Tiden "ca" i minuter (körning + stopp), null utan km. */
+  readonly minutes: number | null;
   readonly routeMethod: VisitDay["routeMethod"];
-  /** Allt som ska lastas, per titel. */
-  readonly load: VisitDay["load"];
+  /** Allt som ska lastas, per titel, med vårt lager och brist (brist först). */
+  readonly load: readonly {
+    readonly titleId: string;
+    readonly titleName: string;
+    readonly quantity: number;
+    readonly shortBy: number;
+    /** Vårt lager (alla egna lager), null = okänt. */
+    readonly home: number | null;
+  }[];
   /** Titlar där lagret inte räcker (Σ PackLine.shortBy). */
   readonly short: readonly {
     readonly titleId: string;
     readonly titleName: string;
     readonly shortBy: number;
   }[];
+  /** Förslag på ersättare för fack som annars blir tomma. */
+  readonly substitutes: readonly Substitute[];
+  /** Bara ekonomiroller: vinst per dag som räddas av stoppen som inte är klara. */
+  readonly savesProfitPerDayOre: number | null;
+  /** Hoppade över / till i morgon i dag (för Ångra). */
+  readonly removed: readonly RouteChange[];
+  /** Lagda i rutten i dag (för Ångra). */
+  readonly added: readonly RouteChange[];
+  /** Planens kommande dagar. */
+  readonly upcoming: readonly RouteUpcomingDay[];
+  /** Ruttens start (standardlagret). */
+  readonly depot: {
+    readonly name: string;
+    readonly address: string | null;
+    readonly location: GeoPoint | null;
+  } | null;
   /** Dagens gräns (inställningarna, route_settings). */
   readonly limits: RouteLimits;
 }
