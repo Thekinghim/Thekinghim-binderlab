@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  defaultBringSelection,
   fillAllQty,
   fillMachines,
   pairKey,
@@ -13,6 +14,7 @@ import {
   initialSelection,
   inSlotOrder,
   listChip,
+  needLine,
   setQty,
   shortAtHome,
   stepperBounds,
@@ -248,5 +250,96 @@ describe("listan", () => {
     expect(listChip({ ...calm, low: 1 }, null)?.text).toBe("Fyll på i dag");
     expect(listChip(calm, "power_off")).toEqual({ tone: "neutral", text: "Strömmen av" });
     expect(listChip(calm, null)).toBeNull();
+  });
+});
+
+describe("kortets rad: ett tomt fack i sortimentet behöver påfyllning", () => {
+  // Demon (Automat 09): ingen Awish-läsning, titeln står i sortimentet med 0 pack och har
+  // inte sålt på 14 dagar (den har varit slut för länge). Rutan och märket säger Slut.
+  function noAwish(partial: Partial<FillInput> = {}) {
+    const input: FillInput = {
+      machines: [
+        {
+          id: "A",
+          code: "NA-09",
+          name: "Automat 09",
+          storeName: null,
+          syncedAt: null,
+          fill: null,
+        },
+      ],
+      titles: new Map([
+        ["t1", "Surging Sparks"],
+        ["t2", "Black Bolt"],
+      ]),
+      machineStock: new Map([[pairKey("A", "t2"), 4]]),
+      home: new Map(),
+      current: new Set([pairKey("A", "t1"), pairKey("A", "t2")]),
+      retired: new Set(),
+      ...partial,
+    };
+    return fillMachines(input);
+  }
+
+  it("märket Slut och raden säger aldrig Inget behövs", () => {
+    const [m] = noAwish();
+    expect(m!.rows.find((r) => r.titleId === "t1")).toMatchObject({ now: 0, status: "empty" });
+    expect(listChip(m!, null)?.text).toBe("Slut");
+    expect(m!.needs).toBe(true);
+    expect(bringCount(m!)).toBe(0);
+    expect(needLine(m!)).toEqual({ text: "Fyll på 1 titel som är slut", none: false });
+    // Ta med-listan väljer automaten från början.
+    expect(defaultBringSelection(noAwish())).toEqual(["A"]);
+  });
+
+  it("med pack att ta med: båda sägs", () => {
+    const [m] = noAwish({
+      machineStock: new Map([[pairKey("A", "t2"), 2]]),
+      sold: new Map([[pairKey("A", "t2"), 14]]),
+    });
+    // t2: 14 sålda på 14 dagar, 2 kvar (snart slut): en vecka = 7, ta med 5.
+    expect(needLine(m!).text.replace(/\u2060|\u00a0/g, " ")).toBe(
+      "Ta med 5 pack + 1 titel som är slut",
+    );
+  });
+
+  it("utgången titel utan pack: ingen rad, inget Slut, Inget behövs", () => {
+    const [m] = noAwish({
+      current: new Set([pairKey("A", "t2")]),
+      retired: new Set([pairKey("A", "t1")]),
+    });
+    expect(m!.rows.map((r) => r.titleId)).toEqual(["t2"]);
+    expect(listChip(m!, null)).toBeNull();
+    expect(needLine(m!)).toEqual({ text: "Inget behövs", none: true });
+  });
+
+  it("utgången titel som Awish fortfarande har på ett tomt fack: inget Slut", () => {
+    const [m] = fillMachines({
+      machines: [
+        {
+          id: "A",
+          code: "NA-09",
+          name: "Automat 09",
+          storeName: null,
+          syncedAt: "2026-11-03T10:00:00Z",
+          fill: [
+            { title_id: "t1", units: 0, capacity: 6, channels: 1, empty: 1 },
+            { title_id: "t2", units: 6, capacity: 6, channels: 1, empty: 0 },
+          ],
+        },
+      ],
+      titles: new Map([
+        ["t1", "Surging Sparks"],
+        ["t2", "Black Bolt"],
+      ]),
+      machineStock: new Map([[pairKey("A", "t2"), 6]]),
+      home: new Map(),
+      current: new Set([pairKey("A", "t2")]),
+      retired: new Set([pairKey("A", "t1")]),
+    });
+    expect(m!.rows.map((r) => r.titleId)).toEqual(["t2"]);
+    expect(m!).toMatchObject({ emptySlots: 0, empty: 0, needs: false });
+    expect(listChip(m!, null)).toBeNull();
+    expect(needLine(m!).none).toBe(true);
   });
 });

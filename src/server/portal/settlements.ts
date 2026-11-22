@@ -86,6 +86,11 @@ export interface PortalContract {
   readonly signedAt: string | null;
   readonly signerName: string | null;
   readonly hasFile: boolean;
+  /**
+   * Signerat med samma regel som ägarens Kontrakt (isSigned): signerat, eller registrerat
+   * för hand (ett befintligt papperskontrakt). Räknas i portal_contracts.
+   */
+  readonly signed: boolean;
 }
 
 /** Butikens avtal, senaste först. */
@@ -93,7 +98,7 @@ export async function queryPortalContracts(tx: Tx, storeId: string): Promise<Por
   const rows = Array.from(
     await tx.execute(
       sql`select contract_id, title, valid_from::text as valid_from, valid_to::text as valid_to,
-                 terminated_on::text as terminated_on, signed_at, signer_name, has_file
+                 terminated_on::text as terminated_on, signed_at, signer_name, has_file, signed
           from public.portal_contracts(${storeId}::uuid)`,
     ),
   ) as Row[];
@@ -106,6 +111,7 @@ export async function queryPortalContracts(tx: Tx, storeId: string): Promise<Por
     signedAt: iso(r.signed_at),
     signerName: strOrNull(r.signer_name),
     hasFile: r.has_file === true,
+    signed: r.signed === true,
   }));
 }
 

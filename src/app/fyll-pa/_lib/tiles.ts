@@ -18,6 +18,7 @@
  */
 
 import { mysteryBatch } from "@/domain";
+import { formatInt, NBSP } from "@/lib/format";
 
 import {
   fillAllQty,
@@ -159,6 +160,34 @@ export function tileView(row: Pick<FillRow, "now" | "capacity">, value: number):
 /** "Ta med N pack": det automaten vill ha för att bli full (utan tak från lagret). */
 export function bringCount(m: Pick<FillMachine, "rows">): number {
   return m.rows.reduce((n, r) => n + packsWanted(r), 0);
+}
+
+/**
+ * Titlar som är slut men där antalet att ta med inte går att räkna ut: okänd kapacitet
+ * (ingen Awish-läsning) och ingen försäljning i fönstret (den har varit slut för länge).
+ * Raden står ändå i sortimentet, så den behöver påfyllning; utgångna titlar utan pack
+ * får ingen rad alls (machineRows).
+ */
+export function emptyUnknownCount(m: Pick<FillMachine, "rows">): number {
+  return m.rows.filter((r) => r.status === "empty" && packsWanted(r) === 0).length;
+}
+
+/**
+ * Raden längst ner på kortet: "Ta med 12 pack", "Fyll på 1 titel som är slut" (slut men
+ * antalet okänt), båda, eller "Inget behövs". `none` = inget behövs (lugn text). Ett kort
+ * med märket "Slut" säger aldrig "Inget behövs".
+ */
+export function needLine(m: Pick<FillMachine, "rows">): { text: string; none: boolean } {
+  const bring = bringCount(m);
+  const unknown = emptyUnknownCount(m);
+  const empty =
+    unknown === 1 ? "1 titel som är slut" : `${formatInt(unknown)}${NBSP}titlar som är slut`;
+  if (bring > 0) {
+    const pack = `Ta med ${formatInt(bring)}${NBSP}pack`;
+    return { text: unknown > 0 ? `${pack} + ${empty}` : pack, none: false };
+  }
+  if (unknown > 0) return { text: `Fyll på ${empty}`, none: false };
+  return { text: "Inget behövs", none: true };
 }
 
 /**

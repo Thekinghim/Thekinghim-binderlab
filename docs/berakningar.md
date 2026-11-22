@@ -983,7 +983,8 @@ Vinst och intäkt per dag och aktiva dagar är samma tal som Enhetsekonomi (avsn
 | För ny                            | färre än 14 aktiva dagar: inget omdöme, räknas inte i medianen                                       |
 | Tjänar dåligt: överväg att flytta | minst 14 dagar och förlust per dag, eller högst 50 % av medianen (när medianen är över 0)            |
 | Bäst                              | högst vinst per dag bland dem med minst 14 dagar (minst två sådana), över 0 och inte "tjänar dåligt" |
-| Tjänar bra                        | övriga med minst 14 dagar                                                                            |
+| Tjänar bra                        | övriga med minst 14 dagar och minst medianen                                                         |
+| Tjänar mindre än vanligt          | övriga med minst 14 dagar under medianen ("… kr/dag mindre än en vanlig automat")                    |
 | Inget att jämföra med än          | bara en automat har 14 dagar: ingen median                                                           |
 
 Medianen räknas över automaterna med minst 14 aktiva dagar (jämnt antal: medelvärdet av de två mittersta). På sidan heter den "en vanlig automat" ("40 kr/dag mer än en vanlig automat"). Slutsålda dagar summeras över automatens titlar ("Titlar slutsålda 3,5 dagar") och kan därför vara fler än periodens dagar.
@@ -992,7 +993,7 @@ Arkiverade automater visas inte och räknas inte heller i medianen eller omdöme
 
 **En enda automat** jämförs med sig själv perioden innan (lika lång, bara när den ligger helt inom datan och har minst 14 aktiva dagar): vinst per dag minst 10 % upp = "Går bättre än förra perioden", minst 10 % ner = "Går sämre", annars "Går som förra perioden". Utan förra period sägs att det inte finns något att jämföra med.
 
-**Exempel.** Vinst per dag 400, 200, 180 och 40 kr: medianen är 190 kr. 400 kr är "Bäst", 200 och 180 kr "Tjänar bra", 40 kr (under 95 kr) "Tjänar dåligt: överväg att flytta".
+**Exempel.** Vinst per dag 400, 200, 180 och 40 kr: medianen är 190 kr. 400 kr är "Bäst", 200 kr "Tjänar bra", 180 kr "Tjänar mindre än vanligt", 40 kr (under 95 kr) "Tjänar dåligt: överväg att flytta".
 
 ### Bästa sortiment (`assortment.ts`)
 

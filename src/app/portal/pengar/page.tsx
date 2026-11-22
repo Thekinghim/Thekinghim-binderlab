@@ -7,21 +7,14 @@ import { Empty } from "@/components/v2/empty";
 import { advanceLine, advancesFor, advanceTotal } from "@/server/settlements/advance";
 import { payoutDueDate, STATE_LABEL } from "@/server/settlements/model";
 import { requirePortalContext } from "@/server/portal/session";
-import { loadPortalMoney, type PortalContract } from "@/server/portal/settlements";
+import { loadPortalMoney } from "@/server/portal/settlements";
 
 import { PortalPage } from "../_components/page-head";
 import { dateText, kr, monthText } from "../_components/text";
 
-export const metadata: Metadata = { title: "Avräkning" };
+import { portalContractStatus } from "./contract-status";
 
-function contractStatus(c: PortalContract): string {
-  if (c.terminatedOn) return `Uppsagt, slutar ${dateText(c.terminatedOn)}`;
-  if (c.signedAt) {
-    const who = c.signerName ? ` av ${c.signerName}` : "";
-    return `Signerat ${dateText(c.signedAt.slice(0, 10))}${who}`;
-  }
-  return "Inte signerat än";
-}
+export const metadata: Metadata = { title: "Avräkning" };
 
 /**
  * Butikens pengar: avräkningen per månad (belopp, betald eller inte, PDF) och avtalet.
@@ -113,7 +106,7 @@ export default async function PortalMoneyPage() {
                   <div className="t">
                     <b>{c.title ?? "Placeringsavtal"}</b>
                     <small>
-                      Från {dateText(c.validFrom)} · {contractStatus(c)}
+                      Från {dateText(c.validFrom)} · {portalContractStatus(c)}
                     </small>
                   </div>
                   {c.hasFile ? (

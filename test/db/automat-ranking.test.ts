@@ -229,7 +229,9 @@ describe("Automat-ranking", () => {
     expect(r.medianProfitPerDayOre).toBe(45_000);
     // Automat 1 säljer 3 pack per dag; medianen är 7,5: bara den ligger under hälften.
     expect(r.weak.map((x) => x.machineId)).toEqual([ten.machineIds[0]]);
-    expect(r.rows.filter((x) => x.verdict === "good")).toHaveLength(8);
+    // Över medianen (660–480 kr/dag) tjänar bra; under den (420–240) tjänar mindre än vanligt.
+    expect(r.rows.filter((x) => x.verdict === "good")).toHaveLength(4);
+    expect(r.rows.filter((x) => x.verdict === "below")).toHaveLength(4);
     expect(data.machines.get(ten.machineIds[9]!)).toMatchObject({ code: "BL-010" });
   });
 

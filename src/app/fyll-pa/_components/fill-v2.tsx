@@ -26,8 +26,8 @@ import {
   type PackAsk,
 } from "../_lib/model";
 import {
-  bringCount,
   listChip,
+  needLine,
   shortAtHome,
   stepperBounds,
   tileView,
@@ -603,7 +603,7 @@ export function FillCard({
   const place = store?.name ?? m.place;
   const title = m.name && m.name !== place ? `${m.name} · ${place}` : place;
   const chip = listChip(m, link);
-  const bring = bringCount(m);
+  const need = needLine(m);
   const packs = urgentPacks(m);
   return (
     <a
@@ -644,9 +644,7 @@ export function FillCard({
         <span className="need none">Hur full den är syns efter nästa läsning</span>
       )}
       <span className="foot2">
-        <span className={cn("need", bring === 0 && "none")}>
-          {bring > 0 ? `Ta med ${formatInt(bring)}${NBSP}pack` : "Inget behövs"}
-        </span>
+        <span className={cn("need", need.none && "none")}>{need.text}</span>
         {packs.length > 0 ? (
           <span className="pks" aria-hidden="true">
             {packs.map((p) => (

@@ -12,6 +12,7 @@ import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { formatInt, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
+import { awishLinkStatus } from "./_lib/awish-status";
 import { loadMoreCounts } from "./_lib/data";
 import { MoreAccount } from "./more-account";
 import "../pengar/_components/money.css";
@@ -107,14 +108,19 @@ export default async function MorePage() {
       minute: "2-digit",
       timeZone: ctx.timeZone,
     }).format(new Date(iso));
-  const syncText = sync
-    ? sync.state === "failed"
-      ? "Senaste synken misslyckades"
-      : sync.syncedAt
-        ? `Köp och fack, var 5:e minut · senast ${time(sync.syncedAt)}`
-        : "Ingen synk än"
-    : "Ingen datakälla";
-  const syncOk = sync !== null && (sync.state === "ok" || sync.state === "no-orders");
+  const awish = awishLinkStatus({ sync, demo: counts.demo, time });
+  const dot =
+    awish.tone === "ok"
+      ? "v2-dot"
+      : awish.tone === "neutral"
+        ? "v2-dot off"
+        : `v2-dot ${awish.tone}`;
+  const awishState = (
+    <span className="st">
+      <span className={dot} aria-hidden="true" />
+      {awish.label}
+    </span>
+  );
 
   return (
     <V2Page title="Mer" date={headerDate(new Date(ctx.now), ctx.timeZone)}>
@@ -211,27 +217,14 @@ export default async function MorePage() {
           {ctx.canSeeEconomy ? (
             <Card title="Kopplingar">
               {allowed.has("datakallor") ? (
-                <Row
-                  href="/datakallor"
-                  title="Awish"
-                  sub={syncText}
-                  aside={
-                    <span className="st">
-                      <span className={syncOk ? "v2-dot" : "v2-dot critical"} aria-hidden="true" />
-                      {syncOk ? "Ansluten" : sync ? "Fel" : "Ej ansluten"}
-                    </span>
-                  }
-                />
+                <Row href="/datakallor" title="Awish" sub={awish.sub} aside={awishState} />
               ) : (
                 <div className="g4-mrow">
                   <span className="mt">
                     <b>Awish</b>
-                    <small>{syncText}</small>
+                    <small>{awish.sub}</small>
                   </span>
-                  <span className="st">
-                    <span className={syncOk ? "v2-dot" : "v2-dot critical"} aria-hidden="true" />
-                    {syncOk ? "Ansluten" : sync ? "Fel" : "Ej ansluten"}
-                  </span>
+                  {awishState}
                 </div>
               )}
               {allowed.has("ekonomi") ? (

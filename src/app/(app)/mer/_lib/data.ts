@@ -12,6 +12,7 @@ import { withUserDbFor } from "@/server/access";
 import type { AppContext, SyncInfo } from "@/server/data/core/types";
 import { loadMasterData, loadSyncInfo, requireViewer } from "@/server/data/core";
 import { loadRouteLimits } from "@/server/data/v2/route";
+import { isDemoFor } from "@/server/demo/guard";
 import type { RouteLimits } from "@/server/data/v2/types";
 
 import { loadMembersPageFor } from "../../installningar/anvandare/members-data";
@@ -24,6 +25,8 @@ export interface MoreCounts {
   readonly suppliers: number | null;
   readonly route: RouteLimits | null;
   readonly sync: SyncInfo | null;
+  /** Organisationen är en demo (Awish avstängt). null = kunde inte läsas. */
+  readonly demo: boolean | null;
 }
 
 async function safe<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
@@ -36,7 +39,7 @@ async function safe<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
 }
 
 export async function loadMoreCounts(ctx: AppContext): Promise<MoreCounts> {
-  const [master, people, suppliers, route, sync] = await Promise.all([
+  const [master, people, suppliers, route, sync, demo] = await Promise.all([
     safe("stamdata", () => loadMasterData()),
     ctx.canEdit
       ? safe("personal", async () => {
@@ -56,6 +59,10 @@ export async function loadMoreCounts(ctx: AppContext): Promise<MoreCounts> {
     }),
     safe("ruttens gräns", () => loadRouteLimits()),
     safe("synk", () => loadSyncInfo()),
+    safe("demo", async () => {
+      const v = await requireViewer();
+      return isDemoFor(v.user, v.organization.id);
+    }),
   ]);
   return {
     machines: master ? master.machines.filter((m) => !m.archived && !m.isExample).length : null,
@@ -64,5 +71,6 @@ export async function loadMoreCounts(ctx: AppContext): Promise<MoreCounts> {
     suppliers,
     route,
     sync,
+    demo,
   };
 }

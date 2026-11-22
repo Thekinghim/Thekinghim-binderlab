@@ -56,6 +56,16 @@ describe("rankingView: flera automater", () => {
     );
   });
 
+  it("under en vanlig automat: taggen säger inte Tjänar bra", () => {
+    const { view: v } = view([m("a", 50_000), m("b", 40_000), m("c", 30_000), m("d", 26_900)]);
+    // Median = (40 000 + 30 000) / 2 = 35 000.
+    const c = v.rows.find((r) => r.machineId === "c")!;
+    expect(plain(c.basis)).toBe("30 dagar · 50 kr/dag mindre än en vanlig automat");
+    expect(c.verdictText).toBe("Tjänar mindre än vanligt");
+    expect(c.warn).toBe(false);
+    expect(v.rows.find((r) => r.machineId === "b")!.verdictText).toBe("Tjänar bra");
+  });
+
   it("flera som går dåligt, och vyknappen byter fotnoten", () => {
     const { view: v } = view(
       [m("a", 40_000), m("b", 30_000), m("c", -100), m("d", 2_000)],

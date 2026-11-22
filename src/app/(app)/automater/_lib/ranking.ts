@@ -21,7 +21,7 @@ export interface RankRow {
   readonly href: string;
   readonly rank: number;
   readonly verdict: FleetVerdict;
-  /** "Bäst" · "Tjänar bra" · "Tjänar dåligt: överväg att flytta" … eller "Ur drift" (se `down`). */
+  /** "Bäst" · "Tjänar bra" · "Tjänar mindre än vanligt" · "Tjänar dåligt: överväg att flytta" … eller "Ur drift" (se `down`). */
   readonly verdictText: string;
   /** Omdömet behöver uppmärksamhet (tjänar dåligt, sämre än förra perioden eller ur drift). */
   readonly warn: boolean;
@@ -63,6 +63,8 @@ export function verdictText(r: Pick<FleetRow, "verdict" | "activeDays">): string
       return "Bäst";
     case "good":
       return "Tjänar bra";
+    case "below":
+      return "Tjänar mindre än vanligt";
     case "weak":
       return "Tjänar dåligt: överväg att flytta";
     case "new":

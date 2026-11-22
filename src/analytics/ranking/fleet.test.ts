@@ -20,7 +20,7 @@ describe("fleetRanking: flera automater", () => {
     expect(r.rows.map((x) => x.machineId)).toEqual(["a", "b", "d", "c"]);
     // Median av 40 000, 20 000, 18 000, 4 000 = 19 000.
     expect(r.medianProfitPerDayOre).toBe(19_000);
-    expect(r.rows.map((x) => x.verdict)).toEqual(["best", "good", "good", "weak"]);
+    expect(r.rows.map((x) => x.verdict)).toEqual(["best", "good", "below", "weak"]);
     expect(r.rows[3]!.vsMedianOre).toBe(-15_000);
     expect(r.best?.machineId).toBe("a");
     expect(r.weak.map((x) => x.machineId)).toEqual(["c"]);
@@ -28,10 +28,10 @@ describe("fleetRanking: flera automater", () => {
     expect(r.rows[0]!.unitsPerDayTenths).toBe(50);
   });
 
-  it("exakt hälften av medianen går dåligt, strax över går bra", () => {
+  it("exakt hälften av medianen går dåligt, strax över är inte svag (men under medianen)", () => {
     const r = fleetRanking([m("a", 30_000), m("b", 20_000), m("c", 10_000), m("d", 10_001)]);
     // Median = (20 000 + 10 001) / 2 avrundat = 15 001: 10 000 är över hälften.
-    expect(r.rows.find((x) => x.machineId === "c")!.verdict).toBe("good");
+    expect(r.rows.find((x) => x.machineId === "c")!.verdict).toBe("below");
     const half = fleetRanking([m("a", 30_000), m("b", 20_000), m("c", 10_000)]);
     expect(half.medianProfitPerDayOre).toBe(20_000);
     expect(half.rows.find((x) => x.machineId === "c")!.verdict).toBe("weak");
@@ -74,7 +74,30 @@ describe("fleetRanking: flera automater", () => {
     expect(r.medianProfitPerDayOre).toBe(55_000);
     expect(r.rows.filter((x) => x.verdict === "best")).toHaveLength(1);
     expect(r.weak.map((x) => x.machineId)).toEqual(["m0", "m1"]);
-    expect(r.rows.filter((x) => x.verdict === "good")).toHaveLength(7);
+    // Över medianen (m5–m8) tjänar bra; under den (m2–m4) tjänar mindre än vanligt.
+    expect(r.rows.filter((x) => x.verdict === "good")).toHaveLength(4);
+    expect(r.rows.filter((x) => x.verdict === "below").map((x) => x.machineId)).toEqual([
+      "m4",
+      "m3",
+      "m2",
+    ]);
+  });
+
+  it("omdömet stämmer med jämförelsen: under medianen får aldrig Tjänar bra", () => {
+    // Demon: 31 kr/dag under en vanlig automat men över halva medianen.
+    const r = fleetRanking([m("a", 50_000), m("b", 30_000), m("c", 26_900), m("d", 20_000)]);
+    for (const row of r.rows) {
+      if (row.verdict === "good" || row.verdict === "best") {
+        expect(row.vsMedianOre!).toBeGreaterThanOrEqual(0);
+      }
+      if (row.vsMedianOre !== null && row.vsMedianOre < 0) {
+        expect(["below", "weak"]).toContain(row.verdict);
+      }
+    }
+    expect(r.rows.find((x) => x.machineId === "c")).toMatchObject({
+      verdict: "below",
+      vsMedianOre: -1_550,
+    });
   });
 
   it("slutsålt följer med när det är känt", () => {

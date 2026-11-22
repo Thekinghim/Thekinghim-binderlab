@@ -25,6 +25,7 @@ import { queryPortalStores } from "@/server/portal/queries";
 import type { PortalContext } from "@/server/portal/session";
 import { loadPortalContractFile, loadPortalSettlementDocument } from "@/server/portal/settlements";
 import { AuthorizationError } from "@/server/access";
+import { isSigned } from "@/analytics/contracts/signed";
 import { loadTodosFor, type Viewer } from "@/server/data/core/loaders";
 import { buildSnapshot } from "@/server/reports/snapshot";
 import { loadSnapshotInput } from "@/server/reports/sources";
@@ -394,6 +395,63 @@ describe("butiksportalen", () => {
       rows(tx, sql`select * from public.portal_contracts(${b.storeId}::uuid)`),
     );
     expect(bSees).toHaveLength(1);
+  });
+
+  it("signerat i portalen följer ägarens regel (isSigned): för hand = signerat, mall kräver signatur", async () => {
+    // Ett avtal från mallen, inte signerat än, i butik B (påverkar inte de andra testerna).
+    const fromTemplate = await asPostgres((tx) =>
+      one<{ id: string }>(
+        tx,
+        sql`insert into public.contracts (organization_id, store_id, valid_from, title, template, sent_at)
+            values (${b.orgId}, ${b.storeId}, '2025-06-01', 'Mallavtal', 'placering-vinstdelning-v1', now())
+            returning id`,
+      ),
+    );
+    const list = async () =>
+      asUser(storeB, (tx) =>
+        rows<{ contract_id: string; signed: boolean; signed_at: string | null }>(
+          tx,
+          sql`select * from public.portal_contracts(${b.storeId}::uuid)`,
+        ),
+      );
+    // Ägarens regel på samma rad i contracts.
+    const ownerSigned = async (id: string) => {
+      const c = await asPostgres((tx) =>
+        one<{ template: string | null; signed_at: string | null }>(
+          tx,
+          sql`select template, signed_at from public.contracts where id = ${id}`,
+        ),
+      );
+      return isSigned({
+        id,
+        storeId: b.storeId,
+        validFrom: "2025-01-01",
+        validTo: null,
+        template: c.template,
+        signedAt: c.signed_at,
+      });
+    };
+    let seen = await list();
+    // Registrerat för hand (ingen mall): signerat på båda sidorna, utan signaturdatum.
+    const byHand = seen.find((r) => r.contract_id === contractB)!;
+    expect(byHand).toMatchObject({ signed: true, signed_at: null });
+    expect(await ownerSigned(contractB)).toBe(true);
+    // Från mallen och osignerat: inte signerat på någon sida.
+    expect(seen.find((r) => r.contract_id === fromTemplate.id)).toMatchObject({ signed: false });
+    expect(await ownerSigned(fromTemplate.id)).toBe(false);
+    // Markerat som signerat: signerat på båda sidorna.
+    await asPostgres((tx) =>
+      tx.execute(sql`update public.contracts set signed_at = now() where id = ${fromTemplate.id}`),
+    );
+    seen = await list();
+    expect(seen.find((r) => r.contract_id === fromTemplate.id)).toMatchObject({ signed: true });
+    expect(await ownerSigned(fromTemplate.id)).toBe(true);
+    await asPostgres((tx) =>
+      // Arkiverat syns inte i portalen (contracts raderas aldrig).
+      tx.execute(
+        sql`update public.contracts set archived_at = now() where id = ${fromTemplate.id}`,
+      ),
+    );
   });
 
   async function portalCtx(u: TestUser): Promise<PortalContext> {

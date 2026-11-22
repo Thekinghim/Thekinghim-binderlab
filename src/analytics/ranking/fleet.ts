@@ -11,7 +11,9 @@
  *   "Tjänar dåligt: överväg att flytta" = jämförbar och går med förlust per dag, eller tjänar
  *                högst hälften av medianen (FLEET_WEAK_SHARE_BP) när medianen är över 0
  *   "Bäst"     = högst vinst per dag bland de jämförbara (minst två), över 0 och inte svag
- *   "Tjänar bra"  = övriga jämförbara
+ *   "Tjänar bra"  = övriga jämförbara som tjänar minst som medianen
+ *   "Tjänar mindre än vanligt" = övriga jämförbara under medianen (inte svaga): samma
+ *                jämförelse som raden "… kr/dag mindre än en vanlig automat"
  *   "För ny"   = färre än FLEET_MIN_DAYS aktiva dagar: inget omdöme
  *   Finns bara en jämförbar automat finns ingen median: den får "Inget att jämföra med än"
  *   (eller "Tjänar dåligt" om den går med förlust).
@@ -48,6 +50,8 @@ export type FleetVerdict =
   /** Flera automater. */
   | "best"
   | "good"
+  /** Under medianen men inte svag ("mindre än en vanlig automat"). */
+  | "below"
   | "weak"
   | "new"
   | "alone"
@@ -170,7 +174,7 @@ export function fleetRanking(
     } else if (m.activeDays < FLEET_MIN_DAYS) verdict = "new";
     else if (isWeak(m)) verdict = "weak";
     else if (m.machineId === bestId) verdict = "best";
-    else verdict = med === null ? "alone" : "good";
+    else verdict = med === null ? "alone" : profit < med ? "below" : "good";
     return {
       machineId: m.machineId,
       rank: i + 1,

@@ -319,8 +319,9 @@ export function machineRows(machine: FillMachineInput, input: FillInput): FillRo
     const f = fill.get(titleId);
     // Samma regel som flottan (fillUnitsOf): lagret i appen, annars Awish.
     const now = fillUnitsOf(f?.units, input.machineStock.get(key));
-    // Utgången titel som inte står i automaten längre: ingen rad.
-    if (!f && input.retired.has(key) && now === 0) continue;
+    // Utgången titel som inte står i automaten längre: ingen rad. Även när Awish fortfarande
+    // har kvar titeln på ett tomt fack: den ska inte fyllas på, och kortet ska inte säga Slut.
+    if (input.retired.has(key) && now === 0) continue;
     const capacity = f && f.capacity > 0 ? f.capacity : null;
     const home = input.home.get(titleId) ?? 0;
     const sold = Math.max(0, input.sold?.get(key) ?? 0);
@@ -730,7 +731,10 @@ export function bringList(
 
 /** Automaterna som är valda från början: de som behöver pack, annars alla. */
 export function defaultBringSelection(machines: readonly FillMachine[]): string[] {
-  const need = machines.filter((m) => m.rows.some((r) => packsWanted(r) > 0));
+  // Slut räknas också när antalet är okänt (ingen kapacitet, ingen försäljning på länge).
+  const need = machines.filter((m) =>
+    m.rows.some((r) => packsWanted(r) > 0 || r.status === "empty"),
+  );
   return (need.length > 0 ? need : machines).map((m) => m.id);
 }
 
