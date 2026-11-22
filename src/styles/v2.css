@@ -472,7 +472,7 @@
       display: flex;
       width: 100%;
     }
-    /* Segmentet tar resten av raden (efter "Eget" vid ett eget datumintervall). */
+    /* Segmentet tar resten av raden (bredvid datumknappen). */
     .v2-mperiod .v2-seg {
       display: flex;
       flex: 1;
