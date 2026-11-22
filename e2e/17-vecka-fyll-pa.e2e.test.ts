@@ -44,6 +44,7 @@ import {
   type BrowserContext,
   type Page,
 } from "./support/browser";
+import { doneCount, fillTile } from "./support/fill";
 import { e2e, login } from "./support/session";
 
 /** iPhone SE (3:e generationen): 375 × 667, 2× pixeltäthet. */
@@ -355,6 +356,8 @@ async function fillAndCheckBanner(
   text: {
     list: string;
     done: RegExp;
+    /** Enkel vy: knappen "Fill the slot" (V2 har rutor). */
+    fillSlot?: (title: string, n: number) => string;
     yes: string;
     banner: (n: number) => RegExp;
     refresh: string;
@@ -373,13 +376,22 @@ async function fillAndCheckBanner(
     await cards.filter({ hasText: target.place }).first().click();
     await page.waitForURL((url) => url.pathname === `/fyll-pa/${target.machineId}`);
   }
-  const input = page.getByLabel(target.title, { exact: true });
-  await input.waitFor();
-  expect(await input.inputValue()).toBe("6");
-  const total = Number(
-    (await page.getByRole("button", { name: text.done }).innerText()).replace(/\D/g, ""),
-  );
-  expect(total).toBeGreaterThanOrEqual(6);
+  // Allt börjar på 0. V2: ett tryck på rutan fyller facket. Enkel vy: "Fill the slot".
+  expect(await doneCount(page, text.done)).toBe(0);
+  if (text.fillSlot) {
+    const input = page.getByLabel(target.title, { exact: true });
+    await input.waitFor();
+    expect(await input.inputValue()).toBe("0");
+    await page.getByRole("button", { name: text.fillSlot(target.title, 6) }).click();
+    expect(await input.inputValue()).toBe("6");
+  } else {
+    const tile = fillTile(page, target.title);
+    await tile.click();
+    expect(await tile.getAttribute("aria-label")).toContain("fyller på 6");
+  }
+  // Bara det som valts: inga andra titlar är förifyllda.
+  const total = await doneCount(page, text.done);
+  expect(total).toBe(6);
   // Markerar sidan: markeringen försvinner om sidan laddas om.
   await page.evaluate(() => {
     (window as unknown as { __kvar?: boolean }).__kvar = true;
@@ -454,6 +466,7 @@ const SV = {
 const EN = {
   list: "Machines",
   done: /^Done/,
+  fillSlot: (title: string, n: number) => `Fill the ${title} slot with ${n}`,
   yes: "Yes, I refilled",
   banner: (n: number) => new RegExp(`Done! ${n}\\s?packs refilled`),
   refresh: "Refresh",

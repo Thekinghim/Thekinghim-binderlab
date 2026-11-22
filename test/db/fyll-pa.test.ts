@@ -26,7 +26,7 @@ import { syncAwishSource } from "../../src/server/awish/sync";
 import { startFakeAwish, type FakeAwish } from "../../src/server/awish/testing/fake-server";
 import type { Viewer } from "../../src/server/data/core/loaders";
 import { syncRefillsFor, undoRefillsFor } from "../../src/server/data/field-refills";
-import { loadFillDataFor } from "../../src/app/fyll-pa/_lib/data";
+import { loadFillDataFor, loadFillLinksFor } from "../../src/app/fyll-pa/_lib/data";
 import { setHomeCountFor } from "../../src/app/(app)/vart-lager/_lib/register";
 
 import {
@@ -216,6 +216,17 @@ describe("Fyll på: påfyllning vid automaten", () => {
     // Förslaget begränsas av packen hemma: 6 plats, 2 hemma.
     expect(byName.get("Black Bolt")).toMatchObject({ now: 2, capacity: 8, home: 2, suggested: 2 });
     expect(data.sources.stock[centralId]?.[surging]).toBe(40);
+    // Rutorna följer facken i Awish (A1, A2 Surging Sparks, B1 Black Bolt), inte behovet.
+    expect(m!.slots).toEqual([
+      byName.get("Surging Sparks")!.titleId,
+      byName.get("Black Bolt")!.titleId,
+    ]);
+  });
+
+  it("påfyllaren läser automatens läge (offline / strömmen av) utan fel", async () => {
+    const links = await loadFillLinksFor(await viewerFor(refiller, orgId));
+    // Låtsas-Awish rapporterar ingen anslutning: inget märke.
+    expect(links).toEqual({});
   });
 
   it("Klar drar ur vårt lager direkt, och Awish-synken drar inget en gång till", async () => {
@@ -362,6 +373,7 @@ describe("Fyll på: påfyllning vid automaten", () => {
     const reader = await createMember(orgId, "viewer");
     const v = await viewerFor(reader, orgId);
     await expect(loadFillDataFor(v)).rejects.toThrow();
+    await expect(loadFillLinksFor(v)).rejects.toThrow();
     await expect(syncRefillsFor(v, [item(surging, 1)])).rejects.toThrow();
     expect(await level(centralId, surging)).toBe(31);
   });

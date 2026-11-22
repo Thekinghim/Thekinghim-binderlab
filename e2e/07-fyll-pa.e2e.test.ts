@@ -1,8 +1,9 @@
 /**
  * Fyll på på en iPhone 15 (Playwrights devices["iPhone 15"], mörkt tema): påfyllaren öppnar
- * /fyll-pa, väljer automaten med tomma fack (den står först), minskar förslaget med −,
- * trycker Klar och ser "Klart! 5 pack påfyllda" (med Ångra). Vårt lager har då 5 pack
- * färre och automaten 5 fler (databasen kontrolleras direkt).
+ * /fyll-pa, väljer automaten med tomma fack (den står först). Allt börjar på 0 (Klar är
+ * avstängd); ett tryck på titelns ruta fyller facket (6), ett tryck till öppnar arket där −
+ * ger 5. Klar visar "Klart! 5 pack påfyllda" (med Ångra). Vårt lager har då 5 pack färre och
+ * automaten 5 fler (databasen kontrolleras direkt).
  *
  * Förberedelse i databasen (E2E_DATABASE_URL): automaten får en Awish-läsning
  * (stock_locations.awish_fill, som synken skriver) med plats för 6 pack och ett tomt fack,
@@ -27,6 +28,7 @@ import {
   type BrowserContext,
   type Page,
 } from "./support/browser";
+import { closeSlotSheet, doneCount, fillTile, sheetInput } from "./support/fill";
 import { e2e, login } from "./support/session";
 
 let browser: Browser;
@@ -139,17 +141,32 @@ describe("Fyll på på iPhone 15", () => {
 
     await cards.first().click();
     await page.waitForURL((url) => url.pathname === `/fyll-pa/${target.machineId}`);
-    const input = page.getByLabel(target.title, { exact: true });
-    await input.waitFor();
-    // Förslaget: kapacitet − nu = 6 (50 hemma räcker).
-    expect(await input.inputValue()).toBe("6");
-    expect(await page.locator("main, body").first().innerText()).toContain(
-      // V2: "4 av 10 i automaten".
-      `${target.before} av ${target.before + 6}`,
+    const tile = fillTile(page, target.title);
+    await tile.waitFor();
+    // V2 (val A): "4 av 10 i automaten" på rutan; allt börjar på 0 och Klar är avstängd.
+    expect(await tile.getAttribute("aria-label")).toContain(
+      `${target.before} av ${target.before + 6} i automaten`,
     );
+    expect(await tile.getAttribute("aria-pressed")).toBe("false");
+    expect(await doneCount(page)).toBe(0);
+    expect(
+      await page.getByRole("button", { name: /^Klar/ }).getAttribute("disabled"),
+    ).not.toBeNull();
+    // Ett tryck fyller facket: kapacitet − nu = 6 (50 hemma räcker).
+    await tile.click();
+    expect(await tile.getAttribute("aria-pressed")).toBe("true");
+    expect(await tile.getAttribute("aria-label")).toContain("fyller på 6");
+    expect(await doneCount(page)).toBe(6);
+    // Ett tryck till öppnar arket: stegaren står på 6, − ger 5.
+    await tile.click();
+    const input = sheetInput(page, target.title);
+    await input.waitFor();
+    expect(await input.inputValue()).toBe("6");
     await page.getByRole("button", { name: `En mindre ${target.title}` }).click();
     expect(await input.inputValue()).toBe("5");
     await screenshot(page, "07-fyll-pa-automat-iphone15");
+    await closeSlotSheet(page);
+    expect(await tile.getAttribute("aria-label")).toContain("fyller på 5");
 
     // Klar frågar först (skydd mot tryck av misstag när man packar): Nej sparar ingenting.
     await page.getByRole("button", { name: /^Klar/ }).click();
@@ -158,11 +175,9 @@ describe("Fyll på på iPhone 15", () => {
     expect(await level(target.central, target.titleId)).toBe(50);
     expect(await level(target.machineLocation, target.titleId)).toBe(target.before);
     expect(new URL(page.url()).pathname).toBe(`/fyll-pa/${target.machineId}`);
-    // Seeden kan ge andra titlar i automaten ett förslag också: bekräftelsen visar summan.
-    const total = Number(
-      (await page.getByRole("button", { name: /^Klar/ }).innerText()).replace(/\D/g, ""),
-    );
-    expect(total).toBeGreaterThanOrEqual(5);
+    // Bara det som valts fylls på: inga andra titlar är förifyllda.
+    const total = await doneCount(page);
+    expect(total).toBe(5);
     await page.getByRole("button", { name: /^Klar/ }).click();
     await page.getByRole("button", { name: "Ja, jag har fyllt på" }).click();
     await page
@@ -185,10 +200,13 @@ describe("Fyll på på iPhone 15", () => {
   });
   it("Uppdatera visar en ny Awish-läsning utan att sidan laddas om", async () => {
     await page.goto(`/fyll-pa/${target.machineId}`);
-    await page.getByLabel(target.title, { exact: true }).waitFor();
+    const tile = fillTile(page, target.title);
+    await tile.waitFor();
     const now = await level(target.machineLocation, target.titleId);
     const text = () => page.locator("body").innerText();
-    expect(await text()).toContain(`${now} av ${target.before + 6}`);
+    const label = async () => (await tile.getAttribute("aria-label")) ?? "";
+    expect(await label()).toContain(`${now} av ${target.before + 6}`);
+    expect(await text()).toContain(`${now}/${target.before + 6}`);
     // Laddas sidan om försvinner markören.
     await page.evaluate(() => {
       (window as unknown as { __kvar?: boolean }).__kvar = true;
@@ -212,7 +230,9 @@ describe("Fyll på på iPhone 15", () => {
     expect(height).toBeGreaterThanOrEqual(44);
     await button.click();
     await until(
-      async () => (await text()).includes(`${now} av ${now + 17}`),
+      async () =>
+        (await label()).includes(`${now} av ${now + 17}`) &&
+        (await text()).includes(`${now}/${now + 17}`),
       "nya kapaciteten syns",
     );
     await page.getByText(/^Uppdaterat \d\d:\d\d$/).waitFor();

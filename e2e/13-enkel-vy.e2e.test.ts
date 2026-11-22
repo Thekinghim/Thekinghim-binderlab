@@ -417,6 +417,9 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await page.waitForURL((url) => url.pathname === `/fyll-pa/${target.machineId}`);
     const input = page.getByLabel(target.title, { exact: true });
     await input.waitFor();
+    // Allt börjar på 0; "Fill the slot" fyller facket (förslaget 4), − ger 3.
+    expect(await input.inputValue()).toBe("0");
+    await page.getByRole("button", { name: `Fill the ${target.title} slot with 4` }).click();
     expect(await input.inputValue()).toBe("4");
     await page.getByRole("button", { name: `One less ${target.title}` }).click();
     expect(await input.inputValue()).toBe("3");
@@ -426,7 +429,8 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
 
     const done = page.getByRole("button", { name: /^Done/ });
     const total = Number((await done.innerText()).replace(/\D/g, ""));
-    expect(total).toBeGreaterThanOrEqual(3);
+    // Bara det som valts: inga andra titlar är förifyllda.
+    expect(total).toBe(3);
     await done.click();
     await page.getByText("Have you refilled the machine now?").first().waitFor();
     await page.getByRole("button", { name: "No, I'm only packing" }).waitFor();

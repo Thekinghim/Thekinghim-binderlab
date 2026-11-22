@@ -3,8 +3,8 @@ import Image from "next/image";
 import { cn } from "@/lib/cn";
 import { PACK_IMAGES, packInitials, packKey } from "@/lib/pack-image";
 
-/** Höjder som i prototypen: xs 22, m 40, md 54 (standard), l 60, xl 72 px. */
-const HEIGHT = { xs: 22, m: 40, md: 54, l: 60, xl: 72 } as const;
+/** Höjder som i prototypen: xs 22, m 40, md 54 (standard), l 60, xl 72 px; tile 118 (Fyll på). */
+const HEIGHT = { xs: 22, m: 40, md: 54, l: 60, xl: 72, tile: 118 } as const;
 export type PackSize = keyof typeof HEIGHT;
 
 /** Packens format (bredd ÷ höjd) för plattan utan bild: samma som de flesta bilderna. */

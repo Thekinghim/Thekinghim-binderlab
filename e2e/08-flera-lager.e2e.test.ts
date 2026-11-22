@@ -22,6 +22,7 @@ import {
   type BrowserContext,
   type Page,
 } from "./support/browser";
+import { closeSlotSheet, doneCount, fillTile, sheetInput } from "./support/fill";
 import { e2e, login } from "./support/session";
 
 let browser: Browser;
@@ -271,11 +272,18 @@ describe("Fyll på från Kontoret på iPhone 15", () => {
       .getByRole("radio", { name: /Kontoret/ })
       .click();
     await page.getByRole("button", { name: /^Från:? Kontoret/ }).waitFor();
-    const input = page.getByLabel(target.title, { exact: true });
-    // Förslaget: plats för 6, Kontoret har 15.
+    // Allt börjar på 0; ett tryck på rutan fyller facket: plats för 6, Kontoret har 15.
+    const tile = fillTile(page, target.title);
+    expect(await doneCount(page)).toBe(0);
+    await tile.click();
+    expect(await tile.getAttribute("aria-label")).toContain("fyller på 6");
+    expect(await doneCount(page)).toBe(6);
+    // Arket visar lagret packen tas från.
+    await tile.click();
+    const input = sheetInput(page, target.title);
     expect(await input.inputValue()).toBe("6");
-    // Vänta ut inglidningen (raderna tonas in) innan skärmbilden.
-    await new Promise((r) => setTimeout(r, 1_200));
+    await page.getByRole("dialog").getByText("Kontoret: 15").waitFor();
+    await closeSlotSheet(page);
     await screenshot(page, "08-fyll-pa-kontoret-iphone15");
     await page.getByRole("button", { name: /^Klar/ }).click();
     // Klar frågar först (skydd mot tryck av misstag när man packar).

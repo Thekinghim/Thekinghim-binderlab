@@ -7,7 +7,7 @@ import { currentViewer } from "@/app/(app)/lager/_lib/session";
 
 import { loadDayRoute } from "@/server/data/v2/route";
 
-import { loadFillDataFor } from "../_lib/data";
+import { loadFillDataFor, loadFillLinksFor } from "../_lib/data";
 import { FillApp } from "./fill-app";
 
 /** Serverdelen av Fyll på (/fyll-pa och /fyll-pa/<automat>): samma data, samma app. */
@@ -36,13 +36,16 @@ export async function FillPage({
     );
   }
   const now = new Date(ctx.now);
-  const [data, route] = await Promise.all([
-    loadFillDataFor(await currentViewer(), now),
+  const viewer = await currentViewer();
+  const [data, route, links] = await Promise.all([
+    loadFillDataFor(viewer, now),
     routeMode && ctx.viewMode !== "simple"
       ? loadDayRoute()
           .then((r) => ({ ids: r.stops.map((x) => x.machineId) }))
           .catch(() => null)
       : Promise.resolve(null),
+    // Offline / strömmen av (märket i Fyll på): ett fel här stoppar aldrig Fyll på.
+    loadFillLinksFor(viewer, now).catch(() => ({})),
   ]);
   return (
     <FillApp
@@ -51,6 +54,7 @@ export async function FillPage({
       timeZone={ctx.timeZone}
       renderedAt={now.toISOString()}
       route={route}
+      links={links}
       returnTo={ctx.viewMode !== "simple" && !routeMode ? returnTo : null}
       initialMachineId={
         machineId && data.machines.some((m) => m.id === machineId) ? machineId : null

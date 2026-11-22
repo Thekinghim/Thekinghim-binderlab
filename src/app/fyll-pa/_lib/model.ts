@@ -56,6 +56,8 @@ export interface FillMachineInput {
   readonly fill: readonly AwishFillEntry[] | null;
   /** Min automat ("Mina"): jag är ansvarig eller ingen är vald. Utelämnat = min. */
   readonly mine?: boolean;
+  /** Awish kanal → titel vid senaste läsningen ({"A3": title_id}), för fackens ordning. */
+  readonly channels?: Readonly<Record<string, string>> | null;
 }
 
 export interface FillInput {
@@ -128,6 +130,11 @@ export interface FillMachine {
   readonly needs: boolean;
   readonly mine: boolean;
   readonly rows: readonly FillRow[];
+  /**
+   * Titlarna i automatens fackordning (Awish-kanalerna A1, A2 … B1, sedan ordningen i
+   * Awish-läsningen). Saknas utan Awish-läsning; rutorna i Fyll på följer den.
+   */
+  readonly slots?: readonly string[];
 }
 
 export const pairKey = (machineId: string, titleId: string): string =>
@@ -363,10 +370,38 @@ function totals(rows: readonly FillRow[]) {
   };
 }
 
+/**
+ * Titlarna i automatens fackordning: kanalerna i naturlig ordning (A1, A2, A10, B1), varje
+ * titel vid sin första kanal, sedan titlarna i Awish-läsningen som inte har en kanal.
+ * Tom lista utan Awish-läsning.
+ */
+export function slotTitleOrder(
+  channels: Readonly<Record<string, string>> | null | undefined,
+  fill: readonly Pick<AwishFillEntry, "title_id">[] | null,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (id: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push(id);
+  };
+  const names = Object.keys(channels ?? {}).sort((a, b) =>
+    a.localeCompare(b, "sv", { numeric: true }),
+  );
+  for (const name of names) {
+    const id = channels?.[name];
+    if (typeof id === "string" && id) add(id);
+  }
+  for (const f of fill ?? []) add(f.title_id);
+  return out;
+}
+
 /** Alla automater som kort, sorterade efter behov. */
 export function fillMachines(input: FillInput): FillMachine[] {
   const out = input.machines.map((m): FillMachine => {
     const rows = machineRows(m, input);
+    const slots = m.fill ? slotTitleOrder(m.channels, m.fill) : [];
     return {
       id: m.id,
       code: m.code,
@@ -376,6 +411,7 @@ export function fillMachines(input: FillInput): FillMachine[] {
       mine: m.mine ?? true,
       ...totals(rows),
       rows,
+      ...(slots.length > 0 ? { slots } : {}),
     };
   });
   return out.sort(machineOrder);
