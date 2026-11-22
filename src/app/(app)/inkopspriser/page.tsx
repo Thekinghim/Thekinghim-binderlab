@@ -6,8 +6,9 @@ import Link from "next/link";
 
 import { describePeriod, toURLSearchParams, wallClockIn } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 import { priceHistory, profitability, storeShareDeducted, type PurchasePrice } from "@/domain";
 import { MISSING, formatDate, formatInt, formatKronor } from "@/lib/format";
 import { ALL_COST_LINES } from "@/lib/cost-lines";
@@ -24,7 +25,6 @@ import { ClosedMonthsNote } from "../_manad/closed-note";
 import { SimplePricesScreen } from "../_enkel/prices-screen";
 import { MobileMore } from "../_mobil/mobile-more";
 import { currentViewer } from "../lager/_lib/session";
-import { PageHead } from "../vart-lager/_components/page-head";
 import { TodoList } from "../vart-lager/_components/todo-list";
 import { CostNotice } from "../vart-lager/mystery/_components/cost-notice";
 import { loadMysteryCostDriftsFor } from "../vart-lager/mystery/_lib/data";
@@ -222,129 +222,103 @@ export default async function PurchasePricesPage({
     : "Aldrig";
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-6">
-        <div className="relative">
-          <PageHead
-            eyebrow="Inköpspriser"
-            title={headline.title}
-            aside={headline.aside}
-            actions={
+    <div className={PAGE_BODY}>
+      <PageIntro
+        title={headline.title}
+        aside={headline.aside}
+        facts={[
+          { label: "Period", value: periodLabel },
+          {
+            label: "Med pris",
+            value: `${formatInt(pricedCount)} av ${formatInt(allRows.length)}`,
+          },
+          { label: "Senast ändrat", value: lastChange },
+        ]}
+        actions={
+          <>
+            {canAddProduct ? (
               <>
-                {canAddProduct ? (
-                  <>
-                    <Link
-                      href="/inkopspriser/ny-produkt"
-                      className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover max-md:h-11 max-md:min-h-11"
-                    >
-                      Varor i Awish
-                    </Link>
-                    <Link
-                      href="/inkopspriser/ny-produkt?flik=ny"
-                      className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover max-md:h-11 max-md:min-h-11"
-                    >
-                      + Ny produkt
-                    </Link>
-                  </>
-                ) : null}
-                {/* Vald butik: andelen visas alltid, knappen behövs inte. Utan andel: ingen knapp. */}
-                {filtered || !anyShare ? null : (
-                  <MobileMore
-                    label="Fler val för inköpspriser"
-                    className="max-md:absolute max-md:-top-2 max-md:-right-2"
-                  >
-                    <Suspense fallback={null}>
-                      <StoreShareToggle on={shareToggle} menuItem />
-                    </Suspense>
-                  </MobileMore>
-                )}
+                <ButtonLink href="/inkopspriser/ny-produkt" touch>
+                  Varor i Awish
+                </ButtonLink>
+                <ButtonLink href="/inkopspriser/ny-produkt?flik=ny" touch>
+                  + Ny produkt
+                </ButtonLink>
               </>
-            }
-          />
-        </div>
-        <TodoList items={todos} done="Alla titlar har pris." moreHref={undefined} />
-        {mysteryDrifts.map((d) => (
-          <CostNotice
-            key={d.titleId}
-            titleId={d.titleId}
-            name={d.name}
-            currentOre={d.currentOre}
-            calculatedOre={d.calculatedOre}
-            canUpdate={ctx.canEdit}
-            href={`/vart-lager/mystery/${d.titleId}#kalkyl`}
-          />
-        ))}
-        <dl
-          className="rise flex flex-wrap gap-x-8 gap-y-2"
-          style={{ "--i": 2 } as React.CSSProperties}
-        >
-          {[
-            { label: "Period", value: periodLabel },
-            {
-              label: "Med pris",
-              value: `${formatInt(pricedCount)} av ${formatInt(allRows.length)}`,
-            },
-            { label: "Senast ändrat", value: lastChange },
-          ].map((x) => (
-            <div key={x.label} className="flex flex-col">
-              <dt className="label text-subtle">{x.label}</dt>
-              <dd className="tnum text-base text-fg">{x.value}</dd>
-            </div>
-          ))}
-        </dl>
-        <AiPageLine metric="marginalen per titel" route="inkopspriser" />
-      </div>
-
-      <section
-        aria-labelledby="per-titel"
-        className="rise flex flex-col gap-6"
-        style={{ "--i": 1 } as React.CSSProperties}
+            ) : null}
+            {/* Vald butik: andelen visas alltid, knappen behövs inte. Utan andel: ingen knapp. */}
+            {filtered || !anyShare ? null : (
+              <MobileMore label="Fler val för inköpspriser">
+                <Suspense fallback={null}>
+                  <StoreShareToggle on={shareToggle} menuItem />
+                </Suspense>
+              </MobileMore>
+            )}
+          </>
+        }
       >
-        <div className="flex items-baseline justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <h2 id="per-titel" className="label text-subtle">
-              Per titel · {periodLabel}
+        <AiPageLine metric="marginalen per titel" route="inkopspriser" />
+      </PageIntro>
+      <TodoList items={todos} done="Alla titlar har pris." moreHref={undefined} />
+      {mysteryDrifts.map((d) => (
+        <CostNotice
+          key={d.titleId}
+          titleId={d.titleId}
+          name={d.name}
+          currentOre={d.currentOre}
+          calculatedOre={d.calculatedOre}
+          canUpdate={ctx.canEdit}
+          href={`/vart-lager/mystery/${d.titleId}#kalkyl`}
+        />
+      ))}
+
+      <section aria-labelledby="per-titel" className="v2-card">
+        <div className="v2-card-hd flex-wrap gap-y-1">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <h2 id="per-titel">
+              Per titel <span className="font-[450] text-v2-mute">· {periodLabel}</span>
             </h2>
             {/* Vem andelen gäller syns vid tabellen (beskrivningen läses bara av skärmläsare). */}
             {shareColumns ? (
-              <p className="meta text-subtle">
+              <p className="text-v2-sm text-v2-mute">
                 {shareColumns.header} och vår del: {shareColumns.scope}
               </p>
             ) : null}
           </div>
           {onlyMissing ? (
-            <Link
-              href={showAllHref}
-              className="meta rounded-xs text-muted underline underline-offset-4 hover:text-fg"
-            >
-              Visa alla titlar
+            <Link className="lk" href={showAllHref}>
+              Visa alla titlar <span aria-hidden="true">→</span>
             </Link>
           ) : null}
         </div>
         {rows.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message={onlyMissing ? "Alla titlar har inköpspris." : "Inga titlar ännu."}
-            action={
-              onlyMissing
-                ? { label: "Visa alla titlar", href: showAllHref }
-                : { label: "Importera order", href: "/datakallor" }
-            }
-          />
+          <div className="v2-card-body">
+            <StateMessage
+              kind="empty"
+              message={onlyMissing ? "Alla titlar har inköpspris." : "Inga titlar ännu."}
+              action={
+                onlyMissing
+                  ? { label: "Visa alla titlar", href: showAllHref }
+                  : { label: "Importera order", href: "/datakallor" }
+              }
+            />
+          </div>
         ) : (
-          <TitleTable
-            rows={rows}
-            selectedId={selectedRow?.id ?? null}
-            baseQuery={baseQuery}
-            today={today}
-            periodLabel={periodLabel}
-            criticalIds={signalIds}
-            rent={(input.costLines ?? ALL_COST_LINES).rent}
-            share={shareColumns}
-            note={
-              anyShare && !shareColumns ? "Kvar per order är före butikernas andel." : undefined
-            }
-          />
+          <div className="px-[18px] pt-2 pb-3">
+            <TitleTable
+              rows={rows}
+              selectedId={selectedRow?.id ?? null}
+              baseQuery={baseQuery}
+              today={today}
+              periodLabel={periodLabel}
+              criticalIds={signalIds}
+              rent={(input.costLines ?? ALL_COST_LINES).rent}
+              share={shareColumns}
+              note={
+                anyShare && !shareColumns ? "Kvar per order är före butikernas andel." : undefined
+              }
+            />
+          </div>
         )}
       </section>
 
@@ -353,22 +327,25 @@ export default async function PurchasePricesPage({
           id={PRICE_EDITOR_ID}
           aria-labelledby="titel-rubrik"
           tabIndex={-1}
-          className="fade-in flex scroll-mt-28 flex-col gap-10 border-t border-line pt-12 outline-none md:scroll-mt-44"
+          className="v2-card scroll-mt-28 outline-none md:scroll-mt-44"
         >
           <ScrollIntoView
             targetId={PRICE_EDITOR_ID}
             titleId={selectedTitle.id}
             active={requested !== null}
           />
-          <SectionHeader
-            id="titel-rubrik"
-            eyebrow={`Titel${selectedTitle.series ? ` · ${selectedTitle.series}` : ""}`}
-            title={titleHead.title}
-            aside={titleAside}
-          />
+          <div className="v2-card-hd">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <h2 id="titel-rubrik">{titleHead.title}</h2>
+              <p className="text-v2-sm text-v2-mute">
+                {selectedTitle.series ? `${selectedTitle.series} · ` : ""}
+                {titleAside}
+              </p>
+            </div>
+          </div>
 
           {/* Vårt pris och pris mot kund i dag, också på mobil (där tabellen döljer dem). */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 border-b border-v2-line2 px-[18px] py-3">
             <dl
               aria-label={`Priser för ${selectedTitle.name}`}
               className="flex flex-wrap gap-x-8 gap-y-2"
@@ -390,28 +367,28 @@ export default async function PurchasePricesPage({
                 },
               ].map((x) => (
                 <div key={x.label} className="flex flex-col">
-                  <dt className="label text-subtle">{x.label}</dt>
-                  <dd className="tnum text-base text-fg">{x.value}</dd>
+                  <dt className="text-v2-xs font-[550] text-v2-mute">{x.label}</dt>
+                  <dd className="tnum text-v2-lg font-[650] text-v2-ink">{x.value}</dd>
                 </div>
               ))}
             </dl>
-            <p className="meta text-subtle">{CUSTOMER_PRICE_TEXT.helper}</p>
+            <p className="text-v2-xs text-v2-mute">{CUSTOMER_PRICE_TEXT.helper}</p>
           </div>
 
-          <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12">
             {/* Redigeraren först: ett klick på en titel rullar hit och sätter markören i priset. */}
-            <div className="flex min-w-0 flex-col gap-6 lg:col-span-5">
+            <div className="flex min-w-0 flex-col gap-4 px-[18px] py-4 lg:col-span-5 lg:border-r lg:border-v2-line2">
               {canAddProduct ? (
                 <div className="flex flex-wrap gap-x-6">
                   <Link
                     href={`/inkopspriser/ny-produkt?titel=${selectedTitle.id}`}
-                    className="meta inline-flex min-h-11 w-fit items-center text-muted underline underline-offset-4 hover:text-fg md:min-h-0"
+                    className="inline-flex min-h-11 w-fit items-center text-v2-sm font-[550] text-v2-ink hover:underline md:min-h-7"
                   >
                     Redigera namn, pris och bild i Awish →
                   </Link>
                   <Link
                     href={`/inkopspriser/ny-produkt?flik=fack&titel=${selectedTitle.id}`}
-                    className="meta inline-flex min-h-11 w-fit items-center text-muted underline underline-offset-4 hover:text-fg md:min-h-0"
+                    className="inline-flex min-h-11 w-fit items-center text-v2-sm font-[550] text-v2-ink hover:underline md:min-h-7"
                   >
                     Lägg i fack →
                   </Link>
@@ -424,7 +401,9 @@ export default async function PurchasePricesPage({
                 initial={own}
                 canEdit={ctx.canEdit}
               />
-              <h3 className="label text-subtle">{own ? "Ändra kostnad" : "Ändra inköpspris"}</h3>
+              <h3 className="text-v2-md font-[650] text-v2-ink">
+                {own ? "Ändra kostnad" : "Ändra inköpspris"}
+              </h3>
               <ClosedMonthsNote months={data.closedMonths} />
               {ctx.canEdit && detail ? (
                 <PriceForm
@@ -458,8 +437,8 @@ export default async function PurchasePricesPage({
               )}
             </div>
 
-            <div className="flex min-w-0 flex-col gap-6 lg:col-span-7">
-              <h3 className="label text-subtle">Prishistorik</h3>
+            <div className="flex min-w-0 flex-col gap-4 border-t border-v2-line2 px-[18px] py-4 lg:col-span-7 lg:border-t-0">
+              <h3 className="text-v2-md font-[650] text-v2-ink">Prishistorik</h3>
               {timeline.length === 0 ? (
                 <StateMessage
                   kind="not-configured"
@@ -473,8 +452,8 @@ export default async function PurchasePricesPage({
             </div>
           </div>
 
-          <div className="flex flex-col gap-6">
-            <h3 className="label text-subtle">Ändringslogg</h3>
+          <div className="flex flex-col gap-4 border-t border-v2-line2 px-[18px] py-4">
+            <h3 className="text-v2-md font-[650] text-v2-ink">Ändringslogg</h3>
             {log.length === 0 ? (
               <StateMessage
                 kind="empty"

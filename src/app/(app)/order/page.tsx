@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
 
 import { routeById } from "@/components/shell/nav";
 import { toURLSearchParams } from "@/components/shell/period-state";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 import { formatKronor, formatPeriodShort, MISSING } from "@/lib/format";
 import { OPERATOR_ROLES, requireRoute, scopeFiltered } from "@/server/data/core";
 
@@ -117,23 +116,16 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
         ];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-8 pb-16 max-md:gap-5 md:px-8 md:pt-10">
-      <SectionHeader
+    <div className={PAGE_BODY}>
+      <PageIntro
         // Mobil: perioden står redan i raden överst; bara snittet visas.
-        className="rise max-md:[&_dl>div:first-child]:hidden"
-        as="h1"
-        size="lg"
-        eyebrow="Order"
+        className="max-md:[&_dl>div:first-child]:hidden"
         title={headline.title}
         aside={headline.aside}
-        meta={meta}
+        facts={meta}
       />
 
-      <section
-        aria-label="Orderlista"
-        className="rise flex min-w-0 flex-col"
-        style={{ "--i": 1 } as CSSProperties}
-      >
+      <section aria-label="Orderlista" className="flex min-w-0 flex-col">
         <OrderBrowser
           query={listSignature(sp)}
           pageQuery={lockedListQuery(sp, list.period)}

@@ -208,7 +208,7 @@ export function PayoutUpload({
           ) : nayax.replaced ? (
             <p className="meta text-subtle">Den inskrivna utbetalningen är arkiverad.</p>
           ) : null}
-          <p className="text-base font-medium text-fg">{nayaxPaysText(nayax.statement, today)}</p>
+          <p className="text-v2-md font-[550] text-fg">{nayaxPaysText(nayax.statement, today)}</p>
           <p className="text-sm text-muted">{nayaxSoldText(nayax.statement)}</p>
           <p className="text-sm text-fg">{match!.text}</p>
           {!match!.ok && nayax.statement.devices.length > 0 ? (

@@ -271,7 +271,7 @@ export function OrderBrowser(props: OrderBrowserProps) {
   }
 
   return (
-    <div className="flex flex-col gap-6 max-md:gap-4">
+    <div className="v2-card">
       <OrderFilters
         q={props.q}
         titleId={props.titleId}
@@ -281,7 +281,7 @@ export function OrderBrowser(props: OrderBrowserProps) {
       />
 
       {props.empty ? (
-        props.empty
+        <div className="v2-card-body">{props.empty}</div>
       ) : (
         <OrderList
           key={props.query}
@@ -393,7 +393,7 @@ function OrderFilters({
       aria-label="Filtrera order"
       aria-busy={pending || undefined}
       // Mobil: sök och titel på en rad, etiketterna bara för skärmläsare, fälten 44 px.
-      className="fade-in grid grid-cols-1 gap-3 max-md:gap-2 max-sm:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)] sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] sm:items-end max-md:[&_input]:h-11 max-md:[&_label]:sr-only max-md:[&_select]:h-11"
+      className="grid grid-cols-1 gap-3 border-b border-v2-line px-[18px] py-3 max-md:gap-2 max-sm:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)] sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] sm:items-end max-md:[&_input]:h-11 max-md:[&_label]:sr-only max-md:[&_select]:h-11"
       onSubmit={(e) => {
         e.preventDefault();
         const clean = cleanQuery(text);

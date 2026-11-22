@@ -235,7 +235,7 @@ export function OrderList({
             aria-label={`Visa order ${r.externalId}`}
             data-order-button={r.id}
             onClick={() => onOpen(r)}
-            className="inline-flex min-h-7 w-full items-center rounded-xs font-mono text-sm text-fg underline decoration-line-control underline-offset-4 transition-colors hover:decoration-fg max-md:min-h-11"
+            className="inline-flex min-h-7 w-full items-center rounded-v2-sm text-v2-sm font-[550] text-v2-ink underline decoration-v2-line underline-offset-4 transition-colors hover:decoration-v2-ink max-md:min-h-11"
           >
             {r.externalId}
           </button>
@@ -249,7 +249,7 @@ export function OrderList({
         width: 132,
         sortValue: (r) => Date.parse(r.orderedAt),
         render: (r) => (
-          <span className="tnum font-mono text-sm text-muted">
+          <span className="tnum text-v2-sm text-v2-mute">
             {formatAt(r.orderedAt, timeZone, now)}
           </span>
         ),
@@ -288,7 +288,7 @@ export function OrderList({
             <div className="block w-full cursor-pointer leading-tight" onClick={() => onOpen(r)}>
               {label}
               {/* Automatkoden står först och kortas aldrig; tiden får ge vika om raden är smal. */}
-              <span className="tnum mt-0.5 flex min-w-0 font-mono text-xs whitespace-nowrap text-muted md:hidden">
+              <span className="tnum mt-0.5 flex min-w-0 text-v2-xs whitespace-nowrap text-v2-mute md:hidden">
                 <span className="shrink-0">{machine ? machine.code : "Okopplad"}</span>
                 <span className="shrink-0 whitespace-pre">{" · "}</span>
                 <span className="min-w-0 truncate">{formatAt(r.orderedAt, timeZone, now)}</span>
@@ -306,7 +306,7 @@ export function OrderList({
         render: (r) => {
           const m = r.machineId ? machines.get(r.machineId) : undefined;
           return m ? (
-            <span className="font-mono text-sm" title={m.name}>
+            <span className="text-v2-sm" title={m.name}>
               {m.code}
             </span>
           ) : (
@@ -364,9 +364,9 @@ export function OrderList({
   const partial = rows.length < totals.count;
 
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="tnum font-mono text-xs text-muted" aria-live="polite" aria-atomic="true">
+    <div className="flex min-w-0 flex-col">
+      <div className="flex flex-col gap-2 px-[18px] py-2.5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="tnum text-v2-sm text-v2-mute" aria-live="polite" aria-atomic="true">
           <span className="text-fg">{formatInt(totals.count)}</span>
           {NBSP}order
           {/* Under md räcker antalet: sorteringen syns på kolumnrubriken. */}
@@ -400,7 +400,10 @@ export function OrderList({
 
       <div
         ref={wrapper}
-        className={cn("min-w-0 transition-opacity duration-fast", pending && "opacity-60")}
+        className={cn(
+          "min-w-0 px-[18px] pb-2 transition-opacity duration-fast",
+          pending && "opacity-60",
+        )}
         aria-busy={pending || undefined}
       >
         <DataTable
@@ -419,8 +422,8 @@ export function OrderList({
       </div>
 
       {next !== null || error ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="tnum font-mono text-xs text-muted">
+        <div className="flex flex-col gap-3 border-t border-v2-line2 px-[18px] py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="tnum text-v2-sm text-v2-mute">
             Visar {formatInt(rows.length)} av {formatInt(totals.count)}.
           </p>
           {error ? (
@@ -489,7 +492,7 @@ function ExportButton({ count }: { count: number }) {
         Exportera CSV
       </Button>
       {error ? (
-        <p role="alert" className="text-xs text-signal-fg">
+        <p role="alert" className="text-v2-xs text-v2-crit-text">
           {error}
         </p>
       ) : null}

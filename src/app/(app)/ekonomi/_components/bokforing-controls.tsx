@@ -74,7 +74,7 @@ export function VmbBookkeepingSwitch({ on, canEdit }: { on: boolean; canEdit: bo
         }
         className={cn(
           "label flex h-8 items-center gap-2 rounded-sm border border-line-strong px-2.5 transition-colors disabled:cursor-not-allowed max-md:min-h-11",
-          on ? "bg-hover font-medium text-fg" : "text-muted hover:text-fg",
+          on ? "bg-hover font-[550] text-fg" : "text-muted hover:text-fg",
           pending && "opacity-60",
         )}
       >

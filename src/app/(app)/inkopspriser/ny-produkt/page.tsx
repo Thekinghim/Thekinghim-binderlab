@@ -5,7 +5,6 @@ import { Suspense } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
-import { cn } from "@/lib/cn";
 import { AuthorizationError } from "@/server/access";
 import { goodsOverviewFor, type GoodsOverview } from "@/server/awish/edit-good";
 import { NewProductError } from "@/server/awish/goods";
@@ -22,7 +21,9 @@ import {
 import type { Viewer } from "@/server/data/core/loaders";
 import { safeErrorForLog } from "@/server/errors";
 
-import { PageHead } from "../../vart-lager/_components/page-head";
+import { ButtonLink } from "@/components/v2/button";
+import { Notice } from "@/components/v2/notice";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 import { GoodsManager } from "./_components/goods-manager";
 import { NewProductPanels, SlotPanel } from "./_components/new-product-panels";
 import { goodsPreselect, goodsTab, initialSlotMachine } from "./_lib/fack";
@@ -134,50 +135,41 @@ export default async function NewProductPage({
   ] as const;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-3">
-        <PageHead
-          eyebrow="Inköpspriser · Varor i Awish"
-          title="Varor i Awish"
-          aside={
-            tab === "ny"
-              ? "Skapa varan i Awish. Du ser allt innan det skickas."
-              : tab === "fack"
-                ? "Välj fack och vara. Du ser allt innan det skickas."
-                : "Det som behöver åtgärd står först. Du ser allt innan det sparas."
-          }
-        />
-        <Link
-          href="/inkopspriser"
-          className="meta inline-flex min-h-11 w-fit items-center rounded-xs text-muted underline underline-offset-4 hover:text-fg md:min-h-0"
-        >
-          ← Inköpspriser
-        </Link>
-      </div>
-      <nav aria-label="Varor i Awish" className="flex gap-1 border-b border-line sm:gap-2">
+    <div className={PAGE_BODY}>
+      <PageIntro
+        title="Varor i Awish"
+        aside={
+          tab === "ny"
+            ? "Skapa varan i Awish. Du ser allt innan det skickas."
+            : tab === "fack"
+              ? "Välj fack och vara. Du ser allt innan det skickas."
+              : "Det som behöver åtgärd står först. Du ser allt innan det sparas."
+        }
+        actions={
+          <ButtonLink href="/inkopspriser" touch>
+            ← Inköpspriser
+          </ButtonLink>
+        }
+      />
+      <nav aria-label="Varor i Awish" className="v2-subnav mb-0">
         {tabs.map((t) => (
-          <Link
-            key={t.id}
-            href={t.href}
-            aria-current={tab === t.id ? "page" : undefined}
-            className={cn(
-              "-mb-px inline-flex min-h-11 items-center border-b-2 px-2 text-base whitespace-nowrap transition-colors sm:px-3",
-              tab === t.id
-                ? "border-fg font-medium text-fg"
-                : "border-transparent text-muted hover:text-fg",
-            )}
-          >
+          <Link key={t.id} href={t.href} aria-current={tab === t.id ? "page" : undefined}>
             {t.label}
           </Link>
         ))}
       </nav>
       {data.status.blocker ? (
-        <StateMessage
-          kind="not-configured"
-          code="Inte kopplad"
-          message={data.status.blocker}
-          action={{ label: "Till Datakällor", href: "/datakallor" }}
-        />
+        <Notice
+          tone="warning"
+          title="Inte kopplad"
+          action={
+            <ButtonLink href="/datakallor" touch>
+              Till Datakällor
+            </ButtonLink>
+          }
+        >
+          {data.status.blocker}
+        </Notice>
       ) : tab === "ny" ? (
         <NewProductPanels />
       ) : tab === "fack" ? (

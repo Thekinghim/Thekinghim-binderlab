@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
 import { AiPageLine } from "@/components/assistant/panel-context";
-import { Suspense, type CSSProperties } from "react";
+import { Suspense } from "react";
 import { redirect, unstable_rethrow } from "next/navigation";
 
 import { carriedQuery } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
-import { Panel } from "@/components/ui/frame";
-import { MobileFold } from "@/components/ui/mobile-fold";
-import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { cn } from "@/lib/cn";
-import { NBSP } from "@/lib/format";
+import { Card, CardBody } from "@/components/v2/card";
+import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 import { loadProfitAdjustments } from "@/server/data/adjustments";
 import { requestPageLoaders } from "@/server/data/page-loaders";
 import {
@@ -83,9 +80,6 @@ function moverNames(input: {
   };
 }
 
-const SECTION =
-  "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 max-md:gap-6 max-md:py-8 md:gap-12 md:py-16";
-
 /**
  * Lönsamhet: vad tjänar vi, och var? Vattenfall från intäkt till vinst, och under det
  * återbetalningar och fasta kostnader som egna rader (resultat efter fasta kostnader),
@@ -151,28 +145,15 @@ export default async function LonsamhetPage({
   ];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
-      <div className="rise flex flex-col gap-10 pb-12 max-md:relative max-md:gap-5 max-md:pb-8 md:gap-12 md:pb-16">
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow={`Lönsamhet · ${model.days}${NBSP}d`}
-          title={model.headline.title}
-          aside={model.headline.aside}
-          meta={meta}
-          // Mobil: perioden och filtret står i raden överst. En varning (en produkt ger
-          // mer än halva vinsten) skrivs i varningsfärg.
-          className={cn(
-            "max-md:pr-10 max-md:[&_dl]:hidden",
-            model.headline.warning && "[&_h1>span:last-child]:text-signal-fg",
-          )}
-        />
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 max-md:contents">
-          {/* Mobil: AI-frågan och butikernas andel bakom "⋯" uppe till höger. */}
-          <MobileMore
-            label="Fler val för lönsamhet"
-            className="max-md:absolute max-md:-top-2 max-md:-right-2"
-          >
+    <div className={PAGE_BODY} data-testid="lonsamhet">
+      <PageIntro
+        title={model.headline.title}
+        aside={model.headline.aside}
+        warning={model.headline.warning}
+        facts={meta}
+        actions={
+          // Mobil: AI-frågan och butikernas andel bakom "⋯".
+          <MobileMore label="Fler val för lönsamhet">
             <AiPageLine metric="vinsten" route="lonsamhet" menuItem />
             {/* Med vald butik eller ägare dras andelen alltid; knappen behövs bara utan. */}
             {((p.scope.storeId || p.scope.ownerId) && !p.scope.machineId) ||
@@ -182,71 +163,52 @@ export default async function LonsamhetPage({
               </Suspense>
             )}
           </MobileMore>
-        </div>
-        {model.orders > 0 ? (
-          <MobileFold summary="Fler siffror" meta={String(model.kpis.length)}>
-            <LonsamhetKpis
-              kpis={model.kpis}
-              label={`Nyckeltal · ${model.periodLabel}`}
-              comparison={model.comparisonLabel}
-            />
-          </MobileFold>
-        ) : null}
+        }
+      >
         {stale ? <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} /> : null}
-      </div>
+      </PageIntro>
 
-      {advice ? <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} /> : null}
+      {model.orders > 0 ? (
+        <LonsamhetKpis
+          kpis={model.kpis}
+          label={`Nyckeltal · ${model.periodLabel}`}
+          comparison={model.comparisonLabel}
+        />
+      ) : null}
 
       {model.orders === 0 ? (
-        <section className={SECTION} aria-label="Ingen försäljning">
-          <StateMessage
-            kind="empty"
-            message={
-              model.scopeLabel
-                ? `Ingen försäljning för ${model.scopeLabel} i perioden.`
-                : "Ingen försäljning i perioden."
-            }
-            action={
-              p.dataStart
-                ? { label: "Visa hela historiken", href: allHistoryHref(sp) }
-                : { label: "Gå till datakällor", href: "/datakallor" }
-            }
-          />
-        </section>
-      ) : (
-        <>
-          <section
-            aria-labelledby="till-vinst"
-            className={`rise ${SECTION}`}
-            style={{ "--i": 1 } as CSSProperties}
-          >
-            <SectionHeader
-              id="till-vinst"
-              eyebrow={`Intäkt till vinst · ${model.days}${NBSP}d`}
-              title="Från intäkt till vinst."
-            />
-            <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
-              <Panel grid marks className="lg:col-span-7 lg:self-start">
-                <LonsamhetBridge bridge={b} />
-              </Panel>
-              <Panel className="flex flex-col lg:col-span-5">
-                <ResultAfterProfitPanel
-                  result={result}
-                  costLines={input.costLines}
-                  profitLabel={b.profitLabel}
+        <div className="v2-cols">
+          <div className="v2-stack">
+            <Card as="section" title="Ingen försäljning">
+              <CardBody>
+                <StateMessage
+                  kind="empty"
+                  message={
+                    model.scopeLabel
+                      ? `Ingen försäljning för ${model.scopeLabel} i perioden.`
+                      : "Ingen försäljning i perioden."
+                  }
+                  action={
+                    p.dataStart
+                      ? { label: "Visa hela historiken", href: allHistoryHref(sp) }
+                      : { label: "Gå till datakällor", href: "/datakallor" }
+                  }
                 />
-                {model.showStoreShare ? (
-                  <CompensationBreakdown bridge={b} costLines={input.costLines} />
-                ) : null}
-                <UnpricedSummary unpriced={model.unpriced} />
-              </Panel>
-            </div>
-          </section>
-
-          <div
-            className="rise border-t border-line py-12 max-md:py-8 md:py-16"
-            style={{ "--i": 2 } as CSSProperties}
-          >
+              </CardBody>
+            </Card>
+          </div>
+          <div className="v2-stack">
+            {advice ? <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} /> : null}
+          </div>
+        </div>
+      ) : (
+        <div className="v2-cols">
+          <div className="v2-stack">
+            <Card title="Från intäkt till vinst" className="scroll-mt-28" id="till-vinst">
+              <CardBody>
+                <LonsamhetBridge bridge={b} />
+              </CardBody>
+            </Card>
             <AnalysisSection
               table={{
                 initialView,
@@ -291,7 +253,23 @@ export default async function LonsamhetPage({
               }
             />
           </div>
-        </>
+          <div className="v2-stack">
+            <Card title="Efter vinsten">
+              <CardBody className="flex flex-col gap-4">
+                <ResultAfterProfitPanel
+                  result={result}
+                  costLines={input.costLines}
+                  profitLabel={b.profitLabel}
+                />
+                {model.showStoreShare ? (
+                  <CompensationBreakdown bridge={b} costLines={input.costLines} />
+                ) : null}
+                <UnpricedSummary unpriced={model.unpriced} />
+              </CardBody>
+            </Card>
+            {advice ? <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} /> : null}
+          </div>
+        </div>
       )}
     </div>
   );

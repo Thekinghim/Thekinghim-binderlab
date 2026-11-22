@@ -93,12 +93,12 @@ export function PayoutQuestion({
       onSubmit={submit}
       noValidate
       data-payout-question
-      className="flex flex-col gap-4 rounded-md border border-line bg-surface p-4 md:p-5"
+      className="v2-card flex flex-col gap-4 px-[18px] py-4"
     >
       {lead || period !== initialPeriod ? (
         <div className="flex flex-col gap-1">
-          <p className="text-lg font-medium text-fg">Vad betalade Nayax?</p>
-          <p className="text-base text-muted" aria-live="polite">
+          <p className="text-v2-md font-[650] text-v2-ink">Vad betalade Nayax?</p>
+          <p className="text-v2-md text-muted" aria-live="polite">
             {text ? text.title : counting ? "Räknar…" : "Välj en period som är slut."}
           </p>
         </div>

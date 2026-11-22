@@ -49,9 +49,9 @@ export function OwnProductToggle({
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md border border-line-strong px-4 py-3">
+    <div className="flex items-center justify-between gap-4 rounded-v2-lg border border-v2-line px-4 py-3">
       <span className="flex flex-col">
-        <span className="text-base text-fg">Egen produkt</span>
+        <span className="text-v2-md text-fg">Egen produkt</span>
         <span className="meta text-subtle">{on ? "Vi packar den" : "Köps in"}</span>
       </span>
       <button

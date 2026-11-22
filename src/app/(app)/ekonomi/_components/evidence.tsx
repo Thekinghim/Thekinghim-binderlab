@@ -43,7 +43,7 @@ export function EvidenceDetails({
   const href = ordersHref(evidence);
   return (
     <details className="group text-sm">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xs font-mono text-xs text-muted transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-xs text-muted transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
         <span aria-hidden className="text-faint group-open:rotate-90">
           ›
         </span>

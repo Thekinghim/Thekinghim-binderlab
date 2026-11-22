@@ -48,8 +48,8 @@ function DeviationItem({
   return (
     <li className="flex flex-col gap-2 border-t border-line py-4 first:border-t-0 first:pt-0">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="text-base text-fg">{d.title}</p>
-        <p className="tnum text-base text-fg">{signedKr(d.impactOre)}</p>
+        <p className="text-v2-md text-fg">{d.title}</p>
+        <p className="tnum text-v2-md text-fg">{signedKr(d.impactOre)}</p>
       </div>
       <p className="text-sm text-muted">{d.explanation}</p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -106,8 +106,8 @@ function NayaxFacts({
 }) {
   const match = salesMatchText(statement.reimbursedOre, appSalesOre);
   return (
-    <div data-nayax-facts className="flex flex-col gap-2 rounded-md border border-line p-4">
-      <p className="text-base text-fg">{nayaxPaysText(statement, today)}</p>
+    <div data-nayax-facts className="flex flex-col gap-2 rounded-v2-lg border border-v2-line p-4">
+      <p className="text-v2-md text-fg">{nayaxPaysText(statement, today)}</p>
       <p className="text-sm text-muted">{nayaxSoldText(statement)}</p>
       {statement.deductions.length > 0 ? (
         <ul className="flex flex-col gap-1 text-sm text-fg">
@@ -163,9 +163,9 @@ function PayoutBlock({
         <div className="flex flex-col gap-1 md:col-span-5">
           <h3
             id={`utbetalning-${p.key}`}
-            className="flex flex-wrap items-baseline gap-x-3 text-md text-fg"
+            className="flex flex-wrap items-baseline gap-x-3 text-v2-md text-fg"
           >
-            <span className="font-mono text-sm">{p.reference}</span>
+            <span className="text-sm">{p.reference}</span>
             <span>{periodText(p.period)}</span>
           </h3>
           <p className="meta text-subtle">
@@ -177,15 +177,15 @@ function PayoutBlock({
         <dl className="grid grid-cols-3 gap-4 md:col-span-5">
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">Väntat</dt>
-            <dd className="tnum text-base text-fg">{kr(p.expected.payoutOre)}</dd>
+            <dd className="tnum text-v2-md text-fg">{kr(p.expected.payoutOre)}</dd>
           </div>
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">Utbetalt</dt>
-            <dd className="tnum text-base text-fg">{kr(p.actual.payoutOre)}</dd>
+            <dd className="tnum text-v2-md text-fg">{kr(p.actual.payoutOre)}</dd>
           </div>
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">Skillnad</dt>
-            <dd className="tnum text-base text-fg">{signedKr(p.differenceOre)}</dd>
+            <dd className="tnum text-v2-md text-fg">{signedKr(p.differenceOre)}</dd>
           </div>
         </dl>
         <div className="flex flex-wrap items-center gap-2 md:col-span-2 md:flex-col md:items-end md:justify-self-end">
@@ -261,7 +261,7 @@ export function ReconciliationList({
           aria-labelledby="utan-utbetalning"
           className="flex flex-col gap-3 border-t border-line py-6"
         >
-          <h3 id="utan-utbetalning" className="text-md text-fg">
+          <h3 id="utan-utbetalning" className="text-v2-md text-fg">
             Försäljning som ingen utbetalning täcker.
           </h3>
           <ul className="flex flex-col">

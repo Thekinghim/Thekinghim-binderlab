@@ -101,7 +101,7 @@ export function AccountTable({
       key: "konto",
       header: "Konto",
       sortValue: (r) => r.account,
-      render: (r) => <span className="font-mono text-sm">{r.account}</span>,
+      render: (r) => <span className="text-sm">{r.account}</span>,
       footer: <span className="label text-muted">Summa</span>,
       width: 80,
     },

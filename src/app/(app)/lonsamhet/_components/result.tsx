@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-import { PanelSection } from "@/components/ui/frame";
-import { MobileFold } from "@/components/ui/mobile-fold";
 import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
 import { formatInt, formatMarginBp, formatSek, MINUS, NBSP } from "@/lib/format";
 
@@ -21,7 +19,7 @@ function fixedDetail(sharedOre: number, directOre: number): string {
 }
 
 const LINK =
-  "meta inline-flex min-h-7 items-center max-md:tap gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline";
+  "inline-flex min-h-7 items-center gap-1 text-v2-sm font-[550] text-v2-ink hover:underline max-md:min-h-11";
 
 function Line({
   label,
@@ -38,15 +36,15 @@ function Line({
     <div
       className={
         total
-          ? "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line-strong py-2.5"
-          : "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line py-2.5 first:border-t-0 first:pt-0"
+          ? "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 border-t border-v2-line py-2.5 text-v2-md"
+          : "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 border-t border-v2-line2 py-2.5 text-v2-md first:border-t-0 first:pt-0"
       }
     >
       <dt className="flex min-w-0 flex-col">
-        <span className={total ? "font-medium text-fg" : "text-muted"}>{label}</span>
-        {detail ? <span className="text-xs text-subtle">{detail}</span> : null}
+        <span className={total ? "font-[550] text-v2-ink" : "text-v2-mute"}>{label}</span>
+        {detail ? <span className="text-v2-xs text-v2-mute">{detail}</span> : null}
       </dt>
-      <dd className={total ? "tnum font-medium text-fg" : "tnum text-fg"}>{value}</dd>
+      <dd className={total ? "tnum font-[550] text-v2-ink" : "tnum text-v2-ink"}>{value}</dd>
     </div>
   );
 }
@@ -73,93 +71,75 @@ export function ResultAfterProfitPanel({
   // Fasta kostnader visas när organisationen har några (eller om ett belopp ändå finns).
   const showFixed = costLines.fixed || (r.fixedCostOre ?? 0) !== 0;
   return (
-    <PanelSection label="Efter vinsten">
-      {/* Mobil: en rad med slutraden; raderna och länkarna fälls ut. */}
-      <MobileFold
-        summary={
-          showFixed && r.fixedCostOre !== null ? "Efter fasta kostnader" : "Efter återbetalningar"
-        }
-        meta={`${kr(showFixed ? r.resultOre : r.profitAfterGiveawaysOre)}${margin ? ` · ${margin}` : ""}`}
-      >
-        <div className="flex flex-col gap-4">
-          <dl className="flex flex-col">
-            <Line label={profitLabel} value={kr(r.profitOre)} />
-            <Line
-              label="Återbetalningar"
-              value={minus(r.refundOre)}
-              detail={
-                r.refundCount > 0
-                  ? `${formatInt(r.refundCount)}${NBSP}${r.refundCount === 1 ? "ärende" : "ärenden"}`
-                  : undefined
-              }
-            />
-            {r.freePackCount > 0 ? (
-              <Line
-                label="Gratis-pack"
-                value={minus(r.freePackOre)}
-                detail={`${formatInt(r.freePackCount)}${NBSP}pack`}
-              />
-            ) : null}
-            <Line
-              label={
-                r.freePackCount > 0
-                  ? "Efter återbetalningar och gratis-pack"
-                  : "Efter återbetalningar"
-              }
-              value={kr(r.profitAfterGiveawaysOre)}
-              detail={showFixed ? undefined : margin}
-              total
-            />
-            {!showFixed ? null : r.fixedCostOre === null ? (
-              <Line label="Fasta kostnader" value="–" detail={r.fixedNote ?? undefined} />
-            ) : (
-              <Line
-                label="Fasta kostnader"
-                value={minus(r.fixedCostOre)}
-                detail={
-                  r.fixedCostOre > 0
-                    ? fixedDetail(r.sharedFixedOre ?? 0, r.directFixedOre ?? 0)
-                    : undefined
-                }
-              />
-            )}
-            {showFixed ? (
-              <Line
-                label={
-                  r.fixedCostOre === null
-                    ? "Efter återbetalningar, utan fasta"
-                    : "Efter fasta kostnader"
-                }
-                value={kr(r.resultOre)}
-                detail={margin}
-                total
-              />
-            ) : null}
-          </dl>
-          <p className="flex flex-wrap gap-x-6 gap-y-1">
-            <Link href="/inkorg" className={LINK}>
-              <span>Kundärenden</span>
-              <span aria-hidden className="text-subtle">
-                →
-              </span>
-            </Link>
-            {r.freePackCount > 0 ? (
-              <Link href="/kampanjer?vy=gratis-pack" className={LINK}>
-                <span>Gratis-pack</span>
-                <span aria-hidden className="text-subtle">
-                  →
-                </span>
-              </Link>
-            ) : null}
-            <Link href="/ekonomi?vy=fasta" className={LINK}>
-              <span>{showFixed ? "Fasta kostnader" : "Lägg till fast kostnad"}</span>
-              <span aria-hidden className="text-subtle">
-                →
-              </span>
-            </Link>
-          </p>
-        </div>
-      </MobileFold>
-    </PanelSection>
+    <div className="flex flex-col gap-3">
+      <dl className="flex flex-col">
+        <Line label={profitLabel} value={kr(r.profitOre)} />
+        <Line
+          label="Återbetalningar"
+          value={minus(r.refundOre)}
+          detail={
+            r.refundCount > 0
+              ? `${formatInt(r.refundCount)}${NBSP}${r.refundCount === 1 ? "ärende" : "ärenden"}`
+              : undefined
+          }
+        />
+        {r.freePackCount > 0 ? (
+          <Line
+            label="Gratis-pack"
+            value={minus(r.freePackOre)}
+            detail={`${formatInt(r.freePackCount)}${NBSP}pack`}
+          />
+        ) : null}
+        <Line
+          label={
+            r.freePackCount > 0 ? "Efter återbetalningar och gratis-pack" : "Efter återbetalningar"
+          }
+          value={kr(r.profitAfterGiveawaysOre)}
+          detail={showFixed ? undefined : margin}
+          total
+        />
+        {!showFixed ? null : r.fixedCostOre === null ? (
+          <Line label="Fasta kostnader" value="–" detail={r.fixedNote ?? undefined} />
+        ) : (
+          <Line
+            label="Fasta kostnader"
+            value={minus(r.fixedCostOre)}
+            detail={
+              r.fixedCostOre > 0
+                ? fixedDetail(r.sharedFixedOre ?? 0, r.directFixedOre ?? 0)
+                : undefined
+            }
+          />
+        )}
+        {showFixed ? (
+          <Line
+            label={
+              r.fixedCostOre === null
+                ? "Efter återbetalningar, utan fasta"
+                : "Efter fasta kostnader"
+            }
+            value={kr(r.resultOre)}
+            detail={margin}
+            total
+          />
+        ) : null}
+      </dl>
+      <p className="flex flex-wrap gap-x-5 gap-y-1">
+        <Link href="/inkorg" className={LINK}>
+          <span>Kundärenden</span>
+          <span aria-hidden>→</span>
+        </Link>
+        {r.freePackCount > 0 ? (
+          <Link href="/kampanjer?vy=gratis-pack" className={LINK}>
+            <span>Gratis-pack</span>
+            <span aria-hidden>→</span>
+          </Link>
+        ) : null}
+        <Link href="/ekonomi?vy=fasta" className={LINK}>
+          <span>{showFixed ? "Fasta kostnader" : "Lägg till fast kostnad"}</span>
+          <span aria-hidden>→</span>
+        </Link>
+      </p>
+    </div>
   );
 }

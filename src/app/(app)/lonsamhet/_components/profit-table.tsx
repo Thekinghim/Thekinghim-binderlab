@@ -105,7 +105,7 @@ function NameCell({ row, selected }: { row: ProfitLine; selected: boolean }) {
     <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
       <span className="flex min-w-0 items-baseline gap-2">
         {row.code ? <span className="meta shrink-0 text-subtle">{row.code}</span> : null}
-        <span className={selected ? "min-w-0 font-medium text-fg" : "min-w-0 text-fg"}>
+        <span className={selected ? "min-w-0 font-[550] text-fg" : "min-w-0 text-fg"}>
           {row.name}
         </span>
       </span>
@@ -190,7 +190,7 @@ export function columnsFor(
       render: (r) => <NameCell row={r} selected={r.kind === "item" && r.key === selectedKey} />,
       footer: (
         <span className="flex flex-col">
-          <span className="font-medium text-fg">Totalt</span>
+          <span className="font-[550] text-fg">Totalt</span>
           <SoldLine orders={totals.orders} />
         </span>
       ),
@@ -264,7 +264,7 @@ export function columnsFor(
         ),
       footer: (
         <ProfitCell
-          profit={<span className="font-medium text-fg">{kr(totals.profitOre)}</span>}
+          profit={<span className="font-[550] text-fg">{kr(totals.profitOre)}</span>}
           marginBp={totals.marginBp}
         />
       ),

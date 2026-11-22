@@ -73,7 +73,7 @@ export function LonsamhetBridge({ bridge }: { bridge: Bridge }) {
         <ProfitBridge {...props} height={300} />
       </div>
       {bridge.vmbVatOre !== null && bridge.vmbPreliminary ? (
-        <p className="meta mt-2 text-subtle">{VMB_PRELIMINARY_TEXT}</p>
+        <p className="mt-2 text-v2-xs text-v2-mute">{VMB_PRELIMINARY_TEXT}</p>
       ) : null}
     </>
   );

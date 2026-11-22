@@ -28,14 +28,18 @@ export function PriceAdviceSection({
   const first = rows.slice(0, 5);
   const rest = rows.slice(5);
   const row = (r: (typeof rows)[number]) => (
-    <li key={r.titleId} className="flex flex-col gap-1 px-4 py-3" data-testid="prisrad-rad">
-      <span className="text-base font-medium [overflow-wrap:anywhere] text-fg">{r.name}</span>
-      <span className="tnum text-base text-muted">
+    <li
+      key={r.titleId}
+      className="flex flex-col gap-0.5 border-b border-v2-line2 px-[18px] py-3 last:border-b-0"
+      data-testid="prisrad-rad"
+    >
+      <span className="text-v2-md font-[550] [overflow-wrap:anywhere] text-v2-ink">{r.name}</span>
+      <span className="tnum text-v2-sm text-v2-mute">
         Säljs för {kr(r.salePriceOre)}
         {adviceWhere(r.where)} · inköp {kr(r.unitCostOre)} · marginal{" "}
-        <span className="font-medium text-signal-fg">{adviceMargin(r.marginBp, targetBp)}</span>
+        <span className="font-[550] text-v2-crit-text">{adviceMargin(r.marginBp, targetBp)}</span>
       </span>
-      <span className="tnum text-base text-fg">
+      <span className="tnum text-v2-sm text-v2-ink">
         {r.suggestedPriceOre !== null && r.suggestedMarginBp !== null
           ? `Höj till ${kr(r.suggestedPriceOre)} för ${pct(r.suggestedMarginBp)} marginal`
           : "Inget pris når målet. Sänk inköpspriset eller målet."}
@@ -43,43 +47,47 @@ export function PriceAdviceSection({
     </li>
   );
   return (
-    <section
-      id="prisrad"
-      aria-labelledby="prisrad-rubrik"
-      className="flex scroll-mt-28 flex-col gap-4 border-t border-line py-8 md:py-12"
-    >
+    <section id="prisrad" aria-labelledby="prisrad-rubrik" className="v2-card scroll-mt-28">
       <ScrollToHash id="prisrad" />
-      <div className="flex flex-col gap-1">
-        <p className="label text-subtle">Prisråd</p>
-        <h2 id="prisrad-rubrik" className="text-xl font-medium text-fg">
-          {adviceHeadline(rows.length, targetBp)}
+      <div className="v2-card-hd">
+        <h2>
+          Prisråd
+          {rows.length > 0 ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="n">{formatInt(rows.length)}</span>
+            </>
+          ) : null}
         </h2>
       </div>
+      <p id="prisrad-rubrik" className="px-[18px] pt-3 text-v2-md font-[550] text-v2-ink">
+        {adviceHeadline(rows.length, targetBp)}
+      </p>
       {rows.length > 0 ? (
         <>
-          <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
-            {first.map(row)}
-          </ul>
+          <ul className="mt-2 flex flex-col border-y border-v2-line2">{first.map(row)}</ul>
           {rest.length > 0 ? (
-            <details>
-              <summary className="inline-flex min-h-11 cursor-pointer items-center text-base text-fg underline underline-offset-4">
+            <details className="border-b border-v2-line2">
+              <summary className="flex min-h-11 cursor-pointer items-center px-[18px] text-v2-sm font-[550] text-v2-ink hover:bg-v2-hover">
                 Visa alla {formatInt(rows.length)}
               </summary>
-              <ul className="mt-2 flex flex-col divide-y divide-line rounded-md border border-line">
-                {rest.map(row)}
-              </ul>
+              <ul className="flex flex-col border-t border-v2-line2">{rest.map(row)}</ul>
             </details>
           ) : null}
-          <p className="text-base text-fg">
-            Priset ändras i automatens system. Appen kan inte ändra det.
-          </p>
         </>
       ) : null}
-      <TargetMarginControl targetBp={targetBp} canEdit={canEdit} />
-      <p className="meta text-subtle">
-        Marginalen är före butikernas andel, med senaste priset i automaten (30 dagar) och dagens
-        inköpspris. Har automaterna olika pris räknas det lägsta, och raden säger var.
-      </p>
+      <div className="flex flex-col gap-3 px-[18px] pt-3 pb-4">
+        {rows.length > 0 ? (
+          <p className="text-v2-sm text-v2-ink">
+            Priset ändras i automatens system. Appen kan inte ändra det.
+          </p>
+        ) : null}
+        <TargetMarginControl targetBp={targetBp} canEdit={canEdit} />
+        <p className="text-v2-xs text-v2-mute">
+          Marginalen är före butikernas andel, med senaste priset i automaten (30 dagar) och dagens
+          inköpspris. Har automaterna olika pris räknas det lägsta, och raden säger var.
+        </p>
+      </div>
     </section>
   );
 }

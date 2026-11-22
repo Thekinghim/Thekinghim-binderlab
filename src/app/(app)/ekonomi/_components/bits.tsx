@@ -77,7 +77,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
         aria-invalid={error ? true : undefined}
         aria-describedby={error || hint ? `${id}-msg` : undefined}
         className={cn(
-          "min-h-24 w-full min-w-0 rounded-sm border bg-bg px-3 py-2 text-base text-fg transition-[border-color] duration-fast ease-instrument placeholder:text-subtle hover:border-muted",
+          "min-h-24 w-full min-w-0 rounded-sm border bg-bg px-3 py-2 text-v2-md text-fg transition-[border-color] duration-fast ease-instrument placeholder:text-subtle hover:border-muted",
           error ? "border-signal" : "border-line-control",
           className,
         )}

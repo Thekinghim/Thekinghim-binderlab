@@ -23,5 +23,12 @@ export default async function SalesPage({
 }) {
   const ctx = await loadContext();
   if (!ctx.canSeeEconomy) redirect(simpleHomeFor(ctx.role));
-  return <SalesScreen ctx={ctx} week={(await searchParams).vecka} closeHref="/forsaljning" />;
+  return (
+    <SalesScreen
+      ctx={ctx}
+      week={(await searchParams).vecka}
+      closeHref="/forsaljning"
+      v2={ctx.viewMode !== "simple"}
+    />
+  );
 }
