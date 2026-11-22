@@ -143,6 +143,8 @@ export async function setOwnProduct(input: {
 export async function previewPriceSplit(input: {
   titleId: string;
   unitCostOre: number;
+  /** Inskrivet pris mot kund (null = inget); utelämnat = det sparade. */
+  customerPriceOre?: number | null;
   query: string;
 }): Promise<ActionResult<PerOrderSplit>> {
   const ctx = await loadOptionalContext();
@@ -152,13 +154,27 @@ export async function previewPriceSplit(input: {
   if (!Number.isSafeInteger(unitCostOre) || unitCostOre < 0 || unitCostOre > MAX_UNIT_COST_ORE) {
     return { ok: false, error: PRICE_MESSAGES.invalid };
   }
+  const rawCustomer = input?.customerPriceOre;
+  const customerPriceOre =
+    rawCustomer === undefined || rawCustomer === null ? rawCustomer : Number(rawCustomer);
+  if (
+    typeof customerPriceOre === "number" &&
+    (!Number.isSafeInteger(customerPriceOre) ||
+      customerPriceOre < 0 ||
+      customerPriceOre > MAX_UNIT_COST_ORE)
+  ) {
+    return { ok: false, error: PRICE_MESSAGES.invalid };
+  }
   try {
     const period = await loadPeriod(new URLSearchParams(String(input?.query ?? "")));
     const domain = await loadDomainInput({ period: period.period, ...period.scope });
     if (!domain.titles.some((t) => t.id === titleId)) {
       return { ok: false, error: PRICE_MESSAGES.titleMissing };
     }
-    return { ok: true, data: splitWithPrice(domain.current, titleId, unitCostOre) };
+    return {
+      ok: true,
+      data: splitWithPrice(domain.current, titleId, unitCostOre, customerPriceOre),
+    };
   } catch {
     return { ok: false, error: PRICE_MESSAGES.invalid };
   }

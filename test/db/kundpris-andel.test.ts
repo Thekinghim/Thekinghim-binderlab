@@ -291,6 +291,48 @@ describe("röda laget: butiken ser aldrig vårt inköpspris", () => {
     expect(ok.ok).toBe(true);
   });
 
+  it("utan pris mot kund (reserv): butikens underlag är vårt pris, som före november (beslutat)", async () => {
+    // Ägarens reservregel: saknar prisperioden pris mot kund räknas andelen på vårt pris.
+    // Då är butikens Inköp vårt inköp, som det alltid varit före 1 nov. 2026 (dokumenterat i
+    // docs/berakningar.md avsnitt 4). Rapporten har ändå inga fält med vårt inköp utöver
+    // underlaget, och inga namn som avslöjar att det finns två priser.
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`update public.purchase_prices set customer_price_ore = null
+            where organization_id = ${f.orgId}`,
+      ),
+    );
+    try {
+      const snap = await asPostgres(async (tx) =>
+        buildSnapshot(
+          await loadSnapshotInput(tx, {
+            organizationId: f.orgId,
+            type: "butik",
+            month: "2026-11",
+            storeId: f.stores.vinsten,
+            now: DEC.toISOString(),
+          }),
+        ),
+      );
+      if (snap.type !== "butik") throw new Error("fel typ");
+      const [split] = snap.report.compensation.splits;
+      expect(split).toMatchObject({
+        purchasesOre: NOV_OUR_COST,
+        profitOre: 30_000 - NOV_OUR_COST,
+        storeShareOre: NOV_SHARE_OLD_RULE,
+      });
+      const text = JSON.stringify(snap);
+      expect(text).not.toMatch(/unit_?cost|ourPurchases|shareCost|customer_?price/i);
+    } finally {
+      await asPostgres((tx) =>
+        tx.execute(
+          sql`update public.purchase_prices set customer_price_ore = ${CUSTOMER}
+              where organization_id = ${f.orgId}`,
+        ),
+      );
+    }
+  });
+
   it("butiksanvändaren når varken prisraderna eller vyn med perioderna", async () => {
     await asUser(storeUser, async (tx) => {
       expect(Array.from(await tx.execute(sql`select * from public.purchase_prices`))).toEqual([]);

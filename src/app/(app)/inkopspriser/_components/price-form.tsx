@@ -172,15 +172,27 @@ export function PriceForm({
 
   // Kvar per order med det nya priset: räknas på servern med samma titleEconomics som
   // tabellen (butikens vinstdelning beror på alla titlar i butiken). Bara när titeln sålt.
-  const [split, setSplit] = useState<{ ore: number; numbers: SplitNumbers } | null>(null);
+  // Pris mot kund följer med: från CUSTOMER_PRICE_SHARE_FROM räknas butikens andel vid
+  // vinstdelning på det, så ett inskrivet pris mot kund ändrar andelen. Ändras bara pris
+  // mot kund räknas det med vårt pris i dag.
+  const [split, setSplit] = useState<{ key: string; numbers: SplitNumbers } | null>(null);
   const hasSales = current !== null && current.leftBeforeOre !== null;
+  const previewCostOre = ore ?? (customerChanged ? currentCostOre : null);
+  const previewCustomerOre = customerParsed.ok ? customerParsed.ore : savedCustomerOre;
+  const previewKey =
+    previewCostOre === null ? null : `${previewCostOre}:${previewCustomerOre ?? ""}`;
   useEffect(() => {
-    if (ore === null || !hasSales) return;
+    if (previewCostOre === null || previewKey === null || !hasSales) return;
     let live = true;
     const timer = setTimeout(() => {
-      previewPriceSplit({ titleId, unitCostOre: ore, query })
+      previewPriceSplit({
+        titleId,
+        unitCostOre: previewCostOre,
+        customerPriceOre: previewCustomerOre,
+        query,
+      })
         .then((r) => {
-          if (live && r.ok && r.data) setSplit({ ore, numbers: r.data });
+          if (live && r.ok && r.data) setSplit({ key: previewKey, numbers: r.data });
         })
         .catch(() => {});
     }, 250);
@@ -188,9 +200,11 @@ export function PriceForm({
       live = false;
       clearTimeout(timer);
     };
-  }, [ore, titleId, query, hasSales]);
+  }, [previewCostOre, previewCustomerOre, previewKey, titleId, query, hasSales]);
   const splitLines =
-    split && split.ore === ore ? splitPreviewText(split.numbers, current, showShare) : [];
+    split && previewKey !== null && split.key === previewKey
+      ? splitPreviewText(split.numbers, current, showShare)
+      : [];
 
   const dateOk = isIsoDate(validFrom);
   const dated = useMemo(

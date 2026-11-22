@@ -169,7 +169,7 @@ export const storeShareTool = defineTool({
   title: "Butikernas andel",
   label: (input) => (input.butik ? `Butikens andel: ${input.butik}` : "Butikernas andel"),
   description:
-    "Vad butikerna får enligt sina avtal: butiksersättning (vinstandel eller provision, plus hyra bara om avtalet har hyra) per butik, och för en butik per månad med snitt per hel månad, plus avtalets villkor (modell, andel, hyra, vad som gäller vid förlust, VMB före delningen). Standardperiod: de tre senaste hela månaderna. Använd för 'hur mycket får Sega gubben i månaden', 'vad betalar vi butikerna'. Vinstdelningen är normalt 50/50 av vinsten efter kostnader.",
+    "Vad butikerna får enligt sina avtal: butiksersättning (vinstandel eller provision, plus hyra bara om avtalet har hyra) per butik, och för en butik per månad med snitt per hel månad, plus avtalets villkor (modell, andel, hyra, vad som gäller vid förlust, VMB före delningen). Standardperiod: de tre senaste hela månaderna. Använd för 'hur mycket får Sega gubben i månaden', 'vad betalar vi butikerna'. Vinstdelningen är normalt 50/50 av vinsten efter kostnader. Från 1 nov. 2026 räknas butikens vinstandel med pris mot kund som inköp (vårt pris om inget pris mot kund finns), så butikens andel blir mindre än vår del med halva prisskillnaden gånger antal pack; vår del räknas fortfarande på vårt pris.",
   roles: ECONOMY_ROLES,
   input: storeShareInput,
   async run(ctx: ToolContext, input) {
