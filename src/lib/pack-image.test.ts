@@ -21,6 +21,12 @@ describe("packKey", () => {
     ["Surging Sparks", "surging-sparks"],
     ["Destin Rivals", "destined-rivals"],
     ["White Flair", "white-flare"],
+    ["Journey Together", "journey-together"],
+    ["Obsidian Flames", "obsidian-flames"],
+    ["Paldea Evolved", "paldea-evolved"],
+    ["Paradox Rift", "paradox-rift"],
+    ["Temporal Forces", "temporal-forces"],
+    ["Twilight Masquerade", null],
   ] as const)("%s → %s", (title, key) => {
     expect(packKey(title)).toBe(key);
   });

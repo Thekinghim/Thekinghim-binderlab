@@ -15,19 +15,24 @@ export const PACK_IMAGES = {
   "delta-reign": [132, 240],
   "destined-rivals": [131, 240],
   "fusion-strike": [131, 240],
+  "journey-together": [132, 240],
   "mega-dream-ex-jp": [130, 240],
   "mega-evolution": [131, 240],
   "mega-inferno-jp": [119, 240],
   "mega-storm-emeralda-jp": [119, 240],
   "mystery-pack-premium": [129, 240],
   "mystery-pack": [129, 240],
+  "obsidian-flames": [131, 240],
   "op13-en": [145, 240],
   "op13-jp": [119, 240],
+  "paldea-evolved": [131, 240],
+  "paradox-rift": [136, 240],
   "perfect-order": [132, 240],
   "phantasmal-flames": [132, 240],
   "prismatic-evolutions": [131, 240],
   "scarlet-violet-151": [177, 240],
   "surging-sparks": [131, 240],
+  "temporal-forces": [133, 240],
   "white-flare": [131, 240],
 } as const satisfies Record<string, readonly [number, number]>;
 
@@ -52,6 +57,11 @@ const RULES: ReadonlyArray<readonly [string, PackKey]> = [
   ["delta", "delta-reign"],
   ["perfect order", "perfect-order"],
   ["mega evolution", "mega-evolution"],
+  ["journey together", "journey-together"],
+  ["obsidian", "obsidian-flames"],
+  ["paldea evolved", "paldea-evolved"],
+  ["paradox", "paradox-rift"],
+  ["temporal", "temporal-forces"],
 ];
 
 /** Titelns bildnyckel, eller null när det inte finns någon bild. */
