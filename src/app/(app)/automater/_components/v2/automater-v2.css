@@ -744,12 +744,27 @@
       border-radius: var(--v2-r-md) var(--v2-r-md) 0 0;
     }
   }
-  .v2-auto-sheet .sb {
-    padding: 0 12px 16px;
+  /* I arket (telefon): arket är ramen, panelerna inuti får ingen egen (ingen dubbelram). */
+  .v2-auto-det.in-sheet {
+    gap: 0;
   }
-  .v2-auto-sheet .v2-auto-det {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  .v2-auto-det.in-sheet .dtabs {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--v2-line);
+    border-radius: 0;
+    margin-bottom: 0;
+  }
+  .v2-auto-det.in-sheet .pn {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+  .v2-auto-det.in-sheet .pn + .pn {
+    border-top: 1px solid var(--v2-line);
+  }
+  .v2-auto-det.in-sheet .sum {
+    padding: 14px 0 16px;
   }
 }

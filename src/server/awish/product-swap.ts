@@ -41,7 +41,7 @@ export interface SwapLevel {
 }
 
 export interface DetectSwapsInput {
-  /** Förra läsningens fack per titel (machine_slot_capacity: titel → kanaler). */
+  /** Förra läsningens fack per titel (stock_locations.awish_channels, äldre: machine_slot_capacity). */
   readonly previous: ReadonlyMap<string, readonly string[]>;
   /** Facken nu (en rad per kanal med vara). */
   readonly current: readonly SwapChannelNow[];

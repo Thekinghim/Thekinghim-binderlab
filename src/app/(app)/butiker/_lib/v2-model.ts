@@ -124,27 +124,108 @@ export interface ShareBar {
   readonly running: boolean;
   /** Dagar hittills i den pågående månaden, annars null. */
   readonly days: number | null;
+  /**
+   * Takten för hela den pågående månaden (hittills ÷ dagar × månadens dagar), för den
+   * streckade stapeln. null för hela månader.
+   */
+  readonly paceOre: number | null;
+}
+
+/** 'ÅÅÅÅ-MM' n månader före (negativt n) eller efter. */
+function addMonths(month: string, n: number): string {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7)) - 1 + n;
+  const yy = y + Math.floor(m / 12);
+  const mm = ((m % 12) + 12) % 12;
+  return `${yy}-${String(mm + 1).padStart(2, "0")}`;
+}
+
+/** Dagarna i månaden 'ÅÅÅÅ-MM'. */
+function daysOfMonth(month: string): number {
+  return new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
 }
 
 /**
- * Butikens andel per månad: avräkningarnas belopp de senaste `months - 1` månaderna och
- * den pågående månadens intjänade andel sist.
+ * Butikens andel per kalendermånad, de senaste `months` månaderna med den pågående sist:
+ * avräkningarnas belopp (oförändrade, flera i samma månad läggs ihop); utan avräkning den
+ * räknade andelen för månaden (`computed`, storeCompensation: samma motor som avräkningen),
+ * annars 0. Den pågående månaden är den intjänade andelen med takten för hela månaden.
+ * Månader före butikens första andel visas inte (butiken hade ingen automat).
  */
 export function shareHistory(
   settlements: readonly SettlementLike[],
   storeId: string,
   current: { readonly month: string; readonly earnedOre: number; readonly days: number },
   months = 6,
+  computed: readonly { readonly month: string; readonly ore: number }[] = [],
 ): ShareBar[] {
-  const past = settlements
-    .filter((s) => s.storeId === storeId && s.month < current.month)
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .slice(-(months - 1))
-    .map((s) => ({ month: s.month, amountOre: s.amountOre, running: false, days: null }));
+  const byMonth = new Map<string, number>();
+  let first: string | null = null;
+  for (const s of settlements) {
+    if (s.storeId !== storeId || s.month >= current.month) continue;
+    byMonth.set(s.month, (byMonth.get(s.month) ?? 0) + s.amountOre);
+    if (first === null || s.month < first) first = s.month;
+  }
+  for (const c of computed) {
+    if (c.month >= current.month || byMonth.has(c.month) || c.ore === 0) continue;
+    byMonth.set(c.month, c.ore);
+    if (first === null || c.month < first) first = c.month;
+  }
+  const past: ShareBar[] = [];
+  for (let k = months - 1; k >= 1; k--) {
+    const month = addMonths(current.month, -k);
+    if (first === null || month < first) continue;
+    past.push({
+      month,
+      amountOre: byMonth.get(month) ?? 0,
+      running: false,
+      days: null,
+      paceOre: null,
+    });
+  }
+  const total = daysOfMonth(current.month);
+  const days = Math.max(0, Math.min(current.days, total));
   return [
     ...past,
-    { month: current.month, amountOre: current.earnedOre, running: true, days: current.days },
+    {
+      month: current.month,
+      amountOre: current.earnedOre,
+      running: true,
+      days,
+      paceOre: days > 0 ? Math.round((current.earnedOre * total) / days) : null,
+    },
   ];
+}
+
+/**
+ * Vinst per automat i perioden, med automatdagar: butikens vinst (summan av automaternas egen
+ * vinst i butiken) delad med hur många automater som i snitt stod där, dvs. automatdagarna i
+ * butiken ÷ periodens dagar. En automat som flyttade in mitt i perioden räknas som en halv,
+ * en som flyttade ut räknas för dagarna den stod där. null utan automatdagar i perioden.
+ */
+export function perMachineProfit(
+  profitOre: number,
+  storeId: string,
+  placements: readonly {
+    readonly machineId: string;
+    readonly storeId: string;
+    readonly from: string;
+    readonly to: string | null;
+  }[],
+  period: { readonly start: string; readonly end: string } | null,
+): number | null {
+  if (period === null || period.end < period.start) return null;
+  const day = (d: string) => Math.round(Date.parse(`${d}T00:00:00Z`) / 86_400_000);
+  const periodDays = day(period.end) - day(period.start) + 1;
+  let machineDays = 0;
+  for (const p of placements) {
+    if (p.storeId !== storeId) continue;
+    const start = p.from > period.start ? p.from : period.start;
+    const end = p.to !== null && p.to < period.end ? p.to : period.end;
+    if (end >= start) machineDays += day(end) - day(start) + 1;
+  }
+  if (machineDays <= 0) return null;
+  return Math.round((profitOre * periodDays) / machineDays);
 }
 
 /** Uträkningen att visa: den obetalda avräkningen, annars den senaste. */

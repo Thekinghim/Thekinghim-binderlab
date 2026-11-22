@@ -136,6 +136,13 @@ describe("vinst per automat och månad", () => {
     const rows = profitability(june.current, "machine").rows;
     const juneOne = rows.find((r) => r.key === machineIds[0])!;
     expect(one.values[1]).toBe(Math.round(juneOne.profitOre / 20));
+
+    // "Alla" i samma enhet som raderna: båda automaternas vinst ÷ båda automaternas dagar
+    // i tjänst (20 + 20 i juni), inte flottans vinst per kalenderdag.
+    const juneTwo = rows.find((r) => r.key === machineIds[1])!;
+    expect(table.totals[1]).toBe(Math.round((juneOne.profitOre + juneTwo.profitOre) / 40));
+    // Maj: bara automat 1 stod ute, så Alla = automat 1.
+    expect(table.totals[0]).toBe(one.values[0]);
   });
 
   it("läsaren får läsa, påfyllaren får ingenting", async () => {

@@ -7,6 +7,7 @@ import { Button } from "@/components/v2/button";
 import { CallLink, MapsLink } from "@/components/v2/call-link";
 import { Card } from "@/components/v2/card";
 import { Chips } from "@/components/v2/chips";
+import { PackImage } from "@/components/v2/pack-image";
 import { SearchField } from "@/components/v2/search-field";
 import { Sheet } from "@/components/v2/sheet";
 import { StatusDot } from "@/components/v2/status-dot";
@@ -58,12 +59,14 @@ export interface ShopView {
     readonly statusLabel: string;
     readonly tone: FleetStatusTone;
     readonly fillBp: number | null;
+    readonly packs: readonly { readonly name: string; readonly empty: boolean }[];
     readonly href: string;
   }[];
   readonly profitOre: number;
   readonly perMachineOre: number | null;
   readonly shareOre: number;
   readonly earnedMonthOre: number;
+  readonly monthlyShare: readonly { readonly month: string; readonly ore: number }[];
   readonly terms: string | null;
   readonly payOre: number;
   readonly payDue: string | null;
@@ -367,12 +370,14 @@ function ShopDetail({
   today: string;
   canEdit: boolean;
 }) {
-  const bars = shareHistory(settlements, shop.id, {
-    month: month.month,
-    earnedOre: shop.earnedMonthOre,
-    days: month.days,
-  });
-  const max = Math.max(1, ...bars.map((b) => Math.max(0, b.amountOre)));
+  const bars = shareHistory(
+    settlements,
+    shop.id,
+    { month: month.month, earnedOre: shop.earnedMonthOre, days: month.days },
+    6,
+    shop.monthlyShare,
+  );
+  const max = Math.max(1, ...bars.map((b) => Math.max(0, b.amountOre, b.paceOre ?? 0)));
   const statement = latestStatement(settlements, shop.id);
   return (
     <section className="v2-card g4-det" aria-label={`Butik ${shop.name}`} data-shop-detail>
@@ -434,38 +439,76 @@ function ShopDetail({
                   {fillPct(m.fillBp)}
                 </span>
               </span>
-              <span className="id">{m.code}</span>
+              {m.packs.length > 0 ? (
+                <span className="pstrip" aria-hidden="true">
+                  {m.packs.slice(0, 8).map((p, i) => (
+                    <span key={`${p.name}-${i}`} className={p.empty ? "ps e" : "ps"} title={p.name}>
+                      <PackImage title={p.name} size="xs" />
+                    </span>
+                  ))}
+                  {m.packs.length > 8 ? <span className="more">+{m.packs.length - 8}</span> : null}
+                </span>
+              ) : (
+                <span className="id">{m.code}</span>
+              )}
               <StatusDot tone={m.tone} label={m.statusLabel} className="st" />
             </Link>
           ))}
         </div>
       ) : null}
       {bars.length > 1 && bars.some((b) => b.amountOre > 0) ? (
-        <>
-          <div className="g4-mbars" role="img" aria-label="Butikens andel per månad">
-            {bars.map((b, i) => (
-              <div key={b.month} className={b.running ? "mb now" : "mb"}>
-                <span className="v">{formatInt(Math.round(b.amountOre / 100))}</span>
-                <i
-                  style={
-                    {
-                      "--i": i,
-                      height: `${Math.max(2, (Math.max(0, b.amountOre) / max) * 80)}px`,
-                    } as CSSProperties
-                  }
-                />
-              </div>
-            ))}
+        <div className="g4-mchart">
+          <div className="g4-chart-hd">
+            <b>Butikens andel per månad</b>
+            <span>Streckat: takt</span>
           </div>
-          <div className="g4-mls">
+          <div className="g4-mbars">
+            {bars.map((b, i) => {
+              const h = (Math.max(0, b.amountOre) / max) * 100;
+              const pace = b.paceOre !== null ? (Math.max(0, b.paceOre) / max) * 100 : null;
+              const label = `${monthShortCap(b.month)}${b.running ? ` (${b.days} d)` : ""}`;
+              return (
+                <div
+                  key={b.month}
+                  className={cn("mb", b.running && "now", b.amountOre <= 0 && "zero")}
+                  tabIndex={0}
+                  aria-label={
+                    b.running && b.paceOre !== null
+                      ? `${label}: ${kr(b.amountOre)} hittills, takt ${kr(b.paceOre)} för hela månaden`
+                      : `${label}: ${kr(b.amountOre)}`
+                  }
+                  title={
+                    b.running && b.paceOre !== null
+                      ? `Hittills ${kr(b.amountOre)}. Takt för hela månaden ${kr(b.paceOre)}`
+                      : kr(b.amountOre)
+                  }
+                >
+                  <span className="t" style={{ "--i": i } as CSSProperties}>
+                    {pace !== null ? (
+                      <span className="pace" style={{ height: `${pace}%` }} aria-hidden="true" />
+                    ) : null}
+                    <i style={{ height: `${Math.max(b.amountOre > 0 ? 2 : 1, h)}%` }} />
+                    <span
+                      className="v"
+                      style={{ bottom: `calc(${Math.max(h, pace ?? 0)}% + 4px)` }}
+                      aria-hidden="true"
+                    >
+                      {b.amountOre > 0 ? formatInt(Math.round(b.amountOre / 100)) : "–"}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="g4-mls" aria-hidden="true">
             {bars.map((b) => (
               <span key={b.month}>
                 {monthShortCap(b.month)}
-                {b.running ? ` (${b.days} d)` : ""}
+                {b.running ? <small>{b.days} d</small> : null}
               </span>
             ))}
           </div>
-        </>
+        </div>
       ) : null}
       <div className="g4-sec">
         <h4>Avtal</h4>

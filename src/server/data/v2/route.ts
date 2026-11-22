@@ -21,9 +21,9 @@ import { loadContext, loadMasterData, requireViewer } from "../core";
 import type { Viewer } from "../core/loaders";
 import { stockRowsInRequest } from "../core/loaders";
 import { ownStockTotals } from "../core/own-stock";
-import { queryRouteDepot, ROUTE_LIMIT_DEFAULTS } from "../route-settings";
+import { queryRoutePlanSettings, ROUTE_LIMIT_DEFAULTS } from "../route-settings";
 import { loadTodoVisitPlan } from "../todos";
-import { loadFleetState } from "./fleet";
+import { loadFleetState, loadFleetStatus } from "./fleet";
 import { buildDayRoute } from "./route-model";
 import type { DayRoute, RouteDayChangeRow, RouteLimits } from "./types";
 
@@ -81,17 +81,18 @@ export async function loadRouteChangesFor(
   });
 }
 
-/**
- * Dagens rutt för den inloggade, en gång per förfrågan. Utan besök i dag (eller när planen inte
- * gick att räkna): en rutt utan stopp.
- */
-export const loadDayRoute = cache(async (): Promise<DayRoute> => {
+type DayRouteInput = Parameters<typeof buildDayRoute>[0];
+
+/** Allt dagens rutt byggs av utom flottans läge, en gång per förfrågan. */
+const loadDayRouteInputs = cache(async (): Promise<Omit<DayRouteInput, "fleet">> => {
   const ctx = await loadContext();
   const viewer = await requireViewer();
-  const [plan, fleet, limits, changes, stock, master, depot] = await Promise.all([
+  const [plan, settings, changes, stock, master] = await Promise.all([
     loadTodoVisitPlan(),
-    loadFleetState(),
-    loadRouteLimits(),
+    // Gränsen och ruttens start i en transaktion (vid fel: standarden och ingen start).
+    withUserDbFor(viewer.user, (tx) => queryRoutePlanSettings(tx, viewer.organization.id)).catch(
+      () => ({ limits: ROUTE_LIMIT_DEFAULTS, depot: null }),
+    ),
     // En vecka bakåt: modellen tar "till i morgon" från förra ruttdagen (route-model.ts).
     loadRouteChangesFor(viewer, ctx.today, addDays(ctx.today, -7)).catch((error: unknown) => {
       console.error("[v2/route] Ändringarna kunde inte läsas:", error);
@@ -99,16 +100,13 @@ export const loadDayRoute = cache(async (): Promise<DayRoute> => {
     }),
     stockRowsInRequest(viewer).catch(() => null),
     loadMasterData(),
-    withUserDbFor(viewer.user, (tx) => queryRouteDepot(tx, viewer.organization.id)).catch(
-      () => null,
-    ),
   ]);
+  const { limits, depot } = settings;
   const days = plan?.plan.days ?? [];
   const day = days.find((d) => d.date === ctx.today) ?? null;
-  return buildDayRoute({
+  return {
     date: ctx.today,
     day,
-    fleet,
     limits,
     later: days.filter((d) => d.date > ctx.today),
     overflow: plan?.plan.overflow ?? [],
@@ -120,5 +118,24 @@ export const loadDayRoute = cache(async (): Promise<DayRoute> => {
         .map((t) => t.id),
     ),
     depot: depot ? { name: depot.name, address: depot.address, location: depot.location } : null,
-  });
+  };
+});
+
+/**
+ * Dagens rutt för den inloggade, en gång per förfrågan. Utan besök i dag (eller när planen inte
+ * gick att räkna): en rutt utan stopp.
+ */
+export const loadDayRoute = cache(async (): Promise<DayRoute> => {
+  const [inputs, fleet] = await Promise.all([loadDayRouteInputs(), loadFleetState()]);
+  return buildDayRoute({ ...inputs, fleet });
+});
+
+/**
+ * Dagens rutt byggd på flottans läge utan ekonomi (inga belopp, "räddar" saknas), en gång per
+ * förfrågan: för menyns räknare. Samma stopp, pack och brist som loadDayRoute (ekonomin
+ * påverkar bara beloppen), och samma indata, så en sida som läser båda läser databasen en gång.
+ */
+export const loadDayRouteStatus = cache(async (): Promise<DayRoute> => {
+  const [inputs, fleet] = await Promise.all([loadDayRouteInputs(), loadFleetStatus()]);
+  return buildDayRoute({ ...inputs, fleet });
 });

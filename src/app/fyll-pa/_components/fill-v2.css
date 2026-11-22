@@ -200,8 +200,17 @@
     flex-direction: column;
     gap: var(--fill-gap);
   }
-  .v2-fill-app .side2 {
+  .v2-fill-app .side2,
+  .v2-fill-app .main2 {
     display: contents;
+  }
+  /* Telefonen: automaten överst, sedan "Välj vad du fyller på", facken och Klar. */
+  .v2-fill-app .main2 > .pick {
+    order: -2;
+  }
+  /* Skalet (fill-shell.tsx): sidomenyn på datorn, ingen bottenrad på telefonen. */
+  .v2-fill-shell-main {
+    min-width: 0;
   }
   .v2-fill-app .say {
     padding: 14px 18px 15px;
@@ -630,6 +639,13 @@
       grid-template-columns: minmax(0, 1fr) 380px;
       align-items: start;
     }
+    .v2-fill-app .main2 {
+      display: flex;
+      flex-direction: column;
+      gap: var(--fill-gap);
+      min-width: 0;
+      order: 1;
+    }
     .v2-fill-app .side2 {
       display: flex;
       flex-direction: column;
@@ -661,6 +677,18 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       gap: 12px;
+    }
+  }
+  /* Bred dator (prototypen .pg-fyll vid 1 100 px): sidan intill sidomenyn, fack 640 px och
+     sammanfattningen 320 px. */
+  @media (min-width: 1100px) {
+    .v2-fill-app {
+      max-width: 1018px;
+      margin: 0;
+    }
+    .v2-fill-app .work {
+      grid-template-columns: minmax(0, 640px) 320px;
+      gap: 14px;
     }
   }
 

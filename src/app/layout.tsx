@@ -18,7 +18,8 @@ const googleSans = Google_Sans({
   weight: "variable",
   display: "swap",
   variable: "--font-google-sans",
-  // Next har inga mått för Google Sans (varning vid varje sida): reservtypsnittet justeras inte.
+  // Next har inga mått för Google Sans (varning vid varje sida). Reservtypsnittet med uppmätta
+  // mått står i src/styles/v2.css ("V2 Google Sans Fallback") och ligger i --v2-sans.
   adjustFontFallback: false,
 });
 const googleSansCode = Google_Sans_Code({

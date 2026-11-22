@@ -63,6 +63,7 @@ import {
   storeKpis,
   toAgreementView,
   unpricedProfitNote,
+  type MachinePlacementRef,
 } from "./model";
 import {
   loadAgreementsFor,
@@ -212,6 +213,8 @@ export interface StoreListData {
    * eller vald butik). Av: vår vinst före andelen.
    */
   readonly showStoreShare: boolean;
+  /** Automaternas placeringar (alla butiker), för automatdagarna per butik. */
+  readonly placements: readonly MachinePlacementRef[];
 }
 
 export async function loadStoreList(searchParams: SearchParamsInput): Promise<StoreListData> {
@@ -323,6 +326,7 @@ export async function loadStoreListWith(
     examples: rows.filter((r) => r.isExample && !r.archived).length,
     signed: activeStores(rows).filter((r) => r.contract === "signed").length,
     showStoreShare: showShare,
+    placements: master.placements,
   };
 }
 

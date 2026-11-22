@@ -14,11 +14,12 @@ import { PackImage } from "@/components/v2/pack-image";
 import { RollingNumber } from "@/components/v2/rolling-number";
 import { Sparkline } from "@/components/v2/sparkline";
 import type { SearchParamsInput } from "@/components/shell/period-state";
+import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 import { loadMoneyGoal, loadMoneyPriceAdvice } from "@/server/data/v2/analytics/goal";
 import { loadMoneyGeo } from "@/server/data/v2/analytics/geo";
 import { loadMoneyMonths } from "@/server/data/v2/analytics/months12";
-import { goalShortOre } from "@/server/data/v2/analytics/money-model";
+import { axisKr, chartScale, goalShortOre } from "@/server/data/v2/analytics/money-model";
 import { loadMoneyResult, loadMoneyWaterfall } from "@/server/data/v2/analytics/result";
 import { loadMoneyPay } from "@/server/data/v2/analytics/shops";
 import { loadMoneyTop } from "@/server/data/v2/analytics/top";
@@ -36,7 +37,10 @@ const idx = (i: number) => ({ "--i": i }) as CSSProperties;
 export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
   const r = await loadMoneyResult(sp);
   if (!r) return null;
-  const max = Math.max(1, ...r.bars.map((b) => Math.max(b.profitOre, b.paceOre ?? 0)));
+  const scale = chartScale(
+    Math.max(0, ...r.bars.map((b) => Math.max(b.profitOre, b.paceOre ?? 0))),
+  );
+  const max = scale.topOre;
   return (
     <Card title={`Resultat · ${r.periodLabel}`}>
       <div className="g4-res">
@@ -84,47 +88,79 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
                   </span>
                 ) : null}
               </div>
-              <div className="g4-bars" role="img" aria-label="Vinst per period, stapeldiagram">
-                {r.bars.map((b, i) => {
-                  const h = Math.max(0, b.profitOre) / max;
-                  return (
-                    <div
-                      key={b.key}
-                      className={b.partial ? "wk now" : "wk"}
-                      style={idx(i)}
-                      title={`${b.label}: ${kr(b.profitOre)}`}
+              <div className="g4-wc">
+                <div
+                  className="g4-bars"
+                  role="list"
+                  aria-label={`Vinst per ${r.unit === "week" ? "vecka" : "dag"}`}
+                >
+                  {scale.ticks.map((t) => (
+                    <span
+                      key={t}
+                      className={t === 0 ? "g4-gl z" : "g4-gl"}
+                      style={{ bottom: `${(t / max) * 100}%` }}
+                      aria-hidden="true"
                     >
-                      {b.partial && b.paceOre !== null ? (
-                        <span
-                          className="pace"
-                          style={{ height: `${(Math.max(0, b.paceOre) / max) * 100}%`, bottom: 0 }}
-                          aria-hidden="true"
-                        />
-                      ) : null}
-                      <span className="bar" style={{ ...idx(i), height: `${h * 100}%` }} />
-                      <span
-                        className="amt"
-                        style={{
-                          ...idx(i),
-                          bottom: `calc(${Math.max(h, b.partial && b.paceOre !== null ? Math.max(0, b.paceOre) / max : 0) * 100}% + 4px)`,
-                        }}
+                      <i>{axisKr(t)}</i>
+                    </span>
+                  ))}
+                  {r.bars.map((b, i) => {
+                    const h = Math.max(0, b.profitOre) / max;
+                    const pace =
+                      b.partial && b.paceOre !== null ? Math.max(0, b.paceOre) / max : null;
+                    const text = [
+                      `${r.unit === "week" ? `Vecka ${b.label.replace(/^v\. /, "")}` : b.label}${b.partialText ? ` (${b.partialText})` : ""}: vinst ${kr(b.profitOre)}`,
+                      b.paceOre !== null ? `takt ${kr(b.paceOre)} för hela veckan` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ");
+                    return (
+                      <div
+                        key={b.key}
+                        role="listitem"
+                        tabIndex={0}
+                        className={cn(
+                          "wk",
+                          b.partial && "now",
+                          !b.partial && b.partialText && "part",
+                        )}
+                        style={idx(i)}
+                        title={text}
+                        aria-label={text}
                       >
-                        {kr(b.profitOre)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="g4-wls">
-                {r.bars.map((b) => (
-                  <span key={b.key}>
-                    {b.label}
-                    {b.partialText ? <small>{b.partialText}</small> : null}
-                    {b.paceOre !== null ? (
-                      <small className="tk">takt {kr(b.paceOre).replace(/\s?kr$/, "")}</small>
-                    ) : null}
-                  </span>
-                ))}
+                        {pace !== null ? (
+                          <span
+                            className="pace"
+                            style={{ ...idx(i), height: `${pace * 100}%`, bottom: 0 }}
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                        <span className="bar" style={{ ...idx(i), height: `${h * 100}%` }} />
+                        <span
+                          className="amt"
+                          aria-hidden="true"
+                          style={{
+                            ...idx(i),
+                            bottom: `calc(${Math.max(h, pace ?? 0) * 100}% + 4px)`,
+                          }}
+                        >
+                          {kr(b.profitOre)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="g4-wls" aria-hidden="true">
+                  {r.bars.map((b) => (
+                    <span key={b.key}>
+                      {b.label}
+                      {b.partialText ? <small>{b.partialText}</small> : null}
+                      {b.paceOre !== null ? (
+                        <small className="tk">takt {kr(b.paceOre).replace(/\s?kr$/, "")}</small>
+                      ) : null}
+                    </span>
+                  ))}
+                </div>
               </div>
             </>
           ) : (

@@ -10,6 +10,7 @@ import type { HemAction } from "@/analytics/home-v2";
 import { Badge } from "@/components/v2/badge";
 import { Button, ButtonLink } from "@/components/v2/button";
 import { CallLink } from "@/components/v2/call-link";
+import { telHref } from "@/components/v2/links";
 import { toastUndo, toastV2 } from "@/components/v2/toast";
 import { usePhone } from "@/components/v2/use-media";
 import { formatInt, NBSP } from "@/lib/format";
@@ -104,118 +105,133 @@ export function ActionsList({
   return (
     <>
       <div>
-        {shown.map((r) => (
-          <div
-            className={cn("arow", r.kind === "offline" && "off")}
-            key={r.key}
-            data-hem-action={r.kind}
-          >
-            <div className="an">
-              <b title={r.title}>{r.title}</b>
-              {r.sub ? <small>{r.sub}</small> : null}
-              {r.price ? (
-                <small>
-                  Säljs för {krExact(r.price.salePriceOre)}, inköp {krExact(r.price.unitCostOre)}
-                </small>
-              ) : null}
-            </div>
-            <div className="ai">
-              <div className="flex items-center gap-3">
-                <Badge tone={r.tone} dot>
-                  {r.badge}
-                </Badge>
-                {r.fillBp !== null && r.kind !== "offline" ? (
-                  <span className="afill" aria-label={`${Math.round(r.fillBp / 100)} % fylld`}>
-                    <span className="track">
-                      <i
-                        className={r.kind === "tom" ? "c" : "o"}
-                        style={{
-                          transform: `scaleX(${Math.min(1, Math.max(0, r.fillBp / 10_000))})`,
-                        }}
-                      />
-                    </span>
-                    <span className={`pct ${r.kind === "tom" ? "text-v2-crit-text" : "o"}`}>
-                      {Math.round(r.fillBp / 100)}
-                      {NBSP}%
-                    </span>
-                  </span>
+        {shown.map((r) => {
+          const hasCall = telHref(r.phone) !== null;
+          return (
+            <div
+              className={cn("arow", r.kind === "offline" && "off")}
+              key={r.key}
+              data-hem-action={r.kind}
+            >
+              <div className="an">
+                <b title={r.title}>{r.title}</b>
+                {r.sub ? <small>{r.sub}</small> : null}
+                {r.price ? (
+                  <small>
+                    Säljs för {krExact(r.price.salePriceOre)}, inköp {krExact(r.price.unitCostOre)}
+                  </small>
                 ) : null}
               </div>
-              <small>
-                {r.kind === "offline" ? (
-                  <>Senast hörd {sinceText(r.offlineSince, nowMs)}</>
-                ) : r.kind === "pris" && r.price ? (
-                  r.price.suggestedPriceOre !== null ? (
-                    <>
-                      Höj till <b>{krExact(r.price.suggestedPriceOre)}</b>: nu{" "}
-                      {krExact(r.price.profitOre)} per pack efter avgifter
-                    </>
-                  ) : (
-                    <>Priset täcker inte inköp och avgifter</>
-                  )
-                ) : (
-                  <>
-                    {r.kind === "tom" ? "Tom" : r.kind === "startklar" ? "Ny automat" : r.badge}
-                    {r.packs !== null ? (
+              <div className="ai">
+                <div className="flex items-center gap-3">
+                  <Badge tone={r.tone} dot>
+                    {r.badge}
+                  </Badge>
+                  {r.fillBp !== null && r.kind !== "offline" ? (
+                    <span className="afill" aria-label={`${Math.round(r.fillBp / 100)} % fylld`}>
+                      <span className="track">
+                        <i
+                          className={r.kind === "tom" ? "c" : "o"}
+                          style={{
+                            transform: `scaleX(${Math.min(1, Math.max(0, r.fillBp / 10_000))})`,
+                          }}
+                        />
+                      </span>
+                      <span className={`pct ${r.kind === "tom" ? "text-v2-crit-text" : "o"}`}>
+                        {Math.round(r.fillBp / 100)}
+                        {NBSP}%
+                      </span>
+                    </span>
+                  ) : null}
+                </div>
+                <small>
+                  {r.kind === "offline" ? (
+                    <>Senast hörd {sinceText(r.offlineSince, nowMs)}</>
+                  ) : r.kind === "pris" && r.price ? (
+                    r.price.suggestedPriceOre !== null ? (
                       <>
-                        {" "}
-                        · ta med{" "}
-                        <b>
-                          {formatInt(r.packs)}
-                          {NBSP}pack
-                        </b>
+                        Höj till <b>{krExact(r.price.suggestedPriceOre)}</b>: nu{" "}
+                        {krExact(r.price.profitOre)} per pack efter avgifter
                       </>
+                    ) : (
+                      <>Priset täcker inte inköp och avgifter</>
+                    )
+                  ) : (
+                    <>
+                      {r.kind === "tom" ? "Tom" : r.kind === "startklar" ? "Ny automat" : r.badge}
+                      {r.packs !== null ? (
+                        <>
+                          {" "}
+                          · ta med{" "}
+                          <b>
+                            {formatInt(r.packs)}
+                            {NBSP}pack
+                          </b>
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                  <LossText ore={r.lossOre} />
+                </small>
+              </div>
+              <div className="ago">
+                {r.kind === "offline" ? (
+                  <>
+                    {/* På telefon bara en knapp (den första som finns): Ring, annars Lägg i
+                      rutten, annars Visa. De andra döljs i hem.css (.sec). */}
+                    <CallLink phone={r.phone} name={r.contactName} size="sm" />
+                    {canRoute && r.machineId ? (
+                      routeSet.has(r.machineId) ? (
+                        <span
+                          className={cn("v2-btn sm plain", hasCall && "sec")}
+                          aria-disabled="true"
+                        >
+                          I rutten
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="plain"
+                          className={cn(hasCall && "sec")}
+                          pending={pending}
+                          onClick={() => add(r)}
+                        >
+                          Lägg i rutten
+                        </Button>
+                      )
+                    ) : null}
+                    {r.code ? (
+                      <ButtonLink
+                        size="sm"
+                        variant="plain"
+                        className={cn((hasCall || (canRoute && r.machineId)) && "sec")}
+                        href={`/automater?valj=${encodeURIComponent(r.code)}`}
+                      >
+                        Visa
+                      </ButtonLink>
                     ) : null}
                   </>
-                )}
-                <LossText ore={r.lossOre} />
-              </small>
+                ) : r.kind === "pris" ? (
+                  <ButtonLink size="sm" href="/lonsamhet#prisrad">
+                    Ändra pris
+                  </ButtonLink>
+                ) : canRoute && r.machineId ? (
+                  <ButtonLink size="sm" href={`/fyll-pa/${r.machineId}?fran=hem`}>
+                    Fyll på
+                  </ButtonLink>
+                ) : r.code ? (
+                  <ButtonLink
+                    size="sm"
+                    variant="plain"
+                    href={`/automater?valj=${encodeURIComponent(r.code)}`}
+                  >
+                    Visa
+                  </ButtonLink>
+                ) : null}
+              </div>
             </div>
-            <div className="ago">
-              {r.kind === "offline" ? (
-                <>
-                  <CallLink phone={r.phone} name={r.contactName} size="sm" />
-                  {canRoute && r.machineId ? (
-                    routeSet.has(r.machineId) ? (
-                      <span className="v2-btn sm plain" aria-disabled="true">
-                        I rutten
-                      </span>
-                    ) : (
-                      <Button size="sm" variant="plain" pending={pending} onClick={() => add(r)}>
-                        Lägg i rutten
-                      </Button>
-                    )
-                  ) : null}
-                  {r.code ? (
-                    <ButtonLink
-                      size="sm"
-                      variant="plain"
-                      href={`/automater?valj=${encodeURIComponent(r.code)}`}
-                    >
-                      Visa
-                    </ButtonLink>
-                  ) : null}
-                </>
-              ) : r.kind === "pris" ? (
-                <ButtonLink size="sm" href="/lonsamhet#prisrad">
-                  Ändra pris
-                </ButtonLink>
-              ) : canRoute && r.machineId ? (
-                <ButtonLink size="sm" href={`/fyll-pa/${r.machineId}?fran=hem`}>
-                  Fyll på
-                </ButtonLink>
-              ) : r.code ? (
-                <ButtonLink
-                  size="sm"
-                  variant="plain"
-                  href={`/automater?valj=${encodeURIComponent(r.code)}`}
-                >
-                  Visa
-                </ButtonLink>
-              ) : null}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {rows.length > max ? (
         <button

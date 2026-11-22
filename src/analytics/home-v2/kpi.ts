@@ -7,6 +7,7 @@
  * räknas en automat som kom till mitt i perioden bara för sina dagar.
  */
 
+import { localParts, tryParseInstant } from "@/analytics/todos/time";
 import { isMachineActive } from "@/analytics/todos/common";
 import type { MachineRef } from "@/analytics/todos";
 import { addDays, type IsoDate, type Period } from "@/domain";
@@ -101,4 +102,85 @@ export function perStep(cumulative: readonly number[]): number[] {
 export function titleTrendBp(last7: number, all: number, days: number): number | null {
   if (all <= 0 || days <= 0) return null;
   return Math.round(((last7 / 7) * 10_000) / (all / days)) - 10_000;
+}
+
+/**
+ * "Vinst i dag mot i går" (KPI-bandet, prototypens "I går samma tid"): dagens order fram till
+ * klockslaget och gårdagens order fram till SAMMA klockslag (väggtid i tidszonen, som takten i
+ * _hem/pace.ts). Order utan betaltid räknas inte (klockslaget är okänt). `hour` är ordern
+ * timme i dag (för linjen timme för timme).
+ */
+export interface TodaySplit<O> {
+  readonly today: O[];
+  readonly yesterday: O[];
+  /** Timme (0–23) per order i `today`, samma ordning. */
+  readonly hours: number[];
+  /** Klockslagets timme (0–23), eller null när klockslaget inte är i dag. */
+  readonly cutHour: number | null;
+}
+
+const minutesOf = (time: string): number => {
+  const [h, m] = time.split(":");
+  return Number(h) * 60 + Number(m);
+};
+
+export function splitTodayYesterday<
+  O extends { readonly businessDate: IsoDate; readonly orderedAt?: string },
+>(orders: readonly O[], today: IsoDate, cutoffMs: number, timeZone: string): TodaySplit<O> {
+  const yesterday = addDays(today, -1);
+  const cut = Number.isFinite(cutoffMs) ? localParts(cutoffMs, timeZone) : null;
+  if (!cut || cut.date !== today) return { today: [], yesterday: [], hours: [], cutHour: null };
+  const cutMinute = minutesOf(cut.time);
+  const out: TodaySplit<O> = {
+    today: [],
+    yesterday: [],
+    hours: [],
+    cutHour: Math.floor(cutMinute / 60),
+  };
+  for (const o of orders) {
+    if (o.businessDate !== today && o.businessDate !== yesterday) continue;
+    const ms = o.orderedAt ? tryParseInstant(o.orderedAt) : null;
+    if (ms === null) continue;
+    const p = localParts(ms, timeZone);
+    // Betaltid på ett annat datum än affärsdatumet: dagens början eller slut.
+    const minute =
+      p.date < o.businessDate ? 0 : p.date > o.businessDate ? 24 * 60 : minutesOf(p.time);
+    if (o.businessDate === today) {
+      if (ms > cutoffMs) continue;
+      out.today.push(o);
+      out.hours.push(Math.min(Math.floor(minute / 60), out.cutHour ?? 23));
+    } else if (minute <= cutMinute) {
+      out.yesterday.push(o);
+    }
+  }
+  return out;
+}
+
+/**
+ * Löpande summa timme för timme (prototypens linje för "I dag"): värdet för orderna t.o.m.
+ * varje timme, från kl. 6 (eller första timmen med köp om den är tidigare) t.o.m. klockslaget.
+ * `valueOf` räknar beloppet för en mängd order (vinsten ur liggaren).
+ */
+export function hourlyRunning<O>(
+  split: Pick<TodaySplit<O>, "today" | "hours" | "cutHour">,
+  valueOf: (orders: readonly O[]) => number,
+): number[] {
+  if (split.cutHour === null || split.today.length === 0) return [];
+  const first = Math.min(6, ...split.hours);
+  const out: number[] = [];
+  for (let h = first; h <= split.cutHour; h++) {
+    out.push(valueOf(split.today.filter((_, i) => (split.hours[i] ?? 0) <= h)));
+  }
+  return out;
+}
+
+/** Vinst per automatdag för varje dag i en dagserie (linjen för Vinst/automat/dag). */
+export function perMachineDaySeries(
+  days: readonly { readonly date: IsoDate; readonly profitOre: number }[],
+  machines: readonly MachineRef[],
+): number[] {
+  return days.map((d) => {
+    const n = machineDays(machines, { start: d.date, end: d.date });
+    return n > 0 ? Math.round(d.profitOre / n) : 0;
+  });
 }

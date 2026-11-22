@@ -452,7 +452,8 @@ function Detail({
   const offlineFor = m.offlineSince !== null ? sinceText(m.offlineSince, now, data.timeZone) : null;
 
   return (
-    <div className="v2-auto-det flex flex-col gap-[14px]">
+    // I arket ramar arket in innehållet: panelerna får ingen egen ram (ingen dubbelram).
+    <div className={cn("v2-auto-det flex flex-col gap-[14px]", sheet && "in-sheet")}>
       <div className="dtabs" role="tablist" aria-label="Visa">
         <button type="button" role="tab" aria-selected={tab === "o"} onClick={() => setTab("o")}>
           Översikt

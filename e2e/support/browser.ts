@@ -15,6 +15,7 @@ import path from "node:path";
 
 type TextMatch = string | RegExp;
 type RoleOptions = { name?: TextMatch; exact?: boolean; level?: number; checked?: boolean };
+type LocatorOptions = { hasText?: TextMatch; hasNotText?: TextMatch; has?: Locator };
 type WaitState = "attached" | "detached" | "visible" | "hidden";
 
 export interface Locator {
@@ -58,7 +59,7 @@ export interface Page {
     options?: { timeout?: number },
   ): Promise<void>;
   waitForLoadState(state?: "load" | "domcontentloaded" | "networkidle"): Promise<void>;
-  locator(selector: string): Locator;
+  locator(selector: string, options?: LocatorOptions): Locator;
   getByRole(role: string, options?: RoleOptions): Locator;
   getByLabel(text: TextMatch, options?: { exact?: boolean }): Locator;
   getByText(text: TextMatch, options?: { exact?: boolean }): Locator;

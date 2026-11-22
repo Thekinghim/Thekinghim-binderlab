@@ -20,13 +20,12 @@ import { countWithVisits, prioritizeByLostSales, TODO_DEFAULTS } from "@/analyti
 import type { VisitPlan } from "@/analytics/visits";
 import { addDays, DomainError, type Period } from "@/domain";
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
-import { healthOf, loadHealthData } from "@/server/alerts/inputs";
+import { healthOf } from "@/server/alerts/inputs";
 import type { AwishExpiryNotice } from "@/server/awish/expiry";
 import { loadAwishExpiryFor } from "@/server/awish/expiry-notice";
 import { readyPackageFor } from "@/server/bokforing/stored";
 import { loadNewMachinesFor } from "@/server/machines/new-machines";
 import { readinessTodo, type ReadinessTodo } from "@/server/onboarding/machine-ready";
-import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
 import { lostSalesSummaryFor } from "@/server/purchasing/lost-sales-summary";
 import type { LostSalesSummary } from "@/server/purchasing/types";
 import { withUserDb } from "@/server/session";
@@ -48,6 +47,7 @@ import { ALL_ROLES, canSeeEconomy, OPERATOR_ROLES } from "./core/types";
 import { queryRoutePlanSettings } from "./route-settings";
 import { queryStorePlaces, type StorePlace } from "./team";
 import { weeklyVisitPlan } from "./visit-plan";
+import { healthDataInRequest, machineReadinessInRequest } from "./v2/in-request";
 import { weekShapesInRequest } from "./week-shapes";
 
 /** Fönstret för förlorad försäljning i prioriteringen (dagar t.o.m. i går). */
@@ -171,7 +171,7 @@ export async function loadStartklarFor(viewer: Viewer): Promise<ReadinessTodo | 
     console.error("[startklar] Rollen kunde inte läsas:", error);
     return null;
   }
-  return readinessTodo(await loadMachineReadinessSafe(viewer.user, viewer.organization.id));
+  return readinessTodo(await machineReadinessInRequest(viewer));
 }
 
 /** Sekunder som menyns räknare får vara gammal (den räknas annars vid varje sidladdning). */
@@ -251,9 +251,12 @@ export async function loadTodoVisitPlanFor(
   const shapesP = weekShapesInRequest(viewer, today);
   stockP.catch(() => {});
   capacityP.catch(() => {});
+  // Hälsans indata delas med flottans läge i samma förfrågan (v2/in-request.ts).
+  const dataP = healthDataInRequest(viewer, today, now);
+  dataP.catch(() => {});
   return withUserDbFor(viewer.user, async (tx) => {
-    const data = await loadHealthData(tx, orgId, today, now);
-    const [slotPeriods, places, stockRows, capacities] = await Promise.all([
+    const [data, slotPeriods, places, stockRows, capacities] = await Promise.all([
+      dataP,
       querySlotPeriods(tx, orgId),
       queryStorePlaces(tx, orgId),
       stockP,

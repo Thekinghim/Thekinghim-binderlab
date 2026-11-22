@@ -1651,6 +1651,31 @@ function MachineScreen({
         }
       />
     );
+    const slotsSection = (
+      <section className="pn slots" aria-label={t.fill.titlesAria}>
+        <div className="hd">
+          <b>Fack · {formatInt(m.rows.length)}</b>
+          {m.rows.some((r) => r.capacity !== null) ? (
+            <Button size="sm" onClick={fillAll}>
+              Fyll alla
+            </Button>
+          ) : null}
+        </div>
+        {m.rows.length === 0 ? (
+          <p className="p-4 text-v2-sm text-v2-mute">{t.fill.noTitles}</p>
+        ) : (
+          <>
+            {first.map((r, i) => rowV2(r, i))}
+            {rest.length > 0 ? (
+              <details className="more" open={first.length === 0}>
+                <summary>{t.fill.moreTitles(rest.length)}</summary>
+                <div>{rest.map((r, i) => rowV2(r, first.length + i))}</div>
+              </details>
+            ) : null}
+          </>
+        )}
+      </section>
+    );
     return (
       <div className="v2-fill-app">
         <header className="top">
@@ -1666,15 +1691,20 @@ function MachineScreen({
           <div className="tools">{headerActions}</div>
         </header>
         {notice}
-        <MachineHead
-          m={m}
-          store={store}
-          machines={machines}
-          onPick={(id) => onPick?.(id)}
-          route={route}
-          syncLabel={syncLabel}
-        />
+        {/* Datorn: automaten och facken till vänster, sammanfattningen och Klar till höger.
+            Telefonen: en kolumn (main2 och side2 är display: contents, ordningen i CSS). */}
         <div className="work">
+          <div className="main2">
+            <MachineHead
+              m={m}
+              store={store}
+              machines={machines}
+              onPick={(id) => onPick?.(id)}
+              route={route}
+              syncLabel={syncLabel}
+            />
+            {slotsSection}
+          </div>
           <div className="side2">
             <SayCard
               m={m}
@@ -1704,29 +1734,6 @@ function MachineScreen({
               {total === 0 ? <p className="hint">Tryck på + eller Fyll fack.</p> : null}
             </div>
           </div>
-          <section className="pn slots" aria-label={t.fill.titlesAria}>
-            <div className="hd">
-              <b>Fack · {formatInt(m.rows.length)}</b>
-              {m.rows.some((r) => r.capacity !== null) ? (
-                <Button size="sm" onClick={fillAll}>
-                  Fyll alla
-                </Button>
-              ) : null}
-            </div>
-            {m.rows.length === 0 ? (
-              <p className="p-4 text-v2-sm text-v2-mute">{t.fill.noTitles}</p>
-            ) : (
-              <>
-                {first.map((r, i) => rowV2(r, i))}
-                {rest.length > 0 ? (
-                  <details className="more" open={first.length === 0}>
-                    <summary>{t.fill.moreTitles(rest.length)}</summary>
-                    <div>{rest.map((r, i) => rowV2(r, first.length + i))}</div>
-                  </details>
-                ) : null}
-              </>
-            )}
-          </section>
         </div>
         <ConfirmSheet
           open={confirming}

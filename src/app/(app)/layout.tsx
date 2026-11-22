@@ -16,9 +16,7 @@ import {
   loadSyncInfo,
 } from "@/server/data/core";
 import { redirectStoreUserToPortal } from "@/server/portal/session";
-import { loadDayRoute } from "@/server/data/v2/route";
-
-import { loadHemCount } from "./_hem/v2/today-data";
+import { loadHemMenuCount, loadRouteMenuCount } from "./_hem/v2/menu-counts";
 import { myInvitationsFlow } from "@/server/auth/flows";
 import { requireUser } from "@/server/session";
 import { AppUpdate } from "@/components/pwa/app-update";
@@ -143,23 +141,23 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 }
 
 /**
- * Räknaren vid Hem: raderna i Kräver åtgärd + Att göra (_hem/v2/today-data.ts, samma laddare
- * som Hem, en gång per förfrågan). Ett fel får inte stoppa hela appen: då visas ingen räknare.
+ * Räknaren vid Hem: raderna i Kräver åtgärd + Att göra (_hem/v2/menu-counts.ts: samma tal som
+ * Hem, utan ekonomin och ordningen som bara raderna behöver; en gång per förfrågan). Ett fel
+ * får inte stoppa hela appen: då visas ingen räknare.
  */
 async function countTodos(): Promise<number | undefined> {
   try {
-    return await loadHemCount();
+    return await loadHemMenuCount();
   } catch (error) {
     console.error("[layout] Hems räknare kunde inte räknas:", error);
     return undefined;
   }
 }
 
-/** Räknaren vid Rutt: dagens stopp som inte är klara (loadDayRoute). Fel: ingen räknare. */
+/** Räknaren vid Rutt: dagens stopp som inte är klara (samma stopp som Rutt). Fel: ingen räknare. */
 async function countRouteStops(): Promise<number | undefined> {
   try {
-    const route = await loadDayRoute();
-    return route.stops.filter((s) => !s.done).length;
+    return await loadRouteMenuCount();
   } catch (error) {
     console.error("[layout] Ruttens räknare kunde inte räknas:", error);
     return undefined;

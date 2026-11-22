@@ -9,6 +9,7 @@ import {
   matchesShop,
   NO_CITY_LABEL,
   paymentHistory,
+  perMachineProfit,
   shareHistory,
   type SettlementLike,
 } from "./v2-model";
@@ -85,6 +86,49 @@ describe("butikens historik", () => {
       ["2026-10", 1000, false],
       ["2026-11", 400, true],
     ]);
+    // Takten för hela november: 400 ÷ 21 × 30.
+    expect(bars[2]!.paceOre).toBe(Math.round((400 * 30) / 21));
+    expect(bars[0]!.paceOre).toBeNull();
+  });
+
+  it("andelen per kalendermånad: luckor blir 0, före första avräkningen visas inget", () => {
+    const bars = shareHistory(
+      [
+        settlement({ month: "2026-08", amountOre: 800 }),
+        settlement({ month: "2026-10", amountOre: 600 }),
+        settlement({ month: "2026-10", amountOre: 400 }),
+      ],
+      "a",
+      { month: "2027-01", earnedOre: 0, days: 0 },
+    );
+    expect(bars.map((b) => [b.month, b.amountOre])).toEqual([
+      ["2026-08", 800],
+      ["2026-09", 0],
+      ["2026-10", 1000],
+      ["2026-11", 0],
+      ["2026-12", 0],
+      ["2027-01", 0],
+    ]);
+    expect(bars.at(-1)!.paceOre).toBeNull();
+  });
+
+  it("utan avräkning används den räknade andelen; en avräkning går före", () => {
+    const bars = shareHistory(
+      [settlement({ month: "2026-10", amountOre: 1000 })],
+      "a",
+      { month: "2026-11", earnedOre: 300, days: 10 },
+      6,
+      [
+        { month: "2026-08", ore: 0 },
+        { month: "2026-09", ore: 700 },
+        { month: "2026-10", ore: 999 },
+      ],
+    );
+    expect(bars.map((b) => [b.month, b.amountOre])).toEqual([
+      ["2026-09", 700],
+      ["2026-10", 1000],
+      ["2026-11", 300],
+    ]);
   });
 
   it("visar den obetalda uträkningen före den senaste betalda", () => {
@@ -125,5 +169,59 @@ describe("butikens historik", () => {
     ]);
     expect(rows[0]!.start).toBe("2026-10-01");
     expect(rows[0]!.end).toBe("2026-10-31");
+  });
+});
+
+describe("vinst per automat", () => {
+  const period = { start: "2026-11-01", end: "2026-11-30" };
+  const at = (machineId: string, from: string, to: string | null, storeId = "s") => ({
+    machineId,
+    storeId,
+    from,
+    to,
+  });
+
+  it("två automater hela perioden: hälften var", () => {
+    expect(
+      perMachineProfit(
+        60_000,
+        "s",
+        [at("m1", "2026-01-01", null), at("m2", "2026-05-01", null)],
+        period,
+      ),
+    ).toBe(30_000);
+  });
+
+  it("en automat som kom halvvägs räknas för sina dagar", () => {
+    // 30 + 15 automatdagar på 30 dagar = 1,5 automater.
+    expect(
+      perMachineProfit(
+        45_000,
+        "s",
+        [at("m1", "2026-01-01", null), at("m2", "2026-11-16", null)],
+        period,
+      ),
+    ).toBe(30_000);
+  });
+
+  it("en automat som flyttade ut räknas för dagarna den stod där, andra butiker inte", () => {
+    // m1 stod här 1–10 nov (10 dagar), m2 hela perioden, m3 i en annan butik.
+    expect(
+      perMachineProfit(
+        40_000,
+        "s",
+        [
+          at("m1", "2026-01-01", "2026-11-10"),
+          at("m2", "2026-01-01", null),
+          at("m3", "2026-01-01", null, "x"),
+        ],
+        period,
+      ),
+    ).toBe(30_000);
+  });
+
+  it("ingen automat i perioden eller ingen period: null", () => {
+    expect(perMachineProfit(1_000, "s", [at("m1", "2026-12-01", null)], period)).toBeNull();
+    expect(perMachineProfit(1_000, "s", [at("m1", "2026-01-01", null)], null)).toBeNull();
   });
 });

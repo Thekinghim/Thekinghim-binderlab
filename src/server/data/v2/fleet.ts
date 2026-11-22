@@ -16,13 +16,13 @@ import { cache } from "react";
 import type { AwishFillRow } from "@/analytics/fleet-status";
 import { loadFleetRanking } from "@/app/(app)/automater/_lib/ranking-data";
 import { withUserDbFor } from "@/server/access";
-import { healthOf, loadHealthData, loadMachinePower } from "@/server/alerts/inputs";
-import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
+import { healthOf, loadMachinePower } from "@/server/alerts/inputs";
 
 import { loadContext, requireViewer } from "../core";
 import { businessToday, requireViewerRole, type Viewer } from "../core/loaders";
 import { ALL_ROLES, canSeeEconomy, OPERATOR_ROLES } from "../core/types";
-import { buildFleetState, type FleetEconomyInput } from "./fleet-model";
+import { healthDataInRequest, machineReadinessInRequest } from "./in-request";
+import { buildFleetState, type FleetEconomyInput, type FleetInput } from "./fleet-model";
 import type { FleetState, FleetStore } from "./types";
 
 type Row = Record<string, unknown>;
@@ -59,25 +59,41 @@ async function loadEconomy(): Promise<FleetEconomyInput> {
   }
 }
 
-/** Flottans läge för en användare. `withEconomy` (standard: rollen) räknar vinst och förlust. */
+/** Allt flottans läge byggs av utom ekonomin (samma för alla roller, inga belopp). */
+export type FleetBaseInput = Omit<FleetInput, "economy">;
+
+/**
+ * Flottans läge för en användare. `economy` (bara roller som ser ekonomi) räknar vinst och
+ * förlust; utan den byggs läget utan belopp (status, fyllnad, takt är desamma).
+ */
 export async function loadFleetStateFor(
   viewer: Viewer,
   now: Date,
   options: { readonly economy?: Promise<FleetEconomyInput> | null } = {},
 ): Promise<FleetState> {
   const role = await requireViewerRole(viewer, ALL_ROLES);
+  const economyP = canSeeEconomy(role) ? (options.economy ?? null) : null;
+  economyP?.catch(() => {});
+  const base = await loadFleetBaseFor(viewer, now);
+  return buildFleetState({ ...base, economy: economyP ? await economyP : null });
+}
+
+/** Indata till flottans läge utom ekonomin, som den inloggade (RLS) efter rollkontroll. */
+export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<FleetBaseInput> {
+  const role = await requireViewerRole(viewer, ALL_ROLES);
   const orgId = viewer.organization.id;
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
-  const economyP = canSeeEconomy(role) ? (options.economy ?? null) : null;
-  economyP?.catch(() => {});
   const startklarP = (OPERATOR_ROLES as readonly string[]).includes(role)
-    ? loadMachineReadinessSafe(viewer.user, orgId)
+    ? machineReadinessInRequest(viewer)
     : Promise.resolve([]);
 
+  // Hälsans indata delas med besöksplanen i samma förfrågan (in-request.ts).
+  const dataP = healthDataInRequest(viewer, today, now);
+  dataP.catch(() => {});
   const db = await withUserDbFor(viewer.user, async (tx) => {
-    const data = await loadHealthData(tx, orgId, today, now);
-    const [power, storeRows, fillRows, refillRows] = await Promise.all([
+    const [data, power, storeRows, fillRows, refillRows] = await Promise.all([
+      dataP,
       loadMachinePower(tx, orgId, today),
       tx.execute(
         sql`select id::text as id, name, city, address, phone, contact_name, latitude, longitude,
@@ -90,13 +106,21 @@ export async function loadFleetStateFor(
             where organization_id = ${orgId}::uuid and kind = 'machine' and machine_id is not null
               and archived_at is null`,
       ),
+      // Senaste påfyllningen per lagerplats ur delindexet stock_events_last_refill_idx (en
+      // indexläsning per plats, inte ett svep över alla händelser), sedan max per automat.
       tx.execute(
-        sql`select l.machine_id::text as machine_id, max(e.occurred_at) as at
-            from public.stock_events e
-            join public.stock_locations l
-              on l.organization_id = e.organization_id and l.id = e.location_id
-            where e.organization_id = ${orgId}::uuid and l.kind = 'machine'
-              and e.kind in ('refill', 'transfer_in')
+        sql`select l.machine_id::text as machine_id, max(r.at) as at
+            from public.stock_locations l
+            cross join lateral (
+              select e.occurred_at as at
+              from public.stock_events e
+              where e.organization_id = l.organization_id and e.location_id = l.id
+                and e.kind in ('refill', 'transfer_in')
+              order by e.occurred_at desc
+              limit 1
+            ) r
+            where l.organization_id = ${orgId}::uuid and l.kind = 'machine'
+              and l.machine_id is not null
             group by l.machine_id`,
       ),
     ]);
@@ -142,7 +166,7 @@ export async function loadFleetStateFor(
     (await startklarP).filter((r) => r.isNew && !r.complete).map((r) => r.machineId),
   );
 
-  return buildFleetState({
+  return {
     today,
     now,
     timeZone,
@@ -163,8 +187,7 @@ export async function loadFleetStateFor(
     sales: db.data.orders,
     lastRefill,
     startklar,
-    economy: economyP ? await economyP : null,
-  });
+  };
 }
 
 /**
@@ -173,8 +196,23 @@ export async function loadFleetStateFor(
  */
 export const loadFleetState = cache(async (): Promise<FleetState> => {
   const ctx = await loadContext();
-  const viewer = await requireViewer();
-  return loadFleetStateFor(viewer, new Date(ctx.now), {
-    economy: ctx.canSeeEconomy ? loadEconomy() : null,
-  });
+  const economy = ctx.canSeeEconomy ? loadEconomy() : null;
+  economy?.catch(() => {});
+  const base = await loadFleetBase();
+  return buildFleetState({ ...base, economy: economy ? await economy : null });
 });
+
+/** Indata utom ekonomin, en gång per förfrågan (delas av loadFleetState och loadFleetStatus). */
+const loadFleetBase = cache(async (): Promise<FleetBaseInput> => {
+  const ctx = await loadContext();
+  return loadFleetBaseFor(await requireViewer(), new Date(ctx.now));
+});
+
+/**
+ * Flottans läge utan ekonomi (status, fyllnad, takt), en gång per förfrågan: för menyns
+ * räknare, som bara räknar automater per status. Samma indata som loadFleetState, så en
+ * sida som läser båda i samma förfrågan läser databasen en gång.
+ */
+export const loadFleetStatus = cache(async (): Promise<FleetState> =>
+  buildFleetState({ ...(await loadFleetBase()), economy: null }),
+);

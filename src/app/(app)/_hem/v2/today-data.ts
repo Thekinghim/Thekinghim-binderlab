@@ -31,50 +31,73 @@ import { loadDayRoute } from "@/server/data/v2/route";
 import { loadPriceAdviceFor } from "../../lonsamhet/_lib/price-advice";
 import { homeExtraTodos } from "../extras";
 
-/** Prisråd som går med förlust (vinst per pack under 0), med förlorad vinst per dag. */
-async function loadLossPrices(): Promise<ActionPriceInput[]> {
+/**
+ * Prisråden som går med förlust (vinst per pack under 0), en gång per förfrågan: Hem och
+ * menyns räknare delar dem. Bara ekonomiroller; vid fel inga (raden är bara ett råd).
+ */
+const loadLossAdvice = cache(async () => {
   const ctx = await loadContext();
   if (!ctx.canSeeEconomy || !ctx.settings) return [];
   try {
-    const viewer = await requireViewer();
-    const now = new Date(ctx.now);
+    const advice = await loadPriceAdviceFor(await requireViewer(), new Date(ctx.now));
+    return advice.rows.filter((r) => r.profitOre < 0);
+  } catch (error) {
+    console.error("[hem] Prisråden kunde inte läsas:", error);
+    return [];
+  }
+});
+
+/** Antalet prisråd med förlust (menyns räknare: raderna i Kräver åtgärd utan beloppen). */
+export async function loadLossAdviceCount(): Promise<number> {
+  return (await loadLossAdvice()).length;
+}
+
+/** Prisråd som går med förlust, med förlorad vinst per dag (försäljningen i fönstret). */
+async function loadLossPrices(): Promise<ActionPriceInput[]> {
+  const ctx = await loadContext();
+  const loss = await loadLossAdvice();
+  if (loss.length === 0 || !ctx.settings) return [];
+  try {
     const range = { start: addDays(ctx.today, -(PRICE_ADVICE_WINDOW_DAYS - 1)), end: ctx.today };
-    const [advice, sales] = await Promise.all([
-      loadPriceAdviceFor(viewer, now),
-      loadSalesCounts({ period: range }),
-    ]);
+    const sales = await loadSalesCounts({ period: range });
     const units = new Map<string, number>();
     for (const r of sales.rows) units.set(r.titleId, (units.get(r.titleId) ?? 0) + r.units);
     const settings = ctx.settings;
-    return advice.rows
-      .filter((r) => r.profitOre < 0)
-      .map((r) => {
-        const perDayMilli = Math.round(
-          ((units.get(r.titleId) ?? 0) * 1_000) / PRICE_ADVICE_WINDOW_DAYS,
-        );
-        const suggested =
-          r.suggestedPriceOre !== null
-            ? unitMargin(r.suggestedPriceOre, r.unitCostOre, settings).profitOre
-            : 0;
-        return {
-          titleId: r.titleId,
-          name: r.name,
-          salePriceOre: r.salePriceOre,
-          unitCostOre: r.unitCostOre,
-          profitOre: r.profitOre,
-          suggestedPriceOre: r.suggestedPriceOre,
-          lossOre: priceLossPerDayOre({
-            profitPerPackNowOre: r.profitOre,
-            profitPerPackSuggestedOre: Math.max(suggested, 0),
-            unitsPerDayMilli: perDayMilli,
-          }),
-        };
-      });
+    return loss.map((r) => {
+      const perDayMilli = Math.round(
+        ((units.get(r.titleId) ?? 0) * 1_000) / PRICE_ADVICE_WINDOW_DAYS,
+      );
+      const suggested =
+        r.suggestedPriceOre !== null
+          ? unitMargin(r.suggestedPriceOre, r.unitCostOre, settings).profitOre
+          : 0;
+      return {
+        titleId: r.titleId,
+        name: r.name,
+        salePriceOre: r.salePriceOre,
+        unitCostOre: r.unitCostOre,
+        profitOre: r.profitOre,
+        suggestedPriceOre: r.suggestedPriceOre,
+        lossOre: priceLossPerDayOre({
+          profitPerPackNowOre: r.profitOre,
+          profitPerPackSuggestedOre: Math.max(suggested, 0),
+          unitsPerDayMilli: perDayMilli,
+        }),
+      };
+    });
   } catch (error) {
     console.error("[hem] Prisråden kunde inte läsas:", error);
     return [];
   }
 }
+
+/** Att göras egna rader (bokföringen, nya automater, Awish, startklar), en gång per förfrågan. */
+export const loadHemExtras = cache(async (): Promise<ReturnType<typeof homeExtraTodos>> =>
+  requireViewer()
+    .then((v) => loadTodoExtrasFor(v))
+    .then(homeExtraTodos)
+    .catch(() => []),
+);
 
 export interface HemRouteCard {
   readonly stops: number;
@@ -124,10 +147,7 @@ export const loadHemToday = cache(async (): Promise<HemToday> => {
       console.error("[hem] Att göra kunde inte läsas:", error);
       return { items: [], dismissed: [] };
     }),
-    requireViewer()
-      .then((v) => loadTodoExtrasFor(v))
-      .then(homeExtraTodos)
-      .catch(() => []),
+    loadHemExtras(),
     loadMasterData(),
   ]);
 
@@ -164,7 +184,10 @@ export const loadHemToday = cache(async (): Promise<HemToday> => {
   return { economy, actions, route: routeCard, todos };
 });
 
-/** Antal till räknaren vid Hem i menyn: Kräver åtgärd + Att göra (byggplanen 2.1). */
+/**
+ * Antal till räknaren vid Hem i menyn ur hela Hem (Kräver åtgärd + Att göra). Menyn läser
+ * den lätta vägen (../menu-counts.ts, samma tal); den här finns för jämförelsen i testerna.
+ */
 export async function loadHemCount(): Promise<number> {
   const t = await loadHemToday();
   return t.actions.total + t.todos.total;

@@ -94,7 +94,8 @@
   --v2-r-lg: 12px;
 
   --v2-sans:
-    var(--font-google-sans), "Google Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    var(--font-google-sans), "Google Sans", "V2 Google Sans Fallback", system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
   --v2-code: var(--font-google-sans-code), "Google Sans Code", ui-monospace, Menlo, monospace;
 
   /* Rörelse (emil-design-eng): snabbt ut, inget studs */
@@ -142,6 +143,22 @@
 }
 
 /* Komponenterna ligger i lagret components: Tailwinds verktygsklasser (w-full, mt-4 …) går före. */
+/*
+ * Reservtypsnitt med Google Sans mått, så att texten inte hoppar när typsnittet laddats
+ * (display: swap). Next saknar mått för Google Sans, så adjustFontFallback räknas här i stället,
+ * på samma sätt som Next gör: mätt ur Google Sans latin-fil (wght 400) mot Arial.
+ *   unitsPerEm 1000, ascent 966, descent -286, lineGap 0, medelbredd 0,4462 em (Arial 0,4458 em)
+ *   size-adjust = 0,4462 / 0,4458 = 100,07 %, ascent = 96,6 % / 1,0007, descent = 28,6 % / 1,0007
+ */
+@font-face {
+  font-family: "V2 Google Sans Fallback";
+  src: local("Arial"), local("ArialMT"), local("Helvetica Neue"), local("Helvetica");
+  size-adjust: 100.07%;
+  ascent-override: 96.53%;
+  descent-override: 28.58%;
+  line-gap-override: 0%;
+}
+
 @layer components {
   /* ---------------------------------------------------------------------------
    * Bas

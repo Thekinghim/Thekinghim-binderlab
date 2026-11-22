@@ -44,13 +44,18 @@ export function DeltaBadge({
   bp,
   unit = "pct",
   goodWhenDown = false,
+  neutral = false,
 }: {
   bp: number | null | undefined;
   unit?: "pct" | "pe";
   goodWhenDown?: boolean;
+  /** Grått märke åt båda hållen: tal där upp inte är bättre (lagervärdet). */
+  neutral?: boolean;
 }) {
   if (bp === null || bp === undefined || !Number.isFinite(bp)) return null;
-  return <Badge tone={deltaTone(bp, goodWhenDown)}>{deltaText(bp, unit)}</Badge>;
+  return (
+    <Badge tone={neutral ? "neutral" : deltaTone(bp, goodWhenDown)}>{deltaText(bp, unit)}</Badge>
+  );
 }
 
 /** "↑ 18 %", "↓ 0,6 p.e.", "0 %". Avrundat till hela procent (p.e. med en decimal). */

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  axisKr,
+  chartScale,
   goalShortOre,
   monthTable,
   monthTableCsv,
@@ -128,6 +130,39 @@ describe("profitBars", () => {
   });
 });
 
+describe("chartScale och axisKr", () => {
+  it("ger jämna steg med lite luft över det högsta värdet", () => {
+    // 36 000 kr → 0 / 10k / 20k / 30k / 40k (prototypen: 0/20k/40k med halva steg).
+    expect(chartScale(3_600_000)).toEqual({
+      topOre: 4_000_000,
+      ticks: [0, 1_000_000, 2_000_000, 3_000_000, 4_000_000],
+    });
+    // 40 688 kr: 25k-steg ger toppen 50k i stället för 60k.
+    expect(chartScale(4_068_800).ticks).toEqual([0, 2_500_000, 5_000_000]);
+    expect(chartScale(900_000).ticks).toEqual([0, 250_000, 500_000, 750_000, 1_000_000]);
+    expect(chartScale(130_000).ticks.at(-1)).toBeGreaterThanOrEqual(143_000);
+    expect(chartScale(0)).toEqual({ topOre: 100, ticks: [0, 100] });
+    expect(chartScale(-5_000)).toEqual({ topOre: 100, ticks: [0, 100] });
+  });
+
+  it("toppen rymmer alltid värdet och stegen är hela kronor", () => {
+    for (const v of [1, 99, 12_345, 777_777, 9_999_999, 123_456_789]) {
+      const s = chartScale(v);
+      expect(s.topOre).toBeGreaterThanOrEqual(v);
+      expect(s.ticks[0]).toBe(0);
+      expect(s.ticks.length).toBeLessThanOrEqual(5);
+      for (const t of s.ticks) expect(t % 100).toBe(0);
+    }
+  });
+
+  it("skriver kronor i sin helhet under 10 000, annars med k", () => {
+    expect(axisKr(0)).toBe("0");
+    expect(axisKr(200_000).replace(/\s/g, " ")).toBe("2 000");
+    expect(axisKr(2_000_000)).toBe("20k");
+    expect(axisKr(2_500_000)).toBe("25k");
+  });
+});
+
 describe("profitByCity", () => {
   it("grupperar per stad, sorterar på vinst per automat och jämför bara jämförbara", () => {
     const cities = profitByCity([
@@ -242,16 +277,42 @@ describe("monthTable", () => {
     expect(table.rows[1]!.averageOre).toBe(Math.round(36_000 / 41));
   });
 
-  it("Alla = flottans vinst per kalenderdag", () => {
-    expect(table.totals).toEqual([Math.round(51_000 / 31), 500]);
+  it("Alla har samma enhet som raderna: vinst per automat och dag i tjänst", () => {
+    // Okt: (31 000 + 20 000) ÷ (31 + 10) dagar; nov: 5 000 ÷ 10 (m2 har 0 dagar, 0 kr).
+    expect(table.totals).toEqual([Math.round(51_000 / 41), 500]);
+    expect(table.totalAverageOre).toBe(Math.round(56_000 / 51));
     expect(table.maxOre).toBe(2_000);
+  });
+
+  it("Alla tar med automater utan dagar i tjänst (vinsten räknas, dagarna är 0)", () => {
+    const t = monthTable(
+      [
+        {
+          month: "2026-11",
+          start: "2026-11-01",
+          end: "2026-11-10",
+          running: true,
+          rows: [
+            { machineId: "m1", profitOre: 5_000, activeDays: 10 },
+            { machineId: "m2", profitOre: -1_000, activeDays: 0 },
+          ],
+        },
+      ],
+      machines,
+    );
+    expect(t.totals).toEqual([400]);
+    expect(t.totalAverageOre).toBe(400);
+    // m2 syns som rad (utan värde) så att "Alla" går att följa; m3 utan något alls syns inte.
+    expect(t.rows.map((r) => r.machineId)).toEqual(["m1", "m2"]);
+    expect(t.rows[1]!.values).toEqual([null]);
+    expect(t.rows[1]!.averageOre).toBeNull();
   });
 
   it("CSV med semikolon, decimalkomma och BOM", () => {
     const csv = monthTableCsv(table);
     expect(csv.startsWith("﻿Kod;Automat;2026-10;2026-11;Snitt\r\n")).toBe(true);
     expect(csv).toContain("BL-2;Två;20,00;;20,00");
-    expect(csv).toContain(";Alla;16,45;5,00;");
+    expect(csv).toContain(";Alla;12,44;5,00;10,98");
   });
 
   it("CSV skyddar mot formler i automatens namn", () => {

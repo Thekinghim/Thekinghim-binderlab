@@ -11,7 +11,12 @@ import { V2Toaster } from "@/components/v2/toast";
 import { liveBuildId } from "@/server/build-id";
 import { getConfigStatus } from "@/server/config-status";
 import { getT } from "@/i18n/server";
-import { loadOptionalContext } from "@/server/data/core";
+import { routeById } from "@/components/shell/nav";
+import { formatInt } from "@/lib/format";
+import { loadMachineCounts, loadOptionalContext } from "@/server/data/core";
+import { loadHemMenuCount, loadRouteMenuCount } from "@/app/(app)/_hem/v2/menu-counts";
+
+import { FillShell } from "./_components/fill-shell";
 import { requireUser } from "@/server/session";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -60,13 +65,46 @@ export default async function FillLayout({ children }: { children: ReactNode }) 
   );
   // Enkel vy: samma tre flikar nedtill som i resten av den enkla vyn (Fyll på har en egen
   // rubrikrad med menyknappen, se FillApp).
+  if (!v2) {
+    return (
+      <AppFrameRoot
+        locale={ctx.locale}
+        simple={{ role: ctx.role, email: ctx.user.email }}
+        topBar={false}
+      >
+        {page}
+      </AppFrameRoot>
+    );
+  }
+  // V2 på datorn: sidomenyn som på appens övriga sidor (prototypen). Räknarna strömmar in och
+  // ett fel i dem stoppar aldrig Fyll på. På telefonen döljer v2.css sidomenyn.
+  const machineCounts = await loadMachineCounts().catch(() => new Map<string, number>());
+  const todoCount = routeById("hem").roles.includes(ctx.role)
+    ? loadHemMenuCount().catch(() => undefined)
+    : undefined;
+  const routeCount = routeById("rutt").roles.includes(ctx.role)
+    ? loadRouteMenuCount().catch(() => undefined)
+    : undefined;
   return (
-    <AppFrameRoot
-      locale={ctx.locale}
-      simple={ctx.viewMode === "simple" ? { role: ctx.role, email: ctx.user.email } : null}
-      topBar={false}
-    >
-      {page}
+    <AppFrameRoot locale={ctx.locale} simple={null} topBar={false}>
+      <FillShell
+        role={ctx.role}
+        user={{ name: ctx.user.displayName ?? ctx.user.email, email: ctx.user.email }}
+        organizations={ctx.organizations.map((o) => {
+          const n = machineCounts.get(o.id);
+          return {
+            id: o.id,
+            name: o.name,
+            detail:
+              n === undefined ? undefined : `${formatInt(n)} ${n === 1 ? "automat" : "automater"}`,
+          };
+        })}
+        activeOrganizationId={ctx.organization.id}
+        todoCount={todoCount}
+        routeCount={routeCount}
+      >
+        {page}
+      </FillShell>
     </AppFrameRoot>
   );
 }

@@ -504,6 +504,8 @@ export const stockLocations = pgTable("stock_locations", {
     jsonb("awish_fill").$type<
       { title_id: string; units: number; capacity: number; channels: number; empty: number }[]
     >(),
+  /** Awish kanal → titel vid senaste läsningen ({"A3": title_id}), för produktbyten. Bara synken. */
+  awishChannels: jsonb("awish_channels").$type<Record<string, string>>(),
   /** V2 (20261223000000_v2_rutt.sql): eget lagers adress och plats (ruttens start). */
   address: text("address"),
   latitude: doublePrecision("latitude"),

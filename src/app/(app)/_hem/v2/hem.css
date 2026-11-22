@@ -349,9 +349,11 @@
 .hem2 .rprog .track i {
   background: var(--v2-profit);
 }
+/* Packa och Starta rutt sida vid sida (två lika kolumner); en knapp ensam tar hela bredden. */
 .hem2 .racts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
 }
 .hem2 .racts .v2-btn {
@@ -1765,6 +1767,15 @@
   }
   .hem2 .ago .v2-btn {
     flex: 1 1 auto;
+  }
+  /* Kräver åtgärd på telefon: en knapp per rad, och texten bryts i stället för att kapas. */
+  .hem2 .ago .sec {
+    display: none;
+  }
+  .hem2 .arow .an b,
+  .hem2 .arow small {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 .hem2 .today a.o.c,

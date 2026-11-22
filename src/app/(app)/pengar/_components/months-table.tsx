@@ -62,7 +62,7 @@ export function MonthsTable({ table }: { table: MonthTable }) {
       }}
     >
       <summary className="v2-card-hd">
-        <h2>Vinst per automat · kr per dag, {table.months.length} mån</h2>
+        <h2>Vinst per automat · kr per dag i tjänst, {table.months.length} mån</h2>
         <span className="g4-ysh">Visa</span>
         <div className="g4-xbtns">
           <Link className="v2-btn sm" href="/pengar/export" prefetch={false}>
@@ -116,7 +116,9 @@ export function MonthsTable({ table }: { table: MonthTable }) {
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row">Alla</th>
+              <th scope="row">
+                <b>Alla</b> <span className="id">snitt per automat</span>
+              </th>
               {table.totals.map((v, i) => (
                 <td key={table.months[i]!.month}>{cell(v)}</td>
               ))}
@@ -126,8 +128,8 @@ export function MonthsTable({ table }: { table: MonthTable }) {
         </table>
       </div>
       <p className="g4-yft">
-        Vinst per dag i tjänst, per månad, så att nya och gamla automater går att jämföra. Alla =
-        hela flottans vinst per dag.
+        Alla rader i samma enhet: kr per automat och dag i tjänst, så att nya och gamla automater
+        går att jämföra. Alla = alla automaters vinst delad med alla deras dagar i tjänst.
         {running ? ` * ${monthShort(running.month)} pågår.` : ""} Tryck på en rubrik för att
         sortera.
       </p>

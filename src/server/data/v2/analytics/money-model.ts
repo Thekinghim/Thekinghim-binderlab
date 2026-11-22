@@ -206,6 +206,50 @@ export function profitBars(
   });
 }
 
+/** Y-axelns skala: en jämn topp och 2–4 jämna steg (0, 20k, 40k …). */
+export interface ChartScale {
+  /** Axelns topp (öre), alltid > 0. */
+  readonly topOre: number;
+  /** Stegen från 0 till toppen (öre), stigande. */
+  readonly ticks: readonly number[];
+}
+
+/**
+ * Jämna steg för en stapelaxel: steget är 1, 2, 2,5 eller 5 × 10^n kronor, toppen är första
+ * steget som rymmer det högsta värdet med lite luft (10 %), och av de steg som ger 2 till
+ * `maxTicks` steg över 0 väljs det med lägst topp (minst tom yta). Bara 0 eller negativa
+ * värden ger en axel till 1 kr.
+ */
+export function chartScale(maxOre: number, maxTicks = 4): ChartScale {
+  const top = Math.max(0, maxOre) * 1.1;
+  if (!(top > 0)) return { topOre: 100, ticks: [0, 100] };
+  const pow = 10 ** Math.floor(Math.log10(top / Math.max(1, maxTicks)));
+  let best: { step: number; n: number } | null = null;
+  for (const p of [pow / 10, pow, pow * 10]) {
+    for (const f of [1, 2, 2.5, 5]) {
+      // Öre: steget är hela kronor (minst 1 kr).
+      const step = Math.max(100, Math.round((f * p) / 100) * 100);
+      const n = Math.ceil(top / step);
+      if (n < 2 || n > maxTicks) continue;
+      const t = n * step;
+      if (best === null || t < best.n * best.step || (t === best.n * best.step && n > best.n)) {
+        best = { step, n };
+      }
+    }
+  }
+  const step = best?.step ?? Math.max(100, Math.ceil(top / 100) * 100);
+  const n = best?.n ?? 1;
+  return { topOre: n * step, ticks: Array.from({ length: n + 1 }, (_, k) => k * step) };
+}
+
+/** Axeltext: "0", "500", "2 000" under 10 000 kr, annars "20k" (som prototypen). */
+export function axisKr(ore: number): string {
+  const krs = Math.round(ore / 100);
+  if (Math.abs(krs) < 10_000) return krs.toLocaleString("sv-SE");
+  const k = krs / 1000;
+  return `${k.toLocaleString("sv-SE", { maximumFractionDigits: 1 })}k`;
+}
+
 /* ------------------------------------------------------------------ */
 /* Vinst per stad                                                      */
 /* ------------------------------------------------------------------ */
@@ -378,9 +422,13 @@ export interface MonthMachineRow {
 export interface MonthTable {
   readonly months: readonly { readonly month: string; readonly running: boolean }[];
   readonly rows: readonly MonthMachineRow[];
-  /** Hela flottans vinst per kalenderdag per månad (öre). */
+  /**
+   * Raden "Alla", i samma enhet som automaternas rader: hela flottans vinst ÷ alla
+   * automaters dagar i tjänst, per månad (öre per automat och dag). Alla automater ingår,
+   * även de som inte har någon dag i tjänst (deras vinst räknas, dagarna är 0).
+   */
   readonly totals: readonly (number | null)[];
-  /** Hela tidens vinst per kalenderdag (öre). */
+  /** Hela tidens vinst ÷ hela tidens dagar i tjänst, alla automater (öre per automat och dag). */
   readonly totalAverageOre: number | null;
   /** Största värdet i tabellen (för färgskalan), minst 1. */
   readonly maxOre: number;
@@ -389,37 +437,45 @@ export interface MonthTable {
 /**
  * Tabellen "Vinst per automat · kr per dag": vinsten delad med dagarna automaten stod ute
  * (samma aktiva dagar som Enhetsekonomi och rangordningen), så att nya och gamla automater
- * går att jämföra. Raderna sorteras på senaste hela månaden (annars snittet), högst först.
+ * går att jämföra. "Alla" har samma enhet: summan av vinsten delad med summan av dagarna i
+ * tjänst (ett vägt snitt per automat och dag), inte flottans vinst per kalenderdag.
+ * Raderna sorteras på senaste hela månaden (annars snittet), högst först.
  */
 export function monthTable(
   slices: readonly MonthSlice[],
   machines: readonly { readonly id: string; readonly code: string; readonly name: string }[],
 ): MonthTable {
-  const byMachine = new Map<string, { values: (number | null)[]; profit: number; days: number }>();
+  const byMachine = new Map<
+    string,
+    { values: (number | null)[]; profit: number; days: number; any: boolean }
+  >();
   for (const m of machines) {
-    byMachine.set(m.id, { values: slices.map(() => null), profit: 0, days: 0 });
+    byMachine.set(m.id, { values: slices.map(() => null), profit: 0, days: 0, any: false });
   }
   const totals: (number | null)[] = [];
   let allProfit = 0;
   let allDays = 0;
   slices.forEach((s, i) => {
     let monthProfit = 0;
-    let any = false;
+    let monthDays = 0;
     for (const r of s.rows) {
       const acc = byMachine.get(r.machineId);
-      if (!acc || r.activeDays <= 0) continue;
-      acc.values[i] = Math.round(r.profitOre / r.activeDays);
-      acc.profit += r.profitOre;
-      acc.days += r.activeDays;
+      if (!acc) continue;
+      const days = Math.max(0, r.activeDays);
+      // Alla automater räknas i "Alla", även utan dagar i tjänst (deras vinst finns ändå).
       monthProfit += r.profitOre;
-      any = true;
+      monthDays += days;
+      acc.profit += r.profitOre;
+      acc.days += days;
+      if (r.profitOre !== 0) acc.any = true;
+      if (days > 0) {
+        acc.values[i] = Math.round(r.profitOre / days);
+        acc.any = true;
+      }
     }
-    const calendarDays = dayNumber(s.end) - dayNumber(s.start) + 1;
-    totals.push(any && calendarDays > 0 ? Math.round(monthProfit / calendarDays) : null);
-    if (any) {
-      allProfit += monthProfit;
-      allDays += calendarDays;
-    }
+    totals.push(monthDays > 0 ? Math.round(monthProfit / monthDays) : null);
+    allProfit += monthProfit;
+    allDays += monthDays;
   });
   const sortIndex = (() => {
     for (let i = slices.length - 1; i >= 0; i--) if (!slices[i]!.running) return i;
@@ -434,9 +490,11 @@ export function monthTable(
         name: m.name,
         values: acc.values,
         averageOre: acc.days > 0 ? Math.round(acc.profit / acc.days) : null,
+        any: acc.any,
       };
     })
-    .filter((r) => r.values.some((v) => v !== null))
+    .filter((r) => r.any)
+    .map(({ any: _any, ...r }) => r)
     .sort((a, b) => {
       const av = a.values[sortIndex] ?? null;
       const bv = b.values[sortIndex] ?? null;

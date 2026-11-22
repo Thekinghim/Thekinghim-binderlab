@@ -113,7 +113,8 @@ export async function loadResultCard(sp: SearchParamsInput): Promise<ResultCard 
   );
   return {
     profitOre: profitKpi?.value ?? null,
-    revenueOre: kpi.get("revenue")?.value ?? null,
+    // Intäkten med inköpspris (som Pengars Resultat och marginalen), inte alla order.
+    revenueOre: profit.model.bridge.revenueOre,
     orders: kpi.get("orders")?.value ?? null,
     marginBp: kpi.get("margin")?.value ?? null,
     profitDeltaBp: profitKpi?.delta != null ? Math.round(profitKpi.delta * 10_000) : null,

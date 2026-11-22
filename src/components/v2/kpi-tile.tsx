@@ -17,6 +17,7 @@ export function KpiTile({
   deltaBp,
   deltaUnit = "pct",
   goodWhenDown,
+  neutral,
   compare,
   trend,
   href,
@@ -27,6 +28,8 @@ export function KpiTile({
   deltaBp?: number | null;
   deltaUnit?: "pct" | "pe";
   goodWhenDown?: boolean;
+  /** Grått förändringsmärke (tal där upp inte är bättre, t.ex. lagervärdet). */
+  neutral?: boolean;
   /** "mot förra", "mot i går", "mot förra v.". */
   compare?: string;
   /** Den lilla linjen (t.ex. per dag i perioden). Tom = ingen linje. */
@@ -39,7 +42,7 @@ export function KpiTile({
       <span className="kn">{value}</span>
       {deltaBp !== null && deltaBp !== undefined ? (
         <span className="kd">
-          <DeltaBadge bp={deltaBp} unit={deltaUnit} goodWhenDown={goodWhenDown} />
+          <DeltaBadge bp={deltaBp} unit={deltaUnit} goodWhenDown={goodWhenDown} neutral={neutral} />
           {compare ? <span>{compare}</span> : null}
         </span>
       ) : compare ? (

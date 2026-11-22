@@ -29,7 +29,8 @@
  *   Köp under väntan dras ändå: de kommer in som order och blir försäljningshändelser (−1)
  *   efter påfyllningen, så saldot som skickas vid nästa försök är påfyllt minus sålt.
  * - Produktbyte (./product-swap, byggplanen V2 3.3): ett fack som bytt titel sedan förra
- *   läsningen (machine_slot_capacity.channels) är ett byte. Före inventeringarna flyttas den
+ *   läsningen (stock_locations.awish_channels, även fack med kapacitet 0; äldre läsningar:
+ *   machine_slot_capacity.channels) är ett byte. Före inventeringarna flyttas den
  *   gamla titelns pack tillbaka till "Fylls på från" (transfer_out/transfer_in med noteringen
  *   "Produktbyte A3: A → B") och en ny titels pack dras därifrån, och bytet loggas i
  *   product_swaps. Då stämmer räkningen av den gamla titeln med väntat saldo (inget svinn).
@@ -408,14 +409,15 @@ export async function applyMachineStock(
 
     // Produktbyte: fack som bytt titel sedan förra läsningen (./product-swap).
     const syncedBefore = location.synced !== null && location.synced !== undefined;
+    const channelsNow = input.products.flatMap((p) => {
+      const name = comparableText(p.goodName);
+      const titleId = name !== "" ? byKey.get(name.toLowerCase()) : undefined;
+      return titleId && p.channel.trim() !== "" ? [{ channel: p.channel, titleId }] : [];
+    });
     const classified = syncedBefore
       ? classifySwaps({
-          previous: await previousChannels(tx, org, input.machineId),
-          current: input.products.flatMap((p) => {
-            const name = comparableText(p.goodName);
-            const titleId = name !== "" ? byKey.get(name.toLowerCase()) : undefined;
-            return titleId && p.channel !== "" ? [{ channel: p.channel, titleId }] : [];
-          }),
+          previous: await previousChannels(tx, org, input.machineId, location.id),
+          current: channelsNow,
           unitsNow: new Map([...wanted].map(([titleId, w]) => [titleId, w.units])),
           levels: new Map(
             levels.map((l) => [
@@ -541,12 +543,17 @@ export async function applyMachineStock(
       });
     }
 
+    // Kanal → titel för nästa läsnings produktbyten, även fack med kapacitet 0 (som inte får
+    // någon rad i machine_slot_capacity). Väntar ett bytt fack på en sändning behålls förra.
+    const channelMap =
+      classified.deferred.length === 0 ? JSON.stringify(channelTitleMap(channelsNow)) : null;
     await tx.execute(
       sql`update public.stock_locations
           set awish_synced_at = ${at}::timestamptz,
               awish_fill = ${JSON.stringify(
                 [...fill].map(([titleId, f]) => ({ title_id: titleId, ...f })).slice(0, 500),
-              )}::jsonb
+              )}::jsonb,
+              awish_channels = coalesce(${channelMap}::jsonb, awish_channels)
           where organization_id = ${org}::uuid and id = ${location.id}::uuid`,
     );
     return {
@@ -563,12 +570,59 @@ export async function applyMachineStock(
   });
 }
 
-/** Förra läsningens fack per titel (machine_slot_capacity, före den här läsningen). */
+/** Högsta antal fack som sparas per automat (stock_locations.awish_channels). */
+const MAX_CHANNELS = 500;
+
+/**
+ * Kanal → titel för facken nu (stock_locations.awish_channels). Kanalen trimmas och kortas till
+ * 40 tecken; två rader med samma kanal: den första gäller (som classifySwaps). Ren funktion.
+ */
+export function channelTitleMap(
+  channels: readonly { channel: string; titleId: string }[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  let n = 0;
+  for (const c of channels) {
+    const key = c.channel.trim().slice(0, 40);
+    if (key === "" || key in out) continue;
+    if (n >= MAX_CHANNELS) break;
+    out[key] = c.titleId;
+    n += 1;
+  }
+  return out;
+}
+
+/** Titel → kanaler ur stock_locations.awish_channels ({"A3": title_id}). Ren funktion. */
+export function channelsByTitle(map: unknown): Map<string, string[]> | null {
+  if (map === null || typeof map !== "object" || Array.isArray(map)) return null;
+  const out = new Map<string, string[]>();
+  for (const [channel, titleId] of Object.entries(map as Record<string, unknown>)) {
+    if (typeof titleId !== "string" || channel.trim() === "") continue;
+    const list = out.get(titleId) ?? [];
+    list.push(channel);
+    out.set(titleId, list);
+  }
+  return out;
+}
+
+/**
+ * Förra läsningens fack per titel, före den här läsningen: stock_locations.awish_channels (alla
+ * fack, även med kapacitet 0). Automater som inte lästs sedan kolumnen kom till har den inte:
+ * då facken i machine_slot_capacity (bara titlar med kapacitet > 0), som förut.
+ */
 async function previousChannels(
   tx: Tx,
   org: string,
   machineId: string,
+  locationId: string,
 ): Promise<Map<string, string[]>> {
+  const [loc] = await query<{ channels: unknown }>(
+    tx,
+    sql`select awish_channels as channels from public.stock_locations
+        where organization_id = ${org}::uuid and id = ${locationId}::uuid`,
+  );
+  const fromLocation = channelsByTitle(loc?.channels ?? null);
+  if (fromLocation) return fromLocation;
   const rows = await query<{ title_id: string; channels: string[] | null }>(
     tx,
     sql`select title_id::text as title_id, channels from public.machine_slot_capacity

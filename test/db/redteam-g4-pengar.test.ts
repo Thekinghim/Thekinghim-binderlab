@@ -5,6 +5,8 @@
  * - GET /pengar/export (vinst per automat som CSV): påfyllaren, butiken, en icke-medlem och
  *   en utloggad nekas; ägaren och läsaren får filen, och en utomstående ser aldrig A:s automater.
  * - /mer: påfyllaren får sidan (utan Driften och Kopplingar).
+ * - Butikernas laddare (loadShops, med vinst per automat och packbilderna per automat):
+ *   påfyllaren och butiken får null på servern; en utomstående ser aldrig A:s automater.
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -103,5 +105,32 @@ describe("Pengar, Butiker och Mer (V2)", () => {
     expect(owner.body).toContain("Kod;Automat");
     const outsider = await exportAs("outsider");
     expect(outsider.body).not.toContain(cast.A.machineId);
+  }, 60_000);
+
+  it("loadShops: inga belopp till påfyllaren eller butiken, bara den egna organisationen", async () => {
+    const { loadShops } = await import("@/server/data/v2/analytics/shops");
+    for (const p of ["refiller", "store"] as PersonaName[]) {
+      await loginAs(req, cast.personas[p]);
+      const r = await call(() => loadShops({}));
+      if (r.kind === "ok") expect(r.value, p).toBeNull();
+      else expect(r.kind, p).not.toBe("ok");
+      req.cookies.clear();
+      req.headers.clear();
+    }
+    await loginAs(req, cast.personas.outsider);
+    const outsider = await call(() => loadShops({}));
+    if (outsider.kind === "ok" && outsider.value) {
+      expect(JSON.stringify(outsider.value)).not.toContain(cast.A.machineId);
+    }
+    req.cookies.clear();
+    req.headers.clear();
+    await loginAs(req, cast.personas.owner);
+    const owner = await call(() => loadShops({}));
+    expect(owner.kind).toBe("ok");
+    const data = (owner as { value: Awaited<ReturnType<typeof loadShops>> }).value;
+    expect(data).not.toBeNull();
+    for (const row of data!.rows) {
+      for (const m of row.machines) expect(Array.isArray(m.packs)).toBe(true);
+    }
   }, 60_000);
 });

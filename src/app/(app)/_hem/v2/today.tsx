@@ -75,18 +75,19 @@ export function TodayLine({ today }: { today: HemToday }) {
 /* ------------------------------------------------------------------ */
 
 function tileValue(t: KpiBandTile): ReactNode {
-  if (t.value === null) return "–";
+  // Utan försäljning står 0 (aldrig "–"): rutan säger då att inget sålts.
+  const value = t.value ?? 0;
   if (t.unit === "ore") {
     // Rullande siffror bara för vinsten och lagret (byggplanen 4.1).
     return t.id === "profit" || t.id === "stock-value" ? (
-      <RollingNumber value={t.value} unit="kr" />
+      <RollingNumber value={value} unit="kr" />
     ) : (
-      krRound(t.value)
+      krRound(value)
     );
   }
   if (t.unit === "bp")
-    return `${(Math.round(t.value / 10) / 10).toLocaleString("sv-SE", { minimumFractionDigits: 1 })}${NBSP}%`;
-  return formatInt(t.value);
+    return `${(Math.round(value / 10) / 10).toLocaleString("sv-SE", { minimumFractionDigits: 1 })}${NBSP}%`;
+  return formatInt(value);
 }
 
 export function HemKpiBand({ tiles }: { tiles: readonly KpiBandTile[] }) {
@@ -99,6 +100,7 @@ export function HemKpiBand({ tiles }: { tiles: readonly KpiBandTile[] }) {
           value={tileValue(t)}
           deltaBp={t.deltaBp}
           deltaUnit={t.deltaUnit}
+          neutral={t.neutral}
           compare={t.compare ?? undefined}
           trend={t.trend}
           href={t.href}
