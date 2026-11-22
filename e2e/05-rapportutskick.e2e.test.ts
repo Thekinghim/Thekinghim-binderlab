@@ -128,7 +128,8 @@ async function downloadPdf(reportId: string): Promise<Buffer> {
 
 /** Butikens sida, fliken Kontakt och rapport (där brytaren står). */
 async function openStoreReportSettings(): Promise<void> {
-  await page.goto("/butiker");
+  // V2: listan väljer butiken på sidan; den gamla listan (?vy=lista) länkar till butikens sida.
+  await page.goto("/butiker?vy=lista");
   await page.getByRole("link", { name: STORE }).first().click();
   await page.waitForURL(/\/butiker\/[0-9a-f-]{36}/);
   await page.goto(`${new URL(page.url()).pathname}?vy=kontakt`);

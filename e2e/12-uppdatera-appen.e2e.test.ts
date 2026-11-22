@@ -192,17 +192,22 @@ describe.each(DEVICES)("Uppdatera appen på %s", (device) => {
 
       // 4. Mer → Uppdatera appen, även utan ny version.
       await mark(page);
-      await page.getByRole("navigation", { name: "Snabbmeny" }).getByRole("button").click();
-      const sheet = page.getByRole("dialog", { name: "Mer" });
-      await sheet.waitFor();
-      const row = sheet.getByRole("button", { name: /Uppdatera appen/ });
+      // V2: fliken Mer öppnar sidan Mer, där kontot har raden Uppdatera appen.
+      await page
+        .getByRole("navigation", { name: "Flikar" })
+        .getByRole("link", { name: "Mer" })
+        .click();
+      await page.waitForURL((url) => url.pathname === "/mer");
+      await mark(page);
+      const row = page.getByRole("button", { name: /Uppdatera appen/ });
+      await row.waitFor();
       expect(await row.innerText()).toContain("Om något ser gammalt ut");
       expect(Math.round((await row.boundingBox())!.height)).toBeGreaterThanOrEqual(44);
       await screenshot(page, `12-uppdatera-mer-${tag}`);
       await row.click();
       await until(() => reloaded(page), "sidan laddas om efter Uppdatera appen");
       await waitForState(page, "ok");
-      expect(new URL(page.url()).pathname).toBe("/drift");
+      expect(new URL(page.url()).pathname).toBe("/mer");
       expect(await banner.count()).toBe(0);
 
       // 5. Fyll på fungerar fortfarande utan nät: workern har sparat sidan igen.

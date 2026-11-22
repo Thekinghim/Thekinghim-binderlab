@@ -141,7 +141,8 @@ afterAll(async () => {
 describe("Startlista per ny butik (iPhone SE)", () => {
   it("På väg in: bockar och en knapp per butik, synliga utan att fälla ut", async () => {
     const page = await signedIn();
-    await page.goto("/butiker");
+    // V2: startlistorna står i den gamla listan (?vy=lista, länkad från Butiker).
+    await page.goto("/butiker?vy=lista");
     const section = page.locator('section[aria-labelledby="pa-vag-in"] >> visible=true');
     await section.waitFor();
     expect(text(await section.innerText())).toContain("1 av 2 butiker är klara för automat.");
@@ -176,7 +177,7 @@ describe("Startlista per ny butik (iPhone SE)", () => {
 
   it("Placera automat: butiken är vald, och den osignerade butiken ger varningen", async () => {
     const page = await signedIn();
-    await page.goto("/butiker");
+    await page.goto("/butiker?vy=lista");
     await page
       .locator(`[data-startlista="${readyStore}"]`)
       .getByRole("link", { name: "Placera automat", exact: true })
@@ -210,12 +211,14 @@ describe("Startlista per ny butik (iPhone SE)", () => {
     expect(placed.map((p) => p.store_id)).toEqual([unsignedStore]);
   });
 
-  it("Automater: 'saker kvar' på raden och Startklar överst på automatens sida", async () => {
+  it("Automater: Startklar i listan och Startklar överst på automatens sida", async () => {
     const page = await signedIn();
-    await page.goto("/automater");
-    const left = page.locator("[data-startklar-kvar] >> visible=true").first();
-    await left.waitFor();
-    expect(text(await left.innerText())).toMatch(/^\d+ sak(er)? kvar$/);
+    // V2: filtret Startklar visar automaten med statusen Startklar (flottans läge).
+    await page.goto("/automater?f=ny");
+    // Listan visar bara automaterna med statusen Startklar (raden har ingen statustext).
+    const row = page.getByRole("option").filter({ hasText: "BL-001" }).first();
+    await row.waitFor();
+    expect(await page.getByRole("option").count()).toBeGreaterThan(0);
 
     await page.goto("/automater/bl-001");
     const list = page.locator('[data-startklar="BL-001"] >> visible=true');

@@ -227,7 +227,9 @@ describe("Butiksägare (dator)", () => {
 
   it("filtret har ägaren med flera butiker; Hem visar ägarens butiker tillsammans", async () => {
     const page = await signedIn("desktop");
-    await page.goto("/?period=30d");
+    // V2: Hem har ingen filterrad; filtret står kvar på de äldre sidorna (Lönsamhet) och
+    // följer med i adressen (?agare=), som Hem läser.
+    await page.goto("/lonsamhet?period=30d");
     // Filtret Butik i kontextraden (den synliga; mobilens ligger i en egen ruta).
     const select = page
       .locator('select:has(option:text-is("Alla butiker")) >> visible=true')
@@ -239,7 +241,7 @@ describe("Butiksägare (dator)", () => {
     await select.selectOption({ label: `${OWNER_NAME} (2 butiker)` });
     const id = await ownerId(OWNER_NAME);
     await page.waitForURL((url) => url.searchParams.get("agare") === id);
-    await page.getByText(`Hem · ${OWNER_NAME}`).first().waitFor();
+    await page.goto(`/?period=30d&agare=${id}`);
 
     // Försäljningen i perioden: Alfa 3 + Beta 2 order per dag i 20 dagar à 79 kr.
     const [facit] = await sql<{ ore: string }[]>`
@@ -250,10 +252,12 @@ describe("Butiksägare (dator)", () => {
         storeIds.get("Butik Beta")!,
       ]}::uuid[])`;
     expect(Number(facit!.ore)).toBe(5 * 20 * 7900);
-    // Andelen heter "butikernas" (ägaren har flera butiker) och dras alltid.
-    await page.getByText("Totalt före butikernas andel").first().waitFor();
-    // Talen räknar upp: vänta tills animationen är klar före skärmbilden.
+    // Hem räknar bara ägarens två butiker: intäkten i nyckeltalen är facit (7 900 kr).
+    const band = page.getByRole("group", { name: "Nyckeltal för perioden" });
+    await band.waitFor();
+    // Talen räknar upp: vänta tills animationen är klar.
     await new Promise((r) => setTimeout(r, 1500));
+    expect(text(await band.innerText())).toMatch(/Intäkt\s*7\s900\s*kr/);
     await screenshot(page, "agare-03-hem-agare-1280");
   });
 });
@@ -273,7 +277,7 @@ describe("Butiksägare (375 px)", () => {
     await screenshot(page, "agare-02-butik-med-agare-375");
 
     await page.goto(`/?period=30d&agare=${await ownerId(OWNER_NAME)}`);
-    await page.getByText(`Hem · ${OWNER_NAME}`).first().waitFor();
+    await page.getByRole("group", { name: "Nyckeltal för perioden" }).waitFor();
     await expectNoSideScroll(page);
     await new Promise((r) => setTimeout(r, 1500));
     await screenshot(page, "agare-03-hem-agare-375");

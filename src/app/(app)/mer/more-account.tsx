@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
+import { AppRefreshRow } from "@/components/pwa/app-refresh-button";
 import { clearAllRecent } from "@/components/shell/command-recent";
 import { Button } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
@@ -10,7 +11,7 @@ import { ListRow } from "@/components/v2/list-row";
 import { toastV2 } from "@/components/v2/toast";
 import { logout, switchOrganization } from "@/server/actions/auth";
 
-/** Kontot på Mer: byt organisation och logga ut (telefonen har ingen sidomeny). */
+/** Kontot på Mer: byt organisation, uppdatera appen och logga ut (telefonen har ingen sidomeny). */
 export function MoreAccount({
   email,
   organizations,
@@ -54,6 +55,8 @@ export function MoreAccount({
             />
           ))
         : null}
+      {/* Hämtar senaste versionen och laddar om (även appen på hemskärmen). */}
+      <AppRefreshRow className="px-[18px] text-v2-ink" />
       <ListRow
         title="Logga ut"
         sub={email}

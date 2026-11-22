@@ -30,6 +30,7 @@ import {
 } from "../_lib/model";
 import { StoreStartLists } from "./_components/start-list";
 import { loadStoreStartDataSafe } from "./_lib/start-facts";
+import { ShopsPage } from "./_components/shops-page";
 
 export const metadata: Metadata = { title: "Butiker" };
 
@@ -37,6 +38,8 @@ export const metadata: Metadata = { title: "Butiker" };
 const OWNERS_VIEW = "agare";
 /** Fliken Utbetalning (?vy=utbetalning). */
 const PAYOUT_VIEW = "utbetalning";
+/** Den gamla listan med nyckeltal och startlistor (?vy=lista). */
+const LIST_VIEW = "lista";
 /** Flikens gamla namn (Butiksportal), som gamla länkar och bokmärken har. */
 const PORTAL_VIEW_OLD = "portal";
 
@@ -52,7 +55,11 @@ function utbetalningHref(sp: Record<string, string | string[] | undefined>): str
 }
 
 /**
- * Butiker: alla butiker med periodens intäkt, butiksersättning, ersättningsmodell och
+ * Butiker (V2, G4): listan per stad med den valda butiken (./_components/shops-page). De
+ * gamla vyerna finns kvar: ?vy=lista (nyckeltal och startlistor), ?vy=utbetalning och
+ * ?vy=agare.
+ *
+ * Gamla listan: alla butiker med periodens intäkt, butiksersättning, ersättningsmodell och
  * vad butiken tjänat hittills i månaden. Ägare, admin och läsare (påfyllaren skickas
  * vidare av requireRoute). Ägare och admin lägger till butiker här; avtal, kontakt och
  * rapportmottagare ändras på butikens sida.
@@ -77,6 +84,15 @@ export default async function ButikerPage({
     const ctx = await requireRoute("butiker");
     return <SettlementsView viewer={await requireViewer()} today={ctx.today} />;
   }
+  // Rollen kontrolleras här, innan något renderas (påfyllaren skickas till sin startsida).
+  await requireRoute("butiker");
+  // Den gamla listan (nyckeltal, kontrakt, butiker på väg in) finns kvar på ?vy=lista.
+  if (sp.vy === LIST_VIEW) return <LegacyStoreList sp={sp} />;
+  return <ShopsPage sp={sp} />;
+}
+
+/** Den gamla butikslistan (?vy=lista): nyckeltal, kontrakt, avtal som saknas, på väg in. */
+async function LegacyStoreList({ sp }: { sp: Record<string, string | string[] | undefined> }) {
   const data = await loadStoreList(sp);
   const { ctx, rows, period, headline } = data;
   // I drift: automat i dag eller försäljning. Butiker på väg in visas för sig.
