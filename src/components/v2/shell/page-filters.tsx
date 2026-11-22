@@ -16,17 +16,21 @@ import { useV2Shell } from "./shell-context";
  * sidan har filter (nav.ts: context, vmb) och när rollen har något att välja.
  */
 export function PageFilters() {
+  // Reserven ritar samma filter (utan ?vy=), så att inget byts ut eller hoppar vid laddning.
   return (
-    <Suspense fallback={null}>
-      <PageFiltersInner />
+    <Suspense fallback={<PageFiltersInner view={null} />}>
+      <PageFiltersWithView />
     </Suspense>
   );
 }
 
-function PageFiltersInner() {
+function PageFiltersWithView() {
+  return <PageFiltersInner view={useSearchParams().get("vy")} />;
+}
+
+function PageFiltersInner({ view }: { view: string | null }) {
   const shell = useV2Shell();
   const path = usePathname();
-  const view = useSearchParams().get("vy");
   if (!shell || !showsContext(path, view)) return null;
   const id = activeRouteId(path);
   const vmbKey = id && routeById(id).vmb === false ? null : (shell.vmbUserKey ?? null);

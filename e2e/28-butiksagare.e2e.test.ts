@@ -243,6 +243,8 @@ describe("Butiksägare (dator)", () => {
     const select = page
       .locator('select:has(option:text-is("Alla butiker")) >> visible=true')
       .first();
+    // V2: filtret står i sidhuvudet, som strömmas med sidan: vänta tills det finns.
+    await select.waitFor();
     // Bara ägaren med två butiker står i filtret (Gamma Handel har en butik).
     const labels = (await select.locator("option").allInnerTexts()).map(text);
     expect(labels).toContain(`${OWNER_NAME} (2 butiker)`);
