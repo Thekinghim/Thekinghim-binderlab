@@ -29,6 +29,8 @@ export function ViewTabs<T extends string>({
       aria-label={label}
       className={cn(
         "inline-flex h-9 w-fit max-w-full [scrollbar-width:none] divide-x divide-line-strong overflow-x-auto rounded-sm border border-line-strong max-md:flex max-md:h-auto max-md:w-full max-md:flex-wrap max-md:gap-px max-md:divide-x-0 max-md:overflow-visible max-md:bg-line-strong",
+        // V2-skalet: som .v2-seg (grå ränna, vald flik vit med skugga).
+        "v2:gap-0.5 v2:divide-x-0 v2:rounded-v2 v2:border-0 v2:bg-v2-line v2:p-[3px]",
         className,
       )}
     >
@@ -45,6 +47,10 @@ export function ViewTabs<T extends string>({
               selected
                 ? "bg-hover font-medium text-fg after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-fg"
                 : "text-subtle hover:bg-hover hover:text-muted max-md:bg-bg",
+              "v2:rounded-v2-sm v2:text-v2-sm! v2:font-[550]! v2:after:hidden",
+              selected
+                ? "v2:bg-v2-panel v2:text-v2-ink v2:shadow-[0_0_0_1px_rgb(0_0_0/0.04),0_1px_2px_rgb(0_0_0/0.06)]"
+                : "v2:bg-transparent v2:text-v2-mute v2:hover:bg-transparent v2:hover:text-v2-ink",
             )}
           >
             {t.label}

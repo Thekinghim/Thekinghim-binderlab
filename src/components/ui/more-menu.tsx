@@ -128,6 +128,7 @@ export function MobileMore({
         style={place.left === null ? undefined : { left: place.left, right: "auto" }}
         className={cn(
           "max-md:shadow-lg max-md:absolute max-md:z-40 max-md:flex max-md:w-max max-md:max-w-[calc(100vw-2rem)] max-md:min-w-56 max-md:flex-col max-md:gap-1 max-md:rounded-md max-md:border max-md:border-line-strong max-md:bg-surface max-md:p-1",
+          "v2:max-md:rounded-v2-lg v2:max-md:border-v2-line v2:max-md:bg-v2-panel v2:max-md:shadow-[0_10px_30px_rgb(0_0_0/0.12)]",
           place.up ? "max-md:bottom-full max-md:mb-1" : "max-md:top-full max-md:mt-1",
           align === "right" ? "max-md:right-0" : "max-md:left-0",
           open ? "max-md:animate-enter" : "max-md:hidden",

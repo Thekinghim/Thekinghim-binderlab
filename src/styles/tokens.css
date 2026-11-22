@@ -133,6 +133,10 @@
   --bl-ease: cubic-bezier(0.2, 0, 0, 1);
   --bl-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
+  /* Versaletiketter i diagram (SNITT, axlar). V2-skalet stänger av dem (src/styles/v2.css). */
+  --bl-caps-transform: uppercase;
+  --bl-caps-tracking: 0.06em;
+
   /* Rutnät i bakgrund */
   --bl-grid-size: 32px;
 }

@@ -40,7 +40,12 @@ export function EmptyState({
       detail={description}
       action={action}
       compact={compact}
-      className={cn(framed && !compact && "rounded-md border border-line bg-surface", className)}
+      className={cn(
+        framed &&
+          !compact &&
+          "rounded-md border border-line bg-surface v2:rounded-v2-lg v2:border-v2-line v2:bg-v2-panel",
+        className,
+      )}
     />
   );
 }

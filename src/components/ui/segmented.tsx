@@ -65,6 +65,8 @@ export function Segmented<T extends string>({
       className={cn(
         "inline-flex w-fit max-w-full [scrollbar-width:none] divide-x divide-line-strong overflow-x-auto rounded-sm border border-line-strong",
         size === "sm" ? "h-7 max-md:h-[46px]" : "h-8 max-md:h-[46px]",
+        // V2: som .v2-seg (grå ränna, vald knapp vit med skugga). Höjden som förut.
+        "v2:gap-0.5 v2:divide-x-0 v2:rounded-v2 v2:border-0 v2:bg-v2-line v2:p-[3px]",
         className,
       )}
     >
@@ -90,6 +92,10 @@ export function Segmented<T extends string>({
               selected
                 ? "bg-hover font-medium text-fg after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-fg"
                 : "text-subtle hover:text-muted",
+              "v2:rounded-v2-sm v2:text-v2-sm! v2:font-[550]! v2:after:hidden",
+              selected
+                ? "v2:bg-v2-panel v2:text-v2-ink v2:shadow-[0_0_0_1px_rgb(0_0_0/0.04),0_1px_2px_rgb(0_0_0/0.06)]"
+                : "v2:text-v2-mute v2:hover:text-v2-ink",
             )}
           >
             {o.label}

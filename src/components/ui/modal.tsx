@@ -67,7 +67,7 @@ export function Modal({
         onClose={onClose}
         titleId={titleId}
         descId={descId}
-        className="max-h-[85dvh] animate-enter rounded-t-md sm:rounded-md"
+        className="max-h-[85dvh] animate-enter rounded-t-md sm:rounded-md v2:rounded-t-v2-lg v2:sm:rounded-v2-lg"
       >
         {children}
       </ModalPanel>
@@ -104,13 +104,15 @@ export function ModalPanel({
     <div
       className={cn(
         "relative flex flex-col rounded-md border border-line-strong bg-raised",
+        // V2: vit panel med radie 12, ljus kant och mjuk skugga (som .v2-sheet).
+        "v2:rounded-v2-lg v2:border-v2-line v2:bg-v2-panel v2:shadow-[0_10px_30px_rgb(0_0_0/0.12)]",
         className,
       )}
     >
       <header className="flex items-start justify-between gap-4 border-b border-line p-5">
         <div className="flex min-w-0 flex-col gap-2">
           {eyebrow ? <p className="label text-subtle">{eyebrow}</p> : null}
-          <h2 id={titleId} className="text-lg font-medium">
+          <h2 id={titleId} className="text-lg font-medium v2:text-v2-lg v2:font-[650]">
             {title}
           </h2>
           {description ? (

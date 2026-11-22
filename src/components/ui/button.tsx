@@ -29,6 +29,28 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 const base =
   "relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-sm border font-medium transition-[background-color,border-color,color] duration-fast ease-instrument";
 
+/**
+ * V2 (appens skal, v2:-klasser): som .v2-btn i src/styles/v2.css. Radie 8, 13 px halvfet,
+ * vit med 1 px #E3E3E3, primär mörk (#303030) med Polaris skugga, kort tryck (scale 0,97).
+ * Inaktiv: halv opacitet i stället för streckad kant.
+ */
+const v2Base =
+  "v2:rounded-v2 v2:text-v2-sm v2:font-[550] v2:transition-[transform,background-color,border-color,color] v2:active:scale-[0.97]";
+
+const v2Variants: Record<Exclude<Variant, "signal">, string> = {
+  primary:
+    "v2:border-v2-primary v2:bg-v2-primary v2:text-(color:--v2-on-primary) v2:[box-shadow:var(--v2-shadow-primary)] v2:hover:border-v2-primary v2:hover:bg-(--v2-primary-hover)",
+  secondary:
+    "v2:border-v2-line v2:bg-v2-panel v2:text-v2-ink v2:hover:border-v2-line v2:hover:bg-v2-hover",
+  ghost:
+    "v2:border-transparent v2:bg-transparent v2:text-v2-mute v2:hover:bg-v2-hover v2:hover:text-v2-ink",
+  danger:
+    "v2:border-(color:--v2-crit-line) v2:bg-v2-panel v2:text-v2-crit-text v2:hover:border-(color:--v2-crit-line) v2:hover:bg-v2-crit-soft",
+  "danger-confirm":
+    "v2:border-v2-crit v2:bg-v2-crit v2:text-(color:--v2-on-primary) v2:hover:border-v2-crit-text v2:hover:bg-v2-crit-text",
+};
+const v2Disabled = "v2:border-solid v2:opacity-50";
+
 const variants: Record<Exclude<Variant, "signal">, string> = {
   primary:
     "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover",
@@ -58,8 +80,10 @@ const sizes: Record<Size, string> = {
 };
 
 function variantClass(variant: Variant, inactive: boolean) {
-  if (inactive) return variant === "ghost" ? disabledGhostCls : disabledCls;
-  return variants[variant === "signal" ? "danger" : variant];
+  const v = variant === "signal" ? "danger" : variant;
+  if (inactive)
+    return cn(variant === "ghost" ? disabledGhostCls : disabledCls, v2Variants[v], v2Disabled);
+  return cn(variants[v], v2Variants[v]);
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -94,6 +118,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       className={cn(
         base,
+        v2Base,
         variantClass(variant, inactive),
         sizes[size],
         loading && "cursor-progress",
@@ -113,7 +138,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       <span>{children}</span>
       {iconRight ? <Icon name={iconRight} className="-mr-0.5 shrink-0" /> : null}
       {kbd ? (
-        <kbd className="label -mr-1 ml-1 rounded-xs border border-current/25 px-1 tracking-normal text-current/75">
+        <kbd className="label -mr-1 ml-1 rounded-xs border border-current/25 px-1 tracking-normal text-current/75 v2:font-v2-code">
           {kbd}
         </kbd>
       ) : null}
@@ -163,6 +188,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       disabled={disabled}
       className={cn(
         base,
+        v2Base,
         variantClass(variant, Boolean(disabled)),
         size === "sm" ? "size-7" : "size-9",
         // Under md når träffytan 44 px (::before) utan att knappen ritas större.

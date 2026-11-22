@@ -262,7 +262,15 @@ function KpiStripInner({
           {comparison ? <p className="meta tnum text-subtle">{comparison}</p> : null}
         </header>
       ) : null}
-      <div className={cn("border-y border-line", !hasHeader && lineFirstInPanel, lineLastInPanel)}>
+      <div
+        className={cn(
+          "border-y border-line",
+          !hasHeader && lineFirstInPanel,
+          lineLastInPanel,
+          // V2: ett band som .v2-band (vitt, radie 12, 1 px kant) när remsan står fritt.
+          "v2:not-in-data-[frame=panel]:overflow-hidden v2:not-in-data-[frame=panel]:rounded-v2-lg v2:not-in-data-[frame=panel]:border-x v2:not-in-data-[frame=panel]:border-v2-line v2:not-in-data-[frame=panel]:bg-v2-panel",
+        )}
+      >
         <dl
           className={cn("grid grid-cols-2 overflow-hidden", smCols[sm], lgCols[total])}
           aria-busy={loading || undefined}
@@ -298,14 +306,20 @@ function KpiStripInner({
  * Storlekssteg för värdet, störst först. Steg 0 är remsans vanliga storlek (från @xl:
  * 44 px för huvudpersonen, 32 px för övriga); ryms beloppet inte i cellen tas nästa steg.
  */
+// V2 (appens skal): talen som i .v2-kt, 20 px (huvudpersonen 28 px från @xl), oavsett steg.
 const PRIMARY_SIZES = [
-  "text-xl @xl:text-3xl",
-  "text-xl @xl:text-2xl",
-  "text-xl",
-  "text-lg",
+  "text-xl @xl:text-3xl v2:text-v2-xl v2:@xl:text-v2-2xl",
+  "text-xl @xl:text-2xl v2:text-v2-xl",
+  "text-xl v2:text-v2-xl",
+  "text-lg v2:text-v2-lg",
   "text-md",
 ];
-const VALUE_SIZES = ["text-xl @xl:text-2xl", "text-xl", "text-lg", "text-md"];
+const VALUE_SIZES = [
+  "text-xl @xl:text-2xl v2:text-v2-xl",
+  "text-xl v2:text-v2-xl",
+  "text-lg v2:text-v2-lg",
+  "text-md v2:text-v2-md",
+];
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -414,6 +428,8 @@ function KpiCell({
       className={cn(
         "group/kpi rise -mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-3 pr-4 transition-colors duration-300 hover:bg-hover/40 md:py-4 @4xl:pr-5",
         span,
+        // V2: cellerna som .v2-kt (14 × 18 px luft, ljusare avdelare, ingen lyftning).
+        "v2:border-v2-line2 v2:px-[18px] v2:py-3.5 v2:hover:bg-transparent",
       )}
       style={{ "--i": Math.min(index, 6) } as React.CSSProperties}
     >
@@ -431,6 +447,7 @@ function KpiCell({
             ref={ref}
             className={cn(
               "tnum mt-2 truncate font-medium transition-transform duration-300 group-hover/kpi:-translate-y-0.5 md:mt-3",
+              "v2:mt-0.5 v2:font-[650] v2:tracking-[-0.01em] v2:group-hover/kpi:translate-y-0",
               sizes[step],
             )}
           >

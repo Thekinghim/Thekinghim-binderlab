@@ -149,6 +149,9 @@ export function ToastCard({
         "pointer-events-auto relative w-full overflow-hidden rounded-md border bg-raised p-3.5",
         live && "animate-enter pr-10",
         tone === "critical" ? "border-signal-line" : "border-line-strong",
+        // V2: som .v2-toast (vit, radie 12, skugga i stället för mörk kant).
+        "v2:rounded-v2-lg v2:bg-v2-panel v2:shadow-[0_10px_30px_rgb(0_0_0/0.1)]",
+        tone === "critical" ? "v2:border-(color:--v2-crit-line)" : "v2:border-v2-line",
         className,
       )}
     >

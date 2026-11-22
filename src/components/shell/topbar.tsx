@@ -10,6 +10,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { CopyViewButton } from "./copy-view";
 import { HotkeyHint } from "./kbd";
 import { Logo } from "./logo";
+import { V2Logo } from "@/components/v2/shell/nav-icon";
 import { WithCarriedQuery, withQuery } from "./side-nav";
 import {
   PeriodControl,
@@ -74,6 +75,10 @@ export type TopbarProps = {
  * Lager 1 är alltid fäst. Kontextraden är fäst från md. Under md finns ingen egen kontextrad:
  * perioden (en knapp som öppnar valen) och filtret (ikon) står i lager 1 i stället för
  * brödsmulan, och temat ligger i bottenradens Mer.
+ *
+ * I V2-skalet (v2:-klasserna, de gamla sidorna bakom Mer) ritas toppen som V2:s sidhuvud
+ * (.v2-top): ingen kantlinje, sidans namn som rubrik (20 px halvfet), sök som i V2 och inget
+ * temaval (V2 är bara ljust). Kontextraden står på V2:s grå bakgrund (data-shell-context, v2.css).
  */
 export function Topbar({
   crumbs,
@@ -95,8 +100,8 @@ export function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-line bg-bg">
-        <div className="flex h-14 items-center gap-2 px-4 md:gap-3 md:px-6">
+      <header className="sticky top-0 z-30 border-b border-line bg-bg v2:border-b-0 v2:bg-v2-bg">
+        <div className="flex h-14 items-center gap-2 px-4 md:gap-3 md:px-6 v2:md:h-[61px] v2:md:px-[22px]">
           {/* Som menyns länkar: period, filter och vyknapparna följer med till Hem. */}
           <WithCarriedQuery>
             {(query) => (
@@ -105,7 +110,13 @@ export function Topbar({
                 className="relative shrink-0 rounded-xs before:absolute before:-inset-3.5 before:content-[''] lg:hidden"
                 aria-label="Binderlab, till startsidan"
               >
-                <Logo withWordmark={false} />
+                {/* V2-skalet: V2:s blå logga (som .v2-top .mlogo), annars den gamla. */}
+                <span className="contents v2:hidden">
+                  <Logo withWordmark={false} />
+                </span>
+                <span className="hidden v2:inline-flex">
+                  <V2Logo size={24} />
+                </span>
               </Link>
             )}
           </WithCarriedQuery>
@@ -131,7 +142,7 @@ export function Topbar({
               onClick={onOpenCommand}
               aria-label="Sök och kommandon"
               aria-keyshortcuts="Meta+K Control+K"
-              className="hidden h-8 items-center gap-2 rounded-sm border border-line-strong pr-1.5 pl-2.5 text-subtle transition-colors hover:border-line-control hover:text-fg sm:flex"
+              className="hidden h-8 items-center gap-2 rounded-sm border border-line-strong pr-1.5 pl-2.5 text-subtle transition-colors hover:border-line-control hover:text-fg sm:flex v2:rounded-v2 v2:border-v2-line v2:bg-v2-panel v2:text-v2-mute v2:hover:border-v2-line3 v2:hover:text-v2-ink"
             >
               <Icon name="search" />
               <span className="text-sm">Sök</span>
@@ -144,7 +155,7 @@ export function Topbar({
               onClick={onOpenCommand}
             />
             {/* Under md ligger temat i bottenradens Mer. */}
-            <span className="contents max-md:hidden">
+            <span className="contents max-md:hidden v2:hidden">
               <ThemeToggle />
             </span>
           </div>
@@ -153,8 +164,10 @@ export function Topbar({
 
       {showContext ? (
         <div
+          data-shell-context
           className={cn(
             "z-20 border-b border-line bg-bg md:sticky md:top-14",
+            "v2:border-b-0 v2:bg-v2-bg v2:md:top-[61px]",
             mobileContext && "max-md:hidden",
           )}
         >
@@ -184,17 +197,21 @@ export function Topbar({
 function Crumbs({ crumbs, className }: { crumbs: string[]; className?: string }) {
   return (
     <nav aria-label="Brödsmulor" className={cn("min-w-0 flex-1", className)}>
-      <ol className="label flex min-w-0 items-center gap-2 text-subtle">
+      {/* V2: bara sidans namn, som rubriken i .v2-top (de första leden döljs). */}
+      <ol className="label flex min-w-0 items-center gap-2 text-subtle v2:text-v2-xl! v2:leading-7! v2:font-[650]! v2:tracking-[-0.01em]! v2:text-v2-ink">
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1;
           return (
             <li
               key={`${i}-${c}`}
               // Under md visas bara sista ledet, så att det aldrig kapas.
-              className={cn("min-w-0 items-center gap-2", last ? "flex" : "hidden md:flex")}
+              className={cn(
+                "min-w-0 items-center gap-2",
+                last ? "flex" : "hidden md:flex v2:md:hidden",
+              )}
             >
               {i > 0 ? (
-                <span aria-hidden className="hidden text-faint md:inline">
+                <span aria-hidden className="hidden text-faint md:inline v2:md:hidden">
                   /
                 </span>
               ) : null}
@@ -223,8 +240,8 @@ type ContextProps = {
 /** Kontextraden från md: periodval och filter på rad 1, läsraden i mono på rad 2. */
 function UrlContext({ stores, machines, earliest, hasScope, vmbUserKey }: ContextProps) {
   return (
-    <div className="px-4 py-2 md:px-6">
-      <div className="hidden flex-wrap items-center gap-x-6 gap-y-2 md:flex">
+    <div className="px-4 py-2 md:px-6 v2:md:px-[22px] v2:md:pt-0 v2:md:pb-3">
+      <div className="hidden flex-wrap items-center gap-x-6 gap-y-2 md:flex v2:md:gap-x-3">
         <PeriodControl earliest={earliest} className="max-w-full" />
         {vmbUserKey ? <VmbToggle userKey={vmbUserKey} /> : null}
         {hasScope ? (

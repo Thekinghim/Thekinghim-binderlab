@@ -87,6 +87,11 @@ export function AskAiButton({ fallbackHref }: { fallbackHref?: string }) {
         panel.isOpen
           ? "border-inverse bg-inverse text-on-inverse"
           : "border-line-strong text-fg hover:border-line-control hover:bg-hover",
+        // V2: som .v2-btn (radie 8, vit, 1 px #E3E3E3, 13 px halvfet).
+        "v2:rounded-v2 v2:text-v2-sm v2:font-[550]",
+        panel.isOpen
+          ? "v2:border-v2-primary v2:bg-v2-primary v2:text-(color:--v2-on-primary)"
+          : "v2:border-v2-line v2:bg-v2-panel v2:text-v2-ink v2:hover:border-v2-line v2:hover:bg-v2-hover",
       )}
     >
       {/* Under md finns ingen flytande AI-knapp: gnistan här skimrar i stället. */}

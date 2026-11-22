@@ -2,7 +2,7 @@
 
 import { max as d3max, mean } from "d3-array";
 import { scaleBand, scaleLinear } from "d3-scale";
-import { useId, useMemo, useState, type KeyboardEvent } from "react";
+import { useId, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
 import { formatDelta } from "@/lib/format";
 import { svgSizeProps, unmeasuredStyle, useMeasure } from "@/lib/hooks/use-measure";
@@ -530,8 +530,9 @@ function VerticalBars({
                 >
                   <tspan
                     style={{
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
+                      textTransform:
+                        "var(--bl-caps-transform, uppercase)" as CSSProperties["textTransform"],
+                      letterSpacing: "var(--bl-caps-tracking, 0.06em)",
                       fill: "var(--bl-fg-subtle)",
                     }}
                   >

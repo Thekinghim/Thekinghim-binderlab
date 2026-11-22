@@ -22,7 +22,7 @@ type FieldShellProps = {
 function FieldShell({ id, label, hint, error, children, className }: FieldShellProps) {
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
-      <label htmlFor={id} className="label text-muted">
+      <label htmlFor={id} className="label text-muted v2:text-v2-sm! v2:text-v2-ink">
         {label}
       </label>
       {children}
@@ -46,7 +46,13 @@ function FieldShell({ id, label, hint, error, children, className }: FieldShellP
  * Inaktiv: streckad kant, ingen fyllning, läsbar text (--bl-fg-disabled).
  */
 const control =
-  "h-9 max-md:h-11 w-full min-w-0 rounded-sm border bg-bg px-3 text-base text-fg transition-[border-color,background-color] duration-fast ease-instrument placeholder:text-subtle enabled:hover:border-muted disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled disabled:placeholder:text-disabled";
+  "h-9 max-md:h-11 w-full min-w-0 rounded-sm border bg-bg px-3 text-base text-fg transition-[border-color,background-color] duration-fast ease-instrument placeholder:text-subtle enabled:hover:border-muted disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled disabled:placeholder:text-disabled" +
+  // V2 (appens skal): vitt fält, radie 8, Polaris inmatningskant (#8A8A8A), mörkare vid hover.
+  " v2:rounded-v2 v2:bg-v2-panel v2:text-v2-ink v2:placeholder:text-v2-faint v2:enabled:hover:border-v2-body2 v2:disabled:border-solid v2:disabled:bg-(--v2-dis)";
+
+/** Kantfärgen, med V2:s motsvarighet (felkanten får aldrig skrivas över av V2:s vanliga kant). */
+const controlBorder = (error: string | undefined) =>
+  error ? "border-signal v2:border-v2-crit-icon" : "border-line-control v2:border-v2-faint";
 
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
@@ -80,7 +86,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           aria-describedby={error || hint ? `${id}-msg` : undefined}
           className={cn(
             control,
-            error ? "border-signal" : "border-line-control",
+            controlBorder(error),
             icon && "pl-9",
             // Enhetens bredd plus 4px luft: värdet slutar tätt intill enheten.
             suffix && "pr-[calc(var(--spacing)*3+var(--sfx-w)+4px)]",
@@ -128,12 +134,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
           id={id}
           aria-invalid={error ? true : undefined}
           aria-describedby={error || hint ? `${id}-msg` : undefined}
-          className={cn(
-            control,
-            "appearance-none pr-9",
-            error ? "border-signal" : "border-line-control",
-            className,
-          )}
+          className={cn(control, "appearance-none pr-9", controlBorder(error), className)}
           {...rest}
         >
           {options.map((o) => (

@@ -13,6 +13,8 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
     <kbd
       className={cn(
         "label inline-flex h-4 min-w-4 items-center justify-center rounded-xs border border-current/25 px-1 tracking-normal text-current",
+        // V2: Google Sans Code, bara här (Ctrl K-tipset), och ingen ram.
+        "v2:rounded-v2-sm v2:border-0 v2:bg-v2-sel v2:font-v2-code! v2:text-[11px]! v2:font-normal! v2:text-v2-mute",
         className,
       )}
     >

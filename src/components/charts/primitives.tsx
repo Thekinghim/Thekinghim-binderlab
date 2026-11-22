@@ -35,8 +35,10 @@ export function AxisText({
       style={{
         fontFamily: "var(--bl-font-mono)",
         fontSize: 11,
-        letterSpacing: upper ? "0.06em" : 0,
-        textTransform: upper ? "uppercase" : "none",
+        letterSpacing: upper ? "var(--bl-caps-tracking, 0.06em)" : 0,
+        textTransform: (upper
+          ? "var(--bl-caps-transform, uppercase)"
+          : "none") as CSSProperties["textTransform"],
         fill: emphasis ? "var(--bl-fg)" : "var(--bl-fg-subtle)",
       }}
     >
@@ -71,8 +73,8 @@ const KIND_STYLE: Record<LabelKind, CSSProperties> = {
   value: { fontFamily: "var(--bl-font-mono)", fill: "var(--bl-fg-muted)" },
   caps: {
     fontFamily: "var(--bl-font-mono)",
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
+    letterSpacing: "var(--bl-caps-tracking, 0.06em)",
+    textTransform: "var(--bl-caps-transform, uppercase)" as CSSProperties["textTransform"],
     fill: "var(--bl-fg-subtle)",
   },
 };
