@@ -1,7 +1,11 @@
 /**
  * Anropet till Claude för morgonbriefen, bakom ett litet gränssnitt (testerna skickar in
- * en egen). Den billiga modellen, inget tänkande, ett tvingat verktygsanrop med tre
- * korta strängar, lågt max_tokens och kort tidsgräns.
+ * en egen). Den billiga modellen, inget tänkande, verktyget spara_brief med tre korta
+ * strängar, lågt max_tokens och kort tidsgräns.
+ *
+ * tool_choice är "auto": modellen avvisar tvingat verktygsanrop ("tool"/"any"), så varje
+ * brief föll med fel. Instruktionerna ber om verktyget, och ett svar utan anrop blir null
+ * (tjänsten loggar fel och visar reservraderna); innehållet granskas av checkBrief.
  */
 
 import "server-only";
@@ -52,7 +56,7 @@ export function createAnthropicBrief(options: {
         fallbacks: "default",
         system: [{ type: "text", text: request.instructions }],
         tools: [BRIEF_TOOL],
-        tool_choice: { type: "tool", name: BRIEF_TOOL_NAME },
+        tool_choice: { type: "auto" },
         messages: [{ role: "user", content: request.message }],
       });
       const call = message.content.find(
