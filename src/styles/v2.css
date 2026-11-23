@@ -2583,3 +2583,580 @@
     }
   }
 }
+
+/* ======================================================================================
+   Visuella byggstenar (mockarna i "visuellt"): packhög, pall, solfjäder, målring,
+   vinststapel, butikssymbol och automatbild. Komponenterna i src/components/v2:
+   pack-visuals.tsx, progress-ring.tsx, profit-bar.tsx, store-face.tsx, machine-thumb.tsx.
+   Logiken (vinklar, lägen, färgval) i visual-math.ts. Rörelse: bara transform/opacity
+   (och stroke-dasharray på ringen), ease-out, ingen rörelse med prefers-reduced-motion.
+   ====================================================================================== */
+@layer components {
+  /* ---- Packhög (PackStack) ----
+     Packet framför, kopiorna bakom lätt vridna åt sidorna och mörkare ju längre bak. */
+  .v2-pstack {
+    position: relative;
+    display: inline-block;
+    flex: none;
+    line-height: 0;
+  }
+  .v2-pstack > .v2-pk {
+    filter: drop-shadow(0 1px 1px rgb(26 26 26 / 0.18)) drop-shadow(0 4px 6px rgb(26 26 26 / 0.12));
+  }
+  .v2-pstack-top {
+    position: relative;
+    z-index: 5;
+  }
+  .v2-pstack > .v2-pstack-cp {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    filter: brightness(0.92) drop-shadow(0 1px 1px rgb(26 26 26 / 0.12));
+  }
+  .v2-pstack-cp:nth-child(2) {
+    transform: translate(7px, -4px) rotate(3deg);
+    z-index: 4;
+    opacity: 0.95;
+  }
+  .v2-pstack-cp:nth-child(3) {
+    transform: translate(13px, -7px) rotate(6deg);
+    z-index: 3;
+    opacity: 0.9;
+  }
+  .v2-pstack > .v2-pstack-cp:nth-child(3) {
+    filter: brightness(0.86);
+  }
+  .v2-pstack-cp:nth-child(4) {
+    transform: translate(-7px, -3px) rotate(-4deg);
+    z-index: 2;
+    opacity: 0.9;
+  }
+  .v2-pstack > .v2-pstack-cp:nth-child(4) {
+    filter: brightness(0.88);
+  }
+  .v2-pstack-cp:nth-child(5) {
+    transform: translate(-13px, -6px) rotate(-8deg);
+    z-index: 1;
+    opacity: 0.85;
+  }
+  .v2-pstack > .v2-pstack-cp:nth-child(5) {
+    filter: brightness(0.82);
+  }
+  .v2-pstack.ghost > .v2-pk {
+    opacity: 0.38;
+    filter: grayscale(0.6);
+  }
+  .v2-pstack-over {
+    /* Etiketten ovanpå (t.ex. "+324 på väg") får vara bredare än packet. */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 6;
+    transform: translate(-50%, -50%);
+    line-height: normal;
+    white-space: nowrap;
+  }
+
+  /* ---- Pall (PackPodium) ----
+     Etta i mitten, upplyft och störst; tvåa och trea vrids inåt och skjuts in under ettan.
+     En varm glöd bakom och en tunn golvlinje under. Höjden styrs med --h (inline-höjden från
+     PackImage skrivs över, därav !important). */
+  .v2-podium {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 10px;
+    height: 236px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .v2-podium::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 44%;
+    width: 240px;
+    height: 150px;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(closest-side, rgb(255 214 102 / 0.28), rgb(255 214 102 / 0));
+    pointer-events: none;
+  }
+  .v2-podium::after {
+    content: "";
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: 34px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--v2-line), transparent);
+  }
+  .v2-pod-i {
+    --h: 128px;
+    --r: 0deg;
+    --y: 0px;
+    --x: 0px;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: v2-rise 420ms var(--v2-ease) both;
+  }
+  .v2-pod-i.p1 {
+    --h: 150px;
+    --y: -14px;
+    z-index: 2;
+  }
+  .v2-pod-i.p2 {
+    --r: -4deg;
+    --x: 18px;
+    animation-delay: 40ms;
+  }
+  .v2-pod-i.p3 {
+    --r: 4deg;
+    --x: -18px;
+    animation-delay: 80ms;
+  }
+  .v2-pod-i > .v2-pk {
+    height: var(--h) !important;
+    width: auto !important;
+    transform: translate(var(--x), var(--y)) rotate(var(--r));
+    filter: drop-shadow(0 1px 1px rgb(26 26 26 / 0.16)) drop-shadow(0 8px 12px rgb(26 26 26 / 0.16));
+  }
+  .v2-pod-i > .v2-pk-none {
+    aspect-ratio: 131 / 240;
+  }
+  .v2-pod-n {
+    margin-top: 12px;
+    transform: translateX(var(--x));
+    font-weight: 650;
+    font-size: var(--v2-t-md);
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .v2-pod-t {
+    max-width: 120px;
+    margin-top: 3px;
+    transform: translateX(var(--x));
+    overflow: hidden;
+    color: var(--v2-mute);
+    font-size: var(--v2-t-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .v2-pod-rk {
+    position: absolute;
+    top: calc(var(--y) - 8px);
+    left: calc(var(--x) - 6px);
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--v2-panel);
+    box-shadow:
+      0 0 0 1px var(--v2-line),
+      0 1px 2px rgb(0 0 0 / 0.08);
+    color: var(--v2-body2);
+    font-size: var(--v2-t-xs);
+    font-weight: 650;
+  }
+  .v2-pod-i.p1 .v2-pod-rk {
+    left: -6px;
+    background: var(--v2-ink);
+    color: var(--v2-on-primary);
+    box-shadow: none;
+  }
+  .v2-pod-i.p3 .v2-pod-rk {
+    left: auto;
+    right: calc(-6px - var(--x));
+  }
+  @media (max-width: 900px) {
+    .v2-podium {
+      height: 178px;
+      gap: 12px;
+    }
+    .v2-podium::before {
+      width: 200px;
+      height: 120px;
+    }
+    .v2-podium::after {
+      bottom: 30px;
+    }
+    .v2-pod-i {
+      --h: 96px;
+    }
+    .v2-pod-i.p1 {
+      --h: 112px;
+      --y: -10px;
+    }
+    .v2-pod-i.p2 {
+      --x: 14px;
+    }
+    .v2-pod-i.p3 {
+      --x: -14px;
+    }
+    .v2-pod-n {
+      margin-top: 8px;
+    }
+  }
+
+  /* ---- Solfjäder (PackFan) ----
+     Lägena (--x, --y, --r, --sc, --dim) räknas i fanLayout. Varje pack står på samma punkt
+     (botten, mitten) och vrids kring sin nederkant. Bredden: --fw packbredder. */
+  .v2-fan {
+    --fh: 112px;
+    position: relative;
+    display: block;
+    flex: none;
+    width: calc(var(--fh) * 0.546 * var(--fw, 1));
+    height: calc(var(--fh) * 1.08 + 10px);
+    margin-inline: auto;
+  }
+  .v2-fan.s {
+    --fh: 62px;
+    height: calc(var(--fh) + 8px);
+  }
+  .v2-fan.l {
+    --fh: 132px;
+  }
+  .v2-fan-i {
+    position: absolute;
+    bottom: 6px;
+    left: 50%;
+    line-height: 0;
+    transform-origin: 50% 100%;
+    transform: translateX(-50%) translateX(var(--x)) translateY(var(--y)) rotate(var(--r))
+      scale(var(--sc));
+  }
+  .v2-fan-i > .v2-pk {
+    height: var(--fh) !important;
+    width: auto !important;
+    filter: brightness(var(--dim)) drop-shadow(0 2px 2px rgb(26 26 26 / 0.16))
+      drop-shadow(0 8px 12px rgb(26 26 26 / 0.16));
+  }
+  .v2-fan.s .v2-fan-i > .v2-pk {
+    filter: drop-shadow(0 1px 1px rgb(26 26 26 / 0.16)) drop-shadow(0 5px 8px rgb(26 26 26 / 0.14));
+  }
+  .v2-fan-i > .v2-pk-none {
+    aspect-ratio: 131 / 240;
+  }
+  .v2-fan.anim .v2-fan-i > .v2-pk {
+    animation: v2-rise 420ms var(--v2-ease) both;
+    animation-delay: calc(var(--i) * 40ms);
+  }
+  .v2-fan-floor {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 70%;
+    height: 16px;
+    transform: translateX(-50%);
+    background: radial-gradient(closest-side, rgb(0 0 0 / 0.16), transparent);
+  }
+  @media (max-width: 900px) {
+    .v2-fan {
+      --fh: 96px;
+    }
+    .v2-fan.s {
+      --fh: 56px;
+    }
+    .v2-fan.l {
+      --fh: 112px;
+    }
+  }
+
+  /* ---- Målring (ProgressRing) ----
+     viewBox 150, vriden −90° så att 0 % är överst. Utfall grönt, prognos streckad ljusgrön,
+     takt en mörk markör med vit kant. Bågen ritas fram från 0 (--c = omkretsen). */
+  .v2-ring {
+    position: relative;
+    flex: none;
+    width: var(--s, 150px);
+    height: var(--s, 150px);
+  }
+  .v2-ring svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+    overflow: visible;
+  }
+  .v2-ring circle,
+  .v2-ring path {
+    fill: none;
+  }
+  .v2-ring-track {
+    stroke: var(--v2-line2);
+  }
+  .v2-ring-fc {
+    stroke: #7cc8b0;
+    stroke-dasharray: 3 3.4;
+  }
+  .v2-ring-res {
+    stroke: var(--v2-profit);
+    stroke-linecap: round;
+    animation: v2-ring-draw 900ms var(--v2-ease) both;
+  }
+  .v2-ring-pace .halo {
+    stroke: var(--v2-panel);
+    stroke-width: 5;
+    stroke-linecap: round;
+  }
+  .v2-ring-pace .tick {
+    stroke: var(--v2-ink);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+  }
+  .v2-ring-c {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+  }
+  .v2-ring-c b {
+    font-size: calc(var(--s, 150px) * 0.2);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .v2-ring-c span {
+    margin-top: 4px;
+    color: var(--v2-mute);
+    font-size: var(--v2-t-xs);
+    white-space: nowrap;
+  }
+  @media (max-width: 900px) {
+    .v2-ring {
+      width: var(--s-ph, var(--s, 124px));
+      height: var(--s-ph, var(--s, 124px));
+    }
+    .v2-ring-c b {
+      font-size: calc(var(--s-ph, 124px) * 0.2);
+    }
+  }
+  .v2-ring-key {
+    display: inline-block;
+    flex: none;
+    width: 12px;
+    height: 12px;
+    margin-top: 2px;
+    border-radius: 6px;
+  }
+  .v2-ring-key.result {
+    background: var(--v2-profit);
+  }
+  .v2-ring-key.forecast {
+    border: 2px dashed #6fbfa6;
+  }
+  .v2-ring-key.pace {
+    width: 3px;
+    margin-inline: 4.5px;
+    border-radius: 2px;
+    background: var(--v2-ink);
+  }
+
+  /* ---- Vinststapel (ProfitBar) ----
+     Inköp grått + vinst grönt i en stapel vars längd är intäkten mot listans största (--wf).
+     Okänt inköp: randig. Stapeln växer fram från vänster (scaleX). */
+  .v2-pbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .v2-pbar-trk {
+    display: flex;
+    gap: 2px;
+    flex: none;
+    width: calc((100% - 66px) * var(--wf, 1));
+    min-width: 4px;
+    height: 12px;
+    overflow: hidden;
+    border-radius: 4px;
+    transform-origin: left;
+    animation: v2-bar-grow 700ms var(--v2-ease) var(--d, 0ms) both;
+  }
+  .v2-pbar.wide .v2-pbar-trk {
+    flex: 1;
+    width: auto;
+    height: 14px;
+  }
+  .v2-pbar-trk i {
+    display: block;
+    height: 100%;
+  }
+  .v2-pbar-trk .cost {
+    flex: none;
+    background: #c9c9c9;
+  }
+  .v2-pbar-trk .prof {
+    flex: 1;
+    background: var(--v2-profit);
+  }
+  .v2-pbar-trk .hatch {
+    width: 100%;
+    border-radius: 4px;
+    background: repeating-linear-gradient(135deg, #e9e9e9 0 4px, #fff 4px 7px);
+    box-shadow: inset 0 0 0 1px #d6d6d6;
+  }
+  .v2-pbar-end {
+    min-width: 56px;
+    color: var(--v2-profit-text);
+    font-size: var(--v2-t-sm);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .v2-pbar-end b {
+    font-weight: 650;
+  }
+  .v2-pbar.unknown .v2-pbar-end {
+    color: var(--v2-mute);
+  }
+  .v2-pbar.loss .v2-pbar-end {
+    color: var(--v2-crit-text);
+  }
+
+  /* ---- Butikssymbol (StoreFace) ----
+     Mjuk ruta i stadens färg (--sf-bg/--sf-fg), symbol eller initialer i samma kulör. */
+  .v2-sface {
+    --s: 36px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: var(--s);
+    height: var(--s);
+    border-radius: calc(var(--s) * 0.28);
+    background: linear-gradient(
+      160deg,
+      var(--sf-bg),
+      color-mix(in srgb, var(--sf-bg) 80%, var(--sf-fg) 20%)
+    );
+    color: var(--sf-fg);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--sf-fg) 14%, transparent),
+      0 1px 1px rgb(0 0 0 / 0.04);
+  }
+  .v2-sface svg {
+    width: 58%;
+    height: 58%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .v2-sface-ini {
+    font-size: calc(var(--s) * 0.36);
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    user-select: none;
+  }
+  .v2-sface.xs {
+    --s: 22px;
+  }
+  .v2-sface.xs svg {
+    stroke-width: 2;
+  }
+  .v2-sface.sm {
+    --s: 28px;
+  }
+  .v2-sface.lg {
+    --s: 64px;
+    box-shadow:
+      0 0 0 3px var(--v2-panel),
+      0 4px 12px rgb(0 0 0 / 0.12);
+  }
+  .v2-sface.lg svg {
+    stroke-width: 1.5;
+  }
+  @media (max-width: 900px) {
+    .v2-sface:not(.xs, .sm, .lg) {
+      --s: 42px;
+    }
+  }
+
+  /* ---- Automatbild (MachineThumb) ----
+     Platshållare tills ägarens foton finns: en neutral automat i grått. */
+  .v2-mthumb {
+    --h: 40px;
+    display: inline-block;
+    flex: none;
+    height: var(--h);
+    width: calc(var(--h) * 52 / 86);
+    line-height: 0;
+  }
+  .v2-mthumb.xs {
+    --h: 26px;
+  }
+  .v2-mthumb.md {
+    --h: 64px;
+  }
+  .v2-mthumb.lg {
+    --h: 96px;
+  }
+  .v2-mthumb svg {
+    width: 100%;
+    height: 100%;
+  }
+  .v2-mthumb .body {
+    fill: #e9e9e9;
+    stroke: #d2d2d2;
+  }
+  .v2-mthumb .glass {
+    fill: #f8f8f8;
+    stroke: #d2d2d2;
+  }
+  .v2-mthumb .shelf,
+  .v2-mthumb .keys {
+    fill: none;
+    stroke: #d2d2d2;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+  }
+  .v2-mthumb .panel,
+  .v2-mthumb .slot {
+    fill: #cfcfcf;
+  }
+
+  /* ---- Rörelse ---- */
+  @keyframes v2-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+  @keyframes v2-ring-draw {
+    from {
+      stroke-dasharray: 0 var(--c);
+    }
+  }
+  @keyframes v2-bar-grow {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .v2-pod-i,
+    .v2-fan.anim .v2-fan-i > .v2-pk {
+      animation-name: v2-fade;
+    }
+    .v2-ring-res,
+    .v2-pbar-trk {
+      animation: none;
+    }
+  }
+  @keyframes v2-fade {
+    from {
+      opacity: 0;
+    }
+  }
+}
