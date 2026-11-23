@@ -10,6 +10,7 @@ import { MobileFold } from "@/components/ui/mobile-fold";
 import { Icon } from "@/components/ui/icon";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
+import { PackImage } from "@/components/v2/pack-image";
 import { useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 import { formatInt, formatKronor, formatSek, MINUS, NBSP } from "@/lib/format";
@@ -420,59 +421,65 @@ function StockRow({
         className={cn(GRID, "min-h-16 py-2.5 max-md:min-h-14 max-md:py-2")}
         style={actWidth(multi, canEdit)}
       >
-        <span className="flex min-w-0 flex-col" onClick={() => setMore((v) => !v)}>
-          <span className="flex min-w-0 items-center gap-2 max-md:flex-wrap max-md:gap-y-1">
-            <span className="truncate text-base text-fg max-md:[overflow-wrap:anywhere] max-md:whitespace-normal">
-              {row.name}
-            </span>
-            {row.negative || negativeHere ? (
-              <StatusTag status="critical">Räkna om</StatusTag>
-            ) : row.retired ? (
-              <StatusTag status="offline">Utgår</StatusTag>
-            ) : row.runsOut ? (
-              <StatusTag status={tone}>
-                {row.own ? "Packa" : row.home <= 0 ? "Slut" : "Tar slut"}
-              </StatusTag>
-            ) : null}
+        {/* Packbilden framför namnet (visuellt): samma packbild som hyllan på Vårt lager. */}
+        <span className="flex min-w-0 items-start gap-3">
+          <span className="flex w-9 flex-none justify-center pt-0.5 max-md:w-8">
+            <PackImage title={row.name} size="s" />
           </span>
-          <span className={cn("meta text-subtle md:truncate", !more && "max-md:hidden")}>
-            {latest ? (
-              <>
-                <span
-                  className={cn(
-                    "tnum",
-                    latest.delta !== null && latest.delta < 0 && "text-muted",
-                    latest.delta !== null && latest.delta > 0 && "text-fg",
-                  )}
-                >
-                  {latest.text}
-                </span>
-                {latest.automatic ? " (Awish)" : ""}, {latest.when}
-              </>
-            ) : (
-              "Inget räknat än"
-            )}
-          </span>
-          <button
-            type="button"
-            aria-expanded={more}
-            aria-label={`${more ? "Färre" : "Fler"} uppgifter, ${row.name}`}
-            className="meta flex min-h-11 min-w-0 items-center gap-1 text-left text-subtle md:hidden"
-          >
-            {/* Stängd: bara hur länge det räcker (får plats på en rad); öppen: allt. */}
-            <span className={more ? "min-w-0" : "min-w-0 truncate"}>
-              {/* "–" = inget sålt senaste veckan: säg det i ord (kort, får plats på en iPhone SE). */}
-              {lastsText(row) === "–" ? `inget sålt på 7${NBSP}d` : `räcker ${lastsText(row)}`}
-              {more
-                ? ` · ${formatInt(row.inMachines)}${NBSP}i${NBSP}automater · ${formatInt(row.sold7)}${NBSP}sålda${NBSP}7${NBSP}d`
-                : ""}
+          <span className="flex min-w-0 flex-col" onClick={() => setMore((v) => !v)}>
+            <span className="flex min-w-0 items-center gap-2 max-md:flex-wrap max-md:gap-y-1">
+              <span className="truncate text-base text-fg max-md:[overflow-wrap:anywhere] max-md:whitespace-normal">
+                {row.name}
+              </span>
+              {row.negative || negativeHere ? (
+                <StatusTag status="critical">Räkna om</StatusTag>
+              ) : row.retired ? (
+                <StatusTag status="offline">Utgår</StatusTag>
+              ) : row.runsOut ? (
+                <StatusTag status={tone}>
+                  {row.own ? "Packa" : row.home <= 0 ? "Slut" : "Tar slut"}
+                </StatusTag>
+              ) : null}
             </span>
-            <Icon
-              name="chevronRight"
-              size={10}
-              className={cn("shrink-0 transition-transform duration-fast", more && "rotate-90")}
-            />
-          </button>
+            <span className={cn("meta text-subtle md:truncate", !more && "max-md:hidden")}>
+              {latest ? (
+                <>
+                  <span
+                    className={cn(
+                      "tnum",
+                      latest.delta !== null && latest.delta < 0 && "text-muted",
+                      latest.delta !== null && latest.delta > 0 && "text-fg",
+                    )}
+                  >
+                    {latest.text}
+                  </span>
+                  {latest.automatic ? " (Awish)" : ""}, {latest.when}
+                </>
+              ) : (
+                "Inget räknat än"
+              )}
+            </span>
+            <button
+              type="button"
+              aria-expanded={more}
+              aria-label={`${more ? "Färre" : "Fler"} uppgifter, ${row.name}`}
+              className="meta flex min-h-11 min-w-0 items-center gap-1 text-left text-subtle md:hidden"
+            >
+              {/* Stängd: bara hur länge det räcker (får plats på en rad); öppen: allt. */}
+              <span className={more ? "min-w-0" : "min-w-0 truncate"}>
+                {/* "–" = inget sålt senaste veckan: säg det i ord (kort, får plats på en iPhone SE). */}
+                {lastsText(row) === "–" ? `inget sålt på 7${NBSP}d` : `räcker ${lastsText(row)}`}
+                {more
+                  ? ` · ${formatInt(row.inMachines)}${NBSP}i${NBSP}automater · ${formatInt(row.sold7)}${NBSP}sålda${NBSP}7${NBSP}d`
+                  : ""}
+              </span>
+              <Icon
+                name="chevronRight"
+                size={10}
+                className={cn("shrink-0 transition-transform duration-fast", more && "rotate-90")}
+              />
+            </button>
+          </span>
         </span>
         <span className="tnum hidden text-right text-sm text-muted md:block">
           {formatInt(row.inMachines)}

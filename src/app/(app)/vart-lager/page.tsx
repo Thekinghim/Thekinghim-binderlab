@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -20,6 +21,7 @@ import { TodoList, type TodoItem } from "./_components/todo-list";
 import { LagerView } from "./_components/v2/lager-view";
 import { loadVartLagerFor } from "./_lib/data";
 import { headingOf } from "./_lib/heading";
+import { parseShelfView, VIEW_COOKIE } from "./_lib/shelf";
 import { stockTodos } from "./_lib/model";
 import { loadVartLagerExtrasFor } from "./_lib/v2-data";
 import { buyLines, machineValueOre, recentEvents } from "./_lib/v2-model";
@@ -138,6 +140,15 @@ export default async function VartLagerPage({
   );
 
   const loadByTitle = new Map(route?.load.map((l) => [l.titleId, l]) ?? []);
+  // Hylla eller Tabell: senaste valet (kakan), annars Hylla.
+  const initialView = parseShelfView((await cookies()).get(VIEW_COOKIE.lager)?.value);
+  // Leveranstiden per titel (strecket på hyllans Räcker): bara titlar vi beställer.
+  const leadDays = Object.fromEntries(
+    view.rows.flatMap((r) => {
+      const lead = view.buyInfo.get(r.titleId)?.leadTimeDays;
+      return !r.own && lead !== undefined && lead > 0 ? [[r.titleId, lead]] : [];
+    }),
+  );
   return (
     <V2Page
       title="Vårt lager"
@@ -220,6 +231,9 @@ export default async function VartLagerPage({
           )}
           timeZone={ctx.timeZone}
           now={ctx.now}
+          today={view.today}
+          leadDays={leadDays}
+          initialView={initialView}
         />
       )}
       {/* Det som gick ut ur lagret under vald period (periodvalet överst), per titel och automat. */}

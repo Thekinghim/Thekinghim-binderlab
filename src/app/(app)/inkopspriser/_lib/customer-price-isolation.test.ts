@@ -36,6 +36,8 @@ const ALLOWED = new Set([
   "src/app/(app)/inkopspriser/_components/price-form.tsx",
   "src/app/(app)/inkopspriser/_components/price-history.tsx",
   "src/app/(app)/inkopspriser/_components/title-table.tsx",
+  // Hyllvyn på samma sida (visuellt): visar samma pris mot kund som tabellen.
+  "src/app/(app)/inkopspriser/_components/price-shelf.tsx",
   "src/app/(app)/inkopspriser/_lib/price-economics.ts",
   // Utvecklingsseeden (ett exempel att titta på).
   "src/seed/catalog.ts",

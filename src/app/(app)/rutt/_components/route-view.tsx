@@ -10,7 +10,7 @@ import { Badge } from "@/components/v2/badge";
 import { Button, ButtonLink } from "@/components/v2/button";
 import { CallLink, MapsLink, RouteMapsLink } from "@/components/v2/call-link";
 import { Card } from "@/components/v2/card";
-import { Empty } from "@/components/v2/empty";
+import { Empty, emptyPacks } from "@/components/v2/empty";
 import { PackImage } from "@/components/v2/pack-image";
 import { FleetStatusBadge } from "@/components/v2/status-dot";
 import { toastUndo, toastV2 } from "@/components/v2/toast";
@@ -375,7 +375,8 @@ export function RouteView({
             }
           >
             {route.load.length === 0 ? (
-              <p className="rempty">Inget att packa i dag.</p>
+              // Tomt läge med packbilder (Visuellt, mock 08): bocken säger att allt är klart.
+              <Empty packs={emptyPacks([])} done title="Allt är fullt – ingen packning i dag" />
             ) : (
               <>
                 {route.short.map((sh) => {
