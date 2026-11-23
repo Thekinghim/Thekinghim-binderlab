@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { signedPct, type UnitEconomicsComparisonRow } from "@/analytics/expansion";
-import { BarChart } from "@/components/charts/bar-chart";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { KpiStrip, type KpiItem } from "@/components/ui/kpi-strip";
@@ -66,43 +65,6 @@ export function UnitEconomicsKpis({
     { id: "book", label: "Bokfört värde", value: bookValueOre, format: sek },
   ];
   return <KpiStrip items={items} label="Alla automater" headingLevel={2} comparison={comparison} />;
-}
-
-export function ProfitPerDayChart({
-  rows,
-  codes,
-}: {
-  rows: ReadonlyArray<UnitEconomicsComparisonRow>;
-  codes: Record<string, string>;
-}) {
-  const data = rows
-    .filter((r) => r.profitPerDayOre !== null)
-    .map((r) => ({
-      label: codes[r.machineId] ?? r.name,
-      code: codes[r.machineId],
-      name: r.name,
-      value: r.profitPerDayOre! / 100,
-    }));
-  if (data.length === 0) {
-    return (
-      <StateMessage
-        kind="empty"
-        compact
-        message="Ingen automat var placerad i perioden."
-        action={{ label: "Välj en längre period", href: "?period=allt" }}
-      />
-    );
-  }
-  return (
-    <BarChart
-      data={data}
-      format={formatSek}
-      showMean
-      labelHeading="Automat"
-      valueHeading="Vinst per dag"
-      summary={`Vinst per dag för ${data.length} automater.`}
-    />
-  );
 }
 
 export function ComparisonTable({
