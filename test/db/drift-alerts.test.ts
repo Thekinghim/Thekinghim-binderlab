@@ -61,6 +61,7 @@ async function stubDispatch(
     results: [{ channel: "email", status: "sent", detail: "test" }],
     goneDevices: [],
     okDevices: [],
+    failedDevices: [],
     status: "sent",
   };
 }

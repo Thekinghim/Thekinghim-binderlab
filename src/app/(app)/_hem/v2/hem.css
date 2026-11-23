@@ -2394,3 +2394,26 @@
     }
   }
 }
+
+/* "Få notis vid varje försäljning" (sale-prompt.tsx): sist i första kolumnen; under 1240 px,
+   när kolumnerna blir en, sist bland korten (efter Resultat). */
+@media (max-width: 1240px) {
+  .hem2 .work .o-salj {
+    order: 9;
+  }
+}
+/* Påfyllaren (utan ekonomi): Driftstatus ligger i arbetsytan under Kräver åtgärd i stället för
+   ensam i Analys. De tre värdena delar kortets bredd; i en kolumn kommer kortet efter Att göra. */
+.hem2 .work .x-ops {
+  grid-column: auto;
+}
+@media (min-width: 901px) {
+  .hem2 .work .x-ops .x-ops4 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1240px) {
+  .hem2 .work .x-ops {
+    order: 4;
+  }
+}

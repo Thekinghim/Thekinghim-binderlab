@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { AppRefreshRow } from "@/components/pwa/app-refresh-button";
+import { pushEndpointForLogout } from "@/components/pwa/push-device";
 import { clearAllRecent } from "@/components/shell/command-recent";
 import { Button } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
@@ -67,7 +68,7 @@ export function MoreAccount({
             onClick={() =>
               start(async () => {
                 clearAllRecent();
-                const r = await logout();
+                const r = await logout({ pushEndpoint: await pushEndpointForLogout() });
                 if (r.ok) router.replace("/logga-in");
                 else toastV2("Kunde inte logga ut", { detail: r.error, tone: "critical" });
               })

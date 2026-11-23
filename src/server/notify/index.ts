@@ -66,6 +66,8 @@ export interface DispatchResult {
   readonly goneDevices: string[];
   /** Push-enheter som tog emot. */
   readonly okDevices: string[];
+  /** Push-enheter som inte tog emot någon notis (men finns kvar), med push-tjänstens svar. */
+  readonly failedDevices: { readonly id: string; readonly detail: string }[];
   readonly status: "sent" | "partial" | "failed" | "skipped";
 }
 
@@ -97,6 +99,7 @@ export async function dispatchDelivery(
   const results: ChannelResult[] = [];
   const goneDevices: string[] = [];
   const okDevices: string[] = [];
+  const failedDevices: { id: string; detail: string }[] = [];
 
   if (recipient.channels.includes("push")) {
     const sender = await getPushSender();
@@ -115,11 +118,13 @@ export async function dispatchDelivery(
         let delivered = false;
         let missed = 0;
         let gone = false;
+        let lastError = "";
         for (const payload of payloads) {
           const out = await sender.send(device, payload);
           if (out.ok) delivered = true;
           else {
             missed += 1;
+            lastError = out.detail;
             errors.push(out.detail);
             if (out.gone) gone = true;
           }
@@ -131,6 +136,7 @@ export async function dispatchDelivery(
           lost += missed;
           okDevices.push(device.id);
         } else if (gone) goneDevices.push(device.id);
+        else failedDevices.push({ id: device.id, detail: lastError });
       }
       results.push({
         channel: "push",
@@ -199,5 +205,5 @@ export async function dispatchDelivery(
     }
   }
 
-  return { results, goneDevices, okDevices, status: overallStatus(results) };
+  return { results, goneDevices, okDevices, failedDevices, status: overallStatus(results) };
 }

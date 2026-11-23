@@ -71,6 +71,7 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   userAgent: text("user_agent"),
   lastSuccessAt: ts("last_success_at"),
   lastFailureAt: ts("last_failure_at"),
+  lastFailureDetail: text("last_failure_detail"),
   failureCount: integer("failure_count").notNull().default(0),
   disabledAt: ts("disabled_at"),
   ...stamps(),

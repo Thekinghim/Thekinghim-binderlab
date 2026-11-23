@@ -8,8 +8,11 @@
  * klienten är okontrollerad och valideras i flödena.
  */
 
+import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
+import { z } from "zod";
 
+import * as s from "@/db/schema";
 import { getServerEnv } from "@/lib/env";
 
 import { getAuthProvider } from "../auth";
@@ -26,6 +29,7 @@ import {
 import { nextCookieJar } from "../auth/next-cookies";
 import { createRateLimiter } from "../rate-limit";
 import { clientIp, resolveAppBaseUrl } from "../request-info";
+import { withUserDbFor } from "../access";
 import { getSessionUser } from "../session";
 
 // Per 15 minuter (per serverinstans): 5 försök per IP och e-post, 20 per konto
@@ -56,8 +60,43 @@ export async function login(input: { email: string; password: string }): Promise
   return loginFlow({ provider, limiter: loginLimiter, ip: clientIp(await headers()) }, input);
 }
 
-export async function logout(): Promise<ActionResult> {
+const logoutInput = z
+  .object({ pushEndpoint: z.string().max(2048).startsWith("https://").nullable().optional() })
+  .optional();
+
+/**
+ * Loggar ut. Med den här telefonens push-adress tas den bort för personen (i alla
+ * organisationer), så att nästa person vid telefonen inte får notiserna (larm, försäljning).
+ * Ett fel där stoppar aldrig utloggningen.
+ */
+export async function logout(input?: { pushEndpoint?: string | null }): Promise<ActionResult> {
+  const parsed = logoutInput.safeParse(input);
+  const endpoint = parsed.success ? parsed.data?.pushEndpoint : null;
+  if (endpoint) await forgetPushDevice(endpoint);
   return logoutFlow({ provider: await getAuthProvider(), cookies: await nextCookieJar() });
+}
+
+async function forgetPushDevice(endpoint: string): Promise<void> {
+  try {
+    const user = await getSessionUser();
+    if (!user) return;
+    // Under RLS: bara personens egna rader (push_subscriptions_delete).
+    await withUserDbFor(user, (tx) =>
+      tx
+        .delete(s.pushSubscriptions)
+        .where(
+          and(
+            eq(s.pushSubscriptions.userId, user.userId),
+            eq(s.pushSubscriptions.endpoint, endpoint),
+          ),
+        ),
+    );
+  } catch (error) {
+    console.error(
+      "[auth] Telefonens notiser kunde inte tas bort vid utloggningen:",
+      error instanceof Error ? error.name : "fel",
+    );
+  }
 }
 
 export async function createInvite(input: {

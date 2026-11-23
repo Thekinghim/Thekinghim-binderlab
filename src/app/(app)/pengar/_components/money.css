@@ -244,6 +244,21 @@
     color: var(--v2-mute);
     font-weight: 550;
   }
+  /* Ytterstaplarna (få, breda belopp, t.ex. Allt): beloppet står kvar mitt över stapeln när det
+     ryms, men växer inåt i stället för att gå ut över diagrammets kant (eller in i axeln). */
+  .g4-bars .wk:first-of-type .amt,
+  .g4-bars .wk:last-child .amt {
+    width: max-content;
+    min-width: 100%;
+  }
+  .g4-bars .wk:first-of-type .amt {
+    left: 0;
+    right: auto;
+  }
+  .g4-bars .wk:last-child .amt {
+    left: auto;
+    right: 0;
+  }
   .g4-wls {
     display: flex;
     gap: 14px;

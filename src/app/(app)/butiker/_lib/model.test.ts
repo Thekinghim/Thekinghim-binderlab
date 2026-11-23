@@ -251,6 +251,42 @@ describe("listan", () => {
     const k = listKpis(rows, "november", false);
     expect(k.map((x) => x.id)).toEqual(["revenue", "profit"]);
     expect(k[1]).toMatchObject({ label: "Vår vinst", value: profit });
+    // Två lika breda rutor (ingen bred intäkt), och båda får förändringen.
+    expect(k.some((x) => x.primary)).toBe(false);
+    expect(k[1]!.delta).toBeNull();
+    const withPrev = rows.map((r) => ({
+      ...r,
+      previousRevenueOre: r.revenueOre,
+      previousProfitOre: r.profitOre * 2,
+    }));
+    const kp = listKpis(withPrev, "november", false);
+    expect(kp[0]!.delta).toEqual({ kind: "relative", value: 0 });
+    expect(kp[1]!.delta).toEqual({ kind: "relative", value: -0.5 });
+    expect(listKpis(withPrev, "november", true).find((x) => x.id === "profit")!.delta).toEqual({
+      kind: "relative",
+      value: -0.5,
+    });
+    // Saknas förra periodens vinst för någon rad: ingen jämförelse.
+    const partial = withPrev.map((r, i) => (i === 0 ? { ...r, previousProfitOre: null } : r));
+    expect(listKpis(partial, "november", false)[1]!.delta).toBeNull();
+    // buildStoreRows tar förra periodens vinst ur jämförelsen (samma period här: ±0 %).
+    const same = buildStoreRows({
+      stores: [
+        { id: "s1", name: "Kiosken", address: null, city: null, isExample: false, archived: false },
+      ],
+      placements: input().placements,
+      machineCodes: new Map([["m1", "BL-001"]]),
+      agreements,
+      current: result,
+      previous: result,
+      earnedMonth: new Map(),
+      recipients: new Map(),
+      today: "2026-11-02",
+      query: "",
+    });
+    expect(same[0]!.previousProfitOre).toBe(same[0]!.profitOre);
+    expect(listKpis(same, "november", false)[1]!.delta).toEqual({ kind: "relative", value: 0 });
+    expect(rows.every((r) => r.previousProfitOre === null)).toBe(true);
     // Tabellen: "Till butiken" (det butiken får i perioden) står alltid som egen kolumn,
     // bredvid "Vår vinst" som är före andelen. Månadens intjänade bara med vyknappen.
     expect(storeColumnKeys(false)).toEqual(

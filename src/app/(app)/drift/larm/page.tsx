@@ -9,6 +9,7 @@ import { FIELD_KINDS, KIND_LABEL, ALERT_KINDS } from "@/server/alerts/subscripti
 import { WeeklySwitch } from "@/components/weekly/weekly-switch";
 import { requireRoute } from "@/server/data/core";
 import { withUserDb } from "@/server/session";
+import { loadSalePushPref } from "@/server/sales-push/prefs";
 import { loadWeeklyPref } from "@/server/weekly/prefs";
 
 import { DriftFrame } from "../_components/drift-frame";
@@ -17,6 +18,7 @@ import { formatWhen, plural } from "../_lib/display";
 import { loadAlertSettings } from "../_lib/load";
 import { NoticesCard } from "./notices-card";
 import { PushDevices, type DeviceRow } from "./push-devices";
+import { SaleCard } from "./sale-card";
 import { SettingsForm, type KindOption } from "./settings-form";
 
 export const metadata: Metadata = { title: "Notiser" };
@@ -140,6 +142,13 @@ export default async function AlertSettingsPage() {
     ? await withUserDb((tx) => loadWeeklyPref(tx, ctx.organization.id, ctx.user.id))
     : null;
 
+  // Notis vid varje försäljning: bara de som får se köpen (ägare, admin, läsare), var och en
+  // sin knapp. Påfyllaren ser inga enskilda köp och får ingen sådan notis.
+  const sale =
+    pushReady && ctx.canSeeEconomy
+      ? await withUserDb((tx) => loadSalePushPref(tx, ctx.organization.id, ctx.user.id))
+      : null;
+
   const activeDevices = settings.devices.filter((d) => !d.disabledAt).length;
 
   return (
@@ -179,24 +188,36 @@ export default async function AlertSettingsPage() {
           ) : (
             <div />
           )}
-          {pushReady && weekly ? (
-            <section aria-label="Veckosammanfattning" className="v2-card">
-              <div className="v2-card-body flex flex-col gap-3">
-                <WeeklySwitch
-                  // Delad komponent: rubriken i kortets storlek (14 px halvfet).
-                  className="[&_#vecka-knapp]:text-v2-md [&_#vecka-knapp]:font-[650]"
-                  initial={{
-                    on: weekly.on,
-                    publicKey: ch.push.publicKey,
-                    endpoints: weekly.endpoints,
-                  }}
-                />
-                <Link href="/veckan" className="ops-link w-fit">
-                  Visa förra veckan →
-                </Link>
-              </div>
-            </section>
-          ) : null}
+          <div className="v2-stack">
+            {sale ? (
+              <SaleCard
+                initial={{
+                  on: sale.on,
+                  quiet: sale.quiet,
+                  publicKey: ch.push.publicKey,
+                  endpoints: sale.endpoints,
+                }}
+              />
+            ) : null}
+            {pushReady && weekly ? (
+              <section aria-label="Veckosammanfattning" className="v2-card">
+                <div className="v2-card-body flex flex-col gap-3">
+                  <WeeklySwitch
+                    // Delad komponent: rubriken i kortets storlek (14 px halvfet).
+                    className="[&_#vecka-knapp]:text-v2-md [&_#vecka-knapp]:font-[650]"
+                    initial={{
+                      on: weekly.on,
+                      publicKey: ch.push.publicKey,
+                      endpoints: weekly.endpoints,
+                    }}
+                  />
+                  <Link href="/veckan" className="ops-link w-fit">
+                    Visa förra veckan →
+                  </Link>
+                </div>
+              </section>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

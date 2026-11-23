@@ -32,6 +32,14 @@ const offline = vi.fn(async (_db: unknown, _orgs: string[], _o: unknown) => ({
   deliveries: { processed: 1, sent: 1, failed: 0, skipped: 0 },
 }));
 vi.mock("@/server/awish/offline-alerts", () => ({ runOfflineAlerts: offline }));
+const salePush = vi.fn(async (_db: unknown, _o: unknown) => ({
+  ranAt: "2026-11-23T10:00:00.000Z",
+  organizations: [{ organizationId: "org-1", orders: 2, sent: 1, failed: 0, quiet: 0, late: 0 }],
+}));
+vi.mock("@/server/sales-push/job", () => ({
+  runSaleNotifications: salePush,
+  SALE_PUSH_BUDGET_MS: 12_000,
+}));
 
 const { GET } = await import("./route");
 
@@ -47,6 +55,7 @@ describe("/api/cron/awish", () => {
     sync.mockClear();
     campaigns.mockClear();
     offline.mockClear();
+    salePush.mockClear();
   });
 
   it("utan CRON_SECRET: 503 och ingen synk", async () => {
@@ -87,6 +96,7 @@ describe("/api/cron/awish", () => {
       ],
       campaigns: { shown: 2, failed: 0 },
       watch: { raised: 0, resolved: 0 },
+      salePush: { orders: 2, sent: 1 },
       offlineAlerts: { organizations: 1, sent: 1 },
     });
     // Vakten körs i varje tick: den larmar om jobben som bara går en gång per dygn.
@@ -136,5 +146,32 @@ describe("/api/cron/awish", () => {
     const res = await GET(req(`Bearer ${SECRET}`));
     expect(res.status).toBe(200);
     expect((await res.json()).campaigns).toBeNull();
+  });
+
+  it("försäljningsnotisen körs efter synken, och ett fel i den stoppar inte synkens svar", async () => {
+    process.env.CRON_SECRET = SECRET;
+    salePush.mockRejectedValueOnce(new Error("push-tjänsten kastade"));
+    const res = await GET(req(`Bearer ${SECRET}`));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.salePush).toBeNull();
+    expect(body.sources[0].ok).toBe(true);
+    // Efter synken (orderna är sparade), och resten av körningen går som vanligt.
+    expect(sync.mock.invocationCallOrder[0]).toBeLessThan(salePush.mock.invocationCallOrder[0]!);
+    expect(campaigns).toHaveBeenCalledTimes(1);
+  });
+
+  it("försäljningsnotisen körs sist, med en tidsgräns inom cronens minut", async () => {
+    process.env.CRON_SECRET = SECRET;
+    const before = Date.now();
+    await GET(req(`Bearer ${SECRET}`));
+    // Efter kampanjerna: en långsam push-tjänst håller inte upp dem.
+    expect(campaigns.mock.invocationCallOrder[0]).toBeLessThan(
+      salePush.mock.invocationCallOrder[0]!,
+    );
+    const { deadline } = salePush.mock.calls[0]![1] as { deadline: number };
+    expect(deadline).toBeGreaterThan(before);
+    expect(deadline).toBeLessThanOrEqual(Date.now() + 12_000);
   });
 });

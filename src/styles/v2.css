@@ -2556,13 +2556,23 @@
     font-weight: inherit;
     white-space: nowrap;
   }
+  /* Kanternas etiketter står mot kanten (flex-start; i rtl höger kant). Där "safe" finns
+     centreras de i stället och flyttas bara in när de annars skulle kapas. Safari före 17.6
+     saknar "safe" och skulle då falla tillbaka på radens "center" och kapa etiketten, så
+     "safe" ligger i @supports: Lightning CSS slår annars ihop en reservrad med den. */
   .v2-axt[data-start] {
-    justify-content: safe center;
+    justify-content: flex-start;
   }
   .v2-axt[data-end] {
-    /* "safe" faller tillbaka på radens början: höger i rtl, så att texten slutar vid kanten. */
+    /* Radens början är höger i rtl, så att texten slutar vid kanten. */
     direction: rtl;
-    justify-content: safe center;
+    justify-content: flex-start;
+  }
+  @supports (justify-content: safe center) {
+    .v2-axt[data-start],
+    .v2-axt[data-end] {
+      justify-content: safe center;
+    }
   }
   @container v2-axr (max-width: 420px) {
     .v2-axt[data-k="1"] {
@@ -2570,7 +2580,12 @@
     }
     .v2-axt[data-end2] {
       direction: rtl;
-      justify-content: safe center;
+      justify-content: flex-start;
+    }
+    @supports (justify-content: safe center) {
+      .v2-axt[data-end2] {
+        justify-content: safe center;
+      }
     }
   }
   @container v2-axr (max-width: 210px) {
@@ -2579,7 +2594,12 @@
     }
     .v2-axt[data-end4] {
       direction: rtl;
-      justify-content: safe center;
+      justify-content: flex-start;
+    }
+    @supports (justify-content: safe center) {
+      .v2-axt[data-end4] {
+        justify-content: safe center;
+      }
     }
   }
 }

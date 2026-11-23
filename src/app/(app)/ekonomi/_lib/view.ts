@@ -31,7 +31,8 @@ export function kr(ore: number | null | undefined): string {
 
 /**
  * Öre → "425 817 kr", med ören bara när de finns ("129,50 kr"): enskilda belopp på sidan,
- * som på V2-sidorna. Verifikationer och bokföring behåller två decimaler (kr).
+ * som på V2-sidorna, även bokföringens månadssiffror. Bara verifikationslistan behåller
+ * två decimaler (kr).
  */
 export function amount(ore: number | null | undefined): string {
   if (ore === null || ore === undefined) return MISSING;

@@ -141,7 +141,7 @@ export default async function DatakallorPage() {
                 : `${formatInt(data.queue.length)} ${data.queue.length === 1 ? "automat väntar" : "automater väntar"} på koppling.`}
             </p>
           </Card>
-          <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} />
+          <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} demo={demo} />
         </div>
 
         <Card

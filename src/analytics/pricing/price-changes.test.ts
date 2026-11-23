@@ -162,6 +162,16 @@ describe("priceChangeEffect", () => {
     expect(r.reasons).toContain("Ingen jämförelsegrupp: bara före och efter.");
   });
 
+  it("jämförelsegrupp utan försäljning efter ändringen: bara före och efter, inget fel", () => {
+    const orders = scenario().filter(
+      (o) => !(o.titleId === "t-b" && o.businessDate >= "2026-10-01"),
+    );
+    const r = priceChangeEffect({ ...base, orders });
+    expect(r.control).toBe("none");
+    expect(r.effectBp).toBe(-2_500);
+    expect(r.reasons).toContain("Ingen jämförelsegrupp: bara före och efter.");
+  });
+
   it("excludeTitleIds tar bort titlar ur jämförelsegruppen", () => {
     const r = priceChangeEffect({ ...base, orders: scenario(), excludeTitleIds: ["t-b"] });
     expect(r.control).toBe("none");

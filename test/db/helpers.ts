@@ -1208,6 +1208,12 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
                   'Förra veckan: 2 pack, 68 kr vinst', 'Veckan innan: inget sålt.',
                   '/veckan?v=2025-03-03')`,
     );
+    // Notis vid varje försäljning (20261227000000_saljnotis.sql), skrivs bara av servern.
+    await tx.execute(
+      sql`insert into public.sale_notifications (organization_id, order_id)
+          select organization_id, id from public.orders where organization_id = ${orgId}
+          order by ordered_at limit 1`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {

@@ -94,7 +94,7 @@ describe("slut i automat kommer direkt", () => {
         // Utskicken är gemensamma för alla organisationer i testdatabasen: andra testfilers
         // väntande utskick går också ut här. Bara den här ägarens räknas.
         if (recipient.userId !== owner.id) {
-          return { results: [], goneDevices: [], okDevices: [], status: "sent" };
+          return { results: [], goneDevices: [], okDevices: [], failedDevices: [], status: "sent" };
         }
         sent.push({
           userId: recipient.userId,
@@ -106,6 +106,7 @@ describe("slut i automat kommer direkt", () => {
           results: [{ channel: "push", status: "sent", detail: "test" }],
           goneDevices: [],
           okDevices: [],
+          failedDevices: [],
           status: "sent",
         };
       },

@@ -299,12 +299,23 @@ self.addEventListener("push", (event) => {
     data = { title: "Binderlab", body: event.data ? event.data.text() : "" };
   }
   const title = data.title || "Binderlab";
+  // Ikonen bara från appens egen adress (t.ex. packbilden vid en försäljning).
+  const ownImage = (value) => {
+    if (typeof value !== "string" || value === "") return undefined;
+    try {
+      const url = new URL(value, self.location.origin);
+      return url.origin === self.location.origin ? url.href : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   const options = {
     body: data.body || "",
     tag: data.tag || undefined,
     renotify: Boolean(data.tag),
     requireInteraction: data.severity === "critical",
-    icon: "/icon.svg",
+    // iPhone och flera Android visar inte svg som ikon.
+    icon: ownImage(data.icon) || "/icons/icon-192.png",
     badge: "/icon.svg",
     // Notisens språk (veckosammanfattningen skickas på personens språk); annars svenska.
     lang: data.lang === "en" ? "en" : "sv",
