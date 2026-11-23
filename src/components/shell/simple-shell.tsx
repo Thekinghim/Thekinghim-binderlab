@@ -14,6 +14,7 @@ import { createContext, useContext, useState, useTransition, type ReactNode } fr
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { Wordmark } from "@/components/brand/wordmark";
 import { useAppRefresh } from "@/components/pwa/app-refresh-button";
+import { pushEndpointForLogout } from "@/components/pwa/push-device";
 import { Icon } from "@/components/ui/icon";
 import { WeeklySwitch } from "@/components/weekly/weekly-switch";
 import { useToast } from "@/components/ui/toast";
@@ -184,10 +185,12 @@ export function SimpleMenuButton({ className }: { className?: string }) {
               onClick={() =>
                 startLeave(async () => {
                   clearAllRecent();
-                  const res = await logout().catch(() => ({
-                    ok: false as const,
-                    error: t.common.offlineRetry,
-                  }));
+                  const res = await logout({ pushEndpoint: await pushEndpointForLogout() }).catch(
+                    () => ({
+                      ok: false as const,
+                      error: t.common.offlineRetry,
+                    }),
+                  );
                   if (res.ok) router.replace("/logga-in");
                   else
                     toast({

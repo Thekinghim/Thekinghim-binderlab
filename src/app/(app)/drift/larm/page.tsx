@@ -142,10 +142,12 @@ export default async function AlertSettingsPage() {
     ? await withUserDb((tx) => loadWeeklyPref(tx, ctx.organization.id, ctx.user.id))
     : null;
 
-  // Notis vid varje försäljning: alla roller (påfyllaren utan belopp), var och en sin knapp.
-  const sale = pushReady
-    ? await withUserDb((tx) => loadSalePushPref(tx, ctx.organization.id, ctx.user.id))
-    : null;
+  // Notis vid varje försäljning: bara de som får se köpen (ägare, admin, läsare), var och en
+  // sin knapp. Påfyllaren ser inga enskilda köp och får ingen sådan notis.
+  const sale =
+    pushReady && ctx.canSeeEconomy
+      ? await withUserDb((tx) => loadSalePushPref(tx, ctx.organization.id, ctx.user.id))
+      : null;
 
   const activeDevices = settings.devices.filter((d) => !d.disabledAt).length;
 
@@ -194,7 +196,6 @@ export default async function AlertSettingsPage() {
                   quiet: sale.quiet,
                   publicKey: ch.push.publicKey,
                   endpoints: sale.endpoints,
-                  economy: ctx.canSeeEconomy,
                 }}
               />
             ) : null}

@@ -1840,12 +1840,10 @@
   }
 }
 
-/* "Få notis vid varje försäljning" (sale-prompt.tsx): samma avstånd som korten runt den. */
-.hem2 .o-salj {
-  margin-top: 14px;
-}
-@media (max-width: 900px) {
-  .hem2 .o-salj {
-    margin-top: 12px;
+/* "Få notis vid varje försäljning" (sale-prompt.tsx): sist i första kolumnen; under 1240 px,
+   när kolumnerna blir en, sist bland korten (efter Resultat). */
+@media (max-width: 1240px) {
+  .hem2 .work .o-salj {
+    order: 9;
   }
 }

@@ -2,15 +2,15 @@
 
 /**
  * Notis vid varje försäljning: personens egen knapp på/av och "Tyst på natten".
- * Alla fyra approller (ägare, admin, läsare, påfyllare); påfyllaren får notisen utan kronor
- * (src/server/sales-push/job.ts). Butiksportalen har ingen approll och når inte hit.
+ * Bara ägare, admin och läsare (ECONOMY_ROLES, de som får läsa orderna); påfyllaren ser inga
+ * enskilda köp och får ingen notis (src/server/sales-push/job.ts). Butiksportalen når inte hit.
  * Var och en sin egen rad (RLS). I en demo skickas aldrig något, så knappen sparas inte.
  */
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { ALL_ROLES, requireContextRole } from "@/server/data/core";
+import { ECONOMY_ROLES, requireContextRole } from "@/server/data/core";
 import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { pushStatus } from "@/server/notify/push";
 import { loadSalePushPref, saveSalePushPref } from "@/server/sales-push/prefs";
@@ -23,14 +23,12 @@ export interface SalePushSetting {
   readonly publicKey: string | null;
   /** Personens påslagna telefoner (push-adresser). */
   readonly endpoints: string[];
-  /** Notisen visar belopp (ekonomiroller). Påfyllaren: bara vad som såldes. */
-  readonly economy: boolean;
 }
 
 export async function loadSalePushSetting(): Promise<
   { ok: true; setting: SalePushSetting } | { ok: false; error: string }
 > {
-  const ctx = await requireContextRole(ALL_ROLES);
+  const ctx = await requireContextRole(ECONOMY_ROLES);
   try {
     const [pref, push] = await Promise.all([
       withUserDb((tx) => loadSalePushPref(tx, ctx.organization.id, ctx.user.id)),
@@ -43,7 +41,6 @@ export async function loadSalePushSetting(): Promise<
         quiet: pref.quiet,
         publicKey: push.configured ? push.publicKey : null,
         endpoints: pref.endpoints,
-        economy: ctx.canSeeEconomy,
       },
     };
   } catch (error) {
@@ -60,7 +57,7 @@ const saveInput = z
 export async function saveSalePushSetting(
   input: unknown,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const ctx = await requireContextRole(ALL_ROLES);
+  const ctx = await requireContextRole(ECONOMY_ROLES);
   const parsed = saveInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Det gick inte att spara. Försök igen." };
   if (await isDemoFor({ userId: ctx.user.id, email: ctx.user.email }, ctx.organization.id)) {

@@ -4,13 +4,16 @@
  * Hem: "Få notis vid varje försäljning" med ett tryck, för ägaren som inte har slagit på
  * notisen. Samma steg som knappen under Drift → Notiser (lov att visa notiser, telefonen
  * sparas, valet sparas). "Inte nu" döljer rutan i den här webbläsaren.
- * På en iPhone utan Binderlab på hemskärmen står vad som behövs i stället för knappen.
+ * På en iPhone utan Binderlab på hemskärmen står vad som behövs i stället för knappen. På en
+ * dator slår knappen på notiser i datorns webbläsare: texten säger att telefonen slås på i
+ * telefonen. Rutan ligger sist i Hems första kolumn (inte bråttom), så att den inte flyttar
+ * korten när den dyker upp efter hydreringen.
  */
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { enableSalePush, thisDeviceHint } from "@/components/sales-push/enable";
+import { enableSalePush, isPhone, thisDeviceHint } from "@/components/sales-push/enable";
 import { useToast } from "@/components/ui/toast";
 import { Button, ButtonLink } from "@/components/v2/button";
 import { Notice } from "@/components/v2/notice";
@@ -43,6 +46,7 @@ export function SalePrompt({
   // Webbläsarens lägen (dold, iPhone) finns bara efter hydreringen.
   if (!hydrated || hidden || dismissed()) return null;
   const hint = hasDevice ? null : thisDeviceHint();
+  const phone = isPhone();
 
   const hide = () => {
     try {
@@ -77,7 +81,7 @@ export function SalePrompt({
             </ButtonLink>
           ) : (
             <Button variant="act" touch pending={busy} onClick={enable}>
-              Slå på
+              {phone ? "Slå på" : "Slå på här"}
             </Button>
           )}
           <Button variant="quiet" touch onClick={hide} disabled={busy}>
@@ -86,7 +90,10 @@ export function SalePrompt({
         </div>
       }
     >
-      {hint ?? "Titel, automat och belopp direkt i telefonen."}
+      {hint ??
+        (phone
+          ? "Titel, automat och belopp direkt i telefonen."
+          : "Här i webbläsaren. Öppna Binderlab i telefonen och slå på där också.")}
     </Notice>
   );
 }

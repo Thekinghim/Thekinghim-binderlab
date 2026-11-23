@@ -2,17 +2,24 @@
  * Notis vid varje försäljning (src/server/sales-push) mot testdatabasen och en låtsas-Awish
  * (riktig gRPC-server på 127.0.0.1). Inga riktiga push: en låtsasadapter minns utskicken.
  *
- *   1. Källans första import (första hämtningen, historiken) blir ingen notis.
+ *   1. Källans första import (första hämtningen, historiken) blir ingen notis; en helt ny
+ *      källas första köp (de sista minuterna) blir det.
  *   2. Nya köp i en senare synk: en notis per person och körning, till dem som har knappen
- *      på och en telefon. Ägare, admin och läsare med belopp, påfyllaren utan kronor,
- *      butiksanvändaren och den som inte har slagit på aldrig. Testköp och sena köp (äldre än
- *      ett dygn) aldrig. Bara köp sparade efter att personen slog på knappen.
+ *      på och en telefon. Ägare, admin och läsare med belopp; påfyllaren, butiksanvändaren och
+ *      den som inte har slagit på aldrig. Testköp, sena köp (äldre än ett dygn), historik
+ *      (köpt långt före förra importen) och order som sparades för mer än en timme sedan
+ *      aldrig. Bara köp sparade efter att personen slog på knappen.
  *   3. En gång: en andra körning, två samtidiga körningar och omförsök skickar inget mer.
+ *      Slut på tid: inget tas om hand, köpen kommer i nästa körning.
  *   4. Fler än 20 nya köp: en sammanfattning. Tyst på natten. Enheter som push-tjänsten inte
  *      känner igen stängs av.
  *   5. En adapter som kastar stoppar inte jobbet, och nästa synk går som vanligt.
- *   6. RLS: knappen i den egna profilen; sale_notifications syns bara för ägare och admin och
+ *   6. RLS: knappen i den egna profilen, bara personen själv (inte ens ägaren) ändrar den, och
+ *      tidpunkten sätts av databasen; sale_notifications syns bara för ägare och admin och
  *      skrivs aldrig av en klientroll.
+ *
+ * Jobbet körs med den riktiga klockan (orderna sparas nu). Organisationens tidszon väljs så
+ * att klockan där är mitt på dagen (eller 23 för tyst på natten), oavsett när testet körs.
  */
 
 import { randomUUID } from "node:crypto";
@@ -57,7 +64,6 @@ vi.mock("server-only", () => ({}));
 
 const NBSP = "\u00a0";
 const SOURCE_TZ = "Asia/Shanghai";
-const BASE = "https://app.example.se";
 
 async function viewerFor(u: TestUser, orgId: string): Promise<Viewer> {
   const user = { userId: u.id, email: u.email };
@@ -88,27 +94,17 @@ function order(id: number, minutesAgo: number, over: Parameters<typeof fakeOrder
   return fakeOrder(id, { payTime: pt, date: pt.slice(0, 10), ...over });
 }
 
-/** Klockan i Stockholm i dag (för tyst på natten, oberoende av när testet körs). */
-function stockholmToday(hour: number): Date {
-  const day = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Europe/Stockholm",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  // Vintertid (+01:00) eller sommartid (+02:00): prova båda och välj den som blir rätt timme.
-  for (const offset of ["+01:00", "+02:00"]) {
-    const d = new Date(`${day}T${String(hour).padStart(2, "0")}:00:00${offset}`);
-    const h = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/Stockholm",
-      hour: "2-digit",
-      hourCycle: "h23",
-    }).format(d);
-    if (Number(h) === hour) return d;
-  }
-  throw new Error("Tidszonen");
+/** En tidszon (Etc/GMT±N) där klockan just nu är `hour`. */
+function zoneAt(hour: number): string {
+  let east = (hour - new Date().getUTCHours() + 24) % 24;
+  if (east > 14) east -= 24;
+  return east === 0 ? "Etc/GMT" : `Etc/GMT${east > 0 ? "-" : "+"}${Math.abs(east)}`;
 }
-const NOON = () => stockholmToday(12);
+
+const setZone = (org: string, timeZone: string) =>
+  asPostgres((tx) =>
+    tx.execute(sql`update public.organizations set timezone = ${timeZone} where id = ${org}::uuid`),
+  );
 
 interface Sent {
   readonly endpoint: string;
@@ -172,8 +168,8 @@ async function sync() {
   return r;
 }
 
-const run = (sender: PushSender, now: Date = NOON()) =>
-  runSaleNotifications(db(), { now, baseUrl: BASE, only: [orgId], sender });
+const run = (sender: PushSender, options: { now?: Date; deadline?: number } = {}) =>
+  runSaleNotifications(db(), { ...options, only: [orgId], sender });
 
 const claimed = () =>
   rows<{ external_id: string }>(
@@ -223,6 +219,16 @@ beforeAll(async () => {
   for (const u of [owner, admin, viewer, refiller, storeUser, offUser]) {
     device[u.id] = await addDevice(orgId, u);
   }
+  // Mitt på dagen i organisationen: "I dag" och klockslagen beror inte på när testet körs.
+  await setZone(orgId, zoneAt(12));
+  // Påfyllaren kan inte slå på notisen i appen (inga enskilda köp för henne); här sätts den
+  // direkt för att visa att jobbet ändå aldrig skickar till henne.
+  await asPostgres((tx) =>
+    tx.execute(
+      sql`update public.profiles set sale_push_since = now() - interval '1 hour'
+          where organization_id = ${orgId}::uuid and user_id = ${refiller.id}::uuid`,
+    ),
+  );
 });
 
 afterAll(async () => {
@@ -237,7 +243,7 @@ describe("vem och vilka köp", () => {
   });
 
   it("källans första import (historik och dagens köp) blir ingen notis", async () => {
-    for (const u of [owner, admin, viewer, refiller]) await turnOn(orgId, u, { on: true });
+    for (const u of [owner, admin, viewer]) await turnOn(orgId, u, { on: true });
     fake.state.orders = [order(id(), 3 * 24 * 60), order(id(), 30), order(id(), 20)];
     const first = await sync();
     expect(first.summary?.new).toBe(3);
@@ -248,17 +254,20 @@ describe("vem och vilka köp", () => {
     expect(res.organizations.find((o) => o.organizationId === orgId)?.orders ?? 0).toBe(0);
   });
 
-  it("nya köp: ägare, admin och läsare med belopp, påfyllaren utan, aldrig butiken eller den som inte slagit på", async () => {
+  it("nya köp: ägare, admin och läsare med belopp, aldrig påfyllaren, butiken eller den som inte slagit på", async () => {
     const a = id();
     const b = id();
     const testkop = id();
     const late = id();
+    const history = id();
     fake.state.orders.push(
       order(a, 6, { amount: "170.00" }),
       order(b, 4, { amount: "129.00", title: "One Piece OP-13 Booster EN" }),
       order(testkop, 3),
       // Sen: köpt för två dygn sedan, hämtas först nu.
       order(late, 2 * 24 * 60),
+      // Historik: köpt tre timmar före förra importen (t.ex. en senare historiksida).
+      order(history, 3 * 60),
     );
     await sync();
     // Testköpet markeras innan jobbet hinner köra (samma som i appen: set_test_purchase).
@@ -277,20 +286,18 @@ describe("vem och vilka köp", () => {
     const { sender, sent } = fakeSender();
     const res = await run(sender);
     expect((await claimed()).map((r) => r.external_id)).toEqual([String(a), String(b)]);
-    expect(res.organizations[0]).toMatchObject({ orders: 2, sent: 4, failed: 0 });
+    expect(res.organizations[0]).toMatchObject({ orders: 2, sent: 3, failed: 0, late: 0 });
 
     for (const u of [owner, admin, viewer]) {
       const [p, ...more] = to(sent, u);
       expect(more).toEqual([]);
       expect(p!.title).toBe(`2 sålda · 299${NBSP}kr`);
-      expect(p!.body).toBe("One Piece OP-13 Booster EN, Pokémon TCG: Surging Sparks Booster");
+      expect(p!.body).toBe("One Piece OP-13 Booster EN, Pokémon TCG: Surging Sparks…");
       expect(p!.url).toBe("/?period=idag");
-      expect(p!.icon).toBe(`${BASE}/icons/icon-192.png`);
+      expect(p!.icon).toBeUndefined();
+      expect(p!.tag).toMatch(new RegExp(`^salj-${orgId.slice(0, 8)}-\\d{8}$`));
     }
-    const [r, ...rest] = to(sent, refiller);
-    expect(rest).toEqual([]);
-    expect(r!.title).toBe("2 sålda");
-    expect(JSON.stringify(r)).not.toMatch(/kr\b|299|170|129/);
+    expect(to(sent, refiller)).toEqual([]);
     expect(to(sent, storeUser)).toEqual([]);
     expect(to(sent, offUser)).toEqual([]);
   });
@@ -304,10 +311,21 @@ describe("vem och vilka köp", () => {
     expect(p!.title).toBe("Sålt: Pokémon TCG: Surging Sparks Booster");
     expect(p!.body).toContain(`170${NBSP}kr`);
     expect(p!.body).toMatch(/\d\d:\d\d$/);
-    expect(p!.icon).toBe(`${BASE}/packs/surging-sparks.webp`);
-    const [r] = to(sent, refiller);
-    expect(r!.title).toBe("Sålt: Pokémon TCG: Surging Sparks Booster");
-    expect(r!.body).not.toContain("kr");
+    expect(p!.icon).toBe("/packs/surging-sparks.webp");
+    expect(to(sent, refiller)).toEqual([]);
+  });
+
+  it("order som sparades för mer än en timme sedan blir ingen notis (t.ex. efter ett avbrott)", async () => {
+    fake.state.orders.push(order(id(), 1));
+    await sync();
+    const { sender, sent } = fakeSender();
+    const res = await run(sender, { now: new Date(Date.now() + 2 * 3600_000) });
+    expect(sent).toEqual([]);
+    expect(res.organizations[0]).toMatchObject({ orders: 0 });
+    // Inom timmen: kommer som vanligt.
+    const now = fakeSender();
+    await run(now.sender);
+    expect(to(now.sent, owner)).toHaveLength(1);
   });
 
   it("bara köp sparade efter att personen slog på knappen", async () => {
@@ -338,7 +356,22 @@ describe("en gång", () => {
     await Promise.all([run(sender), run(sender), run(sender)]);
     expect(to(sent, owner)).toHaveLength(1);
     expect(to(sent, owner)[0]!.title).toMatch(/^2 sålda/);
-    expect(to(sent, refiller)).toHaveLength(1);
+    expect(to(sent, admin)).toHaveLength(1);
+    expect(to(sent, refiller)).toEqual([]);
+  });
+
+  it("slut på tid: inget tas om hand, köpen kommer i nästa körning", async () => {
+    fake.state.orders.push(order(id(), 1));
+    await sync();
+    const before = (await claimed()).length;
+    const out = fakeSender();
+    const res = await run(out.sender, { deadline: Date.now() - 1 });
+    expect(out.sent).toEqual([]);
+    expect(res.organizations).toEqual([]);
+    expect((await claimed()).length).toBe(before);
+    const next = fakeSender();
+    await run(next.sender);
+    expect(to(next.sent, owner)).toHaveLength(1);
   });
 
   it("ett utskick som kastar stoppar inte jobbet och provas inte igen; nästa synk går som vanligt", async () => {
@@ -346,7 +379,7 @@ describe("en gång", () => {
     await sync();
     const throwing = fakeSender({ fail: () => "throw" });
     const res = await run(throwing.sender);
-    expect(res.organizations[0]).toMatchObject({ orders: 1, sent: 0, failed: 4 });
+    expect(res.organizations[0]).toMatchObject({ orders: 1, sent: 0, failed: 3 });
     // Ingen enhet stängdes av för ett kast (bara 404/410 gör det).
     const disabled = await rows<{ n: number }>(
       db(),
@@ -377,7 +410,7 @@ describe("mängd, natt och enheter", () => {
     expect(more).toEqual([]);
     expect(p!.title).toBe(`22 sålda · 2${NBSP}200${NBSP}kr`);
     expect(p!.body).toMatch(/^Sedan .*Öppna Hem för listan\.$/);
-    expect(to(sent, refiller)[0]!.title).toBe("22 sålda");
+    expect(to(sent, viewer)[0]!.title).toBe(`22 sålda · 2${NBSP}200${NBSP}kr`);
   });
 
   it("tyst på natten: inget 22–07 till den som valt det, köpen kommer inte senare", async () => {
@@ -385,8 +418,10 @@ describe("mängd, natt och enheter", () => {
     expect((await asUser(admin, (tx) => loadSalePushPref(tx, orgId, admin.id))).quiet).toBe(true);
     fake.state.orders.push(order(id(), 1));
     await sync();
+    await setZone(orgId, zoneAt(23));
     const { sender, sent } = fakeSender();
-    const res = await run(sender, stockholmToday(23));
+    const res = await run(sender);
+    await setZone(orgId, zoneAt(12));
     expect(to(sent, admin)).toEqual([]);
     expect(to(sent, owner)).toHaveLength(1);
     expect(res.organizations[0]).toMatchObject({ quiet: 1 });
@@ -468,6 +503,54 @@ describe("RLS", () => {
     expect(still.since).not.toBeNull();
   });
 
+  it("inte ens ägaren slår på eller av notisen åt någon annan", async () => {
+    const sinceOf = () =>
+      one<{ since: string | null }>(
+        db(),
+        sql`select sale_push_since::text as since from public.profiles
+            where organization_id = ${orgId}::uuid and user_id = ${viewer.id}::uuid`,
+      );
+    const before = await sinceOf();
+    for (const value of [sql`now()`, sql`null`]) {
+      const res = await asUser(owner, (tx) =>
+        attempt(tx, (sp) =>
+          sp.execute(
+            sql`update public.profiles set sale_push_since = ${value}, sale_push_quiet = true
+                where organization_id = ${orgId}::uuid and user_id = ${viewer.id}::uuid`,
+          ),
+        ),
+      );
+      expect(res.ok).toBe(false);
+    }
+    expect((await sinceOf()).since).toBe(before.since);
+    // Namnet får ägaren fortfarande ändra.
+    const name = await asUser(owner, (tx) =>
+      attempt(tx, (sp) =>
+        sp.execute(
+          sql`update public.profiles set display_name = 'Läsaren'
+              where organization_id = ${orgId}::uuid and user_id = ${viewer.id}::uuid`,
+        ),
+      ),
+    );
+    expect(name.ok).toBe(true);
+  });
+
+  it("tidpunkten sätts av databasen: en klient kan inte välja en tid bakåt", async () => {
+    await turnOn(orgId, admin, { on: false });
+    await asUser(admin, (tx) =>
+      tx.execute(
+        sql`update public.profiles set sale_push_since = now() - interval '3 days'
+            where organization_id = ${orgId}::uuid and user_id = ${admin.id}::uuid`,
+      ),
+    );
+    const row = await one<{ recent: boolean }>(
+      db(),
+      sql`select sale_push_since > now() - interval '1 minute' as recent from public.profiles
+          where organization_id = ${orgId}::uuid and user_id = ${admin.id}::uuid`,
+    );
+    expect(row.recent).toBe(true);
+  });
+
   it("sale_notifications syns för ägare och admin, inte för läsare, påfyllare eller butik", async () => {
     const count = (u: TestUser) =>
       asUser(u, (tx) =>
@@ -511,6 +594,45 @@ describe("RLS", () => {
         ),
       );
       expect(del.ok).toBe(false);
+    }
+  });
+});
+
+describe("en helt ny källa", () => {
+  it("första importen: bara de sista minuternas köp blir en notis, inte historiken", async () => {
+    const fake2 = await startFakeAwish({
+      machines: [{ id: "7", name: "BL-900 Nytt", machine_no: "163299xx" }],
+    });
+    try {
+      const owner2 = await createUser();
+      const org2 = await createOrg(owner2, "Ny källa AB");
+      await setZone(org2, zoneAt(12));
+      const { dataSourceId } = await saveAwishCredentialsFor(await viewerFor(owner2, org2), {
+        appId: fake2.state.appId,
+        appSecret: fake2.state.appSecret,
+        appKey: fake2.state.appKey,
+      });
+      const endpoint = await addDevice(org2, owner2);
+      await turnOn(org2, owner2, { on: true });
+      const fresh = id();
+      fake2.state.orders = [
+        order(id(), 3 * 24 * 60),
+        order(id(), 40),
+        order(fresh, 3, { amount: "149.00" }),
+      ];
+      const connect2 = (creds: { appId: string; appSecret: string; appKey: string }) =>
+        createAwishClient(creds, { address: fake2.address, tls: false, sleep: async () => {} });
+      const r = await syncAwishSource({ db: db(), connect: connect2 }, { dataSourceId });
+      expect(r.ok).toBe(true);
+      const { sender, sent } = fakeSender();
+      const res = await runSaleNotifications(db(), { only: [org2], sender });
+      expect(res.organizations[0]).toMatchObject({ orders: 1, sent: 1 });
+      const [p, ...more] = sent.filter((x) => x.endpoint === endpoint).map((x) => x.payload);
+      expect(more).toEqual([]);
+      expect(p!.title).toBe("Sålt: Pokémon TCG: Surging Sparks Booster");
+      expect(p!.body).toContain(`149${NBSP}kr`);
+    } finally {
+      await fake2.stop();
     }
   });
 });

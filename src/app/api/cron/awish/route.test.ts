@@ -34,9 +34,12 @@ const offline = vi.fn(async (_db: unknown, _orgs: string[], _o: unknown) => ({
 vi.mock("@/server/awish/offline-alerts", () => ({ runOfflineAlerts: offline }));
 const salePush = vi.fn(async (_db: unknown, _o: unknown) => ({
   ranAt: "2026-11-23T10:00:00.000Z",
-  organizations: [{ organizationId: "org-1", orders: 2, sent: 1, failed: 0, quiet: 0 }],
+  organizations: [{ organizationId: "org-1", orders: 2, sent: 1, failed: 0, quiet: 0, late: 0 }],
 }));
-vi.mock("@/server/sales-push/job", () => ({ runSaleNotifications: salePush }));
+vi.mock("@/server/sales-push/job", () => ({
+  runSaleNotifications: salePush,
+  SALE_PUSH_BUDGET_MS: 12_000,
+}));
 
 const { GET } = await import("./route");
 
@@ -157,5 +160,18 @@ describe("/api/cron/awish", () => {
     // Efter synken (orderna är sparade), och resten av körningen går som vanligt.
     expect(sync.mock.invocationCallOrder[0]).toBeLessThan(salePush.mock.invocationCallOrder[0]!);
     expect(campaigns).toHaveBeenCalledTimes(1);
+  });
+
+  it("försäljningsnotisen körs sist, med en tidsgräns inom cronens minut", async () => {
+    process.env.CRON_SECRET = SECRET;
+    const before = Date.now();
+    await GET(req(`Bearer ${SECRET}`));
+    // Efter kampanjerna: en långsam push-tjänst håller inte upp dem.
+    expect(campaigns.mock.invocationCallOrder[0]).toBeLessThan(
+      salePush.mock.invocationCallOrder[0]!,
+    );
+    const { deadline } = salePush.mock.calls[0]![1] as { deadline: number };
+    expect(deadline).toBeGreaterThan(before);
+    expect(deadline).toBeLessThanOrEqual(Date.now() + 12_000);
   });
 });

@@ -563,19 +563,19 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: () => [{ on: true }],
   },
-  // Notis vid varje försäljning: alla fyra approller, var och en sin knapp (påfyllaren utan
-  // kronor). Butiksanvändaren och utomstående nekas.
+  // Notis vid varje försäljning: ägare, admin och läsare (de som får läsa orderna), var och en
+  // sin knapp. Påfyllaren, butiksanvändaren och utomstående nekas.
   {
     module: "@/server/actions/sale-push",
     name: "loadSalePushSetting",
-    allowed: MEMBERS,
+    allowed: ECON,
     readOnly: true,
     args: () => [],
   },
   {
     module: "@/server/actions/sale-push",
     name: "saveSalePushSetting",
-    allowed: MEMBERS,
+    allowed: ECON,
     args: () => [{ on: true }],
   },
   // Ångra en påfyllning (städrundan): bara egna, inom 30 minuter

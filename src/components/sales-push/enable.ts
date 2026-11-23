@@ -13,6 +13,12 @@ export type EnableResult =
   | { readonly ok: true; readonly endpoint: string | null }
   | { readonly ok: false; readonly message: string };
 
+/** Telefon eller surfplatta (inte en dator): notisen hamnar då i den här enheten. */
+export function isPhone(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return detectPushDevice().ios || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
 /** En rad om vad som behövs i den här telefonen (iPhone: hemskärmen), eller null. */
 export function thisDeviceHint(): string | null {
   return deviceHint(detectPushDevice());

@@ -62,6 +62,17 @@ export async function currentPushEndpoint(): Promise<string | null> {
   }
 }
 
+/**
+ * Den här telefonens push-adress att glömma vid utloggningen, eller null. Väntar högst en
+ * och en halv sekund (utloggningen ska aldrig hänga på service workern).
+ */
+export async function pushEndpointForLogout(): Promise<string | null> {
+  return Promise.race([
+    currentPushEndpoint(),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+  ]);
+}
+
 export type SubscribeResult =
   | {
       readonly ok: true;

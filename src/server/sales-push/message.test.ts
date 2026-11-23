@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  APP_ICON,
   SALE_PUSH_CAP,
   inQuietHours,
   saleHref,
@@ -15,12 +14,12 @@ const NBSP = "\u00a0";
 const TZ = "Europe/Stockholm";
 /** Måndag 23 november 2026 15:00 svensk tid. */
 const NOW = new Date("2026-11-23T14:00:00Z");
-const BASE = "https://app.example.se";
+const ORG = "0a1b2c3d-0000-4000-8000-000000000000";
 
 const opts = (over: Partial<SalePushOptions> = {}): SalePushOptions => ({
   kronor: true,
   timeZone: TZ,
-  baseUrl: BASE,
+  orgId: ORG,
   now: NOW,
   ...over,
 });
@@ -45,37 +44,46 @@ describe("salePushPayload: ett köp", () => {
     expect(p.title).toBe("Sålt: Surging Sparks Booster");
     expect(p.body).toBe(`Centrum · Butiken · 149${NBSP}kr · 14:32`);
     expect(p.url).toBe("/?period=idag");
-    expect(p.icon).toBe(`${BASE}/packs/surging-sparks.webp`);
-    expect(p.image).toBe(`${BASE}/packs/surging-sparks.webp`);
+    // Relativ: service workern gör den absolut mot den adress som personen har installerat.
+    expect(p.icon).toBe("/packs/surging-sparks.webp");
+    // Ingen stor bild (Android skulle beskära packen till en banderoll).
+    expect(p).not.toHaveProperty("image");
     expect(p.severity).toBe("info");
-    expect(p.tag).toMatch(/^salj-/);
+    expect(p.tag).toBe("salj-0a1b2c3d-20261123");
   });
 
   it("öre visas bara när beloppet inte är jämnt", () => {
     expect(salePushPayload([sale({ amountOre: 14950 })], opts()).body).toContain(`149,50${NBSP}kr`);
   });
 
-  it("utan packbild: appens ikon, ingen bild; utan butik och automat: bara belopp och tid", () => {
+  it("utan packbild: ingen ikon (service workerns appikon); utan butik och automat: bara belopp och tid", () => {
     const p = salePushPayload(
       [sale({ title: "Okänd vara", machineName: null, storeName: null })],
       opts(),
     );
-    expect(p.icon).toBe(`${BASE}${APP_ICON}`);
-    expect(p.image).toBeUndefined();
+    expect(p).not.toHaveProperty("icon");
     expect(p.body).toBe(`149${NBSP}kr · 14:32`);
   });
 
-  it("utan appens adress: relativa adresser (service workern tar dem från sin egen adress)", () => {
-    expect(salePushPayload([sale()], opts({ baseUrl: null })).icon).toBe(
-      "/packs/surging-sparks.webp",
-    );
-  });
-
-  it("utan kronor (påfyllaren): inget belopp någonstans", () => {
+  it("utan kronor: titel och automat, ingen butik, ingen tid, inget belopp", () => {
     const p = salePushPayload([sale()], opts({ kronor: false }));
     expect(p.title).toBe("Sålt: Surging Sparks Booster");
-    expect(p.body).toBe("Centrum · Butiken · 14:32");
-    expect(JSON.stringify(p)).not.toMatch(/kr\b|149/);
+    expect(p.body).toBe("Centrum");
+    expect(JSON.stringify(p)).not.toMatch(/kr\b|149|14:32|Butiken/);
+  });
+
+  it("flera organisationer: organisationens namn sist", () => {
+    const p = salePushPayload([sale()], opts({ orgName: "Andra AB" }));
+    expect(p.body).toBe(`Centrum · Butiken · 149${NBSP}kr · 14:32 · Andra AB`);
+  });
+
+  it("strax efter midnatt: köpet från i går öppnar I går", () => {
+    const p = salePushPayload([sale({ orderedAt: "2026-11-22T22:58:00Z" })], {
+      ...opts(),
+      now: new Date("2026-11-22T23:05:00Z"), // 00:05 den 23:e
+    });
+    expect(p.url).toBe("/?period=igar");
+    expect(p.body).toContain("i går 23:58");
   });
 
   it("Enkel vy: notisen öppnar startsidan", () => {
@@ -103,7 +111,7 @@ describe("salePushPayload: flera köp i samma synk", () => {
     const p = salePushPayload(five(), opts());
     expect(p.title).toBe(`5 sålda · 447${NBSP}kr`);
     expect(p.body).toBe("E, D, C och 2 till");
-    expect(p.icon).toBe(`${BASE}${APP_ICON}`);
+    expect(p).not.toHaveProperty("icon");
     expect(p.url).toBe("/?period=idag");
   });
 
@@ -127,10 +135,27 @@ describe("salePushPayload: flera köp i samma synk", () => {
     expect(JSON.stringify(p)).not.toMatch(/kr\b/);
   });
 
-  it("en ny grupp får en egen tagg (staplas), samma grupp samma tagg", () => {
-    const a = five();
-    expect(salePushPayload(a, opts()).tag).toBe(salePushPayload(a, opts()).tag);
-    expect(salePushPayload(a, opts()).tag).not.toBe(salePushPayload(five(), opts()).tag);
+  it("en tagg per organisation och dag: en ny notis ersätter den förra", () => {
+    const tag = salePushPayload(five(), opts()).tag;
+    expect(salePushPayload([sale()], opts()).tag).toBe(tag);
+    expect(
+      salePushPayload(five(), opts({ orgId: "ffffffff-0000-4000-8000-000000000000" })).tag,
+    ).not.toBe(tag);
+    expect(salePushPayload([sale({ orderedAt: "2026-11-22T12:00:00Z" })], opts()).tag).toBe(
+      "salj-0a1b2c3d-20261122",
+    );
+  });
+
+  it("långa titlar kortas, så att 'och 2 till' syns på en låst iPhone", () => {
+    const long = (i: number) =>
+      sale({
+        title: `Pokémon TCG: Scarlet & Violet – Prismatic Evolutions Booster ${i}`,
+        orderedAt: `2026-11-23T13:0${i}:00Z`,
+      });
+    const p = salePushPayload([1, 2, 3, 4, 5].map(long), opts());
+    expect(p.body.length).toBeLessThanOrEqual(100);
+    expect(p.body).toMatch(/och 2 till$/);
+    expect(p.body).toContain("…");
   });
 
   it(`fler än ${SALE_PUSH_CAP}: en sammanfattning, ingen lista`, () => {
@@ -163,6 +188,13 @@ describe("tider", () => {
   it("klockslag i organisationens tidszon, 'i går' för gårdagen", () => {
     expect(saleTime("2026-11-23T13:32:00Z", TZ, NOW)).toBe("14:32");
     expect(saleTime("2026-11-22T22:58:00Z", TZ, NOW)).toBe("i går 23:58");
+  });
+
+  it("'i går' stämmer natten efter sommartidsskiftet (dygnet var 23 timmar)", () => {
+    // 00:30 den 29 mars 2027 i Stockholm; köpet 23:00 den 28 mars (sommartid sedan 02:00).
+    const now = new Date("2027-03-28T22:30:00Z");
+    expect(saleTime("2027-03-28T21:00:00Z", TZ, now)).toBe("i går 23:00");
+    expect(saleTime("2027-03-27T21:00:00Z", TZ, now)).toBe("22:00");
   });
 
   it("tyst 22–07 i organisationens tidszon", () => {

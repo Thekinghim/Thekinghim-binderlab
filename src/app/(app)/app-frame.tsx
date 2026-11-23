@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState, useTransition, type ReactNode } from "react";
 import { AssistantPanelProvider } from "@/components/assistant/assistant-panel";
+import { pushEndpointForLogout } from "@/components/pwa/push-device";
 import { AppShell } from "@/components/shell/app-shell";
 import { CommandMenu } from "@/components/shell/command-menu";
 import { DeniedNotice } from "@/components/shell/denied-notice";
@@ -85,7 +86,7 @@ export function AppFrame({
         // Palettens senaste val (ordernummer, titlar) ska inte finnas kvar för nästa
         // person vid datorn. Rensas före utloggningen, även om den skulle misslyckas.
         clearAllRecent();
-        const result = await logout();
+        const result = await logout({ pushEndpoint: await pushEndpointForLogout() });
         if (result.ok) router.replace("/logga-in");
         else toast({ title: "Kunde inte logga ut", description: result.error, tone: "critical" });
       }),

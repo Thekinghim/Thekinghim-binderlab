@@ -111,12 +111,6 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         </Suspense>
       ) : null}
 
-      {ctx.role === "owner" ? (
-        <Suspense fallback={null}>
-          <SalePromptSlot />
-        </Suspense>
-      ) : null}
-
       <div className="work">
         <div className="col">
           <Suspense fallback={<SkeletonCard rows={5} className="o-act" />}>
@@ -132,6 +126,13 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           {economy ? (
             <Suspense fallback={<SkeletonCard rows={6} className="x-c x-res" />}>
               <ResultCard sp={sp} />
+            </Suspense>
+          ) : null}
+          {/* "Få notis vid varje försäljning": sist i kolumnen (inte bråttom), så att rutan inte
+              flyttar korten ovanför när den dyker upp. */}
+          {ctx.role === "owner" ? (
+            <Suspense fallback={null}>
+              <SalePromptSlot />
             </Suspense>
           ) : null}
         </div>

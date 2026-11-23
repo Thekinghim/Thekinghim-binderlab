@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
 
+import { pushEndpointForLogout } from "@/components/pwa/push-device";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/v2/button";
 import { V2Logo } from "@/components/v2/shell/nav-icon";
@@ -63,7 +64,7 @@ export function PortalHeader({
               aria-label="Logga ut"
               onClick={() =>
                 startTransition(async () => {
-                  await logout();
+                  await logout({ pushEndpoint: await pushEndpointForLogout() });
                   router.replace("/logga-in");
                   router.refresh();
                 })

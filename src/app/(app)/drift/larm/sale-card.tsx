@@ -4,17 +4,18 @@
  * Notis vid varje försäljning (Drift → Notiser): personens egen knapp på/av och "Tyst på
  * natten". Av som standard. Sparas direkt, ingen spara-knapp.
  *
+ * Bara ägare, admin och läsare (sidan visar inte kortet för påfyllaren).
  * På: den här telefonen får först lov att visa notiser (om ingen av personens telefoner har
  * det), sedan sparas valet. Av: valet sparas; telefonens notiser för larm rörs inte.
- * På iPhone fungerar push bara från hemskärmen: raden säger det.
+ * På iPhone fungerar push bara från hemskärmen: raden säger det. Fler telefoner slås på under
+ * "Notiser i mobilen" (samma prenumeration), så kortet har ingen egen knapp för det.
  */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { currentPushEndpoint } from "@/components/pwa/push-device";
-import { enableSalePush, subscribeHere, thisDeviceHint } from "@/components/sales-push/enable";
-import { Button } from "@/components/ui/button";
+import { enableSalePush, thisDeviceHint } from "@/components/sales-push/enable";
 import { useToast } from "@/components/ui/toast";
 import { useHydrated } from "@/lib/use-hydrated";
 import { saveSalePushSetting, type SalePushSetting } from "@/server/actions/sale-push";
@@ -40,6 +41,8 @@ export function SaleCard({ initial }: { initial: SalePushSetting }) {
   const hasDevice = setting.endpoints.length > 0;
   // "På" visas bara när en notis faktiskt kan komma fram: valet och minst en telefon.
   const on = setting.on && hasDevice;
+  // Valet är på men push-tjänsten har stängt av den sista telefonen (404/410).
+  const lostDevice = setting.on && !hasDevice;
   const hereOn = here !== null && setting.endpoints.includes(here);
   const hint = hydrated ? thisDeviceHint() : null;
 
@@ -91,24 +94,6 @@ export function SaleCard({ initial }: { initial: SalePushSetting }) {
       }
     });
 
-  const addHere = () =>
-    start(async () => {
-      if (!setting.publicKey) return;
-      const res = await subscribeHere(setting.publicKey);
-      if (!res.ok) {
-        toast({ title: res.message, tone: "neutral" });
-        return;
-      }
-      setHere(res.endpoint);
-      setSetting((prev) =>
-        prev.endpoints.includes(res.endpoint)
-          ? prev
-          : { ...prev, endpoints: [...prev.endpoints, res.endpoint] },
-      );
-      toast({ title: "Klart! Notiser i den här telefonen.", tone: "ok" });
-      router.refresh();
-    });
-
   return (
     <section aria-labelledby="salj-notis" className="v2-card">
       <div className="v2-card-hd">
@@ -128,17 +113,20 @@ export function SaleCard({ initial }: { initial: SalePushSetting }) {
       </div>
       <div className="v2-card-body flex flex-col gap-3">
         <p className="ops-p">
-          {setting.economy
-            ? "Titel, automat, butik och belopp när något säljs."
-            : "Titel och automat när något säljs. Inga belopp."}
+          Titel, automat, butik och belopp när något säljs. Beloppet syns på låsskärmen.
         </p>
         {hint ? <p className="ops-p">{hint}</p> : null}
+        {lostDevice && !hint ? (
+          <p className="ops-p">Ingen telefon får notiser längre. Slå på igen.</p>
+        ) : null}
         {on ? (
           <div className="flex flex-col gap-3">
             <label className="flex items-center justify-between gap-4">
               <span className="flex flex-col">
                 <span className="text-v2-sm font-[550] text-v2-ink">Tyst på natten</span>
-                <span className="text-v2-xs text-v2-mute">Inga notiser 22–07.</span>
+                <span className="text-v2-xs text-v2-mute">
+                  Inga notiser 22–07. Nattens köp ser du på Hem.
+                </span>
               </span>
               <button
                 type="button"
@@ -153,13 +141,10 @@ export function SaleCard({ initial }: { initial: SalePushSetting }) {
                 <i aria-hidden="true" />
               </button>
             </label>
-            {hydrated && !hereOn && !hint && setting.publicKey ? (
-              <div className="flex flex-col gap-2">
-                <p className="ops-p">Den här telefonen får inga notiser än.</p>
-                <Button variant="primary" onClick={addHere} loading={busy} className="w-fit">
-                  Slå på i den här telefonen
-                </Button>
-              </div>
+            {hydrated && !hereOn && !hint ? (
+              <p className="ops-p">
+                Den här telefonen får inga notiser än. Slå på den under Notiser i mobilen.
+              </p>
             ) : null}
           </div>
         ) : null}
