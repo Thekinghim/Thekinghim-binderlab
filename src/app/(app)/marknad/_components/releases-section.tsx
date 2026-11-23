@@ -1,6 +1,7 @@
 import { Panel, PanelSection } from "@/components/ui/frame";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
+import { Card, CardBody } from "@/components/v2/card";
 import { formatInt, NBSP } from "@/lib/format";
 import { dayText, deltaOfBp, packs, tenthsNumber } from "@/server/market/display";
 import type { ReleaseView } from "@/server/market/model";
@@ -421,9 +422,13 @@ export function ReleasesSection({
         }
       />
       {visible.length === 0 ? (
-        <StateMessage kind="empty" message="Ingen release inlagd." />
+        <Card as="div">
+          <CardBody>
+            <StateMessage kind="empty" message="Ingen release inlagd." />
+          </CardBody>
+        </Card>
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3.5">
           {visible.map((v) => (
             <ReleaseCard key={v.row.id} view={v} ctx={ctx} />
           ))}
