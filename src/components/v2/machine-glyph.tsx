@@ -30,8 +30,9 @@ export { glyphStatusOf, slotsFromFill } from "./machine-glyph-model";
  *   look="gul"       gul, svart skärm, två fyllda paneler med rund läsare, vit blixt på skåpet
  *
  * Läget visas på skärmen: packbilderna (fack ur Awish) med fyllnadsstapel, tomt fack = grått
- * med röd kant, offline = släckt skärm med wifi-av, fyll på = gul prick, tom = röd prick.
- * I xs och s (≤ 40 px) är skärmen bara en färg. Inga externa bilder utom packbilderna
+ * med röd kant, offline = släckt skärm med wifi-av, fyll på = orange prick, tom = röd prick.
+ * I xs och s (≤ 40 px) är skärmen bara en färg. Gult betyder bara "den gula kiosken": läget
+ * fyll på är orange, så att en svart automat aldrig ser gul ut i liten storlek. Inga externa bilder utom packbilderna
  * (public/packs, samma som PackImage), och de bara från m (96 px).
  */
 export function MachineGlyph({
@@ -138,6 +139,8 @@ const C = {
   track: "#2E3A63",
   bar: "#E9EDF7",
   warn: "#FFB800",
+  /** Fyll på: orange, inte gul (gult = den gula kiosken). */
+  refill: "#FF7A00",
   crit: "#E22C38",
   wheel: "#6B6E75",
   wheelHub: "#C9CBD0",
@@ -242,7 +245,7 @@ const UPPER_STARS: readonly (readonly [number, number, number])[] = [
   [28, 138, 2],
   [36, 158, 2.6],
   [64, 160, 2],
-  [72, 140, 2.4],
+  [84, 140, 2],
   [88, 152, 3.4],
   [24, 160, 1.6],
   [80, 162, 1.8],
@@ -298,7 +301,8 @@ function StarBody({
   const edge = Math.max(0.8, px);
   const cx = S.x + S.w / 2;
   const cy = S.y + S.h / 2;
-  const hatch = { x: 43, y: 139, w: 14, h: 14 };
+  const hatch = { x: 32, y: 139, w: 14, h: 14 };
+  const reader = { x: 54, y: 137, w: 14, h: 18 };
   const upperClip = `${uid}-su`;
   const lowerClip = `${uid}-sl`;
   const rays = tiny
@@ -395,6 +399,38 @@ function StarBody({
           <tspan fill="#FFFFFF">binder</tspan>
           <tspan fill={C.brandBlue}>lab</tspan>
         </text>
+      )}
+
+      {/* Kortläsaren till höger om luckan (fotot): ram, liten skärm och kortspringa */}
+      {tiny ? null : (
+        <g>
+          <rect
+            x={reader.x}
+            y={reader.y}
+            width={reader.w}
+            height={reader.h}
+            rx={2}
+            fill="#1C1C21"
+            stroke={C.trimShade}
+            strokeWidth={Math.max(0.6, 0.6 * px)}
+          />
+          <rect
+            x={reader.x + 2.5}
+            y={reader.y + 2.5}
+            width={reader.w - 5}
+            height={6}
+            rx={0.8}
+            fill="#2C4FB8"
+          />
+          <rect
+            x={reader.x + 2.5}
+            y={reader.y + reader.h - 4.5}
+            width={reader.w - 5}
+            height={1.6}
+            rx={0.8}
+            fill="#050506"
+          />
+        </g>
       )}
 
       {/* Luckan under skärmen */}
@@ -569,7 +605,7 @@ function GulBody({
 
 const TINY_SCREEN_FILL: Readonly<Record<GlyphStatus, string>> = {
   ok: C.screenTinyOk,
-  refill: C.warn,
+  refill: C.refill,
   empty: C.crit,
   offline: "#26262B",
 };
@@ -604,7 +640,7 @@ function Screen({
           height={h}
           rx={2}
           fill={TINY_SCREEN_FILL[status]}
-          // Den gula har svart ram runt skärmen (fotot): gul "fyll på" syns då mot gul kropp.
+          // Den gula har svart ram runt skärmen (fotot).
           stroke={look === "gul" ? "#101013" : status === "offline" ? "#5A5A61" : "none"}
           strokeWidth={look === "gul" ? 1.6 * px : px}
         />
@@ -663,7 +699,7 @@ function Screen({
           cx={x + w - dotR - 2.5}
           cy={y + headH / 2 + 0.5}
           r={dotR}
-          fill={status === "refill" ? C.warn : C.crit}
+          fill={status === "refill" ? C.refill : C.crit}
         />
       ) : null}
       {/* Glansen i glaset (fotot på den gula) */}
@@ -826,9 +862,14 @@ function Cell({
           ? C.bar
           : C.track;
   const fill = cell.fill ?? 0;
+  const unknown = cell.tone === "unknown";
   return (
     <g>
-      <g opacity={cell.empty ? 0.38 : 1} filter={cell.empty ? `url(#${greyId})` : undefined}>
+      {/* Okänd fyllnad (ingen Awish-läsning): blekt, med "?" över bilden. */}
+      <g
+        opacity={cell.empty ? 0.38 : unknown ? 0.32 : 1}
+        filter={cell.empty || unknown ? `url(#${greyId})` : undefined}
+      >
         {key ? (
           <image
             href={`/packs/${key}.webp`}
@@ -856,6 +897,20 @@ function Cell({
           </g>
         )}
       </g>
+      {unknown ? (
+        <text
+          x={ix + dispW / 2}
+          y={iy + dispH / 2}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={Math.min(dispW * 0.7, dispH * 0.5)}
+          fontWeight={700}
+          fill="#DDE3F5"
+          style={{ fontFamily: "var(--font-google-sans), system-ui, sans-serif" }}
+        >
+          ?
+        </text>
+      ) : null}
       {cell.empty ? (
         <rect
           x={ix - 0.8}
