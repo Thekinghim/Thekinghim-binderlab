@@ -8,6 +8,8 @@ import { fillPercent } from "@/analytics/visits/fill";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag } from "@/components/ui/status-tag";
 import { FillBar } from "@/components/v2/fill-bar";
+import { MachineGlyph, type GlyphStatus } from "@/components/v2/machine-glyph";
+import type { MachineLook } from "@/lib/machine-look";
 
 import { cn } from "@/lib/cn";
 
@@ -31,6 +33,10 @@ export interface HealthRow {
   readonly fillBp: number | null;
   /** Anslutningen enligt Awish ("Online", "Offline sedan 14:10"), null = okänd. */
   readonly connection: ConnectionLabel | null;
+  /** Automatens utseende (bilden i namnkolumnen). Saknas = svart med stjärnor. */
+  readonly look?: MachineLook;
+  /** Läget på bildens skärm (flottans läge). Saknas = bildens standard (i drift). */
+  readonly glyph?: GlyphStatus;
 }
 
 /** Statusetiketten: "Strömmen av", "Offline" när Awish säger det, annars hälsans etikett. */
@@ -70,11 +76,15 @@ const columns: Column<HealthRow>[] = [
     render: (r) => (
       <Link
         href={`/drift/automat/${r.machineId}`}
-        className="flex min-w-0 flex-col hover:underline"
+        className="group/m flex min-w-0 items-center gap-3"
       >
-        <span className="font-[550] text-v2-ink">{r.code.replace("-", "‑")}</span>
-        <span className="truncate text-v2-xs text-v2-mute">{r.name}</span>
-        <Connection c={r.connection} />
+        {/* Automatens bild (40 px): läget på skärmen, texten står bredvid. */}
+        <MachineGlyph look={r.look} size="s" status={r.glyph} decorative className="shrink-0" />
+        <span className="flex min-w-0 flex-col group-hover/m:underline">
+          <span className="font-[550] text-v2-ink">{r.code.replace("-", "‑")}</span>
+          <span className="truncate text-v2-xs text-v2-mute">{r.name}</span>
+          <Connection c={r.connection} />
+        </span>
       </Link>
     ),
     csv: (r) => `${r.code} ${r.name}`,
@@ -161,11 +171,21 @@ function HealthList({ rows }: { rows: HealthRow[] }) {
             <div className="flex min-h-11 items-center gap-3">
               <Link
                 href={`/drift/automat/${r.machineId}`}
-                className="flex min-h-11 min-w-0 flex-1 flex-col justify-center"
+                className="flex min-h-11 min-w-0 flex-1 items-center gap-3"
               >
-                <span className="font-[550] text-v2-ink">{r.code.replace("-", "‑")}</span>
-                <span className="truncate text-v2-xs text-v2-mute">{r.name}</span>
-                <Connection c={r.connection} />
+                {/* Samma bild (40 px) som tabellens namnkolumn; texten står bredvid. */}
+                <MachineGlyph
+                  look={r.look}
+                  size="s"
+                  status={r.glyph}
+                  decorative
+                  className="shrink-0"
+                />
+                <span className="flex min-w-0 flex-col justify-center">
+                  <span className="font-[550] text-v2-ink">{r.code.replace("-", "‑")}</span>
+                  <span className="truncate text-v2-xs text-v2-mute">{r.name}</span>
+                  <Connection c={r.connection} />
+                </span>
               </Link>
               <StatusTag status={statusTag(r).status} className="shrink-0">
                 {statusTag(r).label}

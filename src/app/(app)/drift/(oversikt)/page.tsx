@@ -30,6 +30,8 @@ import {
   sortAlerts,
 } from "../_lib/display";
 import { loadDriftOverview } from "../_lib/load";
+import { glyphStatusOf } from "@/components/v2/machine-glyph-model";
+import { loadMachineScreens } from "../../automater/_lib/v2-data";
 
 export const metadata: Metadata = { title: "Drift" };
 
@@ -46,7 +48,11 @@ function tenthsText(tenths: number): string {
 export default async function DriftPage() {
   const ctx = await requireRoute("drift");
   const now = new Date(ctx.now);
-  const [overview, viewer] = await Promise.all([loadDriftOverview(ctx), requireViewer()]);
+  const [overview, viewer, screens] = await Promise.all([
+    loadDriftOverview(ctx),
+    requireViewer(),
+    loadMachineScreens(ctx.organization.id),
+  ]);
   const awishExpiry = await loadAwishExpirySafe(viewer, now);
   const { health, data, plan } = overview;
   const machinesHeadline = driftHeadline(health);
@@ -77,7 +83,10 @@ export default async function DriftPage() {
     health.length > 1 && rests[0] && rests.every((r) => r === rests[0]) ? rests[0] : null;
   const rows: HealthRow[] = health.map((h) => {
     const m = machineById.get(h.machineId);
+    const screen = screens.get(h.machineId);
     return {
+      look: screen?.appearance,
+      glyph: screen ? glyphStatusOf(screen.status) : undefined,
       machineId: h.machineId,
       code: m?.code ?? "",
       name: m?.name ?? "",
