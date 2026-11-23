@@ -314,7 +314,8 @@ self.addEventListener("push", (event) => {
     tag: data.tag || undefined,
     renotify: Boolean(data.tag),
     requireInteraction: data.severity === "critical",
-    icon: ownImage(data.icon) || "/icon.svg",
+    // iPhone och flera Android visar inte svg som ikon.
+    icon: ownImage(data.icon) || "/icons/icon-192.png",
     badge: "/icon.svg",
     // Notisens språk (veckosammanfattningen skickas på personens språk); annars svenska.
     lang: data.lang === "en" ? "en" : "sv",

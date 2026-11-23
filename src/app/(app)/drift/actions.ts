@@ -19,6 +19,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import type { AlertDelivery } from "@/analytics/alerts";
+import { getServiceDb } from "@/db/client";
 import * as s from "@/db/schema";
 import { getServerEnv } from "@/lib/env";
 import {
@@ -29,6 +30,7 @@ import {
 import { ALL_ROLES, OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
 import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { dispatchDelivery, type Channel, type ChannelResult } from "@/server/notify";
+import { recordPushOutcome } from "@/server/notify/record";
 import { isAllowedPushEndpoint } from "@/server/notify/push-endpoint";
 import { createRateLimiter } from "@/server/rate-limit";
 import { resolveAppBaseUrl } from "@/server/request-info";
@@ -221,7 +223,10 @@ export async function removePushDevice(id: string): Promise<{ ok: boolean }> {
   return { ok: true };
 }
 
-/** Skickar ett provlarm till den inloggade i hennes kanaler. Inget sparas i larmloggen. */
+/**
+ * Skickar ett provlarm till den inloggade i hennes kanaler. Inget sparas i larmloggen, men
+ * varje enhets utfall sparas på enheten (senast lyckad, senaste fel och push-tjänstens svar).
+ */
 export async function sendTestAlert(): Promise<{
   ok: boolean;
   results: ChannelResult[];
@@ -316,6 +321,11 @@ export async function sendTestAlert(): Promise<{
       timeZone: ctx.timeZone,
       organizationName: ctx.organization.name,
     },
+  );
+  // Enhetens utfall sparas (systemrollen: den inloggade får inte skriva statusfälten), så att
+  // en telefon som inte får notiser syns under Notiser och går att felsöka.
+  await recordPushOutcome(getServiceDb(), ctx.organization.id, result, new Date()).catch(
+    (error: unknown) => console.error("[provlarm] Kunde inte spara enhetens utfall:", error),
   );
   return { ok: result.status === "sent" || result.status === "partial", results: result.results };
 }

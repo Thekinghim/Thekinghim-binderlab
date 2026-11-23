@@ -284,6 +284,7 @@ describe("offlinelarm", () => {
           results: [{ channel: "push", status: "sent", detail: "test" }],
           goneDevices: [],
           okDevices: [],
+          failedDevices: [],
           status: "sent",
         };
       },

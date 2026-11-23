@@ -211,15 +211,42 @@ export class WebPushSender implements PushSender {
         typeof error === "object" && error !== null && "statusCode" in error
           ? Number((error as { statusCode: unknown }).statusCode)
           : null;
-      // Bara statuskoden visas: nätverksfelets text kan avslöja något om nätet bakom servern.
+      // Bara statuskoden och push-tjänstens korta orsakskod visas (t.ex. Apples
+      // "BadJwtToken"): nätverksfelets text kan avslöja något om nätet bakom servern.
       if (!status) console.error("[push] Utskicket misslyckades:", error);
+      const reason = status ? pushErrorReason(error) : null;
+      if (status) console.warn(`[push] HTTP ${status}${reason ? ` ${reason}` : ""}`);
       return {
         ok: false,
         gone: status === 404 || status === 410,
-        detail: status ? `HTTP ${status}` : "push-tjänsten svarade inte",
+        detail: status
+          ? `HTTP ${status}${reason ? ` ${reason}` : ""}`
+          : "push-tjänsten svarade inte",
       };
     }
   }
+}
+
+/**
+ * Push-tjänstens orsakskod ur felets svar, t.ex. Apples `{"reason":"BadJwtToken"}` eller
+ * FCM:s text. Bara ett kort ord av bokstäver släpps igenom.
+ */
+export function pushErrorReason(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("body" in error)) return null;
+  const body = (error as { body: unknown }).body;
+  if (typeof body !== "string" || body.length === 0) return null;
+  let candidate: unknown = null;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed === "object" && parsed !== null && "reason" in parsed) {
+      candidate = (parsed as { reason: unknown }).reason;
+    }
+  } catch {
+    candidate = body.trim().split(/\s+/)[0];
+  }
+  return typeof candidate === "string" && /^[A-Za-z][A-Za-z_]{1,39}$/.test(candidate)
+    ? candidate
+    : null;
 }
 
 /** Push-adaptern enligt miljön, eller null när push inte är konfigurerad. */
