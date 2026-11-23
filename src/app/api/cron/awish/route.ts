@@ -19,6 +19,7 @@ import { runOfflineAlerts } from "@/server/awish/offline-alerts";
 import { resolveAppBaseUrl } from "@/server/request-info";
 import { syncAllAwishSources } from "@/server/awish/sync";
 import { publishAllDueCampaigns } from "@/server/campaigns/service";
+import { runSaleNotifications } from "@/server/sales-push/job";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
 import { syncWatchAlertsForAll } from "@/server/monitoring/watch";
 import { invalidateUnpaidSettlements } from "@/server/settlements/cache";
@@ -31,17 +32,38 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
 }
 
+function appBaseUrl(request: Request): string | null {
+  try {
+    return resolveAppBaseUrl(getServerEnv(), request.headers);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Notis vid varje försäljning (src/server/sales-push/job.ts), efter synken: orderna är redan
+ * sparade. Kastar aldrig och stoppar inget; ett fel loggas och svaret blir null.
+ */
+async function runSaleNotificationsAfterSync(request: Request) {
+  try {
+    const run = await runSaleNotifications(getServiceDb(), { baseUrl: appBaseUrl(request) });
+    return {
+      orders: run.organizations.reduce((n, o) => n + o.orders, 0),
+      sent: run.organizations.reduce((n, o) => n + o.sent, 0),
+    };
+  } catch (error) {
+    console.error("[awish] försäljningsnotiser", error instanceof Error ? error.message : "fel");
+    return null;
+  }
+}
+
 async function runOfflineAlertsAfterSync(
   request: Request,
   orgIds: string[],
   stockOrgIds: string[],
 ) {
-  let baseUrl: string | null = null;
-  try {
-    baseUrl = resolveAppBaseUrl(getServerEnv(), request.headers);
-  } catch {
-    // Utan adress köas utskicken; larmjobbet skickar dem.
-  }
+  // Utan adress köas utskicken; larmjobbet skickar dem.
+  const baseUrl = appBaseUrl(request);
   try {
     return await runOfflineAlerts(getServiceDb(), orgIds, { baseUrl, stockOrgIds });
   } catch (error) {
@@ -93,6 +115,9 @@ export async function GET(request: Request): Promise<Response> {
   )) {
     invalidateUnpaidSettlements(org);
   }
+  // Notis vid varje försäljning till dem som har slagit på den: nya köp i den här synken (och
+  // i en Synka nu sedan förra körningen). Ett fel här stoppar inte synken.
+  const salePush = await runSaleNotificationsAfterSync(request);
   // Kampanjer med en senare start som användaren redan har bekräftat (Kampanjer): de vars
   // starttid har passerat skickas till Awish nu. Ett fel här stoppar inte synken.
   const campaigns = await publishAllDueCampaigns({ db: getServiceDb() }).catch((error: unknown) => {
@@ -115,6 +140,7 @@ export async function GET(request: Request): Promise<Response> {
       })),
       campaigns: campaigns ? { shown: campaigns.shown, failed: campaigns.failed } : null,
       watch,
+      salePush,
       offlineAlerts: offline
         ? {
             organizations: offline.organizations.length,

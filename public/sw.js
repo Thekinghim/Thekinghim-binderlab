@@ -299,13 +299,24 @@ self.addEventListener("push", (event) => {
     data = { title: "Binderlab", body: event.data ? event.data.text() : "" };
   }
   const title = data.title || "Binderlab";
+  // Ikon och bild bara från appens egen adress (t.ex. packbilden vid en försäljning).
+  const ownImage = (value) => {
+    if (typeof value !== "string" || value === "") return undefined;
+    try {
+      const url = new URL(value, self.location.origin);
+      return url.origin === self.location.origin ? url.href : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   const options = {
     body: data.body || "",
     tag: data.tag || undefined,
     renotify: Boolean(data.tag),
     requireInteraction: data.severity === "critical",
-    icon: "/icon.svg",
+    icon: ownImage(data.icon) || "/icon.svg",
     badge: "/icon.svg",
+    image: ownImage(data.image),
     // Notisens språk (veckosammanfattningen skickas på personens språk); annars svenska.
     lang: data.lang === "en" ? "en" : "sv",
     data: { url: typeof data.url === "string" && data.url.startsWith("/") ? data.url : "/drift" },

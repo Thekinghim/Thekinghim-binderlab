@@ -41,6 +41,10 @@ export interface PushPayload {
   readonly severity: "info" | "warning" | "critical";
   /** Notisens språk (för uppläsning). Utelämnat = svenska. */
   readonly lang?: "sv" | "en";
+  /** Notisens ikon (appens egen adress, t.ex. en packbild). Utelämnad = appens ikon. */
+  readonly icon?: string;
+  /** Större bild i notisen (Android, Chrome). Bara appens egna adresser. */
+  readonly image?: string;
 }
 
 export type PushOutcome =

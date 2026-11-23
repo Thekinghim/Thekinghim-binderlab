@@ -25,6 +25,15 @@ Inget behöver göras för hand. Det som körs av sig självt:
 | `/api/cron/kontroll`  | `52 3-9 * * *`  | Daglig kontroll (pg_cron), en gång per org från 05:00 lokal tid: samma vinst överallt, Awish = appen, påfyllningar nådde Awish, synk, avräkningar, datahygien. Läser bara. De senare tillfällena är nya försök när den inte har kört                                                                                |
 | `/api/cron/vecka`     | `7 5,6,7 * * 1` | Veckosammanfattning (pg_cron), måndag från 07:00 lokal tid: en notis (push) per ägare/admin med knappen på och en telefon med notiser. Sålt och vinst förra veckan mot veckan innan (före butikernas andel), bästa produkten, antal i Att göra. En rad per person och vecka i `weekly_summaries`: aldrig två gånger | Notisen öppnar Veckan (`/veckan`), i Enkel vy Försäljning på engelska; knappen under Notiser och i Enkel vys meny |
 
+**Notis vid varje försäljning.** Awish-cronen (`/api/cron/awish`, var femte minut) skickar efter synken en
+push till var och en som har slagit på **Notis vid varje försäljning** (Drift → Notiser, av som standard) och har
+en telefon med notiser. Ett köp blir "Sålt: titel" med automat, butik, belopp och tid; flera köp i samma synk en
+grupperad notis; fler än 20 en sammanfattning. Ägare, admin och läsare får belopp, påfyllaren samma notis utan
+kronor, butiksportalen och demon aldrig. Bara köp från Awish-API:t, inte testköp, inte källans första import och
+inte köp äldre än ett dygn. Varje order tas om hand en gång (`sale_notifications`, unique per order; raderna
+rensas efter sju dagar). Ett utskick som misslyckas provas inte igen. "Tyst på natten" (22–07) är ett val per
+person; köp under natten kommer inte senare. På iPhone krävs att Binderlab ligger på hemskärmen.
+
 `/api/cron/bokforing` schemaläggs av pg_cron i Supabase (`binderlab-bokforing`, migreringen
 `20261104130000_bokforing_paket.sql`). Paketet sparas i bucketen `bookkeeping`; ändras underlaget
 blir det en ny version. Preliminärt när en butik med vinstdelning har order utan inköpspris.

@@ -259,6 +259,8 @@ describe("tabeller", () => {
         "route_day_changes",
         // Daglig kontroll: resultatet per körning (20261114000000_daglig_kontroll.sql).
         "self_check_runs",
+        // Notis vid varje försäljning: order som har notifierats (20261227000000_saljnotis.sql).
+        "sale_notifications",
         // Lager: larmgräns per automat och titel (20261103160000_lager_larmgrans.sql).
         "slot_alerts",
         "source_machines",

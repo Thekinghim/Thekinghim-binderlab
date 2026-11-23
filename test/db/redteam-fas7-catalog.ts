@@ -563,6 +563,21 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: () => [{ on: true }],
   },
+  // Notis vid varje försäljning: alla fyra approller, var och en sin knapp (påfyllaren utan
+  // kronor). Butiksanvändaren och utomstående nekas.
+  {
+    module: "@/server/actions/sale-push",
+    name: "loadSalePushSetting",
+    allowed: MEMBERS,
+    readOnly: true,
+    args: () => [],
+  },
+  {
+    module: "@/server/actions/sale-push",
+    name: "saveSalePushSetting",
+    allowed: MEMBERS,
+    args: () => [{ on: true }],
+  },
   // Ångra en påfyllning (städrundan): bara egna, inom 30 minuter
   {
     module: "@/app/(app)/drift/actions",

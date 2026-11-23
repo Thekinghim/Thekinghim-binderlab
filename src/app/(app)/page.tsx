@@ -21,6 +21,10 @@ import { loadKpiBand } from "@/server/data/v2/analytics/kpi-band";
 import { loadLiveOrders } from "@/server/data/v2/analytics/live";
 import { loadFleetState } from "@/server/data/v2/fleet";
 import { loadDayRoute } from "@/server/data/v2/route";
+import { isDemoFor } from "@/server/demo/guard";
+import { pushStatus } from "@/server/notify/push";
+import { loadSalePushPref } from "@/server/sales-push/prefs";
+import { withUserDb } from "@/server/session";
 
 import { SalesScreen } from "./forsaljning/_components/sales-screen";
 import {
@@ -36,6 +40,7 @@ import {
   WorstCardView,
 } from "./_hem/v2/analytics";
 import { ActionsCard, HemKpiBand, LiveCard, RouteCard, TodayLine, TodoCard } from "./_hem/v2/today";
+import { SalePrompt } from "./_hem/v2/sale-prompt";
 import { loadHemToday } from "./_hem/v2/today-data";
 
 import "./_hem/v2/hem.css";
@@ -103,6 +108,12 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       {soldTop ? (
         <Suspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
           <Sold sp={sp} economy={economy} />
+        </Suspense>
+      ) : null}
+
+      {ctx.role === "owner" ? (
+        <Suspense fallback={null}>
+          <SalePromptSlot />
         </Suspense>
       ) : null}
 
@@ -203,6 +214,29 @@ async function Sold({ sp, economy }: { sp: SearchParams; economy: boolean }) {
       className="v2-ds o-sold"
     />
   );
+}
+
+/**
+ * "Få notis vid varje försäljning" för ägaren som inte har den på (och inte i en demo, där
+ * skickas inget). Ett fel här döljer bara rutan.
+ */
+async function SalePromptSlot() {
+  const props = await salePromptProps().catch((error: unknown) => {
+    console.error("[hem] Notisrutan kunde inte läsas:", error);
+    return null;
+  });
+  return props ? <SalePrompt {...props} /> : null;
+}
+
+async function salePromptProps(): Promise<{ publicKey: string; hasDevice: boolean } | null> {
+  const ctx = await loadContext();
+  const push = await pushStatus();
+  if (!push.configured || !push.publicKey) return null;
+  const user = { userId: ctx.user.id, email: ctx.user.email };
+  if (await isDemoFor(user, ctx.organization.id)) return null;
+  const pref = await withUserDb((tx) => loadSalePushPref(tx, ctx.organization.id, ctx.user.id));
+  if (pref.on && pref.endpoints.length > 0) return null;
+  return { publicKey: push.publicKey, hasDevice: pref.endpoints.length > 0 };
 }
 
 async function TodaySub() {

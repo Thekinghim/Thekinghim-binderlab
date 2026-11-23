@@ -1839,3 +1839,13 @@
     order: 8;
   }
 }
+
+/* "Få notis vid varje försäljning" (sale-prompt.tsx): samma avstånd som korten runt den. */
+.hem2 .o-salj {
+  margin-top: 14px;
+}
+@media (max-width: 900px) {
+  .hem2 .o-salj {
+    margin-top: 12px;
+  }
+}
