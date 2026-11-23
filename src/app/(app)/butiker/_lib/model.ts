@@ -365,6 +365,12 @@ export function blockedNote(
   };
 }
 
+/**
+ * En rad i butikslistan med vinsten i jämförelseperioden (för "Vår vinst"-ändringen i
+ * nyckeltalen). Saknas eller null = ingen jämförelse.
+ */
+export type StoreListRow = StoreRow & { readonly previousProfitOre?: number | null };
+
 /** Kort text för en spärrad avräkning (listan). */
 export const BLOCKED_SHORT = "Kan inte räknas klart – lägg in inköpspris";
 
@@ -398,11 +404,11 @@ export function buildStoreRows(args: {
   canOpenPrices?: boolean;
   today: IsoDate;
   query: string;
-}): StoreRow[] {
+}): StoreListRow[] {
   const cur = rowsByKey(args.current);
   const prev = rowsByKey(args.previous);
   return args.stores
-    .map((s): StoreRow => {
+    .map((s): StoreListRow => {
       const row = cur.get(s.id);
       const own = agreementsOf(args.agreements, s.id);
       const current = own.find((a) => a.state === "current") ?? null;
@@ -435,6 +441,7 @@ export function buildStoreRows(args: {
         compensationOre: compensationOf(row),
         previousCompensationOre: args.previous ? compensationOf(prev.get(s.id)) : null,
         profitOre: row?.profitOre ?? 0,
+        previousProfitOre: args.previous ? (prev.get(s.id)?.profitOre ?? 0) : null,
         earnedMonthOre: args.earnedMonth.get(s.id) ?? 0,
         toStoreOre: args.toStore?.get(s.id) ?? 0,
         terms: args.terms?.get(s.id) ?? null,
@@ -513,10 +520,11 @@ export function changeText(current: number, previous: number): string | null {
 /**
  * Listans nyckeltal. Jämförelsen räknas på de visade raderna (samma butiker i båda
  * perioderna), så att ett butiksfilter jämför butiken med sig själv. Utan `showShare`
- * (vyknappen "Visa butikernas andel" av, ingen vald butik): intäkt och vår vinst.
+ * (vyknappen "Visa butikernas andel" av, ingen vald butik): intäkt och vår vinst, lika
+ * breda och båda med förändringen.
  */
 export function listKpis(
-  rows: readonly StoreRow[],
+  rows: readonly StoreListRow[],
   monthLabel: string,
   showShare = true,
 ): KpiView[] {
@@ -526,8 +534,10 @@ export function listKpis(
   const compared = rows.length > 0 && rows.every((r) => r.previousRevenueOre !== null);
   const prevRevenue = rows.reduce((n, r) => n + (r.previousRevenueOre ?? 0), 0);
   const prevCompensation = rows.reduce((n, r) => n + (r.previousCompensationOre ?? 0), 0);
-  const rel = (cur: number, prev: number) => {
-    const bp = compared ? changeBp(cur, prev) : null;
+  const profitCompared = compared && rows.every((r) => typeof r.previousProfitOre === "number");
+  const prevProfit = rows.reduce((n, r) => n + (r.previousProfitOre ?? 0), 0);
+  const rel = (cur: number, prev: number, ok = compared) => {
+    const bp = ok ? changeBp(cur, prev) : null;
     return bp === null ? null : { kind: "relative" as const, value: bp / 10_000 };
   };
   const revenueKpi: KpiView = {
@@ -539,11 +549,19 @@ export function listKpis(
     delta: rel(revenue, prevRevenue),
   };
   const profit = rows.reduce((n, r) => n + r.profitOre, 0);
+  const profitDelta = rel(profit, prevProfit, profitCompared);
   if (!showShare) {
-    // Vår vinst före butikernas andel.
+    // Vår vinst före butikernas andel. Två lika breda rutor: en bred intäkt lämnar annars
+    // vinsten i en smal tredjedel.
     return [
-      revenueKpi,
-      { id: "profit", label: ourProfitLabel(false, profit), value: profit, kind: "sek" },
+      { ...revenueKpi, primary: false },
+      {
+        id: "profit",
+        label: ourProfitLabel(false, profit),
+        value: profit,
+        kind: "sek",
+        delta: profitDelta,
+      },
     ];
   }
   return [
@@ -563,7 +581,13 @@ export function listKpis(
       kind: "percent",
     },
     // Vår del efter butikernas andel.
-    { id: "profit", label: ourProfitLabel(true, profit), value: profit, kind: "sek" },
+    {
+      id: "profit",
+      label: ourProfitLabel(true, profit),
+      value: profit,
+      kind: "sek",
+      delta: profitDelta,
+    },
     { id: "earned", label: `Intjänat ${monthLabel}`, value: earned, kind: "sek" },
   ];
 }
