@@ -13,6 +13,8 @@ import { loadPeriod, requireRoute } from "@/server/data/core";
 import "../drift/_components/ops.css";
 import { HistoryList } from "./_components/history-list";
 import { WarehouseRedirect } from "./_components/warehouse-redirect";
+import { machineCardsOf } from "../automater/_lib/machine-cards";
+import { loadMachineScreens } from "../automater/_lib/v2-data";
 import { LagerBoard } from "./_components/lager-board";
 import { loadLagerFor } from "./_lib/data";
 import { isoDateToDate } from "./_lib/display";
@@ -40,12 +42,14 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
   const ctx = await requireRoute("lager");
   const sp = await searchParams;
   const p = await loadPeriod(sp);
-  const view = await loadLagerFor(
-    await currentViewer(),
-    { period: p.period, scope: p.scope },
-    new Date(ctx.now),
-  );
+  const viewer = await currentViewer();
+  const [view, screens] = await Promise.all([
+    loadLagerFor(viewer, { period: p.period, scope: p.scope }, new Date(ctx.now)),
+    // Automaternas bilder (utseende, läge, facken): inga belopp, samma för alla roller.
+    loadMachineScreens(ctx.organization.id),
+  ]);
   const headline = headlineOf(view);
+  const cards = machineCardsOf(view.machines, view.packLists, screens);
 
   const machineParam = first(sp.automat);
   const titleParam = first(sp.titel);
@@ -89,7 +93,7 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
       ) : null}
       <SubNav />
       <div className="v2-stack">
-        <LagerBoard view={view} focus={focus} />
+        <LagerBoard view={view} cards={cards} focus={focus} />
 
         <Card
           title={<span id="historik">Historik</span>}

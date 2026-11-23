@@ -3,9 +3,11 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
-import { ButtonLink } from "@/components/v2/button";
+import { Button, ButtonLink } from "@/components/v2/button";
 import { Empty } from "@/components/v2/empty";
 
+import { MachineCards } from "../../automater/_components/v2/machine-cards";
+import type { MachineCard } from "../../automater/_lib/machine-cards";
 import { plural, tenthsText } from "../_lib/display";
 import type { LagerView } from "../_lib/types";
 import { PackList } from "./pack-list";
@@ -33,9 +35,12 @@ type Selection = { kind: "machine"; machineId: string; titleId: string };
  */
 export function LagerBoard({
   view,
+  cards,
   focus,
 }: {
   view: LagerView;
+  /** Ett kort per automat (bild + det som ska fyllas på), den som behöver mest först. */
+  cards: readonly MachineCard[];
   /** Öppna dialogen för den här cellen direkt (länk från Att göra: ?automat= &titel=). */
   focus: { machineId: string; titleId: string } | null;
 }) {
@@ -50,6 +55,8 @@ export function LagerBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bara vid första visningen
   }, []);
   const [selection, setSelection] = useState<Selection | null>(initial);
+  // Korten är standard; tabellen (titel × automat) finns kvar bakom "Visa som tabell".
+  const [asTable, setAsTable] = useState(false);
   const [packMachine, setPackMachine] = useState<string>(
     focus?.machineId && view.machines.some((m) => m.id === focus.machineId)
       ? focus.machineId
@@ -117,52 +124,85 @@ export function LagerBoard({
     <>
       {packFirst ? packSection : null}
 
-      <section aria-labelledby="matris" className="v2-card">
-        <div className="v2-card-hd">
-          <h2 id="matris" className="min-w-0">
-            {hasMachines
-              ? `${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}`
-              : "Ingen automat i urvalet"}
-          </h2>
-          {hasMachines ? (
-            <span className="text-v2-xs text-v2-mute max-[900px]:hidden">
-              {`Dagar kvar (${salesWindow.days} d). Snart slut under ${tenthsText(view.lowThresholdTenths)} d.`}
-            </span>
-          ) : null}
-        </div>
-        {view.machines.length === 0 || view.titles.length === 0 ? (
-          <Empty
-            title={
-              view.machines.length === 0
-                ? "Ingen automat i drift i urvalet."
-                : "Inget lager registrerat i automaterna."
-            }
-            action={
-              view.machines.length === 0 ? (
-                <ButtonLink href="/automater" variant="act" touch>
-                  Placera automat
-                </ButtonLink>
-              ) : undefined
-            }
-          />
-        ) : (
-          <StockMatrix
-            machines={view.machines}
-            titles={view.titles}
-            cells={view.cells}
-            windowDays={salesWindow.days}
-            timeZone={view.timeZone}
-            now={view.now}
+      {hasMachines && !asTable && cards.length > 0 ? (
+        <section aria-labelledby="automaterna" className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-3 px-1">
+            <h2 id="automaterna" className="min-w-0 text-v2-md font-[650] text-v2-ink">
+              Lager i automaterna{" "}
+              <span className="font-normal text-v2-mute">
+                {plural(view.machines.length, "automat", "automater")}
+              </span>
+            </h2>
+            {view.titles.length > 0 ? (
+              <Button size="sm" variant="plain" touch onClick={() => setAsTable(true)}>
+                Visa som tabell <span aria-hidden="true">→</span>
+              </Button>
+            ) : null}
+          </div>
+          <MachineCards
+            cards={cards}
             canRegister={view.canRegister}
-            onSelect={(m, t) => setSelection({ kind: "machine", machineId: m.id, titleId: t.id })}
+            onLine={(machineId, titleId) => setSelection({ kind: "machine", machineId, titleId })}
           />
-        )}
-        {hasMachines && view.retiredTitles.length > 0 ? (
-          <p className="ops-p border-t border-v2-line2 px-[18px] py-3 max-[900px]:px-4">
-            {retiredText(view.retiredTitles.map((t) => t.name))}
-          </p>
-        ) : null}
-      </section>
+          {view.retiredTitles.length > 0 ? (
+            <p className="ops-p px-1">{retiredText(view.retiredTitles.map((t) => t.name))}</p>
+          ) : null}
+        </section>
+      ) : (
+        <section aria-labelledby="matris" className="v2-card">
+          <div className="v2-card-hd">
+            <h2 id="matris" className="min-w-0">
+              {hasMachines
+                ? `${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}`
+                : "Ingen automat i urvalet"}
+            </h2>
+            {hasMachines ? (
+              <span className="flex items-center gap-3">
+                <span className="text-v2-xs text-v2-mute max-[900px]:hidden">
+                  {`Dagar kvar (${salesWindow.days} d). Snart slut under ${tenthsText(view.lowThresholdTenths)} d.`}
+                </span>
+                {cards.length > 0 ? (
+                  <Button size="sm" variant="plain" touch onClick={() => setAsTable(false)}>
+                    Visa som kort
+                  </Button>
+                ) : null}
+              </span>
+            ) : null}
+          </div>
+          {view.machines.length === 0 || view.titles.length === 0 ? (
+            <Empty
+              title={
+                view.machines.length === 0
+                  ? "Ingen automat i drift i urvalet."
+                  : "Inget lager registrerat i automaterna."
+              }
+              action={
+                view.machines.length === 0 ? (
+                  <ButtonLink href="/automater" variant="act" touch>
+                    Placera automat
+                  </ButtonLink>
+                ) : undefined
+              }
+            />
+          ) : (
+            <StockMatrix
+              machines={view.machines}
+              titles={view.titles}
+              cells={view.cells}
+              windowDays={salesWindow.days}
+              timeZone={view.timeZone}
+              now={view.now}
+              canRegister={view.canRegister}
+              onSelect={(m, t) => setSelection({ kind: "machine", machineId: m.id, titleId: t.id })}
+            />
+          )}
+          {hasMachines && view.retiredTitles.length > 0 ? (
+            <p className="ops-p border-t border-v2-line2 px-[18px] py-3 max-[900px]:px-4">
+              {retiredText(view.retiredTitles.map((t) => t.name))}
+            </p>
+          ) : null}
+        </section>
+      )}
 
       {packFirst ? null : packSection}
 
