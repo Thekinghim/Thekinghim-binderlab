@@ -1,0 +1,124 @@
+/* Svinn i en blick (SvinnOverview): stor siffra till vänster, en ruta per automat till höger. */
+@layer components {
+  .sv-body {
+    display: grid;
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+    gap: 24px;
+    padding: 18px;
+  }
+  .sv-big {
+    font-size: var(--v2-t-3xl);
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    text-wrap: balance;
+  }
+  .sv-big.crit {
+    color: var(--v2-crit-text);
+  }
+  .sv-sub {
+    margin-top: 8px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .sv-grid {
+    display: grid;
+    /* Smala rutor (bilden är 34 px bred): tio automater får plats på en rad på dator. */
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 6px;
+  }
+  .sv-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 10px 4px 10px;
+    border-radius: var(--v2-r-lg);
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease;
+    min-width: 0;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .sv-tile:hover {
+      background: var(--v2-hover);
+    }
+  }
+  .sv-tile.missing {
+    background: var(--v2-crit-soft);
+    border-color: var(--v2-crit-line);
+  }
+  .sv-fig {
+    position: relative;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .sv-fig svg.v2-mglyph {
+    display: block;
+  }
+  /* Märket ligger på skärmens övre del (bilden är 96 px hög). */
+  .sv-mark {
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 99px;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9);
+  }
+  .sv-mark.ok {
+    background: var(--v2-profit);
+  }
+  .sv-mark.count {
+    background: var(--v2-panel);
+    color: var(--v2-ink);
+  }
+  .sv-mark.missing {
+    background: var(--v2-crit);
+  }
+  .sv-code {
+    font-size: var(--v2-t-sm);
+    font-weight: 650;
+    color: var(--v2-ink);
+  }
+  .sv-lab {
+    font-size: var(--v2-t-xs);
+    font-weight: 550;
+    color: var(--v2-mute);
+  }
+  .sv-lab.ok {
+    color: var(--v2-profit-text);
+  }
+  .sv-lab.missing {
+    color: var(--v2-crit-text);
+  }
+  .sv-packs {
+    display: flex;
+    gap: 3px;
+    margin-top: 4px;
+  }
+  .sv-packs .v2-pk {
+    height: 32px;
+    width: auto;
+  }
+
+  @media (max-width: 900px) {
+    .sv-body {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 14px;
+      padding: 16px;
+    }
+    .sv-big {
+      font-size: var(--v2-t-2xl);
+    }
+    .sv-grid {
+      grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+    }
+  }
+}

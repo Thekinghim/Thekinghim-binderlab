@@ -142,6 +142,15 @@
   }
   .v2-auto .c-n {
     min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .v2-auto .c-n .gl {
+    flex: none;
+  }
+  .v2-auto .c-n .tx {
+    min-width: 0;
   }
   .v2-auto .c-n b {
     display: block;
@@ -151,13 +160,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* Butiksnamnet får gå på två rader i stället för att klippas (bilden tar plats i kolumnen). */
   .v2-auto .c-n small {
-    display: block;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     font-size: var(--v2-t-xs);
+    line-height: 1.3;
     color: var(--v2-mute);
-    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
   }
   .v2-auto .c-s {
     min-width: 0;
@@ -343,6 +355,24 @@
   }
   .v2-auto-det .spow.warn {
     color: var(--v2-warn-text);
+  }
+  /* Automatens bild (160 px) till vänster om fyllnaden. */
+  .v2-auto-det .dgl {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 20px;
+    margin-top: 14px;
+    padding: 14px 16px;
+    background: var(--v2-bg);
+    border: 1px solid var(--v2-line);
+    border-radius: var(--v2-r-lg);
+  }
+  .v2-auto-det .dgl-t .bigp {
+    margin-top: 0;
+  }
+  .v2-auto-det .dgl-t .line {
+    margin-top: 10px;
   }
   .v2-auto-det .front {
     display: grid;

@@ -4,6 +4,8 @@ import {
   cityOrderFrom,
   filterCounts,
   filterOf,
+  glyphSlotsOf,
+  emptyTitleCount,
   groupMachines,
   matchesSearch,
   orderSlots,
@@ -11,10 +13,12 @@ import {
   sinceText,
   sortMachines,
   type AutoMachine,
+  type AutoSlot,
 } from "./v2-model";
 
 const machine = (over: Partial<AutoMachine> & Pick<AutoMachine, "id" | "code">): AutoMachine => ({
   name: over.code,
+  appearance: "stjarnor",
   storeId: null,
   storeName: null,
   city: null,
@@ -163,5 +167,42 @@ describe("Automater V2-modellen", () => {
       { titleId: "w", name: "W", channels: ["B2"], units: 1, capacity: 1, slots: 1, empty: 0 },
     ]);
     expect(slots.map((s) => s.titleId)).toEqual(["y", "w", "x", "z"]);
+  });
+});
+
+describe("glyphSlotsOf", () => {
+  const slot = (over: Partial<AutoSlot> & Pick<AutoSlot, "name">): AutoSlot => ({
+    titleId: over.name,
+    channels: [],
+    units: 5,
+    capacity: 10,
+    slots: 1,
+    empty: 0,
+    ...over,
+  });
+
+  it("ger fyllnad i kanalordning, tomt fack och okänd kapacitet", () => {
+    const out = glyphSlotsOf([
+      slot({ name: "B", channels: ["B1"], units: 0 }),
+      slot({ name: "A", channels: ["A1"], units: 8 }),
+      slot({ name: "C", channels: ["C1"], units: 3, capacity: null }),
+      slot({ name: "D", channels: ["D1"], units: 4, slots: 2, empty: 1 }),
+    ]);
+    expect(out).toEqual([
+      { title: "A", fill: 0.8, empty: false },
+      { title: "B", fill: 0, empty: true },
+      { title: "C", fill: null, empty: false },
+      { title: "D", fill: 0.4, empty: true },
+    ]);
+  });
+
+  it("räknar titlar med tomma fack", () => {
+    expect(
+      emptyTitleCount([
+        slot({ name: "A" }),
+        slot({ name: "B", units: 0 }),
+        slot({ name: "C", empty: 1 }),
+      ]),
+    ).toBe(2);
   });
 });

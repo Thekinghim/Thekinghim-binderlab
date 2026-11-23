@@ -1,0 +1,299 @@
+/* Automatens överdel (MachineHero): bilden till vänster, namn, läge och nyckeltal till höger. */
+@layer components {
+  .mh {
+    display: grid;
+    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  }
+  .mh-fig {
+    display: grid;
+    place-items: center;
+    padding: 28px 20px;
+    background: var(--v2-bg);
+    border-right: 1px solid var(--v2-line);
+  }
+  .mh-fig .mh-gl-l {
+    display: none;
+  }
+  .mh-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding: 22px 24px 20px;
+  }
+  .mh-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  /* I drift: grön prick som i mocken (övriga lägen har sitt märke). */
+  .mh-status[data-status="i-drift"] .v2-dot {
+    background: var(--v2-profit);
+  }
+  .mh-top .lab {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .mh h2 {
+    font-size: var(--v2-t-2xl);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+  .mh-sub {
+    font-size: var(--v2-t-md);
+    color: var(--v2-mute);
+  }
+  .mh-sub b {
+    color: var(--v2-ink);
+    font-weight: 650;
+  }
+  .mh-pending {
+    margin-top: 14px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .mh-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 16px;
+    border: 1px solid var(--v2-line);
+    border-radius: var(--v2-r-lg);
+    overflow: hidden;
+  }
+  .mh-kpis > div {
+    padding: 12px 16px 13px;
+    min-width: 0;
+  }
+  .mh-kpis > div + div {
+    border-left: 1px solid var(--v2-line);
+  }
+  .mh-kpis dt {
+    font-size: var(--v2-t-xs);
+    font-weight: 550;
+    color: var(--v2-mute);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mh-kpis dd {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
+  }
+  .mh-kpis .v {
+    font-size: var(--v2-t-xl);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .mh-kpis .v.pf {
+    color: var(--v2-profit);
+  }
+  .mh-kpis .v.neg {
+    color: var(--v2-crit-text);
+  }
+  .mh-kpis small {
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+    white-space: nowrap;
+  }
+  .mh-kpis small.down {
+    color: var(--v2-crit-text);
+  }
+  .mh-kpis small.up {
+    color: var(--v2-profit-text);
+  }
+
+  .mh-row {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .mh-row.two {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+  .mh-card {
+    border: 1px solid var(--v2-line);
+    border-radius: var(--v2-r-lg);
+    padding: 12px 14px;
+    min-width: 0;
+  }
+  .mh-card-h {
+    font-size: var(--v2-t-xs);
+    font-weight: 550;
+    color: var(--v2-mute);
+  }
+  .mh-refill ul {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .mh-refill li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .mh-refill .t {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+  .mh-refill b {
+    font-weight: 650;
+    font-size: var(--v2-t-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .mh-refill small {
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+  }
+  .mh-refill small .crit {
+    color: var(--v2-crit-text);
+    font-weight: 650;
+  }
+  .mh-refill small .warn {
+    color: var(--v2-crit-text);
+    font-weight: 650;
+  }
+  .mh-refill .mh-bar {
+    flex: none;
+    height: 4px;
+    margin-top: 4px;
+    max-width: 140px;
+  }
+  .mh-more {
+    margin-top: 8px;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+  }
+
+  .mh-ready-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .mh-ring {
+    position: relative;
+    flex: none;
+    width: 64px;
+    height: 64px;
+  }
+  .mh-ring circle.on {
+    stroke: var(--v2-ink);
+  }
+  .mh-ring circle.off {
+    stroke: var(--v2-line);
+  }
+  .mh-ring .n {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: var(--v2-t-sm);
+    font-weight: 650;
+  }
+  .mh-ready-t {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .mh-ready-t b {
+    font-weight: 650;
+  }
+  .mh-ready-t small {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .mh-steps {
+    margin: 8px -14px -12px;
+    border-top: 1px solid var(--v2-line2);
+  }
+  .mh-steps summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 8px 14px;
+    font-size: var(--v2-t-xs);
+    font-weight: 550;
+    color: var(--v2-mute);
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+  .mh-steps summary::-webkit-details-marker {
+    display: none;
+  }
+  .mh-steps .c,
+  .mh-steps[open] .o {
+    display: none;
+  }
+  .mh-steps[open] .c {
+    display: inline;
+  }
+  .mh-steps[open] summary {
+    border-bottom: 1px solid var(--v2-line2);
+  }
+  .mh-steps ol > * {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .mh-facts {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--v2-line2);
+  }
+
+  @media (max-width: 1100px) {
+    .mh-row.two {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* Telefon: bilden överst i en grå yta (160 px), sedan texten. */
+  @media (max-width: 900px) {
+    .mh {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .mh-fig {
+      border-right: 0;
+      border-bottom: 1px solid var(--v2-line);
+      padding: 18px 16px;
+    }
+    .mh-fig .mh-gl-xl {
+      display: none;
+    }
+    .mh-fig .mh-gl-l {
+      display: block;
+    }
+    .mh-body {
+      padding: 16px;
+    }
+    .mh h2 {
+      font-size: var(--v2-t-xl);
+    }
+    .mh-kpis > div {
+      padding: 10px 12px;
+    }
+    .mh-kpis .v {
+      font-size: var(--v2-t-lg);
+    }
+    .mh-refill ul {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+    }
+  }
+}

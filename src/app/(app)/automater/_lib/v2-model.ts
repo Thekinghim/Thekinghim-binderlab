@@ -10,6 +10,8 @@ import {
   type FleetStatus,
   type FleetStatusTone,
 } from "@/analytics/fleet-status";
+import type { GlyphSlot } from "@/components/v2/machine-glyph-model";
+import type { MachineLook } from "@/lib/machine-look";
 
 /** Ett fack per titel (Awish samlar fack med samma vara). */
 export interface AutoSlot {
@@ -40,6 +42,8 @@ export interface AutoMachine {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  /** Utseende (machines.appearance): bilden av automaten (MachineGlyph). */
+  readonly appearance: MachineLook;
   readonly storeId: string | null;
   readonly storeName: string | null;
   readonly city: string | null;
@@ -307,4 +311,21 @@ export function orderSlots(slots: readonly AutoSlot[]): AutoSlot[] {
       a.name.localeCompare(b.name, "sv")
     );
   });
+}
+
+/**
+ * Facken som automatens skärm (MachineGlyph): kanalordning, fyllnad = pack ÷ kapacitet
+ * (null utan Awish-läsning), tom när titeln har ett tomt fack eller inga pack.
+ */
+export function glyphSlotsOf(slots: readonly AutoSlot[]): GlyphSlot[] {
+  return orderSlots(slots).map((s) => ({
+    title: s.name,
+    fill: s.capacity ? Math.max(0, Math.min(1, s.units / s.capacity)) : null,
+    empty: s.units <= 0 || s.empty > 0,
+  }));
+}
+
+/** Titlar med tomma fack (eller inga pack). */
+export function emptyTitleCount(slots: readonly AutoSlot[]): number {
+  return slots.filter((s) => s.units <= 0 || s.empty > 0).length;
 }

@@ -31,6 +31,8 @@ import { requireAutomaterEconomy } from "../_lib/data";
 import { loadShrinkageFor } from "@/server/data/shrinkage";
 
 import { machineHref } from "../_lib/model";
+import { loadMachineScreens } from "../_lib/v2-data";
+import { SvinnOverview, svinnAnchor } from "./overview";
 import { SwapButton } from "./swap-button";
 
 export const metadata: Metadata = { title: "Svinn" };
@@ -52,7 +54,10 @@ export default async function SvinnPage({
     loadMasterData(),
     requireViewer(),
   ]);
-  const aggregates = await loadShrinkageFor(viewer, p.period);
+  const [aggregates, screens] = await Promise.all([
+    loadShrinkageFor(viewer, p.period),
+    loadMachineScreens(ctx.organization.id),
+  ]);
   const scoped = p.scope.machineId
     ? aggregates.filter((a) => a.machineId === p.scope.machineId)
     : storeScoped(p.scope)
@@ -62,25 +67,36 @@ export default async function SvinnPage({
       : aggregates;
   const report = buildShrinkage(scoped, master);
   const value = shrinkageValueText(report.valueOre);
+  const empty = report.flagged.length === 0 && report.ok.length === 0;
 
   return (
     <V2Page title="Svinn" date={headerDate(new Date(ctx.now), ctx.timeZone)} period filters>
       <SubNav />
       <div className={PAGE_BODY}>
-        <PageIntro
-          title={report.headline.title}
-          aside={report.headline.aside}
-          facts={[
-            { label: "Period", value: periodText(p.period) },
-            { label: "Saknas", value: value ?? formatInt(report.missing) },
-          ]}
-        />
-
-        {report.flagged.length === 0 && report.ok.length === 0 ? (
-          <Card>
-            <Empty title="Ingen påfyllning eller försäljning i perioden." />
-          </Card>
-        ) : null}
+        {empty ? (
+          <>
+            {/* Utan automater i rapporten: introt med perioden (översikten visas inte). Annars
+                säger översikten samma sak med den stora siffran, så introt skulle läsas dubbelt. */}
+            <PageIntro
+              title={report.headline.title}
+              aside={report.headline.aside}
+              facts={[
+                { label: "Period", value: periodText(p.period) },
+                { label: "Saknas", value: value ?? formatInt(report.missing) },
+              ]}
+            />
+            <Card>
+              <Empty title="Ingen påfyllning eller försäljning i perioden." />
+            </Card>
+          </>
+        ) : (
+          <SvinnOverview
+            report={report}
+            screens={screens}
+            value={value}
+            period={periodText(p.period)}
+          />
+        )}
 
         {report.flagged.length > 0 ? (
           <section aria-labelledby="svinn-saknas" className="v2-stack">
@@ -96,8 +112,15 @@ export default async function SvinnPage({
         {report.ok.length > 0 ? (
           // En nivå kort: en rad per automat som fälls ut till sin tabell. Ingen saknar pack,
           // så raderna är hopfällda från början.
+          // Rubriken säger vad raderna är: alla stämmer, ingen är jämförd, eller en blandning.
           <Card
-            title={report.ok.some(compared) ? "Stämmer" : "Ej jämfört"}
+            title={
+              report.ok.every(compared)
+                ? "Stämmer"
+                : report.ok.some(compared)
+                  ? "Stämmer eller ej jämförda"
+                  : "Ej jämfört"
+            }
             count={report.ok.length}
             id="svinn-stammer"
           >
@@ -176,7 +199,10 @@ function MachineCard({
   const value = shrinkageValueText(machine.valueOre);
   const lines = flagged ? machine.lines.filter((l) => l.state !== "unknown") : machine.lines;
   return (
-    <article className={cn("v2-card", flagged && "shadow-[0_0_0_1px_var(--v2-crit-line)]")}>
+    <article
+      id={flagged ? svinnAnchor(machine.machineId) : undefined}
+      className={cn("v2-card scroll-mt-24", flagged && "shadow-[0_0_0_1px_var(--v2-crit-line)]")}
+    >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-v2-line px-[18px] py-3">
         <Link
           href={machineHref(machine.code)}

@@ -1,0 +1,276 @@
+/*
+ * Ett kort per automat (MachineCards): bilden av automaten och det som ska fyllas på.
+ * Dator: rutnät. Telefon: ett kort i taget med scroll-snap, nästa kort skymtar.
+ * Inga animationer utom webbläsarens egen rullning (smooth bara utan reducerad rörelse, i JS).
+ */
+@layer components {
+  .mcards {
+    min-width: 0;
+  }
+  .mc-track {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+    /* Varje kort så högt som sitt innehåll: ett kort med få rader blir inte tomt och högt. */
+    align-items: start;
+    gap: 12px;
+  }
+  .mc {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    padding: 16px;
+    background: var(--v2-panel);
+    border-radius: var(--v2-r-lg);
+    box-shadow: 0 0 0 1px var(--v2-line);
+  }
+  .mc.due {
+    box-shadow: 0 0 0 1px var(--v2-warn-line);
+  }
+  .mc-h {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .mc-who {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .mc-who b {
+    font-size: var(--v2-t-lg);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Butik och stad: får gå på två rader i stället för att klippas. */
+  .mc-who small {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-wrap: anywhere;
+  }
+  .mc-h .v2-badge {
+    flex: none;
+  }
+  /* Bilden (storlek l, 160 px) i en låg grå yta: raderna under ska synas utan att rulla. */
+  .mc-fig {
+    display: grid;
+    place-items: center;
+    max-height: 200px;
+    padding: 12px;
+    background: var(--v2-bg);
+    border-radius: var(--v2-r-lg);
+  }
+  .mc-lines {
+    display: flex;
+    flex-direction: column;
+  }
+  .mc-lines > li + li {
+    border-top: 1px solid var(--v2-line2);
+  }
+  .mc-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 56px;
+    padding: 8px 0;
+    text-align: left;
+    border-radius: var(--v2-r-sm);
+  }
+  button.mc-line {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button.mc-line:hover {
+      background: var(--v2-hover);
+    }
+  }
+  button.mc-line:active {
+    background: var(--v2-flash);
+  }
+  .mc-line .t {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+  .mc-line b {
+    font-weight: 650;
+    font-size: var(--v2-t-md);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mc-line small {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .mc-line small .crit,
+  .mc-line small .warn {
+    color: var(--v2-crit-text);
+    font-weight: 650;
+  }
+  .mc-bar {
+    flex: none;
+    height: 4px;
+    margin-top: 5px;
+  }
+  .mc-rest,
+  .mc-calm,
+  .mc-missing {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .mc-rest {
+    padding-top: 8px;
+  }
+  .mc-calm {
+    text-align: center;
+    font-weight: 550;
+    color: var(--v2-ink);
+  }
+  .mc-missing {
+    color: var(--v2-warn-text);
+  }
+  .mc-go {
+    margin-top: auto;
+  }
+  .mc-nav {
+    display: none;
+  }
+
+  /* ---- Telefon: ett kort i taget ---- */
+  @media (max-width: 900px) {
+    .mc-track {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      /* Ingen negativ marginal: sidan får aldrig rulla i sidled. Nästa kort skymtar i stället. */
+      padding: 2px 1px 4px;
+    }
+    .mc-track::-webkit-scrollbar {
+      display: none;
+    }
+    .mc {
+      flex: 0 0 calc(100% - 28px);
+      scroll-snap-align: center;
+      scroll-snap-stop: always;
+    }
+    .mc-fig {
+      padding: 12px;
+    }
+    .mc-nav {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .mc-dots {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .mc-dots .d {
+      width: 7px;
+      height: 7px;
+      border-radius: 99px;
+      background: var(--v2-line3);
+      transition: width 0.2s var(--v2-ease);
+    }
+    .mc-dots .d.warn {
+      background: var(--v2-warn);
+    }
+    .mc-dots .d.crit {
+      background: var(--v2-crit-icon);
+    }
+    .mc-dots .d.on {
+      width: 22px;
+      background: var(--v2-ink);
+    }
+    .mc-dots .d.on.warn {
+      background: var(--v2-warn);
+    }
+    .mc-dots .d.on.crit {
+      background: var(--v2-crit-icon);
+    }
+    .mc-hint {
+      font-size: var(--v2-t-sm);
+      color: var(--v2-mute);
+    }
+    .mc-all {
+      align-self: stretch;
+      margin-top: 8px;
+      background: var(--v2-panel);
+      border-radius: var(--v2-r-lg);
+      box-shadow: 0 0 0 1px var(--v2-line);
+    }
+    .mc-all-h {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--v2-line);
+    }
+    .mc-all-h b {
+      font-weight: 650;
+    }
+    .mc-all-h span {
+      font-size: var(--v2-t-sm);
+      color: var(--v2-mute);
+    }
+    .mc-all-g {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+      gap: 4px;
+      padding: 10px;
+    }
+    .mc-jump {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 2px 6px;
+      border-radius: var(--v2-r-md);
+      border: 1px solid transparent;
+      font-size: var(--v2-t-xs);
+      font-weight: 550;
+      color: var(--v2-mute);
+    }
+    .mc-jump[aria-current="true"] {
+      border-color: var(--v2-ink);
+      color: var(--v2-ink);
+    }
+    .mc-jump:active {
+      background: var(--v2-flash);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mc-dots .d {
+      transition: none;
+    }
+  }
+}
+@layer components {
+  /* Lugnt kort: de lägsta facken i en mindre, grå lista. */
+  .mc-lines.info .mc-line {
+    min-height: 48px;
+  }
+  .mc-lines.info .mc-line b {
+    font-weight: 550;
+    font-size: var(--v2-t-sm);
+  }
+}

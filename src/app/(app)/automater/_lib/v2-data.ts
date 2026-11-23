@@ -16,7 +16,9 @@ import {
 } from "@/components/shell/period-state";
 import { withUserDbFor } from "@/server/access";
 import type { AppContext } from "@/server/data/core";
-import { loadFleetState } from "@/server/data/v2/fleet";
+import { loadFleetState, loadFleetStatus } from "@/server/data/v2/fleet";
+import type { FleetStatus, FleetStatusTone } from "@/analytics/fleet-status";
+import type { MachineLook } from "@/lib/machine-look";
 
 import { loadOverview } from "./data";
 import { currentViewer } from "./session";
@@ -41,12 +43,19 @@ export interface AutomaterV2Data {
   readonly timeZone: string;
 }
 
-/** Facken per automat (titel, kanaler, pack, kapacitet, tomma) som den inloggade. */
-async function loadSlots(orgId: string): Promise<{
+/**
+ * Facken per automat (titel, kanaler, pack, kapacitet, tomma) som den inloggade. Med
+ * `machineId` bara den automatens fack (automatens sida).
+ */
+async function loadSlots(
+  orgId: string,
+  machineId?: string,
+): Promise<{
   slots: Map<string, AutoSlot[]>;
   origin: { lat: number; lng: number } | null;
 }> {
   const viewer = await currentViewer();
+  const only = machineId ? sql`and l.machine_id = ${machineId}::uuid` : sql``;
   return withUserDbFor(viewer.user, async (tx) => {
     const [fillRows, levelRows, originRows] = await Promise.all([
       tx.execute(sql`
@@ -61,7 +70,7 @@ async function loadSlots(orgId: string): Promise<{
           on c.organization_id = l.organization_id and c.machine_id = l.machine_id
          and c.title_id = f.title_id
         where l.organization_id = ${orgId}::uuid and l.kind = 'machine'
-          and l.machine_id is not null and l.archived_at is null`),
+          and l.machine_id is not null and l.archived_at is null ${only}`),
       // Utan Awish-läsning: titlarna med pack enligt lagret (kapaciteten okänd).
       tx.execute(sql`
         select l.machine_id::text as machine_id, sl.title_id::text as title_id, t.name,
@@ -71,7 +80,7 @@ async function loadSlots(orgId: string): Promise<{
           on sl.organization_id = l.organization_id and sl.location_id = l.id
         join public.titles t on t.organization_id = l.organization_id and t.id = sl.title_id
         where l.organization_id = ${orgId}::uuid and l.kind = 'machine'
-          and l.machine_id is not null and l.archived_at is null
+          and l.machine_id is not null and l.archived_at is null ${only}
           and (l.awish_fill is null or jsonb_array_length(l.awish_fill) = 0)
           and sl.quantity > 0`),
       tx.execute(sql`
@@ -159,6 +168,7 @@ export async function loadAutomaterV2(
       id: m.id,
       code: m.code,
       name: m.name,
+      appearance: m.appearance,
       storeId: m.store?.id ?? null,
       storeName: m.store?.name ?? null,
       city: m.store?.city ?? null,
@@ -205,4 +215,70 @@ export async function loadAutomaterV2(
     now: fleet.now,
     timeZone: fleet.timeZone,
   };
+}
+
+/**
+ * Det automatens bild (MachineGlyph) visar: utseende, läge och facken. Inga belopp, samma
+ * för alla roller (flottans läge utan ekonomi). Används av automatens sida, Lager, Svinn
+ * och Drift.
+ */
+export interface MachineScreen {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly appearance: MachineLook;
+  readonly storeName: string | null;
+  readonly city: string | null;
+  readonly status: FleetStatus;
+  readonly statusLabel: string;
+  readonly tone: FleetStatusTone;
+  readonly fillBp: number | null;
+  readonly units: number | null;
+  readonly capacity: number | null;
+  readonly daysLeft: number | null;
+  /** Sålda pack per dag (14 d), tusendelar. */
+  readonly perDayMilli: number;
+  readonly lastRefillAt: string | null;
+  readonly offlineSince: string | null;
+  readonly slots: readonly AutoSlot[];
+}
+
+/**
+ * Bilden per automat (id → MachineScreen). Ett fel ger en tom karta: sidan visas ändå. Med
+ * `machineId` läses bara den automatens fack (övriga automater får tomma fack).
+ */
+export async function loadMachineScreens(
+  orgId: string,
+  machineId?: string,
+): Promise<Map<string, MachineScreen>> {
+  try {
+    const [fleet, slotData] = await Promise.all([loadFleetStatus(), loadSlots(orgId, machineId)]);
+    return new Map(
+      fleet.machines.map((m) => [
+        m.id,
+        {
+          id: m.id,
+          code: m.code,
+          name: m.name,
+          appearance: m.appearance,
+          storeName: m.store?.name ?? null,
+          city: m.store?.city ?? null,
+          status: m.status,
+          statusLabel: m.statusLabel,
+          tone: m.tone,
+          fillBp: m.fill?.fillBp ?? null,
+          units: m.units,
+          capacity: m.fill?.capacity ?? null,
+          daysLeft: m.daysLeft,
+          perDayMilli: m.unitsPerDayMilli,
+          lastRefillAt: m.lastRefillAt,
+          offlineSince: m.offlineSince,
+          slots: slotData.slots.get(m.id) ?? [],
+        },
+      ]),
+    );
+  } catch (error) {
+    console.error("[automater] Automaternas bilder kunde inte läsas:", error);
+    return new Map();
+  }
 }

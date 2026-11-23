@@ -33,13 +33,20 @@ export function ReadyList({ ready, canEdit }: { ready: MachineReadiness; canEdit
           </h3>
           {next ? <p className="text-v2-sm text-v2-mute">{`Nästa: ${next.next}.`}</p> : null}
         </div>
-        <ol className="flex flex-col">
-          {ready.steps.map((step) => (
-            <Step key={step.id} step={step} canEdit={canEdit} />
-          ))}
-        </ol>
+        <ReadySteps ready={ready} canEdit={canEdit} />
       </Card>
     </div>
+  );
+}
+
+/** Stegen som lista (bock eller streckad ring, länk till formuläret när det går att göra). */
+export function ReadySteps({ ready, canEdit }: { ready: MachineReadiness; canEdit: boolean }) {
+  return (
+    <ol className="flex flex-col">
+      {ready.steps.map((step) => (
+        <Step key={step.id} step={step} canEdit={canEdit} />
+      ))}
+    </ol>
   );
 }
 

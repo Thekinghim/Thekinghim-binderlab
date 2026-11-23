@@ -12,6 +12,7 @@ import { Button, ButtonLink } from "@/components/v2/button";
 import { CallLink } from "@/components/v2/call-link";
 import { Chips } from "@/components/v2/chips";
 import { FillBar, fillTone } from "@/components/v2/fill-bar";
+import { MachineGlyph, glyphStatusOf } from "@/components/v2/machine-glyph";
 import { PackImage } from "@/components/v2/pack-image";
 import { SearchField } from "@/components/v2/search-field";
 import { Sheet } from "@/components/v2/sheet";
@@ -29,6 +30,7 @@ import {
   AUTO_FILTER_LABEL,
   AUTO_FILTERS,
   filterCounts,
+  glyphSlotsOf,
   groupMachines,
   matchesFilter,
   matchesSearch,
@@ -395,11 +397,21 @@ function Row({
       }}
     >
       <span className="c-n">
-        <b>{m.name}</b>
-        <small>
-          {m.storeName ?? "Ingen butik"}
-          <span className="hidden max-[900px]:inline"> · {m.code}</span>
-        </small>
+        {/* Automatens bild (40 px): läget är skärmens färg. Texten står bredvid. */}
+        <MachineGlyph
+          look={m.appearance}
+          size="s"
+          status={glyphStatusOf(m.status)}
+          decorative
+          className="gl"
+        />
+        <span className="tx">
+          <b>{m.name}</b>
+          <small>
+            {m.storeName ?? "Ingen butik"}
+            <span className="hidden max-[900px]:inline"> · {m.code}</span>
+          </small>
+        </span>
       </span>
       <span className="c-s">
         <FleetStatusBadge status={m.status} daysLeft={m.daysLeft} />
@@ -458,6 +470,7 @@ function Detail({
 }) {
   const [tab, setTab] = useState<"o" | "h">("o");
   const slots = useMemo(() => orderSlots(m.slots), [m.slots]);
+  const glyphSlots = useMemo(() => glyphSlotsOf(m.slots), [m.slots]);
   const room = roomFor(m);
   const empty = m.emptyChannels;
   const e = m.economy;
@@ -498,63 +511,61 @@ function Detail({
                 ? `${m.offlineSince ? `Ingen kontakt sedan ${offlineFor === "i dag" ? "i dag" : dayLabel(m.offlineSince, data.timeZone)}` : "Ingen kontakt"}. ${powerText(m)}.`
                 : powerText(m)}
             </p>
-            {slots.length > 0 ? (
-              <div className="front" aria-hidden="true">
-                {slots.slice(0, 12).map((s) => {
-                  const f = s.capacity ? Math.min(1, s.units / s.capacity) : 0;
-                  const isEmpty = s.units <= 0 || (s.empty > 0 && s.empty >= s.slots);
-                  return (
-                    <div key={s.titleId} className={cn("fc", isEmpty && "e")} title={s.name}>
-                      {/* Utan bild: PackImage ritar en platta med initialer (namnet i title). */}
-                      <PackImage title={s.name} size="m" />
-                      <span className="fb" style={{ "--f": f } as React.CSSProperties} />
+            <div className="dgl">
+              {/* Automaten som den ser ut i butiken: packen och fyllnaden på skärmen. */}
+              <MachineGlyph
+                look={m.appearance}
+                size="l"
+                status={glyphStatusOf(m.status)}
+                slots={glyphSlots}
+                name={m.code}
+                className="gl"
+              />
+              <div className="dgl-t">
+                {m.fillBp === null ? (
+                  // Utan fackdata från Awish: en lugn rad i stället för tomma staplar.
+                  <p className="line mute">Fyllnad okänd – Awish har inte skickat facken än.</p>
+                ) : (
+                  <>
+                    <div className="bigp">
+                      <span>
+                        {`${Math.round(m.fillBp / 100)}${NBSP}%`} <span className="s">fylld</span>
+                      </span>
+                      {m.capacity !== null && m.units !== null ? (
+                        <small>
+                          {formatInt(m.units)} av {formatInt(m.capacity)} pack
+                        </small>
+                      ) : null}
                     </div>
-                  );
-                })}
+                    <span className="v2-track bigtrack block" aria-hidden="true">
+                      <i
+                        className={fillTone(m.fillBp)}
+                        style={{
+                          transform: `scaleX(${Math.max(0, Math.min(1, m.fillBp / 10_000))})`,
+                        }}
+                      />
+                    </span>
+                  </>
+                )}
+                <p className={cn("line", needsFill(m) && "warn")}>
+                  {m.status === "offline" ? (
+                    "Säljer inget tills den är online igen."
+                  ) : m.units === 0 ? (
+                    "Tom. Säljer inget tills den fylls på."
+                  ) : m.daysLeft !== null ? (
+                    <>
+                      Tom om ca{" "}
+                      <b>
+                        {formatInt(m.daysLeft)} {m.daysLeft === 1 ? "dag" : "dagar"}
+                      </b>
+                      {empty > 0 ? ` · ${formatInt(empty)} fack slut` : ""}
+                    </>
+                  ) : (
+                    "Säljer inte just nu."
+                  )}
+                </p>
               </div>
-            ) : null}
-            {m.fillBp === null ? (
-              // Utan fackdata från Awish: en lugn rad i stället för tomma staplar.
-              <p className="line mute">Fyllnad okänd – Awish har inte skickat facken än.</p>
-            ) : (
-              <>
-                <div className="bigp">
-                  <span>
-                    {`${Math.round(m.fillBp / 100)}${NBSP}%`} <span className="s">fylld</span>
-                  </span>
-                  {m.capacity !== null && m.units !== null ? (
-                    <small>
-                      {formatInt(m.units)} av {formatInt(m.capacity)} pack
-                    </small>
-                  ) : null}
-                </div>
-                <span className="v2-track bigtrack block" aria-hidden="true">
-                  <i
-                    className={fillTone(m.fillBp)}
-                    style={{
-                      transform: `scaleX(${Math.max(0, Math.min(1, m.fillBp / 10_000))})`,
-                    }}
-                  />
-                </span>
-              </>
-            )}
-            <p className={cn("line", needsFill(m) && "warn")}>
-              {m.status === "offline" ? (
-                "Säljer inget tills den är online igen."
-              ) : m.units === 0 ? (
-                "Tom. Säljer inget tills den fylls på."
-              ) : m.daysLeft !== null ? (
-                <>
-                  Tom om ca{" "}
-                  <b>
-                    {formatInt(m.daysLeft)} {m.daysLeft === 1 ? "dag" : "dagar"}
-                  </b>
-                  {empty > 0 ? ` · ${formatInt(empty)} fack slut` : ""}
-                </>
-              ) : (
-                "Säljer inte just nu."
-              )}
-            </p>
+            </div>
             <dl className="sf">
               {e ? (
                 <>

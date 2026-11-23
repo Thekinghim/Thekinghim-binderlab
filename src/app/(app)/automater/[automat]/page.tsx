@@ -8,9 +8,7 @@ import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { requestStoreShareView } from "@/server/data/core";
 import { StatusTag } from "@/components/ui/status-tag";
 import { ButtonLink } from "@/components/v2/button";
-import { Card, CardBody } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
-import { KeyValues } from "@/components/v2/key-values";
 import { Notice } from "@/components/v2/notice";
 import { V2Page } from "@/components/v2/shell/page";
 import { SubNav } from "@/components/v2/sub-nav";
@@ -34,7 +32,6 @@ import { loadTeamStateFor } from "@/server/data/team";
 
 import { PersonPicker } from "../../_team/person-picker";
 import { MachineActions } from "../_components/machine-dialogs";
-import { ReadyList } from "../_components/ready-list";
 import { RefillSourcePicker } from "../_components/refill-source";
 import { UnpricedNote } from "../_components/unpriced-note";
 import { pickTab, ViewTabs } from "../_components/view-tabs";
@@ -47,6 +44,8 @@ import {
 import { dayText, hourRange, sentence, unitEconomicsKpis } from "../_lib/model";
 import { refillByText, stockAsideText } from "../_lib/refill-text";
 import { currentViewer } from "../_lib/session";
+import { loadMachineScreens, type MachineScreen } from "../_lib/v2-data";
+import { MachineHero, type HeroRefill } from "./hero";
 import { withUserDbFor } from "@/server/access";
 import { queryRefillSources } from "@/server/data/core/places";
 import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
@@ -76,6 +75,28 @@ const WEEKDAYS_LONG = [
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const slug = decodeURIComponent((await params).automat);
   return { title: isMachineId(slug) ? "Automat" : slug.toUpperCase() };
+}
+
+/** Titlarna att fylla på vid nästa besök: "nu" före "snart", minst kvar först. */
+function refillTitles(
+  stock: MachineDetailData["stock"],
+  screen: MachineScreen | null,
+): HeroRefill[] {
+  const cap = new Map(screen?.slots.map((s) => [s.titleId, s.capacity]) ?? []);
+  return stock
+    .filter((l) => l.level !== null)
+    .sort(
+      (a, b) =>
+        (a.level === "now" ? 0 : 1) - (b.level === "now" ? 0 : 1) ||
+        a.onHand - b.onHand ||
+        a.name.localeCompare(b.name, "sv"),
+    )
+    .map((l) => ({
+      titleId: l.titleId,
+      name: l.name,
+      onHand: Math.max(0, l.onHand),
+      capacity: cap.get(l.titleId) ?? null,
+    }));
 }
 
 function capitalFirst(text: string): string {
@@ -133,12 +154,16 @@ export default async function MachinePage({
   const listHref = `/automater${data.query}`;
   const tab = pickTab(TABS, sp.vy);
   const sessionUser = { userId: ctx.user.id, email: ctx.user.email };
-  const [team, readiness] = await Promise.all([
+  const [team, readiness, screens] = await Promise.all([
     loadTeamStateFor(sessionUser, ctx.organization.id),
     // Startklar: vad som är kvar innan automaten är helt inlagd (tom lista när allt är klart).
     loadMachineReadinessSafe(sessionUser, ctx.organization.id),
+    // Bilden: bara den här automatens fack.
+    loadMachineScreens(ctx.organization.id, machine.id),
   ]);
   const responsible = team.responsibles.get(machine.id) ?? null;
+  const screen = screens.get(machine.id) ?? null;
+  const refill = refillTitles(data.stock, screen);
   const ready = readiness.find((r) => r.machineId === machine.id && !r.complete) ?? null;
   // Länken "Välj butik" i Startklar (?gor=placera) öppnar rutan direkt.
   const openPlace = first(sp.gor) === "placera" && store === null;
@@ -190,76 +215,79 @@ export default async function MachinePage({
           ) : null}
         </nav>
 
-        {ready ? <ReadyList ready={ready} canEdit={ctx.canEdit} /> : null}
-
-        <div className="v2-cols">
-          <div className="v2-stack">
-            {period.pendingToday ? (
-              <Card>
-                <Empty title={`Inga order från ${machine.code} i dag än.`} />
-              </Card>
-            ) : (
-              <>
-                <MachineKpis
-                  items={data.kpis}
-                  label={`Nyckeltal · ${days}`}
-                  comparison={comparison}
-                />
-                <div className="ops-bar">
-                  {data.unpriced ? (
-                    <UnpricedNote unpriced={data.unpriced} canEdit={ctx.canEdit} />
-                  ) : (
-                    <span />
-                  )}
-                  {/* Vår vinst före butikernas andel; med knappen efter butikens andel. */}
-                  <Suspense fallback={null}>
-                    <StoreShareToggle on={shareToggle} />
-                  </Suspense>
+        <MachineHero
+          code={machine.code}
+          name={machine.name}
+          city={screen?.city ?? null}
+          storeName={store?.name ?? null}
+          screen={screen}
+          kpis={data.kpis}
+          pendingToday={period.pendingToday}
+          days={days}
+          refill={refill}
+          ready={ready}
+          canEdit={ctx.canEdit}
+          now={ctx.now}
+          timeZone={ctx.timeZone}
+          facts={
+            <dl className="flex flex-wrap items-center gap-x-8 gap-y-2 text-v2-sm">
+              <div className="flex items-center gap-2">
+                <dt className="text-v2-mute">Ansvarig</dt>
+                <dd>
+                  <PersonPicker
+                    target={{ kind: "machine", machineId: machine.id }}
+                    value={responsible ?? ""}
+                    options={personOptions(ctx.user.id, team.team, responsible)}
+                    label="Ansvarig"
+                    hideLabel
+                    editable={ctx.canEdit}
+                  />
+                </dd>
+              </div>
+              <div className="flex items-center gap-2">
+                <dt className="text-v2-mute">{machine.activeTo ? "Sista dag" : "Driftstart"}</dt>
+                <dd>
+                  {machine.activeTo
+                    ? dayText(machine.activeTo, ctx.today)
+                    : data.startedOn
+                      ? dayText(data.startedOn, ctx.today)
+                      : MISSING}
+                </dd>
+              </div>
+              {status.status !== "ok" ? (
+                <div className="flex items-center gap-2">
+                  <dt className="sr-only">Status</dt>
+                  <dd>
+                    <StatusTag status={status.status}>{status.label}</StatusTag>
+                  </dd>
                 </div>
-              </>
-            )}
+              ) : null}
+            </dl>
+          }
+        />
+
+        {/* Resten av nyckeltalen (marginal, order, snittorder, butikernas andel): intäkt och
+            vinst står i överdelen. */}
+        {period.pendingToday ? null : (
+          <div className="v2-stack">
+            <MachineKpis
+              items={data.kpis.filter((k) => k.id !== "revenue" && k.id !== "profit")}
+              label={`Fler nyckeltal · ${days}`}
+              comparison={comparison}
+            />
+            <div className="ops-bar">
+              {data.unpriced ? (
+                <UnpricedNote unpriced={data.unpriced} canEdit={ctx.canEdit} />
+              ) : (
+                <span />
+              )}
+              {/* Vår vinst före butikernas andel; med knappen efter butikens andel. */}
+              <Suspense fallback={null}>
+                <StoreShareToggle on={shareToggle} />
+              </Suspense>
+            </div>
           </div>
-          <Card title="Automaten">
-            <CardBody>
-              <KeyValues
-                items={[
-                  {
-                    label: "Status",
-                    value:
-                      status.status === "ok" ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span className="v2-dot bg-v2-profit" aria-hidden />
-                          {status.label}
-                        </span>
-                      ) : (
-                        <StatusTag status={status.status}>{status.label}</StatusTag>
-                      ),
-                  },
-                  { label: "Butik", value: store?.name ?? MISSING },
-                  {
-                    label: "Ansvarig",
-                    value: (
-                      <PersonPicker
-                        target={{ kind: "machine", machineId: machine.id }}
-                        value={responsible ?? ""}
-                        options={personOptions(ctx.user.id, team.team, responsible)}
-                        label="Ansvarig"
-                        hideLabel
-                        editable={ctx.canEdit}
-                      />
-                    ),
-                  },
-                  machine.activeTo
-                    ? { label: "Sista dag", value: dayText(machine.activeTo, ctx.today) }
-                    : {
-                        label: "Driftstart",
-                        value: data.startedOn ? dayText(data.startedOn, ctx.today) : MISSING,
-                      },
-                ]}
-              />
-            </CardBody>
-          </Card>
-        </div>
+        )}
 
         <ViewTabs
           tabs={TABS}
