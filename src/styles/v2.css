@@ -2800,8 +2800,11 @@
     .v2-pod-i.p3 {
       --x: -14px;
     }
-    .v2-pod-n {
+    /* Telefon: smala pack, så antalet förskjuts inte (det skulle sticka ut ur raden). */
+    .v2-pod-n,
+    .v2-pod-t {
       margin-top: 8px;
+      transform: none;
     }
   }
 

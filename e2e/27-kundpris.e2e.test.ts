@@ -12,14 +12,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  expectNoPageErrors,
-  launchBrowser,
-  openPage,
-  screenshot,
   type Browser,
   type BrowserContext,
+  expectNoPageErrors,
+  launchBrowser,
   type Locator,
+  openPage,
   type Page,
+  screenshot,
+  showAsTable,
 } from "./support/browser";
 import { e2e, login } from "./support/session";
 
@@ -72,6 +73,7 @@ async function openTitle(p: Page = page): Promise<Locator> {
   // i adressen: annars öppnas sidan med det sparade periodvalet (kakan), och figures() har
   // just visat seedens fasta period.
   await p.goto("/inkopspriser?period=30d");
+  await showAsTable(p);
   await p.getByRole("link", { name: TITLE, exact: true }).first().click();
   const form = p.getByRole("form", { name: `Nytt inköpspris för ${TITLE}` });
   await form.waitFor();
@@ -207,6 +209,7 @@ describe("pris mot kund", () => {
     try {
       await login(reader.page, e2e().users.partner);
       await reader.page.goto("/inkopspriser");
+      await showAsTable(reader.page);
       await reader.page.getByRole("link", { name: TITLE, exact: true }).first().click();
       const head = reader.page.locator(`dl[aria-label="Priser för ${TITLE}"]`);
       await head.waitFor();
@@ -226,6 +229,7 @@ describe("pris mot kund", () => {
     try {
       await login(mobile.page, e2e().users.owner);
       await mobile.page.goto("/inkopspriser");
+      await showAsTable(mobile.page);
       await mobile.page.getByRole("link", { name: TITLE, exact: true }).first().click();
       const head = mobile.page.locator(`dl[aria-label="Priser för ${TITLE}"]`);
       await head.waitFor();

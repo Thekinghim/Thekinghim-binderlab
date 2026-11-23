@@ -762,6 +762,8 @@ describe("Lönsamhet på iPhone SE", () => {
     const { page } = await newPage("sv-SE");
     await login(page, e2e().users.owner);
     await page.goto(`/lonsamhet?${SEED_PERIOD}`);
+    // Listan visar staplar från början: hela tabellen bakom "Visa alla kolumner".
+    await page.getByRole("button", { name: "Visa alla kolumner" }).first().click();
     const table = page
       .getByRole("table")
       .filter({ has: page.getByRole("columnheader", { name: "Titel" }) });
