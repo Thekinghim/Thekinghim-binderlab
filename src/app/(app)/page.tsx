@@ -17,7 +17,6 @@ import {
   requireRoute,
 } from "@/server/data/core";
 import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
-import { loadKpiBand } from "@/server/data/v2/analytics/kpi-band";
 import { loadLiveOrders } from "@/server/data/v2/analytics/live";
 import { loadFleetState } from "@/server/data/v2/fleet";
 import { loadDayRoute } from "@/server/data/v2/route";
@@ -25,7 +24,6 @@ import { loadDayRoute } from "@/server/data/v2/route";
 import { SalesScreen } from "./forsaljning/_components/sales-screen";
 import {
   GeoCardView,
-  GoalCardView,
   LossCardView,
   OpsCardView,
   ResultCard,
@@ -35,7 +33,8 @@ import {
   WhenCardView,
   WorstCardView,
 } from "./_hem/v2/analytics";
-import { ActionsCard, HemKpiBand, LiveCard, RouteCard, TodayLine, TodoCard } from "./_hem/v2/today";
+import { HemHero } from "./_hem/v2/hero-card";
+import { ActionsCard, LiveCard, RouteCard, TodayLine, TodoCard } from "./_hem/v2/today";
 import { loadHemToday } from "./_hem/v2/today-data";
 
 import "./_hem/v2/hem.css";
@@ -94,9 +93,13 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         </Suspense>
       }
     >
+      {/* Hjältekortet (visuellt/02): vinst, pallen och månadens mål, nyckeltalen kompakt under
+          (ersätter KPI-bandet; _hem/v2/hero-card.tsx). Bara ekonomiroller. */}
       {economy ? (
-        <Suspense fallback={<div className="v2-card h-[106px]" aria-busy="true" />}>
-          <Band sp={sp} />
+        <Suspense
+          fallback={<div className="v2-card h-[380px] max-md:h-[640px]" aria-busy="true" />}
+        >
+          <HemHero sp={sp} />
         </Suspense>
       ) : null}
 
@@ -174,9 +177,6 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
               <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
                 <ShopsCardView sp={sp} />
               </Suspense>
-              <Suspense fallback={<SkeletonCard rows={4} className="x-c" />}>
-                <GoalCardView />
-              </Suspense>
             </>
           ) : null}
           <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
@@ -207,11 +207,6 @@ async function Sold({ sp, economy }: { sp: SearchParams; economy: boolean }) {
 
 async function TodaySub() {
   return <TodayLine today={await loadHemToday()} />;
-}
-
-async function Band({ sp }: { sp: SearchParams }) {
-  const tiles = await loadKpiBand(sp);
-  return tiles && tiles.length > 0 ? <HemKpiBand tiles={tiles} /> : null;
 }
 
 async function Actions({ canRoute, nowIso }: { canRoute: boolean; nowIso: string }) {

@@ -133,6 +133,8 @@ export interface HemToday {
   readonly actions: HemActionsResult;
   readonly route: HemRouteCard;
   readonly todos: { readonly rows: HemTodo[]; readonly total: number };
+  /** Automater som är uppsatta (inte startklara), för "9 av 10 automater i drift". */
+  readonly installed: number;
 }
 
 /** En gång per förfrågan (dagens rad, korten och menyns räknare läser samma). */
@@ -181,7 +183,8 @@ export const loadHemToday = cache(async (): Promise<HemToday> => {
     empty: emptyRouteText(route),
     overflow: route.overflow.length,
   };
-  return { economy, actions, route: routeCard, todos };
+  const installed = fleet.machines.filter((m) => m.status !== "startklar").length;
+  return { economy, actions, route: routeCard, todos, installed };
 });
 
 /**

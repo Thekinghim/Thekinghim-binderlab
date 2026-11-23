@@ -17,7 +17,6 @@ import { loadWhen } from "@/server/data/v2/analytics/when";
 
 import {
   loadGeoCard,
-  loadGoalCard,
   loadResultCard,
   loadShopsCard,
   loadStockCard,
@@ -580,73 +579,6 @@ export async function ShopsCardView({ sp }: { sp: SearchParamsInput }) {
             </span>
           </div>
         </>
-      ) : null}
-    </XCard>
-  );
-}
-
-/* 9. Mål ----------------------------------------------------------- */
-
-const MONTHS = [
-  "januari",
-  "februari",
-  "mars",
-  "april",
-  "maj",
-  "juni",
-  "juli",
-  "augusti",
-  "september",
-  "oktober",
-  "november",
-  "december",
-];
-
-export async function GoalCardView() {
-  const g = await loadGoalCard();
-  if (!g) return null;
-  const month = MONTHS[Number(g.today.slice(5, 7)) - 1] ?? "";
-  const goal = g.goals.find((x) => x.scopeName === null) ?? g.goals[0];
-  if (!goal) {
-    return (
-      <XCard title={`Mål i ${month}`} className="x-goal">
-        <p className="x-sum">Inget mål för månaden.</p>
-        <ButtonLink size="sm" href="/expansion?vy=mal" className="mt-3 self-start">
-          Sätt ett mål
-        </ButtonLink>
-      </XCard>
-    );
-  }
-  const fmt = (v: number) => (goal.unit === "ore" ? kr(v) : formatInt(v));
-  return (
-    <XCard
-      title={`Mål i ${month} · ${goal.label.toLowerCase()}`}
-      className="x-goal"
-      link={{ href: "/expansion?vy=mal", label: "Mål" }}
-    >
-      <div className="x-gn">
-        <b>{fmt(goal.actual)}</b>
-        <span>av {fmt(goal.target)}</span>
-      </div>
-      <div className="x-gb" aria-hidden="true">
-        {goal.forecastBp !== null ? (
-          <i className="fc" style={{ width: `${goal.forecastBp / 100}%` }} />
-        ) : null}
-        <i className="hv" style={{ width: `${goal.barBp / 100}%` }} />
-        <em style={{ left: "100%" }} />
-      </div>
-      <div className="x-legr sp">
-        <span>
-          <b>{pct(goal.barBp)}</b> nått
-        </span>
-        <span>
-          Prognos <b>{fmt(goal.forecast)}</b>
-        </span>
-      </div>
-      {goal.requiredPerDay !== null ? (
-        <p className="x-sum">
-          Det behövs <b>{fmt(goal.requiredPerDay)}</b> per dag resten av månaden.
-        </p>
       ) : null}
     </XCard>
   );

@@ -158,6 +158,25 @@
   padding: 12px 18px;
   border-bottom: 1px solid var(--v2-line2);
 }
+.hem2 .arow.wide {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.hem2 .arow .anh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.hem2 .arow .anh b {
+  min-width: 0;
+}
+.hem2 .arow .an small b {
+  color: var(--v2-warn-text);
+  font-weight: 650;
+}
+.hem2 .arow .anh .v2-badge {
+  flex: none;
+}
 .hem2 .arow.off {
   background: var(--v2-crit-soft);
   box-shadow: inset 3px 0 0 var(--v2-crit);
@@ -165,7 +184,8 @@
 .hem2 .arow .an {
   min-width: 0;
 }
-.hem2 .arow .an b {
+.hem2 .arow .an > b,
+.hem2 .arow .anh > b {
   display: block;
   font-weight: 650;
   font-size: 14px;
@@ -1800,9 +1820,13 @@
     overflow-wrap: anywhere;
   }
 }
-.hem2 .today a.o.c,
 .hem2 .today a.o.i {
   color: var(--v2-mute);
+}
+/* Offline i rött (mockens rad: "1 offline · 9 av 10 automater i drift"). */
+.hem2 .today a.o.c b {
+  color: var(--v2-crit-text);
+  font-weight: 600;
 }
 .hem2 .todo .d {
   display: -webkit-box;
@@ -1837,5 +1861,536 @@
 @media (max-width: 1240px) {
   .hem2 .work .x-res {
     order: 8;
+  }
+}
+
+/* ==========================================================================
+   Hjältekortet (mockarna i "visuellt/02", hero-card.tsx): vinst + sparklinje, pallen
+   med periodens tre mest sålda pack och månadens mål som ring; resten av nyckeltalen
+   kompakt under. Telefon (≤ 900 px): målet blir ett eget kort och nyckeltalen visar fyra
+   åt gången. Rörelse: trappad fade-up bara vid första visningen (.hh utan .calm), bara
+   transform/opacity; med prefers-reduced-motion en ren toning.
+   ========================================================================== */
+.hem2 .hh {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hem2 .hh-card {
+  display: grid;
+  grid-template-columns: 1.05fr 1.25fr 1fr;
+}
+.hem2 .hh-sec {
+  position: relative;
+  min-width: 0;
+  padding: 18px 20px;
+  animation: v2-rise 420ms var(--v2-ease) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+.hem2 .hh-sec + .hh-sec {
+  border-left: 1px solid var(--v2-line2);
+}
+.hem2 .hh.calm .hh-sec,
+.hem2 .hh.calm .v2-pod-i,
+.hem2 .hh.calm .v2-ring-res {
+  animation: none;
+}
+.hem2 .hh-hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.hem2 .hh-hd .lk,
+.hem2 .hh-card .lk {
+  font-size: var(--v2-t-sm);
+  color: var(--v2-mute);
+  white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hem2 .hh-card .lk:hover {
+    color: var(--v2-ink);
+  }
+}
+
+/* Vinsten */
+.hem2 .hh-profit {
+  display: flex;
+  flex-direction: column;
+}
+.hem2 .hh-big {
+  align-self: flex-start;
+  margin: 6px 0 8px;
+  font-size: 44px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hem2 .hh-big small {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.hem2 .hh-dl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-sm);
+  font-variant-numeric: tabular-nums;
+}
+.hem2 .hh-spark {
+  display: block;
+  width: 100%;
+  height: 96px;
+  margin-top: 16px;
+  overflow: visible;
+}
+.hem2 .hh-spark path {
+  vector-effect: non-scaling-stroke;
+}
+.hem2 .hh-spark .ln {
+  fill: none;
+  stroke: var(--v2-profit);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.hem2 .hh-spark .pv {
+  fill: none;
+  stroke: var(--v2-line3);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+.hem2 .hh-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: var(--v2-faint);
+  font-size: 11px;
+}
+.hem2 .hh-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 10px;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-xs);
+}
+.hem2 .hh-legend i {
+  display: inline-block;
+  width: 12px;
+  margin-right: 5px;
+  border-top: 2px solid var(--v2-profit);
+  vertical-align: middle;
+}
+.hem2 .hh-legend i.p {
+  border-top: 2px dashed var(--v2-line3);
+}
+
+/* Pallen */
+.hem2 .hh-pod {
+  display: flex;
+  flex-direction: column;
+}
+.hem2 .hh-podium {
+  margin-top: auto;
+}
+.hem2 .hh-empty {
+  margin: auto 0;
+  padding: 40px 0;
+  color: var(--v2-mute);
+  text-align: center;
+}
+
+/* Målet */
+.hem2 .hh-goal {
+  display: flex;
+  flex-direction: column;
+}
+.hem2 .hh-ringwrap {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 12px;
+}
+.hem2 .hh-gl {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--v2-t-sm);
+}
+.hem2 .hh-gl li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: start;
+}
+.hem2 .hh-gl strong {
+  display: block;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hem2 .hh-gl em {
+  display: block;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-xs);
+  font-style: normal;
+}
+.hem2 .hh-behind {
+  display: inline-flex;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--v2-warn-soft);
+  color: var(--v2-warn-text);
+  font-size: var(--v2-t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hem2 .hh-gk-ok {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  border-radius: 7px;
+  background: var(--v2-profit);
+}
+.hem2 .hh-gk-ok svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: var(--v2-on-primary);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hem2 .hh-need {
+  margin: auto 0 0;
+  padding-top: 14px;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-sm);
+}
+.hem2 .hh-need b {
+  color: var(--v2-ink);
+  font-weight: 600;
+}
+.hem2 .hh-nogoal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin: auto 0;
+  color: var(--v2-mute);
+}
+.hem2 .hh-goalcard {
+  display: none;
+}
+
+/* Kompakta nyckeltal */
+.hem2 .hh-kpis {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.hem2 .hh-k {
+  display: block;
+  min-width: 0;
+  padding: 11px 14px;
+  transition: background-color 150ms ease;
+}
+.hem2 .hh-k + .hh-k {
+  border-left: 1px solid var(--v2-line2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .hem2 .hh-k:hover {
+    background: var(--v2-hover);
+  }
+}
+.hem2 .hh-k .l {
+  display: block;
+  overflow: hidden;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hem2 .hh-k .v {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: var(--v2-t-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hem2 .hh-k .d {
+  margin-left: 4px;
+  font-size: var(--v2-t-xs);
+  font-weight: 600;
+}
+.hem2 .hh-k .d.up {
+  color: var(--v2-profit);
+}
+.hem2 .hh-k .d.dn {
+  color: var(--v2-crit);
+}
+.hem2 .hh-k .d.eq {
+  color: var(--v2-faint);
+  font-weight: 500;
+}
+.hem2 .hh-more {
+  display: none;
+}
+
+/* Målet nått! (engångs) */
+.hh-cele {
+  width: min(340px, calc(100vw - 56px));
+  max-width: none;
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: var(--v2-panel);
+  box-shadow:
+    0 0 0 1px var(--v2-line),
+    0 24px 60px rgb(0 0 0 / 0.14);
+  color: var(--v2-ink);
+  overflow: visible;
+}
+.hh-cele:focus {
+  outline: none;
+}
+.hh-cele[open] {
+  animation: hh-pop 360ms var(--v2-ease) both;
+}
+.hh-cele::backdrop {
+  background: rgb(241 241 241 / 0.72);
+  backdrop-filter: blur(6px);
+}
+.hh-cbox {
+  position: relative;
+  padding: 28px 28px 22px;
+  text-align: center;
+}
+.hh-check {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: -18px auto 0;
+  border-radius: 22px;
+  background: var(--v2-profit);
+  /* Vit ring mot solfjädern. */
+  box-shadow: 0 0 0 4px #fff;
+}
+.hh-check svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--v2-on-primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hh-cbox h2 {
+  margin-top: 10px;
+  font-size: 24px;
+  font-weight: 650;
+}
+.hh-cbox p {
+  margin: 6px 0 18px;
+  color: var(--v2-mute);
+  line-height: 1.45;
+  text-wrap: balance;
+}
+@keyframes hh-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+}
+@keyframes hh-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hem2 .hh-sec {
+    animation-name: hh-fade;
+  }
+  .hh-cele[open] {
+    animation-name: hh-fade;
+  }
+}
+
+/* Mellanbredd: vinst och pall bredvid varandra, målet över hela bredden under. */
+@media (max-width: 1240px) and (min-width: 901px) {
+  .hem2 .hh-card {
+    grid-template-columns: 1fr 1fr;
+  }
+  .hem2 .hh-goal {
+    grid-column: 1 / -1;
+    border-left: 0 !important;
+    border-top: 1px solid var(--v2-line2);
+  }
+  .hem2 .hh-goal .hh-ringwrap {
+    gap: 28px;
+  }
+  .hem2 .hh-goal .hh-gl {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 14px 28px;
+  }
+  .hem2 .hh-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .hem2 .hh-k:nth-child(4n + 1) {
+    border-left: 0;
+  }
+  .hem2 .hh-k:nth-child(n + 5) {
+    border-top: 1px solid var(--v2-line2);
+  }
+  /* Sista raden fylls ut: inget hål när antalet inte går jämnt upp i fyra. */
+  .hem2 .hh-k:last-of-type:nth-of-type(4n + 1) {
+    grid-column: span 4;
+  }
+  .hem2 .hh-k:last-of-type:nth-of-type(4n + 2) {
+    grid-column: span 3;
+  }
+  .hem2 .hh-k:last-of-type:nth-of-type(4n + 3) {
+    grid-column: span 2;
+  }
+}
+
+/* Telefon */
+@media (max-width: 900px) {
+  .hem2 .hh-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hem2 .hh-sec {
+    padding: 14px 16px;
+  }
+  .hem2 .hh-sec + .hh-sec {
+    border-left: 0;
+    border-top: 1px solid var(--v2-line2);
+  }
+  .hem2 .hh-profit {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 14px;
+    align-items: end;
+  }
+  .hem2 .hh-profit .lab {
+    grid-column: 1 / -1;
+  }
+  .hem2 .hh-big {
+    grid-column: 1;
+    margin: 4px 0 6px;
+    font-size: 34px;
+  }
+  .hem2 .hh-big small {
+    font-size: 18px;
+  }
+  .hem2 .hh-dl {
+    grid-column: 1;
+    gap: 6px;
+    font-size: var(--v2-t-xs);
+  }
+  .hem2 .hh-dl .vs {
+    display: none;
+  }
+  .hem2 .hh-spark {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    height: 58px;
+    margin: 0;
+  }
+  .hem2 .hh-axis,
+  .hem2 .hh-legend {
+    display: none;
+  }
+  .hem2 .hh-podium {
+    margin-top: 10px;
+  }
+  .hem2 .hh-goal {
+    display: none;
+  }
+  .hem2 .hh-goalcard {
+    display: block;
+    animation: v2-rise 420ms var(--v2-ease) both;
+    animation-delay: 120ms;
+  }
+  .hem2 .hh.calm .hh-goalcard {
+    animation: none;
+  }
+  .hem2 .hh-goalcard-b {
+    padding: 14px 16px;
+  }
+  .hem2 .hh-goalcard .v2-card-hd h2 small {
+    color: var(--v2-mute);
+    font-size: var(--v2-t-md);
+    font-weight: 400;
+  }
+  .hem2 .hh-goalcard .hh-ringwrap {
+    gap: 16px;
+    margin-top: 0;
+  }
+  .hem2 .hh-goalcard .hh-need {
+    padding-top: 10px;
+  }
+  .hem2 .hh-kpis {
+    grid-template-columns: 1fr 1fr;
+  }
+  .hem2 .hh-k + .hh-k {
+    border-left: 0;
+  }
+  .hem2 .hh-k:nth-child(2n) {
+    border-left: 1px solid var(--v2-line2);
+  }
+  .hem2 .hh-k:nth-child(n + 3) {
+    border-top: 1px solid var(--v2-line2);
+  }
+  .hem2 .hh-kpis:not(.open) .hh-k:nth-child(n + 5) {
+    display: none;
+  }
+  .hem2 .hh-k {
+    padding: 11px 14px;
+  }
+  .hem2 .hh-more {
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    border-top: 1px solid var(--v2-line2);
+    color: var(--v2-ink);
+    font-size: var(--v2-t-sm);
+    font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 160ms var(--v2-ease);
+  }
+  .hem2 .hh-more:active {
+    transform: scale(0.97);
+  }
+  .hem2 .hh-kpis.open .hh-more svg {
+    transform: rotate(180deg);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hem2 .hh-goalcard {
+      animation-name: hh-fade;
+    }
   }
 }
