@@ -21,6 +21,7 @@ export function Sheet({
   children,
   footer,
   dismissible = true,
+  hideHead = false,
 }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -33,6 +34,8 @@ export function Sheet({
   footer?: ReactNode;
   /** false: arket kan bara stängas med knapparna (pågående sparning). */
   dismissible?: boolean;
+  /** Rubriken bara för skärmläsare: innehållet börjar med samma namn (t.ex. butikens kort). */
+  hideHead?: boolean;
 }) {
   const phone = usePhone();
   return (
@@ -52,7 +55,7 @@ export function Sheet({
           {...(description ? {} : { "aria-describedby": undefined })}
         >
           {phone ? <span className="grab" aria-hidden="true" /> : null}
-          <div className="sh">
+          <div className={hideHead ? "sr-only" : "sh"}>
             <Drawer.Title asChild>
               <h2>{title}</h2>
             </Drawer.Title>
