@@ -3,6 +3,9 @@
  * medianen för automaterna som ett streck. Bara presentation: beloppen kommer färdiga från
  * jämförelsen (compareUnitEconomics) och räknas inte om.
  */
+
+import { DEFAULT_MACHINE_LOOK, type MachineLook } from "@/lib/machine-look";
+
 export interface PerDayInput {
   readonly machineId: string;
   readonly name: string;
@@ -14,6 +17,8 @@ export interface PerDayInput {
 export interface PerDayRow {
   readonly machineId: string;
   readonly name: string;
+  /** Utseende (machines.appearance): automatens bild. */
+  readonly look: MachineLook;
   readonly code: string | null;
   readonly storeName: string | null;
   readonly profitPerDayOre: number;
@@ -48,6 +53,7 @@ export function perDayList(
   rows: readonly PerDayInput[],
   codes: Readonly<Record<string, string | undefined>>,
   storeNames: Readonly<Record<string, string | undefined>>,
+  looks: Readonly<Record<string, MachineLook | undefined>> = {},
 ): PerDayList {
   const placed = rows.filter((r) => r.profitPerDayOre !== null);
   const values = placed.map((r) => r.profitPerDayOre!);
@@ -61,6 +67,7 @@ export function perDayList(
       return {
         machineId: r.machineId,
         name: r.name,
+        look: looks[r.machineId] ?? DEFAULT_MACHINE_LOOK,
         code: codes[r.machineId] ?? null,
         storeName: storeNames[r.machineId] ?? null,
         profitPerDayOre: v,

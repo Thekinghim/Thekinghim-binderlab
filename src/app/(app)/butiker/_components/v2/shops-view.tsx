@@ -19,6 +19,7 @@ import { usePhone } from "@/components/v2/use-media";
 import { storeFace } from "@/components/v2/visual-math";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
+import type { MachineLook } from "@/lib/machine-look";
 import type { FleetStatus, FleetStatusTone } from "@/analytics/fleet-status";
 
 import {
@@ -63,6 +64,7 @@ export interface ShopView {
     readonly id: string;
     readonly code: string;
     readonly name: string;
+    readonly appearance: MachineLook;
     readonly status: FleetStatus;
     readonly statusLabel: string;
     readonly tone: FleetStatusTone;
@@ -577,7 +579,7 @@ function ShopDetail({
           <span className="mach">
             {shownMachines.map((m) => (
               <span key={m.id} className="m">
-                <MachineThumb machineId={m.id} size="md" />
+                <MachineThumb machineId={m.id} look={m.appearance} size="md" />
                 <span className="lb">{m.name}</span>
               </span>
             ))}

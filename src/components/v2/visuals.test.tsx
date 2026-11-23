@@ -117,9 +117,33 @@ describe("PackStack, PackPodium, PackFan", () => {
 });
 
 describe("MachineThumb", () => {
-  it("är en dold platshållare i vald storlek", () => {
+  it("är den riktiga automaten, dold för skärmläsare, i vald storlek", () => {
     const html = renderToStaticMarkup(<MachineThumb machineId="m1" size="xs" />);
     expect(html).toContain('class="v2-mthumb xs"');
     expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain('class="v2-mglyph"');
+    expect(html).not.toContain("<title>");
+    expect(html).not.toContain('role="img"');
+  });
+
+  it("är svart med stjärnor utan utseende och gul med look=gul", () => {
+    expect(renderToStaticMarkup(<MachineThumb size="sm" />)).toContain('data-look="stjarnor"');
+    expect(renderToStaticMarkup(<MachineThumb size="sm" look={null} />)).toContain(
+      'data-look="stjarnor"',
+    );
+    const gul = renderToStaticMarkup(<MachineThumb size="sm" look="gul" />);
+    expect(gul).toContain('data-look="gul"');
+    expect(gul).not.toContain('data-look="stjarnor"');
+  });
+
+  it("väljer bildens detaljnivå efter storleken (inga packbilder i små)", () => {
+    const sizes = { xs: "xs", sm: "s", md: "s", lg: "m" } as const;
+    for (const [thumb, glyph] of Object.entries(sizes)) {
+      const html = renderToStaticMarkup(
+        <MachineThumb size={thumb as keyof typeof sizes} look="gul" />,
+      );
+      expect(html).toContain(`data-size="${glyph}"`);
+      expect(html).not.toContain("<image");
+    }
   });
 });

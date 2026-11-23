@@ -102,6 +102,7 @@ export default async function EnhetsekonomiPage({
     comparison.rows,
     codes,
     Object.fromEntries(Object.entries(data.machineStores).map(([m, s]) => [m, storeNames.get(s)])),
+    data.machineLooks,
   );
 
   return (

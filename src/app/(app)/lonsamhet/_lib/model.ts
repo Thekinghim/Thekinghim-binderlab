@@ -32,6 +32,7 @@ import {
   type ProfitabilityRow,
 } from "@/domain";
 import { formatDay, formatMonth, formatPeriodShort, formatWeekdayDay } from "@/lib/format";
+import { DEFAULT_MACHINE_LOOK, machineLookOf, type MachineLook } from "@/lib/machine-look";
 import {
   OUR_PART_LABEL,
   STORES_SHARE_LABEL,
@@ -79,6 +80,8 @@ export interface ProfitLine {
   readonly name: string;
   /** Automatens kod ("BL-001"), annars null. */
   readonly code: string | null;
+  /** Automatens utseende (machines.appearance) för automatens bild; bara automatrader. */
+  readonly look?: MachineLook;
   readonly orders: number;
   /** Intäkt för order med inköpspris (det som ingår i vinsten). */
   readonly revenueOre: number;
@@ -293,7 +296,7 @@ export function priceHref(titleId: string, carry?: string): string {
 
 interface Names {
   title(id: string): string;
-  machine(id: string): { name: string; code: string | null };
+  machine(id: string): { name: string; code: string | null; look: MachineLook };
   store(id: string): string;
 }
 
@@ -305,7 +308,9 @@ function namesFor(input: LonsamhetInput): Names {
     title: (id) => titles.get(id)?.name ?? "Okänd titel",
     machine: (id) => {
       const m = machines.get(id);
-      return m ? { name: m.name, code: m.code || null } : { name: "Okänd automat", code: null };
+      return m
+        ? { name: m.name, code: m.code || null, look: machineLookOf(m.appearance) }
+        : { name: "Okänd automat", code: null, look: DEFAULT_MACHINE_LOOK };
     },
     store: (id) => stores.get(id)?.name ?? "Okänd butik",
   };
@@ -320,10 +325,11 @@ function toLine(
   const kind = row.kind === "total" ? "item" : lineKind(row);
   let name = "Totalt";
   let code: string | null = null;
+  let look: MachineLook | undefined;
   if (view !== "total") {
     if (kind !== "item") name = SPECIAL_NAMES[kind];
     else if (view === "title") name = names.title(row.key);
-    else if (view === "machine") ({ name, code } = names.machine(row.key));
+    else if (view === "machine") ({ name, code, look } = names.machine(row.key));
     else name = names.store(row.key);
   }
   return {
@@ -331,6 +337,7 @@ function toLine(
     kind,
     name,
     code,
+    ...(look ? { look } : {}),
     orders: row.orders,
     revenueOre: row.revenueOre,
     costOre: row.costOre,

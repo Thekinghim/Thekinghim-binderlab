@@ -5,6 +5,7 @@
 
 import type { StoreContractState } from "@/analytics/contracts/signed";
 import type { CommissionBase, IsoDate } from "@/domain";
+import type { MachineLook } from "@/lib/machine-look";
 
 /** Ersättningsmodellen i ett avtal. split = vinstdelning (andel av vinsten efter kostnader), ev. med hyra. */
 export type CompensationModel = "split" | "commission" | "rent" | "both";
@@ -150,6 +151,8 @@ export interface StoreMachineRow {
   readonly machineId: string;
   readonly code: string;
   readonly name: string;
+  /** Utseende (machines.appearance, läses bara): automatens bild. */
+  readonly appearance: MachineLook;
   readonly from: IsoDate;
   readonly to: IsoDate | null;
   readonly current: boolean;

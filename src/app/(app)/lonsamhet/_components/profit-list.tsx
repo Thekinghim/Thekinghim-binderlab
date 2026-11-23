@@ -50,8 +50,8 @@ function Visual({ view, row }: { view: ViewKey; row: ProfitLine }) {
   if (view === "machine") {
     return (
       <span className="lp-vis">
-        <MachineThumb machineId={row.key} size="sm" className="lp-d" />
-        <MachineThumb machineId={row.key} size="md" className="lp-m" />
+        <MachineThumb machineId={row.key} look={row.look} size="sm" className="lp-d" />
+        <MachineThumb machineId={row.key} look={row.look} size="md" className="lp-m" />
       </span>
     );
   }

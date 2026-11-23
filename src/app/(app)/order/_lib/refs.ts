@@ -5,6 +5,7 @@
  */
 
 import { normalize } from "@/lib/fuzzy";
+import { machineLookOf } from "@/lib/machine-look";
 
 import type { OrderRefs, TitleOption } from "./types";
 
@@ -20,6 +21,8 @@ interface MachineIn {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  /** machines.appearance; saknas = svart med stjärnor. */
+  readonly appearance?: unknown;
 }
 interface StoreIn {
   readonly id: string;
@@ -43,7 +46,12 @@ export function buildRefs(input: {
       .map((t) => ({ id: t.id, name: t.name, archived: t.archived }))
       .sort(by((t) => t.name)),
     machines: input.machines
-      .map((m) => ({ id: m.id, code: m.code, name: m.name }))
+      .map((m) => ({
+        id: m.id,
+        code: m.code,
+        name: m.name,
+        appearance: machineLookOf(m.appearance),
+      }))
       .sort(by((m) => m.code)),
     stores: input.stores
       .map((s) => ({

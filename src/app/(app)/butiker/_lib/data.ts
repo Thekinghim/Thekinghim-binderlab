@@ -7,6 +7,7 @@
 import "server-only";
 
 import { storeShareTerms } from "@/lib/store-share";
+import { machineLookOf } from "@/lib/machine-look";
 import { cache } from "react";
 
 import {
@@ -454,6 +455,7 @@ export async function loadStoreDetail(
         machineId: pl.machineId,
         code,
         name: m?.name ?? "",
+        appearance: machineLookOf(m?.appearance),
         from: pl.from,
         to: pl.to,
         current: pl.from <= ctx.today && (pl.to === null || pl.to >= ctx.today),

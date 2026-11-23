@@ -4,6 +4,7 @@
  */
 
 import type { IsoDate, Period } from "@/domain";
+import type { MachineLook } from "@/lib/machine-look";
 
 /** En rad i listan. Namnen slås upp i OrderRefs (raden bär bara id). */
 export interface OrderRow {
@@ -34,6 +35,8 @@ export interface MachineOption {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  /** Utseende (machines.appearance, läses bara): automatens bild i listan. */
+  readonly appearance: MachineLook;
 }
 
 export interface StoreOption {

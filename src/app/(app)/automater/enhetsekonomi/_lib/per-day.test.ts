@@ -46,6 +46,14 @@ describe("perDayList", () => {
     expect(list.rows.every((r) => r.paybackFraction === null)).toBe(true);
   });
 
+  it("automatens utseende följer med; saknas = svart med stjärnor", () => {
+    const list = perDayList([row("a", 100), row("b", 200)], {}, {}, { b: "gul" });
+    expect(Object.fromEntries(list.rows.map((r) => [r.machineId, r.look]))).toEqual({
+      a: "stjarnor",
+      b: "gul",
+    });
+  });
+
   it("utan placerade automater: tom lista", () => {
     expect(perDayList([row("a", null)], {}, {})).toEqual({
       rows: [],

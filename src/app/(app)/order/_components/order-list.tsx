@@ -342,7 +342,12 @@ function OrderRowItem({
             {/* Dator: när. Telefon: automat och tid (kolumnerna finns inte där). */}
             <span className="ord-ts ord-dk tnum">{when}</span>
             <span className="ord-ts ord-ph tnum">
-              <MachineThumb machineId={r.machineId} size="xs" className="ord-mt-s" />
+              <MachineThumb
+                machineId={r.machineId}
+                look={machine?.appearance}
+                size="xs"
+                className="ord-mt-s"
+              />
               <span className="shrink-0">{machine ? machine.code : "Okopplad"}</span>
               <span aria-hidden="true" className="shrink-0">
                 ·
@@ -354,7 +359,7 @@ function OrderRowItem({
         <span className="ord-c ord-c-m ord-dk">
           {machine ? (
             <>
-              <MachineThumb machineId={machine.id} size="xs" />
+              <MachineThumb machineId={machine.id} look={machine.appearance} size="xs" />
               <span className="ord-tx">
                 <span className="ord-mc">{machine.code}</span>
                 <span className="ord-ts truncate">{machine.name}</span>

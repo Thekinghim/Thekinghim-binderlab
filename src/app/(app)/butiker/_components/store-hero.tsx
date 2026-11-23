@@ -6,6 +6,7 @@ import { PackImage } from "@/components/v2/pack-image";
 import { StoreFace } from "@/components/v2/store-face";
 import { storeFace } from "@/components/v2/visual-math";
 import { formatInt } from "@/lib/format";
+import type { MachineLook } from "@/lib/machine-look";
 
 import type { FaceProps } from "../_lib/visual-data";
 import type { StoreSales } from "../_lib/visual-model";
@@ -28,7 +29,11 @@ export function StoreHero({
   name: string;
   face: FaceProps;
   sales: StoreSales | null;
-  machines: readonly { readonly id: string; readonly name: string }[];
+  machines: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly look: MachineLook;
+  }[];
   /** "30 d". */
   days: string;
 }) {
@@ -53,7 +58,7 @@ export function StoreHero({
             <span className="mach">
               {shown.map((m) => (
                 <span key={m.id} className="m">
-                  <MachineThumb machineId={m.id} size="md" />
+                  <MachineThumb machineId={m.id} look={m.look} size="md" />
                   <span className="lb">{m.name}</span>
                 </span>
               ))}

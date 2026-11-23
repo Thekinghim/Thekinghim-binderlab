@@ -36,6 +36,7 @@ import { loadPaymentListFor, type PaymentListItem } from "@/server/settlements/p
 import { loadSettlementPageFor, type SettlementRow } from "@/server/settlements/service";
 import { loadFleetState } from "@/server/data/v2/fleet";
 import type { FleetStatus, FleetStatusTone } from "@/analytics/fleet-status";
+import type { MachineLook } from "@/lib/machine-look";
 
 import { loadStoreList } from "@/app/(app)/butiker/_lib/data";
 import { MODEL_LABEL } from "@/app/(app)/butiker/_lib/model";
@@ -124,6 +125,8 @@ export interface ShopMachine {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  /** Utseende (machines.appearance, läses bara): automatens bild. */
+  readonly appearance: MachineLook;
   readonly status: FleetStatus;
   readonly statusLabel: string;
   readonly tone: FleetStatusTone;
@@ -339,6 +342,7 @@ export async function loadShops(sp: SearchParamsInput): Promise<ShopsData | null
       id: m.id,
       code: m.code,
       name: m.name,
+      appearance: m.appearance,
       status: m.status,
       statusLabel: m.statusLabel,
       tone: m.tone,

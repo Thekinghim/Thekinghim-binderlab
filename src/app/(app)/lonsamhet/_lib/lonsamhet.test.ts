@@ -396,6 +396,17 @@ describe("buildLonsamhetModel", () => {
       aside: "Automat 2: drygt hälften av vinsten.",
     });
     expect(m.viewTitles.machine.title).toBe("Automat 2 gav mest vinst.");
+    // Automatens bild: utseendet följer med automatraderna (saknas = svart med stjärnor).
+    const gul = buildLonsamhetModel(
+      {
+        ...two,
+        machines: two.machines.map((x) => (x.id === "m2" ? { ...x, appearance: "gul" } : x)),
+      },
+      { today: "2026-11-02" },
+    );
+    expect(gul.views.machine.find((r) => r.key === "m2")?.look).toBe("gul");
+    expect(gul.views.machine.find((r) => r.key === "m1")?.look).toBe("stjarnor");
+    expect(gul.views.title.every((r) => r.look === undefined)).toBe(true);
     expect(m.comparisonLabel).toBe(`Jämfört med 23${NBSP}sep.${NBSP}–\u2060${NBSP}12${NBSP}okt.`);
     // 25 order nu mot 20 före: +25 %.
     expect(m.kpis.find((k) => k.id === "orders")?.delta).toBeCloseTo(0.25);

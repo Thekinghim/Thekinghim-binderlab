@@ -59,7 +59,7 @@ export function PerDayListView({ list, period }: { list: PerDayList; period: Per
               style={{ "--f": r.fraction, "--d": d } as CSSProperties}
             >
               <span className="ue-vis">
-                <MachineThumb machineId={r.machineId} size="sm" />
+                <MachineThumb machineId={r.machineId} look={r.look} size="sm" />
               </span>
               <span className="ue-name">
                 <Link href={lonsamhetHref(period, r.machineId)} className="ue-t">

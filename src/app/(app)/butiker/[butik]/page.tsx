@@ -149,7 +149,7 @@ export default async function StorePage({
           name={store.name}
           face={{ storeType: banner.face.storeType, city: banner.face.city ?? store.city }}
           sales={banner.sales}
-          machines={placed.map((m) => ({ id: m.machineId, name: m.name }))}
+          machines={placed.map((m) => ({ id: m.machineId, name: m.name, look: m.appearance }))}
           days={days}
         />
         <PageIntro

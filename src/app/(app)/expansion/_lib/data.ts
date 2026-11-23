@@ -36,6 +36,7 @@ import {
 } from "@/domain";
 import { DEFAULT_PROFIT_SHARE_BP, unitEconomics } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
+import { machineLookOf, type MachineLook } from "@/lib/machine-look";
 import {
   loadDomainInput,
   loadPeriod,
@@ -139,6 +140,8 @@ export interface UnitEconomicsPageData {
   // --- Visuellt (Enhetsekonomi): butiken under automatens namn. Bara läsning. ---
   /** Automatens butik i perioden (senaste placeringen), automat-id → butiks-id. */
   readonly machineStores: Record<string, string>;
+  /** Automatens utseende (machines.appearance), automat-id → utseende. */
+  readonly machineLooks: Record<string, MachineLook>;
 }
 
 export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<UnitEconomicsPageData> {
@@ -174,6 +177,9 @@ export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<Unit
     names: namesOf(input),
     machineIds,
     machineStores: latestStoreByMachine(input.current.placements),
+    machineLooks: Object.fromEntries(
+      input.machines.map((m) => [m.id, machineLookOf(m.appearance)]),
+    ),
   };
 }
 

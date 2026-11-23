@@ -187,6 +187,13 @@ describe("refs", () => {
   it("sorterar namn i svensk ordning (å ä ö sist) och koder numeriskt", () => {
     expect(refs.titles.map((t) => t.name)).toEqual(["Ascended Heroes", "Pokémon 151", "Äventyr"]);
     expect(refs.machines.map((m) => m.code)).toEqual(["BL-002", "BL-010"]);
+    expect(refs.machines.map((m) => m.appearance)).toEqual(["stjarnor", "stjarnor"]);
+    const gul = buildRefs({
+      titles: [],
+      machines: [{ id: M1, code: "BL-002", name: "Centrum", appearance: "gul" }],
+      stores: [],
+    });
+    expect(gul.machines[0]?.appearance).toBe("gul");
     expect(sortRanks(refs).titles).toEqual([T2, T1, T3]);
     expect(rankMap(refs.titles).get(T1)).toBe(1);
   });
