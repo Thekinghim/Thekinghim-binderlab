@@ -80,6 +80,9 @@ export default async function MysteryPacksPage() {
         <Empty
           title={t.mystery.empty}
           className="v2-card"
+          // Visuellt (mock 08): solfjäder av mystery packs över raden.
+          packs={["Mystery Pack", "Mystery Pack Premium", "Mystery Pack"]}
+          size="l"
           action={
             // Enkel vy: "Ägaren lägger in mystery packs", så ingen knapp dit.
             view.canEdit && !simple ? (

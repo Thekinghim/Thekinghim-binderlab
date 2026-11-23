@@ -99,6 +99,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   "sync_tokens",
   // Veckosammanfattning: läsaren ser bara sina egna rader (hon får ingen).
   "weekly_summaries",
+  // Notis vid varje försäljning: vilka order som har notifierats, bara ägare och admin.
+  "sale_notifications",
 ];
 
 let F: TenantFixture;

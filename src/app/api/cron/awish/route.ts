@@ -19,6 +19,7 @@ import { runOfflineAlerts } from "@/server/awish/offline-alerts";
 import { resolveAppBaseUrl } from "@/server/request-info";
 import { syncAllAwishSources } from "@/server/awish/sync";
 import { publishAllDueCampaigns } from "@/server/campaigns/service";
+import { runSaleNotifications, SALE_PUSH_BUDGET_MS } from "@/server/sales-push/job";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
 import { syncWatchAlertsForAll } from "@/server/monitoring/watch";
 import { invalidateUnpaidSettlements } from "@/server/settlements/cache";
@@ -26,9 +27,39 @@ import { invalidateUnpaidSettlements } from "@/server/settlements/cache";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+/** Försäljningsnotiserna slutar ta om hand nya köp så här långt in i körningen (av 60 s). */
+const SALE_PUSH_STOP_MS = 50_000;
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
+}
+
+function appBaseUrl(request: Request): string | null {
+  try {
+    return resolveAppBaseUrl(getServerEnv(), request.headers);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Notis vid varje försäljning (src/server/sales-push/job.ts), sist i körningen: orderna är
+ * redan sparade. Högst SALE_PUSH_BUDGET_MS och aldrig efter SALE_PUSH_STOP_MS från
+ * körningens start (det som inte hinns med tas om hand nästa körning). Kastar aldrig och
+ * stoppar inget; ett fel loggas och svaret blir null.
+ */
+async function runSaleNotificationsAfterSync(startedAt: number) {
+  try {
+    const deadline = Math.min(Date.now() + SALE_PUSH_BUDGET_MS, startedAt + SALE_PUSH_STOP_MS);
+    const run = await runSaleNotifications(getServiceDb(), { deadline });
+    return {
+      orders: run.organizations.reduce((n, o) => n + o.orders, 0),
+      sent: run.organizations.reduce((n, o) => n + o.sent, 0),
+    };
+  } catch (error) {
+    console.error("[awish] försäljningsnotiser", error instanceof Error ? error.message : "fel");
+    return null;
+  }
 }
 
 async function runOfflineAlertsAfterSync(
@@ -36,12 +67,8 @@ async function runOfflineAlertsAfterSync(
   orgIds: string[],
   stockOrgIds: string[],
 ) {
-  let baseUrl: string | null = null;
-  try {
-    baseUrl = resolveAppBaseUrl(getServerEnv(), request.headers);
-  } catch {
-    // Utan adress köas utskicken; larmjobbet skickar dem.
-  }
+  // Utan adress köas utskicken; larmjobbet skickar dem.
+  const baseUrl = appBaseUrl(request);
   try {
     return await runOfflineAlerts(getServiceDb(), orgIds, { baseUrl, stockOrgIds });
   } catch (error) {
@@ -51,6 +78,7 @@ async function runOfflineAlertsAfterSync(
 }
 
 export async function GET(request: Request): Promise<Response> {
+  const startedAt = Date.now();
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret || secret.length < 16) {
     return json(
@@ -99,6 +127,10 @@ export async function GET(request: Request): Promise<Response> {
     console.error("[kampanjer] schemalagda kampanjer", error instanceof Error ? error.name : "fel");
     return null;
   });
+  // Notis vid varje försäljning till dem som har slagit på den: nya köp i den här synken (och
+  // i en Synka nu sedan förra körningen). Sist, med en egen tidsgräns, så att en långsam
+  // push-tjänst inte håller upp kampanjerna. Ett fel här stoppar inte synken.
+  const salePush = await runSaleNotificationsAfterSync(startedAt);
   // Inga hemligheter och inga order i svaret, bara räknare och felmeddelanden.
   return json(
     {
@@ -115,6 +147,7 @@ export async function GET(request: Request): Promise<Response> {
       })),
       campaigns: campaigns ? { shown: campaigns.shown, failed: campaigns.failed } : null,
       watch,
+      salePush,
       offlineAlerts: offline
         ? {
             organizations: offline.organizations.length,

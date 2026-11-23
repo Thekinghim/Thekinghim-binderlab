@@ -146,6 +146,8 @@ export interface RecentEvent {
   /** "−28 pack" · "12 titlar" · "+120 pack · Hemma". */
   readonly detail: string;
   readonly occurredAt: string;
+  /** Visuellt: titeln vars packbild står på raden (den första i en ihopslagen händelse). */
+  readonly packTitle?: string;
 }
 
 const REFILL = [/^Awish-påfyllning\s+/, /^Uttag till påfyllning(?: av)?:?\s*/];
@@ -237,5 +239,6 @@ export function recentEvents(
             ? `${signedPacks(g.packs)} · ${g.place}`
             : signedPacks(g.packs),
       occurredAt: g.at,
+      packTitle: [...g.titles][0],
     }));
 }

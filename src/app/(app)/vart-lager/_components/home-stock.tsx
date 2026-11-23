@@ -10,6 +10,7 @@ import { MobileFold } from "@/components/ui/mobile-fold";
 import { Icon } from "@/components/ui/icon";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
+import { PackImage } from "@/components/v2/pack-image";
 import { useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 import { formatInt, formatKronor, formatSek, MINUS, NBSP } from "@/lib/format";
@@ -79,7 +80,13 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
 
   return (
     <div className="v2-stack">
-      <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
+      {/* V2: siffrorna i ett kort, också på telefon där de fälls ihop bakom "Fler siffror".
+          Kortet ritar kanten; remsans egna band- och fällradslinjer tas bort. */}
+      <div
+        data-frame="panel"
+        className="v2-card rise [&_section>div]:border-y-0 [&>div>button]:border-0 [&>div>button]:px-[18px] max-md:[&>div>div]:mt-0 max-md:[&>div>div]:border-t max-md:[&>div>div]:border-v2-line2"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
         <MobileFold summary="Fler siffror" meta={formatInt(kpiCount)}>
           <KpiStrip
             ariaLabel="Vårt lager i siffror"
@@ -420,59 +427,65 @@ function StockRow({
         className={cn(GRID, "min-h-16 py-2.5 max-md:min-h-14 max-md:py-2")}
         style={actWidth(multi, canEdit)}
       >
-        <span className="flex min-w-0 flex-col" onClick={() => setMore((v) => !v)}>
-          <span className="flex min-w-0 items-center gap-2 max-md:flex-wrap max-md:gap-y-1">
-            <span className="truncate text-base text-fg max-md:[overflow-wrap:anywhere] max-md:whitespace-normal">
-              {row.name}
-            </span>
-            {row.negative || negativeHere ? (
-              <StatusTag status="critical">Räkna om</StatusTag>
-            ) : row.retired ? (
-              <StatusTag status="offline">Utgår</StatusTag>
-            ) : row.runsOut ? (
-              <StatusTag status={tone}>
-                {row.own ? "Packa" : row.home <= 0 ? "Slut" : "Tar slut"}
-              </StatusTag>
-            ) : null}
+        {/* Packbilden framför namnet (visuellt): samma packbild som hyllan på Vårt lager. */}
+        <span className="flex min-w-0 items-start gap-3">
+          <span className="flex w-9 flex-none justify-center pt-0.5 max-md:w-8">
+            <PackImage title={row.name} size="s" />
           </span>
-          <span className={cn("meta text-subtle md:truncate", !more && "max-md:hidden")}>
-            {latest ? (
-              <>
-                <span
-                  className={cn(
-                    "tnum",
-                    latest.delta !== null && latest.delta < 0 && "text-muted",
-                    latest.delta !== null && latest.delta > 0 && "text-fg",
-                  )}
-                >
-                  {latest.text}
-                </span>
-                {latest.automatic ? " (Awish)" : ""}, {latest.when}
-              </>
-            ) : (
-              "Inget räknat än"
-            )}
-          </span>
-          <button
-            type="button"
-            aria-expanded={more}
-            aria-label={`${more ? "Färre" : "Fler"} uppgifter, ${row.name}`}
-            className="meta flex min-h-11 min-w-0 items-center gap-1 text-left text-subtle md:hidden"
-          >
-            {/* Stängd: bara hur länge det räcker (får plats på en rad); öppen: allt. */}
-            <span className={more ? "min-w-0" : "min-w-0 truncate"}>
-              {/* "–" = inget sålt senaste veckan: säg det i ord (kort, får plats på en iPhone SE). */}
-              {lastsText(row) === "–" ? `inget sålt på 7${NBSP}d` : `räcker ${lastsText(row)}`}
-              {more
-                ? ` · ${formatInt(row.inMachines)}${NBSP}i${NBSP}automater · ${formatInt(row.sold7)}${NBSP}sålda${NBSP}7${NBSP}d`
-                : ""}
+          <span className="flex min-w-0 flex-col" onClick={() => setMore((v) => !v)}>
+            <span className="flex min-w-0 items-center gap-2 max-md:flex-wrap max-md:gap-y-1">
+              <span className="truncate text-base text-fg max-md:[overflow-wrap:anywhere] max-md:whitespace-normal">
+                {row.name}
+              </span>
+              {row.negative || negativeHere ? (
+                <StatusTag status="critical">Räkna om</StatusTag>
+              ) : row.retired ? (
+                <StatusTag status="offline">Utgår</StatusTag>
+              ) : row.runsOut ? (
+                <StatusTag status={tone}>
+                  {row.own ? "Packa" : row.home <= 0 ? "Slut" : "Tar slut"}
+                </StatusTag>
+              ) : null}
             </span>
-            <Icon
-              name="chevronRight"
-              size={10}
-              className={cn("shrink-0 transition-transform duration-fast", more && "rotate-90")}
-            />
-          </button>
+            <span className={cn("meta text-subtle md:truncate", !more && "max-md:hidden")}>
+              {latest ? (
+                <>
+                  <span
+                    className={cn(
+                      "tnum",
+                      latest.delta !== null && latest.delta < 0 && "text-muted",
+                      latest.delta !== null && latest.delta > 0 && "text-fg",
+                    )}
+                  >
+                    {latest.text}
+                  </span>
+                  {latest.automatic ? " (Awish)" : ""}, {latest.when}
+                </>
+              ) : (
+                "Inget räknat än"
+              )}
+            </span>
+            <button
+              type="button"
+              aria-expanded={more}
+              aria-label={`${more ? "Färre" : "Fler"} uppgifter, ${row.name}`}
+              className="meta flex min-h-11 min-w-0 items-center gap-1 text-left text-subtle md:hidden"
+            >
+              {/* Stängd: bara hur länge det räcker (får plats på en rad); öppen: allt. */}
+              <span className={more ? "min-w-0" : "min-w-0 truncate"}>
+                {/* "–" = inget sålt senaste veckan: säg det i ord (kort, får plats på en iPhone SE). */}
+                {lastsText(row) === "–" ? `inget sålt på 7${NBSP}d` : `räcker ${lastsText(row)}`}
+                {more
+                  ? ` · ${formatInt(row.inMachines)}${NBSP}i${NBSP}automater · ${formatInt(row.sold7)}${NBSP}sålda${NBSP}7${NBSP}d`
+                  : ""}
+              </span>
+              <Icon
+                name="chevronRight"
+                size={10}
+                className={cn("shrink-0 transition-transform duration-fast", more && "rotate-90")}
+              />
+            </button>
+          </span>
         </span>
         <span className="tnum hidden text-right text-sm text-muted md:block">
           {formatInt(row.inMachines)}
@@ -507,8 +520,8 @@ function StockRow({
               autoComplete="off"
               aria-label={`Antal ${inPlace(place.name)}, ${row.name}`}
               className={cn(
-                "tnum h-12 w-24 rounded-sm border bg-bg px-3 text-right text-2xl font-medium text-fg transition-[border-color,background-color] duration-fast ease-instrument hover:border-muted",
-                negativeHere ? "border-signal text-signal-fg" : "border-line-control",
+                "v2-input num h-11 w-24 text-v2-lg font-[650]",
+                negativeHere && "border-v2-crit-icon text-v2-crit-text",
               )}
               value={value}
               disabled={pending}
@@ -531,8 +544,8 @@ function StockRow({
               onClick={onChoosePlace}
               aria-label={`Ändra antal, ${row.name}`}
               className={cn(
-                "tnum h-12 w-24 rounded-sm border border-line-control bg-bg px-3 text-right text-2xl font-medium hover:border-muted",
-                row.negative ? "text-signal-fg" : "text-fg",
+                "v2-input num h-11 w-24 cursor-pointer text-v2-lg font-[650]",
+                row.negative && "text-v2-crit-text",
               )}
             >
               {signedInt(row.home)}
@@ -540,8 +553,8 @@ function StockRow({
           ) : (
             <span
               className={cn(
-                "tnum text-2xl font-medium",
-                negativeHere ? "text-signal-fg" : "text-fg",
+                "tnum text-v2-lg font-[650]",
+                negativeHere ? "text-v2-crit-text" : "text-v2-ink",
               )}
             >
               {signedInt(count)}
@@ -582,7 +595,7 @@ function StockRow({
                     pattern="[0-9]*"
                     aria-label={`Antal ${row.own ? "packade" : "köpta"} pack, ${row.name}`}
                     placeholder="+"
-                    className="tnum h-11 w-16 rounded-sm border border-line-control bg-bg px-2 text-right text-base text-fg"
+                    className="v2-input num h-11 w-16 px-2"
                     value={buy}
                     disabled={pending}
                     onChange={(e) => setBuy(e.target.value)}
@@ -602,7 +615,7 @@ function StockRow({
                         autoComplete="off"
                         aria-label={`${r2.receiptPriceLabel}, ${row.name}`}
                         placeholder="pris"
-                        className="tnum h-11 w-20 rounded-sm border border-line-control bg-bg px-2 text-right text-base text-fg"
+                        className="v2-input num h-11 w-20 px-2"
                         value={price.text}
                         disabled={pending}
                         onChange={(e) => price.setText(e.target.value)}
@@ -806,8 +819,7 @@ function MoveSheet({
               value={amount}
               onFocus={(e) => e.currentTarget.select()}
               onChange={(e) => setQty(Math.trunc(Number(e.target.value)) || 0)}
-              className="tnum h-14 w-full min-w-0 [appearance:textfield] rounded-md border border-line-control bg-bg text-center text-3xl font-medium text-fg [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              style={{ fontSize: 28 }}
+              className="v2-input num h-14 [appearance:textfield] px-2 text-center text-[28px] font-[650] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <button
               type="button"

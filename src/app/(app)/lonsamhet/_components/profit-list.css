@@ -1,0 +1,355 @@
+/* Vinstlistan i Lönsamhet (ProfitList): en rad per titel, automat eller butik med bild,
+   namn, vinststapel (ProfitBar) och vinsten. Dator: rader i ett rutnät med en axelrad
+   överst. Telefon (≤ 900 px): kort med bilden till vänster och vinsten stort. */
+
+.lp-axis,
+.lp-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 230px) minmax(0, 1fr) 112px;
+  grid-template-areas:
+    "vis t bar end"
+    "vis s bar end";
+  column-gap: 16px;
+  align-items: center;
+  padding: 0 18px;
+}
+.lp-axis {
+  grid-template-areas: "vis t bar end";
+  grid-template-columns: 48px minmax(0, 230px) minmax(0, 1fr) 112px;
+  padding-top: 12px;
+  padding-bottom: 4px;
+}
+.lp-axis > span:first-child {
+  grid-column: 1 / 3;
+}
+.lp-ax {
+  font-size: var(--v2-t-xs);
+  font-weight: 500;
+  color: var(--v2-mute);
+}
+.lp-ax em {
+  font-style: normal;
+  font-weight: 650;
+  color: var(--v2-profit-text);
+}
+.lp-ax.r {
+  text-align: right;
+}
+
+.lp-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-top: 1px solid var(--v2-line2);
+  animation: lp-in 420ms var(--v2-ease) var(--d, 0ms) both;
+}
+.lp.calm .lp-row {
+  animation: none;
+}
+.lp-list:first-of-type > .lp-row:first-child {
+  border-top: 0;
+}
+.lp-row.sel {
+  background: var(--v2-bg, #f7f7f7);
+  box-shadow: inset 3px 0 0 var(--v2-profit);
+}
+.lp-row.miss {
+  background: linear-gradient(90deg, #fffcf6, #fff 60%);
+}
+
+.lp-vis {
+  grid-area: vis;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+.lp-vis .v2-pk {
+  filter: drop-shadow(0 1px 1px rgb(26 26 26 / 0.16)) drop-shadow(0 3px 5px rgb(26 26 26 / 0.12));
+}
+.lp-row.miss .lp-vis .v2-pk {
+  filter: grayscale(0.35) drop-shadow(0 1px 1px rgb(26 26 26 / 0.16));
+  opacity: 0.88;
+}
+.lp-m {
+  display: none !important;
+}
+
+.lp-t {
+  grid-area: t;
+  align-self: end;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--v2-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lp-s {
+  grid-area: s;
+  align-self: start;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: var(--v2-t-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-mute);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lp-row.special .lp-t {
+  font-weight: 500;
+  color: var(--v2-mute);
+}
+.lp-bar {
+  grid-area: bar;
+  min-width: 0;
+}
+.lp-end {
+  grid-area: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.lp-val {
+  font-size: var(--v2-t-lg);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-ink);
+  white-space: nowrap;
+}
+.lp-val.loss {
+  color: var(--v2-crit-text);
+}
+.lp-val.unknown {
+  display: none;
+}
+
+.lp-setp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--v2-warn-soft);
+  box-shadow: 0 0 0 1px var(--v2-warn-line);
+  font-size: var(--v2-t-xs);
+  font-weight: 600;
+  color: var(--v2-warn-text);
+  white-space: nowrap;
+  transition:
+    transform 160ms var(--v2-ease),
+    background-color 160ms var(--v2-ease);
+}
+.lp-plus {
+  font-weight: 700;
+}
+.lp-setp:active {
+  transform: scale(0.97);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-setp:hover {
+    background: #ffe6c7;
+  }
+}
+.lp-setp:focus-visible {
+  outline: 2px solid var(--v2-focus, #005bd3);
+  outline-offset: 2px;
+}
+
+.lp-sh {
+  display: none;
+}
+.lp-more {
+  display: none;
+}
+.lp-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--v2-line2);
+  font-size: var(--v2-t-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-mute);
+}
+
+@keyframes lp-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* ---- Telefon ---- */
+@media (max-width: 900px) {
+  .lp-axis {
+    display: none;
+  }
+  .lp-row {
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-areas:
+      "vis t"
+      "vis end"
+      "vis bar"
+      "vis s";
+    column-gap: 14px;
+    row-gap: 0;
+    padding: 12px 16px;
+  }
+  .lp-row[data-folded] {
+    display: none;
+  }
+  .lp-vis {
+    align-self: center;
+    min-height: 84px;
+  }
+  .lp-d {
+    display: none !important;
+  }
+  .lp-m {
+    display: inline-block !important;
+  }
+  .lp-t {
+    align-self: auto;
+    font-size: var(--v2-t-sm);
+    font-weight: 500;
+    color: var(--v2-body2);
+  }
+  .lp-s {
+    margin-top: 6px;
+  }
+  .lp-end {
+    display: contents;
+  }
+  .lp-val {
+    grid-area: end;
+    margin: 1px 0 6px;
+    font-size: 24px;
+    letter-spacing: -0.01em;
+  }
+  .lp-val.unknown {
+    display: block;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--v2-faint);
+  }
+  .lp-row .lp-setp {
+    grid-area: act;
+    justify-self: start;
+    margin-top: 10px;
+  }
+  .lp-row.miss {
+    grid-template-areas:
+      "vis t"
+      "vis end"
+      "vis bar"
+      "vis s"
+      "vis act";
+  }
+  /* Delvis prissatta rader: knappen under raden. */
+  .lp-row:not(.miss) .lp-setp {
+    grid-area: auto;
+    grid-column: 2;
+    margin-top: 8px;
+  }
+  .lp-setp.big {
+    min-height: 40px;
+    padding: 7px 14px;
+    font-size: var(--v2-t-md);
+  }
+  .lp-row .v2-pbar-trk {
+    height: 10px;
+  }
+  .lp-row.miss .v2-pbar-end {
+    display: none;
+  }
+  .lp-row.miss .v2-pbar-trk {
+    width: calc(100% * var(--wf, 1));
+  }
+  .lp-row.special {
+    grid-template-areas:
+      "vis t"
+      "vis end"
+      "vis s";
+  }
+  .lp-row.special .lp-vis {
+    min-height: 0;
+  }
+  .lp-sh {
+    display: block;
+    margin: 0;
+    padding: 14px 16px 6px;
+    border-top: 1px solid var(--v2-line2);
+    font-size: var(--v2-t-md);
+    font-weight: 650;
+    color: var(--v2-ink);
+  }
+  .lp-more {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    border-top: 1px solid var(--v2-line2);
+    font-size: var(--v2-t-sm);
+    font-weight: 600;
+    color: var(--v2-body2);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .lp-more:active {
+    background: var(--v2-line2);
+  }
+  .lp-special {
+    border-top: 1px solid var(--v2-line2);
+  }
+  .lp-foot {
+    padding: 10px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-row {
+    animation: none;
+  }
+  .lp-setp {
+    transition: none;
+  }
+}
+
+/* Knappen i fotraden: växlar mellan staplarna och hela tabellen. */
+.lp-toggle {
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--v2-line);
+  font-size: var(--v2-t-sm);
+  font-weight: 550;
+  color: var(--v2-ink);
+  transition: transform 160ms var(--v2-ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.lp-toggle:active {
+  transform: scale(0.97);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-toggle:hover {
+    background: var(--v2-line2);
+  }
+}
+@media (max-width: 900px) {
+  .lp-toggle {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-toggle {
+    transition: none;
+  }
+}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -20,6 +21,7 @@ import { TodoList, type TodoItem } from "./_components/todo-list";
 import { LagerView } from "./_components/v2/lager-view";
 import { loadVartLagerFor } from "./_lib/data";
 import { headingOf } from "./_lib/heading";
+import { parseShelfView, VIEW_COOKIE } from "./_lib/shelf";
 import { stockTodos } from "./_lib/model";
 import { loadVartLagerExtrasFor } from "./_lib/v2-data";
 import { buyLines, machineValueOre, recentEvents } from "./_lib/v2-model";
@@ -109,16 +111,25 @@ export default async function VartLagerPage({
       >
         <div className="v2-stack">
           {!view.hasWarehouse ? (
-            <>
-              <StateMessage kind="empty" message="Inget eget lager än." />
-              <PlaceBar places={[]} totals={{}} selected={null} canEdit={view.canAddPlace} />
-            </>
+            // V2: tomläget i ett kort, med lagerväljaren under (som tabellens kort).
+            <section aria-label="Vårt lager" className="v2-card">
+              <div className="v2-card-body">
+                <StateMessage kind="empty" message="Inget eget lager än." />
+              </div>
+              <div className="border-t border-v2-line2 px-1.5 py-1">
+                <PlaceBar places={[]} totals={{}} selected={null} canEdit={view.canAddPlace} />
+              </div>
+            </section>
           ) : view.rows.length === 0 ? (
-            <StateMessage
-              kind="empty"
-              message="Inga titlar än."
-              action={{ label: "Öppna Datakällor", href: "/datakallor" }}
-            />
+            <div className="v2-card">
+              <div className="v2-card-body">
+                <StateMessage
+                  kind="empty"
+                  message="Inga titlar än."
+                  action={{ label: "Öppna Datakällor", href: "/datakallor" }}
+                />
+              </div>
+            </div>
           ) : (
             <>
               <TodoList items={todos} done={heading.aside} />
@@ -138,6 +149,15 @@ export default async function VartLagerPage({
   );
 
   const loadByTitle = new Map(route?.load.map((l) => [l.titleId, l]) ?? []);
+  // Hylla eller Tabell: senaste valet (kakan), annars Hylla.
+  const initialView = parseShelfView((await cookies()).get(VIEW_COOKIE.lager)?.value);
+  // Leveranstiden per titel (strecket på hyllans Räcker): bara titlar vi beställer.
+  const leadDays = Object.fromEntries(
+    view.rows.flatMap((r) => {
+      const lead = view.buyInfo.get(r.titleId)?.leadTimeDays;
+      return !r.own && lead !== undefined && lead > 0 ? [[r.titleId, lead]] : [];
+    }),
+  );
   return (
     <V2Page
       title="Vårt lager"
@@ -155,15 +175,19 @@ export default async function VartLagerPage({
       }
     >
       {!view.hasWarehouse || view.rows.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message={view.hasWarehouse ? "Inga titlar än." : "Inget eget lager än."}
-          action={
-            view.canAddPlace
-              ? { label: "Lägg till ett lager", href: "/vart-lager?vy=andra" }
-              : undefined
-          }
-        />
+        <div className="v2-card">
+          <div className="v2-card-body">
+            <StateMessage
+              kind="empty"
+              message={view.hasWarehouse ? "Inga titlar än." : "Inget eget lager än."}
+              action={
+                view.canAddPlace
+                  ? { label: "Lägg till ett lager", href: "/vart-lager?vy=andra" }
+                  : undefined
+              }
+            />
+          </div>
+        </div>
       ) : (
         <LagerView
           rows={view.rows}
@@ -220,6 +244,9 @@ export default async function VartLagerPage({
           )}
           timeZone={ctx.timeZone}
           now={ctx.now}
+          today={view.today}
+          leadDays={leadDays}
+          initialView={initialView}
         />
       )}
       {/* Det som gick ut ur lagret under vald period (periodvalet överst), per titel och automat. */}

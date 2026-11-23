@@ -126,6 +126,10 @@ async function seedOrg(
 ): Promise<{ orgId: string; machineIds: Map<string, string> }> {
   return sql.begin(async (tx: Tx) => {
     const machineIds = new Map<string, string>();
+    // Appen räknar svenska dagar; current_date är UTC och blir en dag fel mellan 23 och 24 UTC.
+    const [day] = await tx<{ today: string }[]>`
+      select ((now() at time zone 'Europe/Stockholm')::date)::text as today`;
+    const today = day!.today;
     await tx`select set_config('request.jwt.claims', ${JSON.stringify({
       sub: owner.id,
       email: owner.email,
@@ -142,7 +146,7 @@ async function seedOrg(
       titleId.set(title, t!.id);
       await tx`
         insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from)
-        values (${orgId}::uuid, ${t!.id}::uuid, 4500, current_date - 200)`;
+        values (${orgId}::uuid, ${t!.id}::uuid, 4500, ${today}::date - 200)`;
     }
     if (machines.some((m) => m.alsoListed?.includes(RANKING_MYSTERY))) {
       await tx`update public.titles set own_product = true
@@ -163,19 +167,19 @@ async function seedOrg(
         insert into public.stores (organization_id, name) values (${orgId}::uuid, ${m.name}) returning id`;
       await tx`
         insert into public.store_agreements (organization_id, store_id, valid_from, commission_bp)
-        values (${orgId}::uuid, ${store!.id}::uuid, current_date - 200, 2000)`;
+        values (${orgId}::uuid, ${store!.id}::uuid, ${today}::date - 200, 2000)`;
       const [machine] = await tx<{ id: string }[]>`
         insert into public.machines (organization_id, code, name, active_from)
-        values (${orgId}::uuid, ${m.code}, ${m.name}, current_date - ${days}::int) returning id`;
+        values (${orgId}::uuid, ${m.code}, ${m.name}, ${today}::date - ${days}::int) returning id`;
       machineIds.set(m.code, machine!.id);
       await tx`
         insert into public.machine_placements (organization_id, machine_id, store_id, valid_from)
-        values (${orgId}::uuid, ${machine!.id}::uuid, ${store!.id}::uuid, current_date - ${days}::int)`;
+        values (${orgId}::uuid, ${machine!.id}::uuid, ${store!.id}::uuid, ${today}::date - ${days}::int)`;
       for (const title of [...Object.keys(m.perDay), ...(m.alsoListed ?? [])]) {
         await tx`
           insert into public.machine_slots (organization_id, machine_id, title_id, slots, valid_from)
           values (${orgId}::uuid, ${machine!.id}::uuid, ${titleId.get(title)!}::uuid, 1,
-                  current_date - ${days}::int)`;
+                  ${today}::date - ${days}::int)`;
       }
       const insertOrders = (title: string, count: number, fromAgo: number, toAgo: number) => tx`
         insert into public.orders (organization_id, data_source_id, machine_id, payment_method,
@@ -183,7 +187,7 @@ async function seedOrg(
         select ${orgId}::uuid, ${source!.id}::uuid, ${machine!.id}::uuid, 'card',
                ${m.code} || '-' || ${title} || '-' || ago || '-' || k, ${title},
                ${titleId.get(title)!}::uuid,
-               ((current_date - ago) + time '09:00' + k * interval '20 minutes')
+               ((${today}::date - ago) + time '09:00' + k * interval '20 minutes')
                  at time zone 'Europe/Stockholm',
                7900, md5(${slug} || ${m.code} || ${title} || ago || '-' || k)
         from generate_series(${toAgo}::int, ${fromAgo}::int) as ago,

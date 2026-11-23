@@ -1,0 +1,564 @@
+/*
+ * Order i V2 (mock 08): packbilden först i varje rad, automat och butik med bild, beloppet
+ * och sist ordernumret i grått. Raderna står under dagsrubriker. Telefon (≤ 900 px): stor
+ * packbild, titel, automat · tid och belopp; filtren bakom en knapp bredvid periodvalet.
+ * Bara under .ord-*, så att inget läcker till andra sidor. Färger och typsnitt: v2.css.
+ */
+
+/* ---- Verktygsraden (dator): sök, titelchips, export ---- */
+.ord-card {
+  /* clip i stället för hidden: dagsrubrikerna kan då klistra mot fönstret på telefon. */
+  overflow: clip;
+}
+.ord-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--v2-line);
+}
+.ord-search {
+  flex: none;
+  width: 300px;
+}
+.ord-search .v2-search {
+  height: 36px;
+  border-radius: 10px;
+}
+.ord-export {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+.ord-export .v2-btn {
+  gap: 6px;
+}
+
+/* Titelchips med packbild. */
+.ord-chips {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px;
+  margin: -2px;
+}
+.ord-chips::-webkit-scrollbar {
+  display: none;
+}
+/* Raden rullar i sidled: kanten tonar ut, så att det syns att det finns fler. */
+.ord-chips:not(.wrap) {
+  padding-right: 24px;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+.ord-chips.wrap {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.ord-chip,
+.ord-more {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px 0 6px;
+  border-radius: 999px;
+  background: var(--v2-hover);
+  box-shadow: inset 0 0 0 1px var(--v2-line);
+  color: var(--v2-body2);
+  font-size: var(--v2-t-sm);
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    transform 160ms var(--v2-ease),
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.ord-chip.all {
+  padding: 0 12px;
+}
+.ord-chip .nm {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ord-chip .v2-pk {
+  height: 24px !important;
+  width: auto !important;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.2));
+}
+.ord-chip .v2-pk-none {
+  aspect-ratio: 131 / 240;
+  font-size: 7px !important;
+  border-radius: 2px;
+}
+.ord-chip[aria-pressed="true"] {
+  background: var(--v2-primary);
+  box-shadow: none;
+  color: var(--v2-on-primary);
+}
+.ord-chip:active {
+  transform: scale(0.97);
+}
+.ord-chip:focus-visible,
+.ord-more:focus-within {
+  outline: 2px solid var(--v2-ink);
+  outline-offset: 2px;
+}
+.ord-more {
+  padding: 0 10px 0 12px;
+  color: var(--v2-mute);
+}
+.ord-more select {
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding-right: 4px;
+  cursor: pointer;
+}
+.ord-more::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ord-chip:not([aria-pressed="true"]):hover,
+  .ord-more:hover {
+    background: var(--v2-sel);
+    color: var(--v2-ink);
+  }
+}
+
+/* ---- Listan ---- */
+.ord-list {
+  --ord-cols: minmax(0, 2.3fr) minmax(0, 1fr) minmax(0, 1.4fr) 96px 92px;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.ord-head,
+.ord-row {
+  display: grid;
+  grid-template-columns: var(--ord-cols);
+  column-gap: 14px;
+  align-items: center;
+}
+.ord-head {
+  height: 36px;
+  padding: 0 18px;
+  background: var(--v2-hover);
+  border-bottom: 1px solid var(--v2-line);
+}
+.ord-hc {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 100%;
+  min-width: 0;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-xs);
+  font-weight: 550;
+  text-align: left;
+  white-space: nowrap;
+  transition: color 150ms ease;
+}
+.ord-hc.num {
+  justify-content: flex-end;
+}
+.ord-hc.on {
+  color: var(--v2-ink);
+}
+.ord-hc .ar {
+  display: inline-block;
+  min-width: 0.7em;
+}
+.ord-hc.num .ar {
+  order: -1;
+}
+.ord-hc:focus-visible {
+  outline: 2px solid var(--v2-ink);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ord-hc:hover {
+    color: var(--v2-ink);
+  }
+}
+
+.ord-body {
+  transition: opacity 150ms ease;
+}
+.ord-body.busy {
+  opacity: 0.6;
+}
+.ord-dh {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 18px;
+  background: var(--v2-bg);
+  border-bottom: 1px solid var(--v2-line);
+  color: var(--v2-ink);
+  font-size: var(--v2-t-xs);
+  font-weight: 650;
+}
+.ord-dh em {
+  font-style: normal;
+  font-weight: 450;
+  color: var(--v2-mute);
+}
+.ord-day + .ord-day .ord-dh {
+  border-top: 1px solid var(--v2-line);
+  margin-top: -1px;
+}
+.ord-li {
+  /* Långa listor: raderna utanför skärmen ritas inte förrän de behövs. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 68px;
+}
+.ord-row {
+  width: 100%;
+  min-height: 68px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--v2-line2);
+  background: var(--v2-panel);
+  color: var(--v2-ink);
+  font-size: var(--v2-t-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.ord-day:last-child .ord-li:last-child .ord-row,
+.ord-flat .ord-li:last-child .ord-row {
+  border-bottom: 0;
+}
+.ord-row:active {
+  background: var(--v2-sel);
+}
+.ord-row:focus-visible {
+  outline: 2px solid var(--v2-ink);
+  outline-offset: -2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ord-row:hover {
+    background: var(--v2-hover);
+  }
+}
+.ord-c {
+  min-width: 0;
+}
+.ord-c-t,
+.ord-c-m,
+.ord-c-s {
+  display: flex;
+  align-items: center;
+}
+.ord-c-t {
+  gap: 14px;
+}
+.ord-c-m {
+  gap: 10px;
+}
+.ord-c-s {
+  gap: 9px;
+  color: var(--v2-body2);
+}
+.ord-pk {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+}
+.ord-pk .v2-pk {
+  height: 48px !important;
+  width: auto !important;
+  filter: drop-shadow(0 1px 1px rgb(26 26 26 / 0.16)) drop-shadow(0 3px 5px rgb(26 26 26 / 0.12));
+}
+.ord-pk .v2-pk-none {
+  aspect-ratio: 131 / 240;
+  filter: none;
+  font-size: 11px !important;
+}
+.ord-tx {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.ord-tn {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--v2-t-md);
+  font-weight: 600;
+}
+.ord-ts {
+  margin-top: 1px;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-xs);
+}
+.ord-mc {
+  font-weight: 600;
+}
+.ord-c-m .v2-mthumb {
+  --h: 24px;
+}
+.ord-c-a {
+  font-size: var(--v2-t-md);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+.ord-c-n {
+  color: var(--v2-faint);
+  font-size: var(--v2-t-xs);
+  text-align: right;
+  white-space: nowrap;
+}
+.ord-ph {
+  display: none;
+}
+.ord-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--v2-line);
+  color: var(--v2-mute);
+  font-size: var(--v2-t-sm);
+}
+
+/* Telefonens rad (periodval + filterknapp) finns bara på telefon. */
+.ord-pbar {
+  display: none;
+}
+
+/* Smal dator: butiken får ge plats åt titeln. */
+@media (max-width: 1180px) and (min-width: 901px) {
+  .ord-list {
+    --ord-cols: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.2fr) 84px 80px;
+  }
+  .ord-search {
+    width: 240px;
+  }
+}
+
+/* ---- Telefon ---- */
+@media (max-width: 900px) {
+  /* Skalets periodrad och filterrad ersätts av .ord-pbar (samma val, en knapp). */
+  .ord-v2 > .v2-mperiod,
+  .ord-v2 > .v2-filters {
+    display: none;
+  }
+  .ord-pbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ord-pseg {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    gap: 6px;
+  }
+  .ord-pseg .v2-seg {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+  }
+  .ord-pseg .v2-seg button {
+    flex: 1;
+    height: 38px;
+    padding: 6px 4px;
+  }
+  /* Datum som ikon (etiketten bara när ett eget datum är valt). */
+  .ord-pseg .v2-pdate {
+    height: 44px;
+    padding: 0 12px;
+  }
+  .ord-pseg .v2-pdate:not(.on) .lbl {
+    display: none;
+  }
+  .ord-pseg .v2-pdate .lbl {
+    max-width: 92px;
+  }
+  .ord-fbtn {
+    position: relative;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+  .ord-fbtn .n {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    display: grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--v2-primary);
+    color: var(--v2-on-primary);
+    font-size: 11px;
+    font-weight: 650;
+    box-shadow: 0 0 0 2px var(--v2-bg);
+  }
+
+  .ord-tools {
+    display: none;
+  }
+  /* Listan i full bredd, som en inbyggd lista. */
+  .ord-card {
+    margin-inline: -12px;
+    border-radius: 0;
+    box-shadow:
+      0 -1px 0 var(--v2-line),
+      0 1px 0 var(--v2-line);
+  }
+  .ord-head {
+    display: none;
+  }
+  .ord-dh {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: rgb(241 241 241 / 0.94);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    font-size: var(--v2-t-sm);
+  }
+  .ord-dh em {
+    font-size: var(--v2-t-xs);
+  }
+  .ord-li {
+    contain-intrinsic-size: auto 76px;
+  }
+  .ord-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+    min-height: 76px;
+    padding: 8px 16px;
+  }
+  .ord-dk {
+    display: none;
+  }
+  .ord-ph {
+    display: flex;
+  }
+  .ord-c-t {
+    gap: 14px;
+  }
+  .ord-pk {
+    width: 60px;
+    height: 60px;
+  }
+  .ord-pk .v2-pk {
+    height: 56px !important;
+  }
+  .ord-tn {
+    font-size: 15px;
+  }
+  .ord-ts.ord-ph {
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: var(--v2-t-sm);
+    white-space: nowrap;
+  }
+  .ord-mt-s.v2-mthumb {
+    --h: 16px;
+  }
+  .ord-c-a {
+    font-size: 15px;
+  }
+  .ord-foot {
+    padding: 12px 16px;
+  }
+  .ord-foot .v2-btn {
+    min-height: 44px;
+  }
+
+  /* Filterarket. */
+  .ord-fsheet {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .ord-fsheet .v2-search {
+    height: 44px;
+  }
+  /* 16 px: iOS zoomar annars in sidan när fältet får fokus. */
+  .ord-fsheet .v2-search input {
+    font-size: 16px;
+  }
+  .ord-fsheet .ord-chip,
+  .ord-fsheet .ord-more {
+    height: 40px;
+  }
+  .ord-fsheet .ord-chip .v2-pk {
+    height: 30px !important;
+  }
+  .ord-fscope .v2-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0;
+  }
+}
+.ord-fh {
+  margin: 0 0 8px;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-xs);
+  font-weight: 550;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ord-chip,
+  .ord-row,
+  .ord-body {
+    transition: none;
+  }
+  .ord-chip:active {
+    transform: none;
+  }
+}
+@media (max-width: 900px) {
+  .ord-pbar {
+    margin-bottom: 4px;
+  }
+}
+/* "Fler titlar": listans bredd följer etiketten, inte den längsta titeln. */
+.ord-more select {
+  width: 6.5em;
+  text-overflow: ellipsis;
+}
+.ord-fscope .v2-filters {
+  margin: 0;
+  padding: 0;
+}

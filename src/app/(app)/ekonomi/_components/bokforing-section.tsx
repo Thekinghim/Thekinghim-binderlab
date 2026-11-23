@@ -30,7 +30,7 @@ export const IMPORT_THIS_TEXT =
   "Det här paketet är det bokhållaren ska importera. SIE-filen under Rapporter → Bokföringsunderlag är bara ett underlag: importera inte båda.";
 
 import { bookkeepingTitle } from "../_lib/headline";
-import { capitalize, isoToDate, kr, monthText, plural } from "../_lib/view";
+import { amount, capitalize, isoToDate, monthText, plural } from "../_lib/view";
 import { OpenMoreOnHash } from "./open-more";
 import {
   ArchiveReceiptButton,
@@ -213,7 +213,7 @@ function MonthItem({
         <div key={label} className="flex min-w-0 flex-col">
           <dt className="text-v2-xs text-v2-mute">{label}</dt>
           <dd className={cn("tnum text-v2-md text-v2-ink", label === "Resultat" && "font-[650]")}>
-            {kr(v)}
+            {amount(v)}
           </dd>
         </div>
       ))}
@@ -233,7 +233,7 @@ function MonthItem({
         {ready ? (
           dl
         ) : (
-          <MobileFold summary="Resultat" meta={kr(b.resultOre)} className="flex-1">
+          <MobileFold summary="Resultat" meta={amount(b.resultOre)} className="flex-1">
             {dl}
           </MobileFold>
         )}
@@ -350,7 +350,7 @@ function Step({ label, ore, strong }: { label: string; ore: number; strong?: boo
   return (
     <tr className={cn("border-b border-v2-line2", strong && "font-[550] text-v2-ink")}>
       <td className="py-1.5 pr-3 text-v2-mute">{label}</td>
-      <td className="tnum py-1.5 text-right text-v2-ink">{kr(ore)}</td>
+      <td className="tnum py-1.5 text-right text-v2-ink">{amount(ore)}</td>
     </tr>
   );
 }

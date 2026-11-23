@@ -10,14 +10,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  expectNoPageErrors,
-  launchBrowser,
-  openPage,
-  screenshot,
   type Browser,
   type BrowserContext,
+  expectNoPageErrors,
+  launchBrowser,
   type Locator,
+  openPage,
   type Page,
+  screenshot,
+  showAsTable,
 } from "./support/browser";
 import { PRICE_TITLE, PRICE_VALID_FROM } from "./support/fixture";
 import { e2e, login } from "./support/session";
@@ -95,6 +96,7 @@ describe("prisändring", () => {
     expect(before.home).toMatch(/vinst/i);
 
     await page.goto("/inkopspriser");
+    await showAsTable(page);
     await page.getByRole("link", { name: TITLE, exact: true }).first().click();
     const form = page.getByRole("form", { name: `Nytt inköpspris för ${TITLE}` });
     await form.waitFor();
@@ -139,6 +141,7 @@ describe("prisändring", () => {
   it("klick var som helst på titelraden visar redigeraren, och direktlänk sparar", async () => {
     // Klick i en sifferkolumn, inte på namnet: redigeraren rullas fram med markören i priset.
     await page.goto("/inkopspriser");
+    await showAsTable(page);
     const row = page.getByRole("row").filter({ hasText: TITLE }).first();
     await row.locator("td:visible").last().click();
     const form = page.getByRole("form", { name: `Nytt inköpspris för ${TITLE}` });

@@ -19,8 +19,17 @@ import { isStale } from "../_lib/headline";
 import type { SourceView } from "../_lib/types";
 
 /** Status efter hur ny datan är (den senaste ordern), inte när någon senast laddade upp. */
-function syncStatus(source: SourceView, now: Date): { status: Status; text: string } {
+function syncStatus(
+  source: SourceView,
+  now: Date,
+  demo: boolean,
+): { status: Status; text: string } {
   if (source.archived) return { status: "offline", text: "Arkiverad" };
+  // Demon gör inga anrop till Awish, så en gammal demokälla är avstängd, inte inaktuell
+  // (som awishLinkStatus i mer/_lib/awish-status.ts).
+  if (demo && source.provider.startsWith("awish")) {
+    return { status: "neutral", text: "Avstängt i demon" };
+  }
   if (source.status === "error") return { status: "critical", text: "Fel" };
   if (source.status === "paused") return { status: "offline", text: "Pausad" };
   if (!source.latestOrderAt) {
@@ -46,10 +55,13 @@ export function SourceList({
   sources,
   timeZone,
   now,
+  demo = false,
 }: {
   sources: readonly SourceView[];
   timeZone: string;
   now: string;
+  /** Organisationen är en demo: Awish-källor visas som avstängda. */
+  demo?: boolean;
 }) {
   // Dialogen behåller sin nyckel när den stängs, så att <dialog> stängs på riktigt
   // (och lämnar tillbaka fokus till knappen) i stället för att avmonteras.
@@ -79,7 +91,7 @@ export function SourceList({
       ) : (
         <ul className="flex flex-col gap-3" aria-label="Datakällor">
           {sources.map((s) => {
-            const sync = syncStatus(s, nowDate);
+            const sync = syncStatus(s, nowDate, demo);
             return (
               <li key={s.id}>
                 <Panel className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-4 md:grid-cols-12">

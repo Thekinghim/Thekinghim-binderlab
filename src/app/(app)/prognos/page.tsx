@@ -328,7 +328,10 @@ export default async function PrognosPage({
               Prognos
             </h2>
             {forecastMeta.length > 0 ? (
-              <KpiBand ariaLabel="Prognosen">
+              <KpiBand
+                ariaLabel="Prognosen"
+                cols={Math.min(4, Math.max(2, forecastMeta.length)) as 2 | 3 | 4}
+              >
                 {forecastMeta.map((x) => (
                   <KpiTile key={x.label} label={x.label} value={x.value} />
                 ))}

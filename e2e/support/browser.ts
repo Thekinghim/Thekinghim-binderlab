@@ -296,3 +296,15 @@ export async function screenshot(page: Page, name: string): Promise<string> {
   await page.screenshot({ path: file, fullPage: false, caret: "initial" });
   return file;
 }
+
+/**
+ * Inköpspriser visar titlarna som hylla från början; testerna som läser kolumner och rader
+ * byter till Tabell (valet sparas i en kaka, så ett andra klick gör ingenting).
+ */
+export async function showAsTable(page: Page): Promise<void> {
+  await page
+    .getByRole("group", { name: "Visa som" })
+    .getByRole("button", { name: "Tabell" })
+    .first()
+    .click();
+}

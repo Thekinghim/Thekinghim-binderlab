@@ -3,9 +3,10 @@ import {
   type PriceChangeEffect,
   type PriceEffectVerdict,
 } from "@/analytics/pricing";
-import { Panel, PanelSection } from "@/components/ui/frame";
+import { Panel } from "@/components/ui/frame";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { Card, CardBody } from "@/components/v2/card";
 import { formatInt, formatNumber } from "@/lib/format";
 import {
   dayText,
@@ -251,10 +252,16 @@ export function PricingSection({
     >
       <SectionHead id="prissattning-rubrik" eyebrow="Prissättning" title={title} aside={aside} />
 
-      {!pricing.changes.ok ? <StateMessage kind="error" message={pricing.changes.message} /> : null}
+      {!pricing.changes.ok ? (
+        <Card as="div">
+          <CardBody>
+            <StateMessage kind="error" message={pricing.changes.message} />
+          </CardBody>
+        </Card>
+      ) : null}
 
       {changes.length > 0 ? (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3.5">
           {changes.map(({ change, effect }) => (
             <Panel key={change.key}>
               <article className="flex min-w-0 flex-col gap-4" aria-label={change.text}>
@@ -292,133 +299,145 @@ export function PricingSection({
           ) : null}
         </div>
       ) : (
-        <StateMessage
-          kind="empty"
-          message={`Inget pris har ändrats ${periodLabel(period)} enligt orderna (vanligaste beloppet per dag, tre dagar i rad).`}
-        />
+        <Card as="div">
+          <CardBody>
+            <StateMessage
+              kind="empty"
+              message={`Inget pris har ändrats ${periodLabel(period)} enligt orderna (vanligaste beloppet per dag, tre dagar i rad).`}
+            />
+          </CardBody>
+        </Card>
       )}
 
-      <PanelSection label={`Pristester · experiment`}>
-        {!pricing.proposals.ok ? (
-          <StateMessage kind="error" compact message={pricing.proposals.message} />
-        ) : proposals.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            compact
-            code="0 förslag"
-            message="Ingen titel passar för pristest just nu."
-          />
-        ) : (
-          <ul className="flex flex-col gap-6">
-            {proposals.map((p) => (
-              <li key={p.key} className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="label border border-dashed border-v2-line3 px-2 py-0.5 text-v2-ink">
-                    {p.label}
-                  </span>
-                  <span className="meta text-v2-mute">
-                    {ctx.names.title[p.titleId] ?? p.titleId} · {kronor(p.fromOre)} →{" "}
-                    {kronor(p.toOre)} · {periodLabel(p.period)}
-                  </span>
-                </div>
-                <p className="max-w-3xl text-v2-mute">{p.text}</p>
-                <dl className="meta flex flex-wrap gap-x-6 gap-y-1 text-v2-mute">
-                  <div>
-                    <dt className="inline">Test: </dt>
-                    <dd className="inline text-v2-mute">
-                      {p.testMachineIds.map((id) => ctx.names.machine[id] ?? id).join(", ")}
-                    </dd>
+      <Card title="Pristester · experiment">
+        <CardBody>
+          {!pricing.proposals.ok ? (
+            <StateMessage kind="error" compact message={pricing.proposals.message} />
+          ) : proposals.length === 0 ? (
+            <StateMessage
+              kind="empty"
+              compact
+              code="0 förslag"
+              message="Ingen titel passar för pristest just nu."
+            />
+          ) : (
+            <ul className="flex flex-col gap-6">
+              {proposals.map((p) => (
+                <li
+                  key={p.key}
+                  className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4 last:border-b-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="label border border-dashed border-v2-line3 px-2 py-0.5 text-v2-ink">
+                      {p.label}
+                    </span>
+                    <span className="meta text-v2-mute">
+                      {ctx.names.title[p.titleId] ?? p.titleId} · {kronor(p.fromOre)} →{" "}
+                      {kronor(p.toOre)} · {periodLabel(p.period)}
+                    </span>
                   </div>
-                  <div>
-                    <dt className="inline">Kontroll: </dt>
-                    <dd className="inline text-v2-mute">
-                      {p.controlMachineIds.map((id) => ctx.names.machine[id] ?? id).join(", ")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="inline">Väntade pack: </dt>
-                    <dd className="inline text-v2-mute">
-                      {formatInt(p.expectedTestUnits)} / {formatInt(p.expectedControlUnits)}
-                    </dd>
-                  </div>
-                </dl>
-                <Evidence evidence={p.evidence} names={ctx.names} />
-                {ctx.canEdit ? (
-                  <div>
-                    <ActionButton
-                      action={startExperiment}
-                      payload={{ proposalKey: p.key }}
-                      success="Pristestet är planerat"
-                      confirm={{
-                        eyebrow: "Experiment",
-                        title: `Starta pristest för ${ctx.names.title[p.titleId] ?? "titeln"}`,
-                        description: `Ändra priset till ${kronor(p.toOre)} i testautomaterna från ${dayText(p.period.start, ctx.today)}. Priset ändras i Awish, inte här. Panelen kontrollerar i orderna att testpriset tagits i bruk och mäter effekten mot kontrollautomaterna från första hela dagen.`,
-                        confirmLabel: "Starta",
-                      }}
-                    >
-                      Starta pristest
-                    </ActionButton>
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </PanelSection>
+                  <p className="max-w-3xl text-v2-mute">{p.text}</p>
+                  <dl className="meta flex flex-wrap gap-x-6 gap-y-1 text-v2-mute">
+                    <div>
+                      <dt className="inline">Test: </dt>
+                      <dd className="inline text-v2-mute">
+                        {p.testMachineIds.map((id) => ctx.names.machine[id] ?? id).join(", ")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline">Kontroll: </dt>
+                      <dd className="inline text-v2-mute">
+                        {p.controlMachineIds.map((id) => ctx.names.machine[id] ?? id).join(", ")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline">Väntade pack: </dt>
+                      <dd className="inline text-v2-mute">
+                        {formatInt(p.expectedTestUnits)} / {formatInt(p.expectedControlUnits)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <Evidence evidence={p.evidence} names={ctx.names} />
+                  {ctx.canEdit ? (
+                    <div>
+                      <ActionButton
+                        action={startExperiment}
+                        payload={{ proposalKey: p.key }}
+                        success="Pristestet är planerat"
+                        confirm={{
+                          eyebrow: "Experiment",
+                          title: `Starta pristest för ${ctx.names.title[p.titleId] ?? "titeln"}`,
+                          description: `Ändra priset till ${kronor(p.toOre)} i testautomaterna från ${dayText(p.period.start, ctx.today)}. Priset ändras i Awish, inte här. Panelen kontrollerar i orderna att testpriset tagits i bruk och mäter effekten mot kontrollautomaterna från första hela dagen.`,
+                          confirmLabel: "Starta",
+                        }}
+                      >
+                        Starta pristest
+                      </ActionButton>
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
 
       {pricing.experiments.length > 0 ? (
-        <PanelSection label={`Startade pristester · ${formatInt(pricing.experiments.length)}`}>
-          <ul className="flex flex-col gap-6">
-            {pricing.experiments.map((e) => (
-              <li
-                key={e.row.id}
-                className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4"
-              >
-                <div className="flex flex-wrap items-center gap-3">
-                  <StatusTag status={EXPERIMENT_STATUS[e.status].status}>
-                    {EXPERIMENT_STATUS[e.status].label}
-                  </StatusTag>
-                  <span className="meta text-v2-mute">
-                    {ctx.names.title[e.row.titleId] ?? e.row.titleId} · {kronor(e.row.fromOre)} →{" "}
-                    {kronor(e.row.toOre)} · {dayText(e.row.startedOn, ctx.today)}–
-                    {dayText(e.row.stoppedOn ?? e.endsOn, ctx.today)}
-                  </span>
-                </div>
-                {e.row.text ? <p className="max-w-3xl text-v2-mute">{e.row.text}</p> : null}
-                <PriceCheck view={e} ctx={ctx} />
-                {e.evaluation === null ? null : e.evaluation.ok ? (
-                  <EffectBlock effect={e.evaluation.value} ctx={ctx} />
-                ) : (
-                  <StateMessage kind="error" compact message={e.evaluation.message} />
-                )}
-                {ctx.canEdit && (e.status === "planned" || e.status === "running") ? (
-                  <div>
-                    <ActionButton
-                      action={stopExperiment}
-                      payload={{ id: e.row.id }}
-                      variant="ghost"
-                      success={
-                        e.status === "planned" ? "Pristestet borttaget" : "Pristestet stoppat"
-                      }
-                      confirm={{
-                        eyebrow: "Experiment",
-                        title: e.status === "planned" ? "Ta bort pristestet" : "Stoppa pristestet",
-                        description:
-                          e.status === "planned"
-                            ? "Testet har inte mätts någon hel dag och tas bort. Har priset redan ändrats i automaterna, återställ det i Awish."
-                            : "Testet mäts till och med i går, sista hela dagen. Återställ priset i testautomaterna i Awish.",
-                        confirmLabel: e.status === "planned" ? "Ta bort" : "Stoppa",
-                        danger: true,
-                      }}
-                    >
-                      {e.status === "planned" ? "Ta bort" : "Stoppa"}
-                    </ActionButton>
+        <Card title={`Startade pristester · ${formatInt(pricing.experiments.length)}`}>
+          <CardBody>
+            <ul className="flex flex-col gap-6">
+              {pricing.experiments.map((e) => (
+                <li
+                  key={e.row.id}
+                  className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4 last:border-b-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusTag status={EXPERIMENT_STATUS[e.status].status}>
+                      {EXPERIMENT_STATUS[e.status].label}
+                    </StatusTag>
+                    <span className="meta text-v2-mute">
+                      {ctx.names.title[e.row.titleId] ?? e.row.titleId} · {kronor(e.row.fromOre)} →{" "}
+                      {kronor(e.row.toOre)} · {dayText(e.row.startedOn, ctx.today)}–
+                      {dayText(e.row.stoppedOn ?? e.endsOn, ctx.today)}
+                    </span>
                   </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </PanelSection>
+                  {e.row.text ? <p className="max-w-3xl text-v2-mute">{e.row.text}</p> : null}
+                  <PriceCheck view={e} ctx={ctx} />
+                  {e.evaluation === null ? null : e.evaluation.ok ? (
+                    <EffectBlock effect={e.evaluation.value} ctx={ctx} />
+                  ) : (
+                    <StateMessage kind="error" compact message={e.evaluation.message} />
+                  )}
+                  {ctx.canEdit && (e.status === "planned" || e.status === "running") ? (
+                    <div>
+                      <ActionButton
+                        action={stopExperiment}
+                        payload={{ id: e.row.id }}
+                        variant="ghost"
+                        success={
+                          e.status === "planned" ? "Pristestet borttaget" : "Pristestet stoppat"
+                        }
+                        confirm={{
+                          eyebrow: "Experiment",
+                          title:
+                            e.status === "planned" ? "Ta bort pristestet" : "Stoppa pristestet",
+                          description:
+                            e.status === "planned"
+                              ? "Testet har inte mätts någon hel dag och tas bort. Har priset redan ändrats i automaterna, återställ det i Awish."
+                              : "Testet mäts till och med i går, sista hela dagen. Återställ priset i testautomaterna i Awish.",
+                          confirmLabel: e.status === "planned" ? "Ta bort" : "Stoppa",
+                          danger: true,
+                        }}
+                      >
+                        {e.status === "planned" ? "Ta bort" : "Stoppa"}
+                      </ActionButton>
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
       ) : null}
     </section>
   );

@@ -1,0 +1,45 @@
+/* Hylla/Tabell (view-toggle.tsx): Vårt lager och Inköpspriser. */
+.vl-vt {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--v2-r-md);
+  background: var(--v2-line);
+}
+.vl-vt button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: var(--v2-t-sm);
+  font-weight: 500;
+  color: var(--v2-body2);
+  cursor: pointer;
+  transition:
+    background-color 0.15s var(--v2-ease),
+    box-shadow 0.15s var(--v2-ease);
+}
+.vl-vt button[aria-pressed="true"] {
+  background: #fff;
+  color: var(--v2-ink);
+  box-shadow:
+    0 1px 0 rgb(0 0 0 / 0.06),
+    0 0 0 1px var(--v2-line);
+}
+.vl-vt button:active {
+  transform: scale(0.97);
+}
+.vl-vt svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vl-vt button:active {
+    transform: none;
+  }
+}

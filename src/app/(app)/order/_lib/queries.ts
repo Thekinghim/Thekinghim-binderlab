@@ -477,3 +477,65 @@ export async function queryOrderDetail(
     testPurchaseBy: str(r.test_purchase_by),
   };
 }
+
+/* ---------------------------------------------------------------------------
+ * Visuellt (packbilder, dagsgrupper, butikssymbol): bara läsning, inga nya regler.
+ * ------------------------------------------------------------------------- */
+
+/** Antal och summa per affärsdag i perioden (utan testköp), för listans dagsrubriker. */
+export async function queryOrderDayTotals(
+  tx: Tx,
+  orgId: string,
+  filter: OrderQueryFilter,
+): Promise<{ date: IsoDate; count: number; amountOre: number }[]> {
+  const rows = list(
+    await tx.execute(sql`
+      select o.business_date::text as d, count(*)::bigint as n,
+             coalesce(sum(o.amount_ore), 0)::bigint as total
+      from public.orders o
+      where ${where(orgId, filter)}
+      group by o.business_date
+      order by o.business_date desc`),
+  );
+  return rows.map((r) => ({
+    date: String(r.d),
+    count: toNumber(r.n),
+    amountOre: toNumber(r.total),
+  }));
+}
+
+/** De mest sålda titlarna i urvalet (antal order, utan testköp), för titelchipsen. */
+export async function queryTopTitleIds(
+  tx: Tx,
+  orgId: string,
+  filter: OrderQueryFilter,
+  limit: number,
+): Promise<string[]> {
+  const rows = list(
+    await tx.execute(sql`
+      select o.title_id as id
+      from public.orders o
+      where ${where(orgId, filter)} and o.title_id is not null
+      group by o.title_id
+      order by count(*) desc, o.title_id
+      limit ${limit}`),
+  );
+  return rows.map((r) => String(r.id));
+}
+
+/** Butikstyp och ort (fritext), för butikssymbolen i listan. Inga kontaktuppgifter. */
+export async function queryStoreFaces(
+  tx: Tx,
+  orgId: string,
+): Promise<{ id: string; storeType: string | null; city: string | null }[]> {
+  const rows = list(
+    await tx.execute(sql`
+      select s.id, s.store_type, s.city from public.stores s
+      where s.organization_id = ${orgId}::uuid`),
+  );
+  return rows.map((r) => ({
+    id: String(r.id),
+    storeType: r.store_type ? String(r.store_type) : null,
+    city: r.city ? String(r.city) : null,
+  }));
+}

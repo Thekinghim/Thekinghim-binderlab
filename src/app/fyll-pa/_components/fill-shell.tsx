@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useTransition, type ReactNode } from "react";
 
+import { pushEndpointForLogout } from "@/components/pwa/push-device";
 import { clearAllRecent } from "@/components/shell/command-recent";
 import type { Role } from "@/components/shell/nav";
 import type { ShellOrganization, ShellUser, TodoCountSource } from "@/components/shell/side-nav";
@@ -40,7 +41,7 @@ export function FillShell({
     () =>
       startTransition(async () => {
         clearAllRecent();
-        const result = await logout();
+        const result = await logout({ pushEndpoint: await pushEndpointForLogout() });
         if (result.ok) router.replace("/logga-in");
         else toast({ title: "Kunde inte logga ut", description: result.error, tone: "critical" });
       }),

@@ -14,7 +14,10 @@ export function revealEditor(targetId: string, { focus = true, smooth = true } =
   const el = document.getElementById(targetId);
   if (!el) return;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  el.scrollIntoView({ block: "start", behavior: smooth && !reduce ? "smooth" : "auto" });
+  // I telefonens ark står redigeraren redan överst: rulla inte arket förbi packbilden.
+  const inSheet = el.closest(".ip-sheet") !== null;
+  if (!inSheet)
+    el.scrollIntoView({ block: "start", behavior: smooth && !reduce ? "smooth" : "auto" });
   if (!focus) return;
   const input = el.querySelector<HTMLInputElement>(PRICE_INPUT);
   (input ?? el).focus({ preventScroll: true });

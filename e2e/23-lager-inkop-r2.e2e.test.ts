@@ -25,14 +25,15 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { hashPassword } from "@/server/auth/password";
 
 import {
+  type Browser,
+  type BrowserContext,
   expectNoPageErrors,
   launchBrowser,
   openPage,
-  screenshot,
-  until,
-  type Browser,
-  type BrowserContext,
   type Page,
+  screenshot,
+  showAsTable,
+  until,
 } from "./support/browser";
 import { e2e, login } from "./support/session";
 
@@ -552,6 +553,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
 
   it("ägarens Inköpspriser: ett konstigt pris sparas inte utan ett extra tryck", async () => {
     const page = await ownerPage("/inkopspriser");
+    await showAsTable(page);
     await page.getByRole("link", { name: title, exact: true }).first().click();
     const form = page.getByRole("form", { name: `Nytt inköpspris för ${title}` });
     await form.waitFor();

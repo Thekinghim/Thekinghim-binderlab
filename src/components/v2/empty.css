@@ -1,0 +1,96 @@
+/*
+ * Tomt läge med packbilder (Empty med `packs`): solfjäder, fet rad och knapp, centrerat.
+ * Grundläget (.v2-empty utan packs) står i src/styles/v2.css. Solfjädern (PackFan) har egen
+ * CSS där (blocket "Solfjäder"); här bara placering, bocken och texten.
+ */
+
+.v2-empty.v2-empty-packs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 36px 20px 32px;
+  text-align: center;
+}
+.v2-empty.v2-empty-packs.l {
+  min-height: 440px;
+  justify-content: center;
+  padding: 56px 24px 52px;
+  background: radial-gradient(70% 60% at 50% 38%, #fff 0, #fff 45%, #fafafa 100%);
+}
+.v2-empty-art {
+  position: relative;
+  display: block;
+  margin-bottom: 18px;
+}
+.v2-empty.v2-empty-packs b {
+  margin: 0;
+  max-width: 34ch;
+  font-size: var(--v2-t-lg);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.v2-empty.v2-empty-packs.l b {
+  font-size: var(--v2-t-xl);
+}
+.v2-empty-sub {
+  max-width: 44ch;
+  margin-top: 6px;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-sm);
+  text-wrap: pretty;
+}
+.v2-empty-sub > p {
+  margin: 0;
+}
+.v2-empty-act {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+/* Bocken: nere till höger på solfjädern, vit ring så att den lyfter från packen. */
+.v2-empty-ok {
+  position: absolute;
+  right: 12%;
+  bottom: 2px;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--v2-profit);
+  color: #fff;
+  box-shadow:
+    0 0 0 3px #fff,
+    0 4px 10px rgb(4 123 93 / 0.35);
+  animation: v2-empty-pop 360ms var(--v2-ease) 220ms both;
+}
+@keyframes v2-empty-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+@media (max-width: 900px) {
+  .v2-empty.v2-empty-packs {
+    padding: 26px 16px 24px;
+  }
+  .v2-empty.v2-empty-packs.l {
+    min-height: 0;
+    padding: 40px 16px 36px;
+  }
+  .v2-empty.v2-empty-packs.l b {
+    font-size: var(--v2-t-lg);
+  }
+  .v2-empty-act .v2-btn {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v2-empty-ok {
+    animation-name: v2-fade;
+  }
+}

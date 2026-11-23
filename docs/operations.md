@@ -25,6 +25,29 @@ Inget behöver göras för hand. Det som körs av sig självt:
 | `/api/cron/kontroll`  | `52 3-9 * * *`  | Daglig kontroll (pg_cron), en gång per org från 05:00 lokal tid: samma vinst överallt, Awish = appen, påfyllningar nådde Awish, synk, avräkningar, datahygien. Läser bara. De senare tillfällena är nya försök när den inte har kört                                                                                |
 | `/api/cron/vecka`     | `7 5,6,7 * * 1` | Veckosammanfattning (pg_cron), måndag från 07:00 lokal tid: en notis (push) per ägare/admin med knappen på och en telefon med notiser. Sålt och vinst förra veckan mot veckan innan (före butikernas andel), bästa produkten, antal i Att göra. En rad per person och vecka i `weekly_summaries`: aldrig två gånger | Notisen öppnar Veckan (`/veckan`), i Enkel vy Försäljning på engelska; knappen under Notiser och i Enkel vys meny |
 
+**Notis vid varje försäljning.** Awish-cronen (`/api/cron/awish`, var femte minut) skickar sist i körningen en
+push till var och en som har slagit på **Notis vid varje försäljning** (Drift → Notiser, av som standard) och har
+en telefon med notiser. Notisen kommer alltså upp till cirka fem minuter efter köpet. Ett köp blir "Sålt: titel" med
+automat, butik, belopp och tid och packbilden som ikon (Android; iPhone visar alltid appens ikon); flera köp i samma
+synk en grupperad notis; fler än 20 en sammanfattning. En notis per organisation och dag: den nya ersätter den förra
+på låsskärmen, och Hem visar hela dagen. Notisen är alltid på svenska.
+
+- **Vem:** ägare, admin och läsare, samma roller som får läsa orderna. Påfyllaren får ingen notis (hon ser bara
+  summerade antal på Hem, aldrig enskilda köp med tid), butiksportalen och demon aldrig. Bara personen själv kan slå
+  på eller av sin notis (en trigger, inte ens ägaren åt någon annan), och tidpunkten sätts av databasen. Beloppet
+  syns på låsskärmen. Den som är med i flera organisationer får organisationens namn i notisen.
+- **Vilka köp:** bara från Awish-API:t, köpta det senaste dygnet och sparade den senaste timmen. Historik blir ingen
+  notis: i källans första import bara köp från de sista 15 minuterna, i senare importer bara köp högst en timme före
+  förra importen. **Testköp:** bara köp som redan är markerade som testköp när cronen kör. Ett testköp markeras för
+  hand i efterhand, så ett testköp vid automaten ger i praktiken en notis.
+- **En gång:** varje order tas om hand en gång (`sale_notifications`, unique per order; raderna rensas efter sju
+  dagar) innan något skickas. Ett utskick som misslyckas provas inte igen. Jobbet har högst 12 sekunder (och aldrig
+  efter 50 sekunder in i cronens minut): det som inte hinns med tas om hand nästa körning. Högst 500 order per
+  organisation och körning; en större hög (bara efter ett långt avbrott) blir två sammanfattningar.
+- **Tyst på natten** (22–07) är ett val per person; köp under natten kommer inte senare (de syns på Hem).
+- **iPhone:** kräver att Binderlab ligger på hemskärmen och öppnas därifrån.
+- **Utloggning** tar bort telefonens push-adress för personen, så att nästa person vid telefonen inte får notiserna.
+
 `/api/cron/bokforing` schemaläggs av pg_cron i Supabase (`binderlab-bokforing`, migreringen
 `20261104130000_bokforing_paket.sql`). Paketet sparas i bucketen `bookkeeping`; ändras underlaget
 blir det en ny version. Preliminärt när en butik med vinstdelning har order utan inköpspris.

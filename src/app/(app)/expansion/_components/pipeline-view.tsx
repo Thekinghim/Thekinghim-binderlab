@@ -7,6 +7,7 @@ import type { LeadPotential } from "@/analytics/expansion";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { StateMessage } from "@/components/ui/state-message";
+import { StoreFace } from "@/components/v2/store-face";
 import { cn } from "@/lib/cn";
 import { formatInt, MISSING } from "@/lib/format";
 
@@ -217,7 +218,15 @@ export function PipelineView({
                       </span>
                       <span>{LEAD_STAGE_LABEL[lead.stage]}</span>
                     </p>
-                    <p className="text-v2-lg text-v2-ink">{lead.name}</p>
+                    <p className="flex min-w-0 items-center gap-3 text-v2-lg text-v2-ink">
+                      <StoreFace
+                        name={lead.name}
+                        storeType={lead.storeType}
+                        city={lead.city}
+                        size="md"
+                      />
+                      <span className="min-w-0">{lead.name}</span>
+                    </p>
                     <p className="text-v2-sm text-v2-mute">
                       {[
                         lead.storeType,
@@ -317,8 +326,11 @@ export function PipelineView({
                 key={c.id}
                 className="flex flex-wrap items-center justify-between gap-3 border-t border-v2-line py-2"
               >
-                <span className="text-v2-sm text-v2-ink">
-                  {c.name} <span className="text-v2-mute">· {LEAD_STAGE_LABEL[c.stage]}</span>
+                <span className="flex min-w-0 items-center gap-2 text-v2-sm text-v2-ink">
+                  <StoreFace name={c.name} storeType={c.storeType} city={c.city} size="xs" />
+                  <span className="min-w-0">
+                    {c.name} <span className="text-v2-mute">· {LEAD_STAGE_LABEL[c.stage]}</span>
+                  </span>
                 </span>
                 {canEdit ? (
                   <span className="flex gap-1">
@@ -353,8 +365,11 @@ export function PipelineView({
                 key={c.id}
                 className="flex flex-wrap items-center justify-between gap-3 border-t border-v2-line py-2"
               >
-                <span className="text-v2-sm text-v2-ink">
-                  {c.name} <span className="text-v2-mute">· {LEAD_STAGE_LABEL[c.stage]}</span>
+                <span className="flex min-w-0 items-center gap-2 text-v2-sm text-v2-ink">
+                  <StoreFace name={c.name} storeType={c.storeType} city={c.city} size="xs" />
+                  <span className="min-w-0">
+                    {c.name} <span className="text-v2-mute">· {LEAD_STAGE_LABEL[c.stage]}</span>
+                  </span>
                 </span>
                 {canEdit ? (
                   <span className="flex gap-1">
@@ -438,7 +453,12 @@ export function StoreProfilesView({
           <tbody>
             {active.map((p) => (
               <tr key={p.id} className="h-11 border-b border-v2-line">
-                <td className="pr-4 text-v2-ink">{p.name}</td>
+                <td className="pr-4 text-v2-ink">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <StoreFace name={p.name} storeType={p.storeType} city={p.city} size="xs" />
+                    <span className="min-w-0">{p.name}</span>
+                  </span>
+                </td>
                 <td className="pr-4 text-v2-mute">{p.storeType ?? MISSING}</td>
                 <td className="pr-4 text-v2-mute">{p.city ?? MISSING}</td>
                 <td className="tnum pl-4 text-right">

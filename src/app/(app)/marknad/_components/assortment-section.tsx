@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 import type { AssortmentChange } from "@/analytics/assortment";
-import { Panel, PanelSection } from "@/components/ui/frame";
+import { Panel } from "@/components/ui/frame";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
+import { Card, CardBody } from "@/components/v2/card";
 import { formatInt } from "@/lib/format";
 import {
   dayText,
@@ -295,66 +296,78 @@ export function AssortmentSection({
       />
 
       {assortment.tooShort ? (
-        <StateMessage
-          kind="empty"
-          code={`${formatInt(days)} d`}
-          message={`Perioden är ${formatInt(days)} dagar. Efterfrågan per fack kräver minst 14 dagar.`}
-          action={
-            <Link
-              href={`?${periodQuery.toString()}#sortiment`}
-              className="rounded-v2-sm text-v2-ink underline underline-offset-4"
-            >
-              Visa 30 dagar →
-            </Link>
-          }
-        />
+        <Card as="div">
+          <CardBody>
+            <StateMessage
+              kind="empty"
+              code={`${formatInt(days)} d`}
+              message={`Perioden är ${formatInt(days)} dagar. Efterfrågan per fack kräver minst 14 dagar.`}
+              action={
+                <Link
+                  href={`?${periodQuery.toString()}#sortiment`}
+                  className="rounded-v2-sm text-v2-ink underline underline-offset-4"
+                >
+                  Visa 30 dagar →
+                </Link>
+              }
+            />
+          </CardBody>
+        </Card>
       ) : null}
 
       {!assortment.machines.ok ? (
-        <StateMessage kind="error" message={assortment.machines.message} />
+        <Card as="div">
+          <CardBody>
+            <StateMessage kind="error" message={assortment.machines.message} />
+          </CardBody>
+        </Card>
       ) : null}
 
       {assortment.withoutSlots.length > 0 ? (
-        <ul className="flex flex-col gap-2" aria-label="Automater utan fackfördelning">
-          {assortment.withoutSlots.map((m) => {
-            const info = slots[m.id] ?? NO_SLOTS;
-            return (
-              <li
-                key={m.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-v2-line pb-2"
-              >
-                <StateMessage
-                  kind="not-configured"
-                  compact
-                  message={`${m.code} saknar fackfördelning, så sortimentet kan inte räknas.`}
-                />
-                {ctx.canEdit ? (
-                  <SlotsEditorButton
-                    machineId={m.id}
-                    machineCode={m.code}
-                    titles={ctx.titleOptions}
-                    current={info.current}
-                    prefill={info.prefill}
-                    prefillNote={
-                      info.prefill.length > 0
-                        ? "Förifyllt med titlarna som sålt mest i automaten under perioden, ett fack var. Stäm av mot automaten innan du sparar."
-                        : null
-                    }
-                    today={ctx.today}
-                    lockedThrough={info.lockedThrough}
-                    starts={info.starts}
-                    capacity={capacity}
-                    label="Registrera fack"
-                  />
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+        <Card title="Automater utan fackfördelning" count={assortment.withoutSlots.length}>
+          <CardBody>
+            <ul className="flex flex-col gap-2" aria-label="Automater utan fackfördelning">
+              {assortment.withoutSlots.map((m) => {
+                const info = slots[m.id] ?? NO_SLOTS;
+                return (
+                  <li
+                    key={m.id}
+                    className="flex flex-wrap items-center justify-between gap-3 border-b border-v2-line pb-2 last:border-b-0 last:pb-0"
+                  >
+                    <StateMessage
+                      kind="not-configured"
+                      compact
+                      message={`${m.code} saknar fackfördelning, så sortimentet kan inte räknas.`}
+                    />
+                    {ctx.canEdit ? (
+                      <SlotsEditorButton
+                        machineId={m.id}
+                        machineCode={m.code}
+                        titles={ctx.titleOptions}
+                        current={info.current}
+                        prefill={info.prefill}
+                        prefillNote={
+                          info.prefill.length > 0
+                            ? "Förifyllt med titlarna som sålt mest i automaten under perioden, ett fack var. Stäm av mot automaten innan du sparar."
+                            : null
+                        }
+                        today={ctx.today}
+                        lockedThrough={info.lockedThrough}
+                        starts={info.starts}
+                        capacity={capacity}
+                        label="Registrera fack"
+                      />
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </CardBody>
+        </Card>
       ) : null}
 
       {machines.length > 0 ? (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3.5">
           {machines.map((m) => (
             <MachineCard
               key={m.machineId}
@@ -368,81 +381,83 @@ export function AssortmentSection({
       ) : null}
 
       {followUps.length > 0 ? (
-        <PanelSection label={`Uppföljning · ${formatInt(followUps.length)} genomförda`}>
-          <ul className="flex flex-col gap-6">
-            {followUps.map(({ change, followUp }) => (
-              <li
-                key={change.id}
-                className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4"
-              >
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="meta text-v2-ink">
-                    {ctx.names.machine[change.machineId] ?? change.machineId}
-                  </span>
-                  <span className="meta text-v2-mute">
-                    Genomförd {dayText(change.implementedOn, ctx.today)} · väntat{" "}
-                    {signedKronorWhole(change.expectedEffectPerWeekOre)}/vecka
-                  </span>
-                  {followUp.ok ? (
-                    <StatusTag status="neutral">
-                      {followUp.value.status === "done"
-                        ? "Klar"
-                        : followUp.value.status === "running"
-                          ? "Pågår"
-                          : "För tidigt"}
-                    </StatusTag>
-                  ) : null}
-                </div>
-                {followUp.ok ? (
-                  <>
-                    {followUp.value.status === "too-early" ||
-                    followUp.value.status === "not-started" ? null : (
-                      <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
-                        <div className="flex flex-col gap-1">
-                          <dt className="label text-v2-mute">Bidrag/vecka före</dt>
-                          <dd className="tnum text-v2-lg">
-                            {kronor(followUp.value.contributionPerWeekBeforeOre)}
-                          </dd>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <dt className="label text-v2-mute">Efter</dt>
-                          <dd className="tnum text-v2-lg">
-                            {kronor(followUp.value.contributionPerWeekAfterOre)}
-                          </dd>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <dt className="label text-v2-mute">Justerad förändring</dt>
-                          <dd className="tnum text-v2-lg">
-                            {signedKronorWhole(followUp.value.adjustedChangePerWeekOre)}
-                          </dd>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <dt className="label text-v2-mute">Av väntad effekt</dt>
-                          <dd className="tnum text-v2-lg">
-                            {followUp.value.achievedBp === null
-                              ? "–"
-                              : percentOfBp(followUp.value.achievedBp, 0)}
-                          </dd>
-                        </div>
-                      </dl>
-                    )}
-                    <p className="max-w-3xl text-v2-mute">{followUp.value.text}</p>
-                    <Evidence evidence={followUp.value.evidence} names={ctx.names} />
-                    {followUp.value.control.machineIds.length > 0 ? (
-                      <Evidence
-                        label="Jämförelsegrupp"
-                        evidence={followUp.value.controlEvidence}
-                        names={ctx.names}
-                      />
+        <Card title={`Uppföljning · ${formatInt(followUps.length)} genomförda`}>
+          <CardBody>
+            <ul className="flex flex-col gap-6">
+              {followUps.map(({ change, followUp }) => (
+                <li
+                  key={change.id}
+                  className="flex min-w-0 flex-col gap-3 border-b border-v2-line pb-4 last:border-b-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="meta text-v2-ink">
+                      {ctx.names.machine[change.machineId] ?? change.machineId}
+                    </span>
+                    <span className="meta text-v2-mute">
+                      Genomförd {dayText(change.implementedOn, ctx.today)} · väntat{" "}
+                      {signedKronorWhole(change.expectedEffectPerWeekOre)}/vecka
+                    </span>
+                    {followUp.ok ? (
+                      <StatusTag status="neutral">
+                        {followUp.value.status === "done"
+                          ? "Klar"
+                          : followUp.value.status === "running"
+                            ? "Pågår"
+                            : "För tidigt"}
+                      </StatusTag>
                     ) : null}
-                  </>
-                ) : (
-                  <StateMessage kind="error" compact message={followUp.message} />
-                )}
-              </li>
-            ))}
-          </ul>
-        </PanelSection>
+                  </div>
+                  {followUp.ok ? (
+                    <>
+                      {followUp.value.status === "too-early" ||
+                      followUp.value.status === "not-started" ? null : (
+                        <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
+                          <div className="flex flex-col gap-1">
+                            <dt className="label text-v2-mute">Bidrag/vecka före</dt>
+                            <dd className="tnum text-v2-lg">
+                              {kronor(followUp.value.contributionPerWeekBeforeOre)}
+                            </dd>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <dt className="label text-v2-mute">Efter</dt>
+                            <dd className="tnum text-v2-lg">
+                              {kronor(followUp.value.contributionPerWeekAfterOre)}
+                            </dd>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <dt className="label text-v2-mute">Justerad förändring</dt>
+                            <dd className="tnum text-v2-lg">
+                              {signedKronorWhole(followUp.value.adjustedChangePerWeekOre)}
+                            </dd>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <dt className="label text-v2-mute">Av väntad effekt</dt>
+                            <dd className="tnum text-v2-lg">
+                              {followUp.value.achievedBp === null
+                                ? "–"
+                                : percentOfBp(followUp.value.achievedBp, 0)}
+                            </dd>
+                          </div>
+                        </dl>
+                      )}
+                      <p className="max-w-3xl text-v2-mute">{followUp.value.text}</p>
+                      <Evidence evidence={followUp.value.evidence} names={ctx.names} />
+                      {followUp.value.control.machineIds.length > 0 ? (
+                        <Evidence
+                          label="Jämförelsegrupp"
+                          evidence={followUp.value.controlEvidence}
+                          names={ctx.names}
+                        />
+                      ) : null}
+                    </>
+                  ) : (
+                    <StateMessage kind="error" compact message={followUp.message} />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
       ) : null}
     </section>
   );

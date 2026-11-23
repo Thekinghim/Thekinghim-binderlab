@@ -17,15 +17,17 @@ import {
   requireRoute,
 } from "@/server/data/core";
 import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
-import { loadKpiBand } from "@/server/data/v2/analytics/kpi-band";
 import { loadLiveOrders } from "@/server/data/v2/analytics/live";
 import { loadFleetState } from "@/server/data/v2/fleet";
 import { loadDayRoute } from "@/server/data/v2/route";
+import { isDemoFor } from "@/server/demo/guard";
+import { pushStatus } from "@/server/notify/push";
+import { loadSalePushPref } from "@/server/sales-push/prefs";
+import { withUserDb } from "@/server/session";
 
 import { SalesScreen } from "./forsaljning/_components/sales-screen";
 import {
   GeoCardView,
-  GoalCardView,
   LossCardView,
   OpsCardView,
   ResultCard,
@@ -35,7 +37,9 @@ import {
   WhenCardView,
   WorstCardView,
 } from "./_hem/v2/analytics";
-import { ActionsCard, HemKpiBand, LiveCard, RouteCard, TodayLine, TodoCard } from "./_hem/v2/today";
+import { HemHero } from "./_hem/v2/hero-card";
+import { ActionsCard, LiveCard, RouteCard, TodayLine, TodoCard } from "./_hem/v2/today";
+import { SalePrompt } from "./_hem/v2/sale-prompt";
 import { loadHemToday } from "./_hem/v2/today-data";
 
 import "./_hem/v2/hem.css";
@@ -94,9 +98,13 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         </Suspense>
       }
     >
+      {/* Hjältekortet (visuellt/02): vinst, pallen och månadens mål, nyckeltalen kompakt under
+          (ersätter KPI-bandet; _hem/v2/hero-card.tsx). Bara ekonomiroller. */}
       {economy ? (
-        <Suspense fallback={<div className="v2-card h-[106px]" aria-busy="true" />}>
-          <Band sp={sp} />
+        <Suspense
+          fallback={<div className="v2-card h-[380px] max-md:h-[640px]" aria-busy="true" />}
+        >
+          <HemHero sp={sp} />
         </Suspense>
       ) : null}
 
@@ -111,6 +119,13 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           <Suspense fallback={<SkeletonCard rows={5} className="o-act" />}>
             <Actions canRoute={canRoute} nowIso={ctx.now} />
           </Suspense>
+          {/* Påfyllaren (utan ekonomi) har ingen analys: Driftstatus bor då under Kräver åtgärd,
+              så att den inte blir ett ensamt kort i en egen sektion och lämnar ett hål här. */}
+          {!economy ? (
+            <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
+              <OpsCardView timeZone={ctx.timeZone} />
+            </Suspense>
+          ) : null}
           {economy ? (
             <Suspense fallback={<SkeletonCard rows={4} className="o-live" />}>
               <Live nowIso={ctx.now} />
@@ -121,6 +136,13 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           {economy ? (
             <Suspense fallback={<SkeletonCard rows={6} className="x-c x-res" />}>
               <ResultCard sp={sp} />
+            </Suspense>
+          ) : null}
+          {/* "Få notis vid varje försäljning": sist i kolumnen (inte bråttom), så att rutan inte
+              flyttar korten ovanför när den dyker upp. */}
+          {ctx.role === "owner" ? (
+            <Suspense fallback={null}>
+              <SalePromptSlot />
             </Suspense>
           ) : null}
         </div>
@@ -140,50 +162,43 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         </Suspense>
       ) : null}
 
-      <section className="x-an" aria-labelledby="hem-analys">
-        <div className="x-hd">
-          <h2 id="hem-analys">Analys{periodName ? <span> · {periodName}</span> : null}</h2>
-          {economy ? <PeriodSegment className="aseg" /> : null}
-          {economy ? (
+      {economy ? (
+        <section className="x-an" aria-labelledby="hem-analys">
+          <div className="x-hd">
+            <h2 id="hem-analys">Analys{periodName ? <span> · {periodName}</span> : null}</h2>
+            <PeriodSegment className="aseg" />
             <Link className="lk text-v2-sm text-v2-mute" href="/pengar">
               Allt i Pengar →
             </Link>
-          ) : null}
-        </div>
-        <div className="x-grid">
-          {economy ? (
-            <>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <WhenCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <GeoCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <TopCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <WorstCardView />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <StockCardView />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <LossCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <ShopsCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={4} className="x-c" />}>
-                <GoalCardView />
-              </Suspense>
-            </>
-          ) : null}
-          <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
-            <OpsCardView timeZone={ctx.timeZone} />
-          </Suspense>
-        </div>
-      </section>
+          </div>
+          <div className="x-grid">
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <WhenCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <GeoCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <TopCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <WorstCardView />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <StockCardView />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <LossCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <ShopsCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
+              <OpsCardView timeZone={ctx.timeZone} />
+            </Suspense>
+          </div>
+        </section>
+      ) : null}
     </V2Page>
   );
 }
@@ -205,13 +220,31 @@ async function Sold({ sp, economy }: { sp: SearchParams; economy: boolean }) {
   );
 }
 
-async function TodaySub() {
-  return <TodayLine today={await loadHemToday()} />;
+/**
+ * "Få notis vid varje försäljning" för ägaren som inte har den på (och inte i en demo, där
+ * skickas inget). Ett fel här döljer bara rutan.
+ */
+async function SalePromptSlot() {
+  const props = await salePromptProps().catch((error: unknown) => {
+    console.error("[hem] Notisrutan kunde inte läsas:", error);
+    return null;
+  });
+  return props ? <SalePrompt {...props} /> : null;
 }
 
-async function Band({ sp }: { sp: SearchParams }) {
-  const tiles = await loadKpiBand(sp);
-  return tiles && tiles.length > 0 ? <HemKpiBand tiles={tiles} /> : null;
+async function salePromptProps(): Promise<{ publicKey: string; hasDevice: boolean } | null> {
+  const ctx = await loadContext();
+  const push = await pushStatus();
+  if (!push.configured || !push.publicKey) return null;
+  const user = { userId: ctx.user.id, email: ctx.user.email };
+  if (await isDemoFor(user, ctx.organization.id)) return null;
+  const pref = await withUserDb((tx) => loadSalePushPref(tx, ctx.organization.id, ctx.user.id));
+  if (pref.on && pref.endpoints.length > 0) return null;
+  return { publicKey: push.publicKey, hasDevice: pref.endpoints.length > 0 };
+}
+
+async function TodaySub() {
+  return <TodayLine today={await loadHemToday()} />;
 }
 
 async function Actions({ canRoute, nowIso }: { canRoute: boolean; nowIso: string }) {

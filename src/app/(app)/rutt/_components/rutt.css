@@ -205,6 +205,16 @@
   color: var(--v2-body2);
   cursor: pointer;
 }
+/* Telefon: hela raden är tryckytan, minst 44 px hög. */
+@media (max-width: 900px) {
+  .v2-rutt .chk {
+    gap: 0;
+  }
+  .v2-rutt .chk label {
+    min-height: 44px;
+    align-items: center;
+  }
+}
 .v2-rutt .chk input {
   width: 16px;
   height: 16px;

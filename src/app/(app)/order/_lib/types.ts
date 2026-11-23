@@ -39,6 +39,16 @@ export interface MachineOption {
 export interface StoreOption {
   readonly id: string;
   readonly name: string;
+  /** Butikstyp (fritext) och ort, för butikssymbolen. Utelämnat = okänt. */
+  readonly storeType?: string | null;
+  readonly city?: string | null;
+}
+
+/** Antal och summa (utan testköp) för en affärsdag, för listans dagsrubriker. */
+export interface OrderDayTotal {
+  readonly date: IsoDate;
+  readonly count: number;
+  readonly amountOre: number;
 }
 
 /** Namn att slå upp radernas id i. */
@@ -75,6 +85,10 @@ export interface OrderList {
   /** Offset för nästa sida, eller null när allt är laddat. */
   readonly nextOffset: number | null;
   readonly refs: OrderRefs;
+  /** Antal och summa per dag i perioden (nyaste först), för dagsrubrikerna. */
+  readonly days: readonly OrderDayTotal[];
+  /** De mest sålda titlarna i urvalet (utan titelfiltret), för titelchipsen. */
+  readonly topTitleIds: readonly string[];
 }
 
 export interface OrderPage {

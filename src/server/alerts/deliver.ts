@@ -14,7 +14,7 @@
 
 import "server-only";
 
-import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 
 import type { AlertDelivery, AlertNotification } from "@/analytics/alerts";
 import { businessDateAt } from "@/analytics/todos/time";
@@ -29,6 +29,8 @@ import {
   type DispatchResult,
   type Recipient,
 } from "@/server/notify";
+
+import { recordPushOutcome } from "@/server/notify/record";
 
 import { FIELD_KINDS } from "./subscriptions";
 
@@ -293,22 +295,7 @@ export async function deliverDue(
         .update(s.alertDeliveries)
         .set({ status: result.status, results: result.results, sentAt: now })
         .where(eq(s.alertDeliveries.id, id));
-      if (result.goneDevices.length > 0) {
-        await tx
-          .update(s.pushSubscriptions)
-          .set({
-            disabledAt: now,
-            lastFailureAt: now,
-            failureCount: sql`${s.pushSubscriptions.failureCount} + 1`,
-          })
-          .where(inArray(s.pushSubscriptions.id, result.goneDevices));
-      }
-      if (result.okDevices.length > 0) {
-        await tx
-          .update(s.pushSubscriptions)
-          .set({ lastSuccessAt: now, failureCount: 0 })
-          .where(inArray(s.pushSubscriptions.id, result.okDevices));
-      }
+      await recordPushOutcome(tx, row.organizationId, result, now);
       return result.status;
     });
     if (outcome === "sent" || outcome === "partial") sent += 1;

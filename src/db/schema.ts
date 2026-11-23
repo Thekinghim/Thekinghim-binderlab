@@ -181,6 +181,10 @@ export const profiles = pgTable("profiles", {
   locale: text("locale").notNull().default("sv"),
   /** Veckosammanfattning: true/false, null = följer Notiser i mobilen (20261123000000). */
   weeklySummary: boolean("weekly_summary"),
+  /** Notis vid varje försäljning: påslagen sedan, null = av (20261227000000_saljnotis.sql). */
+  salePushSince: ts("sale_push_since"),
+  /** Notis vid varje försäljning: tyst 22–07 i organisationens tidszon. */
+  salePushQuiet: boolean("sale_push_quiet").notNull().default(false),
 });
 
 export const memberships = pgTable("memberships", {
@@ -920,3 +924,6 @@ export * from "./schema/butiksagare";
 
 // V2: dagens rutt och produktbyten (20261223000000_v2_rutt.sql, 20261223000100_v2_produktbyte.sql).
 export * from "./schema/v2";
+
+// Notis vid varje försäljning: order som notisjobbet har tagit om hand (20261227000000_saljnotis.sql).
+export * from "./schema/saljnotis";

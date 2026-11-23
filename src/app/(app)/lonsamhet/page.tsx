@@ -27,8 +27,8 @@ import { StaleImportLine } from "../_hem/sections";
 
 import { CompensationBreakdown, UnpricedSummary } from "./_components/breakdown";
 import { LonsamhetBridge } from "./_components/bridge";
-import { LonsamhetKpis } from "./_components/kpis";
 import { PriceAdviceSection } from "./_components/price-advice";
+import { ProfitHero } from "./_components/profit-hero";
 import { ResultAfterProfitPanel } from "./_components/result";
 import { AnalysisSection } from "./_components/sections";
 import { RhythmSection } from "./_components/rhythm";
@@ -173,9 +173,12 @@ export default async function LonsamhetPage({
         </PageIntro>
 
         {model.orders > 0 ? (
-          <LonsamhetKpis
+          <ProfitHero
             kpis={model.kpis}
+            bridge={model.bridge}
+            unpriced={model.unpriced}
             label={`Nyckeltal · ${model.periodLabel}`}
+            periodLabel={model.periodLabel}
             comparison={model.comparisonLabel}
           />
         ) : null}

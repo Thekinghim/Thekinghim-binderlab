@@ -17,12 +17,13 @@ import { unstable_rethrow } from "next/navigation";
 
 import "../../drift/_components/ops.css";
 import { lastPurchase } from "./_lib/last-purchase";
+import { perDayList } from "./_lib/per-day";
+import { PerDayListView } from "./_components/per-day-list";
 import { loadInvestmentsFor } from "../../expansion/_lib/service";
 import { currentViewer } from "../../expansion/_lib/session";
 import {
   ComparisonTable,
   InvestmentsSection,
-  ProfitPerDayChart,
   UnitEconomicsKpis,
 } from "./_components/unit-economics-view";
 
@@ -96,23 +97,18 @@ export default async function EnhetsekonomiPage({
   const bookValueOre = comparison.rows.reduce((s, r) => s + r.bookValueOre, 0);
   const paid = comparison.rows.filter((r) => r.paybackTenths !== null);
   const fastest = [...paid].sort((a, b) => a.paybackTenths! - b.paybackTenths!)[0];
-  const best = comparison.rows.find((r) => r.machineId === comparison.bestMachineId);
-
-  const title =
-    comparison.averageProfitPerDayOre === null
-      ? "Enhetsekonomi per automat."
-      : `Vinst ${kr(comparison.averageProfitPerDayOre)} per automat och dag.`;
+  const storeNames = new Map(data.names.stores.map((s) => [s.id, s.name]));
+  const perDay = perDayList(
+    comparison.rows,
+    codes,
+    Object.fromEntries(Object.entries(data.machineStores).map(([m, s]) => [m, storeNames.get(s)])),
+  );
 
   return (
     // Period och filtret Butik/Automat står i sidhuvudet (V2Page med period och filters).
     <V2Page title="Enhetsekonomi" date={headerDate(new Date(ctx.now), ctx.timeZone)} period filters>
       <SubNav />
       <div className="v2-stack" data-testid="enhetsekonomi-v2">
-        <div className="flex flex-col gap-0.5 px-0.5">
-          <h2 className="text-v2-md font-[550] text-v2-ink">{title}</h2>
-          <p className="ops-p">{comparison.text}</p>
-        </div>
-
         <div className="ops-bar">
           <KeyValuesInline
             items={[
@@ -147,21 +143,19 @@ export default async function EnhetsekonomiPage({
 
         <section aria-labelledby="per-dag" className="v2-card">
           <div className="v2-card-hd">
-            <h2>Vinst per dag</h2>
+            <h2 id="per-dag">
+              Vinst per dag
+              <span className="font-normal text-v2-mute">
+                {` · ${formatInt(perDay.rows.length)} ${perDay.rows.length === 1 ? "automat" : "automater"}`}
+              </span>
+            </h2>
           </div>
-          <div className="px-[18px] pt-3.5 pb-4 max-[900px]:px-4">
-            <h3 id="per-dag" className="text-v2-lg font-[650] text-v2-ink">
-              {best ? `${best.name} leder.` : "Vinst per automat och dag."}
-            </h3>
-            <p className="ops-p">
-              {comparison.averageProfitPerDayOre === null
-                ? "Ingen automat var placerad i perioden."
-                : `En automat tjänar i snitt ${kr(comparison.averageProfitPerDayOre)} per dag.`}
+          <PerDayListView list={perDay} period={period.period} />
+          {perDay.medianFraction === null ? null : (
+            <p className="border-t border-v2-line2 px-[18px] py-2.5 text-v2-xs text-v2-mute max-[900px]:px-4">
+              Strecket är medianen för dina automater.
             </p>
-            <div className="mt-4">
-              <ProfitPerDayChart rows={comparison.rows} codes={codes} />
-            </div>
-          </div>
+          )}
         </section>
 
         <section aria-labelledby="sida-vid-sida" className="v2-card">

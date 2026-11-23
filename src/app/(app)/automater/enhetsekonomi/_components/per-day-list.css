@@ -1,0 +1,270 @@
+/* Vinst per dag i Enhetsekonomi (PerDayListView). Stapeln och strecket delar skala:
+   spåret är (100 % − 64 px) brett, så att beloppet efter den längsta stapeln får plats.
+   --f = stapelns andel, --mf = medianens andel av skalan. */
+
+.ue-axis,
+.ue-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 190px) minmax(0, 1fr) 110px 150px;
+  grid-template-areas: "vis name bar month pay";
+  column-gap: 16px;
+  align-items: center;
+  padding: 0 18px;
+}
+.ue-axis {
+  grid-template-areas: ". . med month pay";
+  padding-top: 14px;
+  padding-bottom: 2px;
+}
+.ue-ax {
+  font-size: var(--v2-t-xs);
+  font-weight: 500;
+  color: var(--v2-mute);
+}
+.ue-ax.r {
+  text-align: right;
+}
+.ue-axis .ue-ax:nth-of-type(2) {
+  grid-area: month;
+}
+.ue-axis .ue-ax:nth-of-type(3) {
+  grid-area: pay;
+}
+.ue-medlab {
+  grid-area: med;
+  position: relative;
+  height: 16px;
+}
+.ue-medlab b {
+  position: absolute;
+  left: calc((100% - 64px) * var(--mf, 0));
+  transform: translateX(-50%);
+  font-size: var(--v2-t-xs);
+  font-weight: 600;
+  color: var(--v2-ink);
+  white-space: nowrap;
+}
+
+.ue-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ue-row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-top: 1px solid var(--v2-line2);
+  animation: ue-in 420ms var(--v2-ease) var(--d, 0ms) both;
+}
+.ue-row:first-child {
+  border-top: 0;
+}
+.ue-vis {
+  grid-area: vis;
+  display: flex;
+  justify-content: center;
+}
+.ue-vis .v2-mthumb {
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.14));
+}
+.ue-name {
+  grid-area: name;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ue-t {
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--v2-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: 4px;
+  text-decoration-color: var(--v2-line-strong, #b5b5b5);
+  text-underline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ue-t:hover {
+    text-decoration-line: underline;
+  }
+}
+.ue-t:focus-visible {
+  outline: 2px solid var(--v2-focus, #005bd3);
+  outline-offset: 2px;
+}
+.ue-s {
+  overflow: hidden;
+  font-size: var(--v2-t-xs);
+  color: var(--v2-mute);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ue-bar {
+  grid-area: bar;
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  min-width: 0;
+}
+.ue-trk {
+  position: relative;
+  width: calc(100% - 64px);
+  height: 12px;
+}
+.ue-trk i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(100% * var(--f, 0));
+  min-width: 2px;
+  border-radius: 4px;
+  background: var(--v2-profit);
+  transform-origin: left;
+  animation: ue-grow 700ms var(--v2-ease) calc(var(--d, 0ms) + 60ms) both;
+}
+/* Medianen: ett streckat lodrätt streck genom varje rad, på samma ställe. */
+.ue-trk::after {
+  content: "";
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  left: calc(100% * var(--mf, 0));
+  border-left: 1.5px dashed #8a8a8a;
+}
+.ue.no-med .ue-trk::after {
+  display: none;
+}
+.ue-val {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: calc((100% - 64px) * var(--f, 0));
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #fff;
+  font-size: var(--v2-t-sm);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-ink);
+  white-space: nowrap;
+  transform: translate(6px, -50%);
+}
+.ue-val.loss {
+  color: var(--v2-crit-text);
+}
+.ue-month {
+  grid-area: month;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-ink);
+  text-align: right;
+  white-space: nowrap;
+}
+.ue-pay {
+  grid-area: pay;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: var(--v2-t-sm);
+  color: var(--v2-body2);
+  white-space: nowrap;
+}
+.ue-pay-l {
+  display: none;
+}
+.ue-pbtrk {
+  position: relative;
+  width: 56px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #efefef;
+}
+.ue-pbtrk i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: #8a8a8a;
+}
+
+@keyframes ue-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes ue-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ---- Telefon ---- */
+@media (max-width: 900px) {
+  .ue-axis {
+    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-areas: ". med";
+    column-gap: 14px;
+    padding: 12px 16px 0;
+  }
+  .ue-axis .ue-ax {
+    display: none;
+  }
+  .ue-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-areas:
+      "vis name"
+      "vis bar"
+      "vis pay";
+    column-gap: 14px;
+    row-gap: 2px;
+    padding: 10px 16px;
+  }
+  .ue-row:first-child {
+    padding-top: 4px;
+  }
+  .ue-vis {
+    align-self: start;
+    padding-top: 2px;
+  }
+  .ue-name {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ue-t {
+    flex: none;
+    max-width: 60%;
+  }
+  .ue-t {
+    min-height: 24px;
+  }
+  .ue-s {
+    text-align: right;
+  }
+  /* Telefon: bara butiken bredvid namnet (koden står i tabellen under). */
+  .ue-s .ue-code {
+    display: none;
+  }
+  .ue-month {
+    display: none;
+  }
+  .ue-pay {
+    justify-content: flex-start;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+  }
+  .ue-pay-l {
+    display: inline;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ue-row,
+  .ue-trk i {
+    animation: none;
+  }
+}

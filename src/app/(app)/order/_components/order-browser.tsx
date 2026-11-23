@@ -1,32 +1,31 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-  type ReactNode,
-} from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 
-import { Input, Select } from "@/components/ui/field";
-import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatAmountOre } from "@/components/v2/format";
 
 import { getOrderDetail, setTestPurchase } from "../actions";
 import { formatAt } from "../_lib/headline";
-import { cleanQuery, withOrderParams, type OrderParamsPatch, type OrderSort } from "../_lib/params";
-import type { OrderDetail, OrderRefs, OrderRow, OrderTotals, TitleOption } from "../_lib/types";
+import { withOrderParams, type OrderSort } from "../_lib/params";
+import type {
+  OrderDayTotal,
+  OrderDetail,
+  OrderRefs,
+  OrderRow,
+  OrderTotals,
+  TitleOption,
+} from "../_lib/types";
 import {
   OrderDetailError,
   OrderDetailSkeleton,
   OrderDetailView,
   OrderNotFound,
 } from "./order-detail";
-import { OrderList } from "./order-list";
+import { OrderSearch, TitleChips, useOrderNavigate } from "./order-filters";
+import { ExportButton, OrderList } from "./order-list";
+import "./order.css";
 
 export interface OrderBrowserProps {
   /** Listans query (period, filter, sökning, sortering) som servern laddade raderna med. */
@@ -36,8 +35,12 @@ export interface OrderBrowserProps {
   readonly rows: readonly OrderRow[];
   readonly nextOffset: number | null;
   readonly totals: OrderTotals;
+  /** Antal och summa per dag (dagsrubrikerna). */
+  readonly days: readonly OrderDayTotal[];
   readonly refs: OrderRefs;
   readonly titleOptions: readonly TitleOption[];
+  /** De mest sålda titlarna (chipsen). */
+  readonly topTitleIds: readonly string[];
   readonly q: string;
   readonly titleId: string | null;
   readonly sort: OrderSort;
@@ -63,8 +66,6 @@ type DetailState =
       readonly detail: OrderDetail | null;
       readonly message?: string;
     };
-
-const SEARCH_DELAY_MS = 300;
 
 /**
  * Efter att detaljvyn stängts: fokus till orderns knapp i listan om den syns, annars
@@ -106,21 +107,9 @@ function replaceOrderParam(orderId: string | null): void {
 
 export function OrderBrowser(props: OrderBrowserProps) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const now = useMemo(() => new Date(props.now), [props.now]);
-
-  const navigate = useCallback(
-    (patch: OrderParamsPatch) => {
-      const next = withOrderParams(searchParams, { ...patch, orderId: null });
-      const q = next.toString();
-      startTransition(() => {
-        router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
-      });
-    },
-    [router, pathname, searchParams],
-  );
+  const { navigate, pending } = useOrderNavigate();
 
   // --- Detaljvyn ------------------------------------------------------------
   const cache = useRef(new Map<string, OrderDetail | null>());
@@ -271,17 +260,21 @@ export function OrderBrowser(props: OrderBrowserProps) {
   }
 
   return (
-    <div className="v2-card">
-      <OrderFilters
-        q={props.q}
-        titleId={props.titleId}
-        titleOptions={props.titleOptions}
-        onChange={navigate}
-        pending={pending}
-      />
+    <div className="v2-card ord-card">
+      {/* Dator: sök, titelchips och export. Telefon: filtren ligger bakom en knapp (OrderPhoneBar). */}
+      <div className="ord-tools" aria-busy={pending || undefined}>
+        <OrderSearch q={props.q} onChange={navigate} className="ord-search" />
+        <TitleChips
+          titleId={props.titleId}
+          topTitleIds={props.topTitleIds}
+          titleOptions={props.titleOptions}
+          onChange={navigate}
+        />
+        {props.empty ? null : <ExportButton count={props.totals.count} />}
+      </div>
 
       {props.empty ? (
-        <div className="v2-card-body">{props.empty}</div>
+        props.empty
       ) : (
         <OrderList
           key={props.query}
@@ -289,6 +282,7 @@ export function OrderBrowser(props: OrderBrowserProps) {
           rows={props.rows}
           nextOffset={props.nextOffset}
           totals={props.totals}
+          days={props.days}
           refs={props.refs}
           sort={props.sort}
           timeZone={props.timeZone}
@@ -333,114 +327,5 @@ export function OrderBrowser(props: OrderBrowserProps) {
         ) : null}
       </Modal>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Filter
-// ---------------------------------------------------------------------------
-
-function OrderFilters({
-  q,
-  titleId,
-  titleOptions,
-  onChange,
-  pending,
-}: {
-  q: string;
-  titleId: string | null;
-  titleOptions: readonly TitleOption[];
-  onChange: (patch: OrderParamsPatch) => void;
-  pending: boolean;
-}) {
-  const [text, setText] = useState(q);
-  const sent = useRef(q);
-
-  // Sökningen skickas när man slutat skriva en stund (eller trycker Enter).
-  useEffect(() => {
-    const clean = cleanQuery(text);
-    if (clean === sent.current) return;
-    const t = setTimeout(() => {
-      sent.current = clean;
-      onChange({ q: clean });
-    }, SEARCH_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [text, onChange]);
-
-  // Ändrades sökningen utifrån (Rensa, bakåt i historiken) följer fältet med.
-  useEffect(() => {
-    if (q !== sent.current) {
-      sent.current = q;
-      setText(q);
-    }
-  }, [q]);
-
-  const options = useMemo(
-    () => [
-      { value: "", label: "Alla titlar" },
-      ...titleOptions.map((t) => ({
-        value: t.id,
-        label: t.archived ? `${t.name} (arkiverad)` : t.name,
-      })),
-    ],
-    [titleOptions],
-  );
-  const active = q !== "" || titleId !== null;
-
-  return (
-    <form
-      role="search"
-      aria-label="Filtrera order"
-      aria-busy={pending || undefined}
-      // Mobil: sök och titel på en rad, etiketterna bara för skärmläsare, fälten 44 px.
-      className="grid grid-cols-1 gap-3 border-b border-v2-line px-[18px] py-3 max-md:gap-2 max-sm:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)] sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] sm:items-end max-md:[&_input]:h-11 max-md:[&_label]:sr-only max-md:[&_select]:h-11"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const clean = cleanQuery(text);
-        sent.current = clean;
-        onChange({ q: clean });
-      }}
-    >
-      <Input
-        label="Sök"
-        type="search"
-        icon="search"
-        name="q"
-        value={text}
-        autoComplete="off"
-        spellCheck={false}
-        placeholder="Sök order"
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && text) {
-            e.preventDefault();
-            setText("");
-          }
-        }}
-      />
-      <Select
-        label="Titel"
-        name="titel"
-        value={titleId ?? ""}
-        options={options}
-        onChange={(e) => onChange({ titleId: e.target.value || null })}
-      />
-      {active ? (
-        <div className="flex max-sm:col-span-2">
-          <Button
-            type="button"
-            variant="ghost"
-            iconLeft="close"
-            onClick={() => {
-              sent.current = "";
-              setText("");
-              onChange({ q: "", titleId: null });
-            }}
-          >
-            Rensa
-          </Button>
-        </div>
-      ) : null}
-    </form>
   );
 }

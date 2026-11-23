@@ -46,6 +46,9 @@ import {
   queryOrderRows,
   queryOrderSpan,
   queryOrderTotals,
+  queryOrderDayTotals,
+  queryStoreFaces,
+  queryTopTitleIds,
   type OrderQueryFilter,
   type RawOrderRow,
   type TimeCursor,
@@ -95,8 +98,23 @@ async function context(
   const machines = await queryMachines(tx, orgId, stored, today);
   // Samma butiksregel som Lönsamhet (placedInStore): första placeringen gäller bakåt.
   const placements = backdateFirstPlacements(stored);
-  const stores = await queryStores(tx, orgId);
-  const refs = buildRefs({ titles, machines, stores });
+  // Butikssymbolen i listan: typ och ort (läsning, inga kontaktuppgifter). Båda läsningarna
+  // skickas samtidigt i stället för efter varandra.
+  const [stores, faceRows] = await Promise.all([
+    queryStores(tx, orgId),
+    queryStoreFaces(tx, orgId),
+  ]);
+  const faces = new Map(faceRows.map((f) => [f.id, f]));
+  const refs = buildRefs({
+    titles,
+    machines,
+    stores: stores.map((st) => ({
+      id: st.id,
+      name: st.name,
+      storeType: faces.get(st.id)?.storeType ?? null,
+      city: faces.get(st.id)?.city ?? null,
+    })),
+  });
   const filter: OrderQueryFilter = {
     period: args.period,
     placements,
@@ -177,6 +195,8 @@ export async function loadOrderListFor(
       0,
       limit,
     );
+    const days = totals.count > 0 ? await queryOrderDayTotals(tx, orgId, ctx.filter) : [];
+    const topTitleIds = await queryTopTitleIds(tx, orgId, { ...ctx.filter, titleId: null }, 4);
     return {
       period: args.period,
       compare: args.compare,
@@ -189,6 +209,8 @@ export async function loadOrderListFor(
       rows: withStore(page.rows, ctx.placements),
       nextOffset: page.more ? page.rows.length : null,
       refs: ctx.refs,
+      days,
+      topTitleIds,
     };
   });
 }

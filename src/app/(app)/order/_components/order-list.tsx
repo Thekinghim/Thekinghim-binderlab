@@ -1,90 +1,69 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { DataTable, type Column, type SortKey } from "@/components/ui/data-table";
-import { StateMessage } from "@/components/ui/state-message";
+import { businessDateAt } from "@/analytics/todos/time";
 import { StatusTag } from "@/components/ui/status-tag";
-import { cn } from "@/lib/cn";
+import { Button } from "@/components/v2/button";
 import { formatAmountOre } from "@/components/v2/format";
-import { formatInt, formatSek, MISSING, NBSP } from "@/lib/format";
+import { MachineThumb } from "@/components/v2/machine-thumb";
+import { PackImage } from "@/components/v2/pack-image";
+import { StoreFace } from "@/components/v2/store-face";
+import { cn } from "@/lib/cn";
+import { formatInt, MISSING, NBSP } from "@/lib/format";
 
 import { loadMoreOrders } from "../actions";
+import { groupByDay, timeOf, type DayGroup } from "../_lib/day-groups";
 import { formatAt } from "../_lib/headline";
-import {
-  DEFAULT_SORT,
-  SORT_KEYS,
-  withOrderParams,
-  type OrderSort,
-  type OrderSortKey,
-} from "../_lib/params";
-import { rankMap } from "../_lib/refs";
+import { nextSortFor, sortRows } from "../_lib/list-sort";
+import { withOrderParams, type OrderSort, type OrderSortKey } from "../_lib/params";
 import { isTestPurchase, TEST_PURCHASE_LABEL } from "../_lib/test-purchase";
-import type { OrderRefs, OrderRow, OrderTotals } from "../_lib/types";
+import type {
+  MachineOption,
+  OrderDayTotal,
+  OrderRefs,
+  OrderRow,
+  OrderTotals,
+  StoreOption,
+} from "../_lib/types";
 
-const ROW_HEIGHT = 36;
-/** Hämta nästa sida när så här många px återstår av scrollytan. */
-const PREFETCH_PX = ROW_HEIGHT * 40;
-/** Scrollytans höjd (design.md); på mobil högst 60 % av skärmen, så sidan går att scrolla förbi. */
-const TABLE_HEIGHT = 560;
-const TABLE_HEIGHT_MOBILE = "min(560px, 60dvh)";
+/** Hämta nästa sida när listans slut är så här nära (under skärmkanten). */
+const PREFETCH_MARGIN = "0px 0px 1200px 0px";
 
 const SORT_LABEL: Record<OrderSortKey, string> = {
-  nr: "Ordernummer",
-  tid: "Tid",
-  titel: "Titel",
-  automat: "Automat",
-  butik: "Butik",
-  belopp: "Belopp",
+  nr: "ordernummer",
+  tid: "tid",
+  titel: "titel",
+  automat: "automat",
+  butik: "butik",
+  belopp: "belopp",
 };
 
-const MOBILE_COLUMNS = new Set(["nr", "titel", "belopp"]);
-// Belopp 88 px: "1 393 kr" ryms, och titelkolumnen får plats för "BL-001 · 1 nov. 17:17".
-const MOBILE_WIDTH: Record<string, number> = { nr: 68, belopp: 88 };
-
-const WIDE_QUERY = "(min-width: 768px)";
-
-function subscribeWide(onChange: () => void): () => void {
-  const mq = window.matchMedia(WIDE_QUERY);
-  mq.addEventListener("change", onChange);
-  return () => mq.removeEventListener("change", onChange);
-}
-
-/** Bredare än md. På servern antas bred skärm. */
-function useWide(): boolean {
-  return useSyncExternalStore(
-    subscribeWide,
-    () => window.matchMedia(WIDE_QUERY).matches,
-    () => true,
-  );
-}
-
-function isSortKey(key: string): key is OrderSortKey {
-  return (SORT_KEYS as readonly string[]).includes(key);
-}
+/** Kolumnerna på datorn: packen och titeln först, ordernumret sist i grått. */
+const HEAD: ReadonlyArray<{ key: OrderSortKey; label: string; num?: boolean }> = [
+  { key: "titel", label: "Titel" },
+  { key: "automat", label: "Automat" },
+  { key: "butik", label: "Butik" },
+  { key: "belopp", label: "Belopp", num: true },
+  { key: "nr", label: "Ordernr", num: true },
+];
 
 function sameSort(a: OrderSort, b: OrderSort): boolean {
   return a.key === b.key && a.dir === b.dir;
 }
 
 /**
- * Serverns ordning för lika värden: nyaste först, sedan id fallande. När allt är laddat
- * får tabellen raderna i den ordningen; tabellens sortering är stabil, så lika värden
- * hamnar då som vid omladdning och i CSV:n.
+ * Orderraderna: packbilden först, sedan titel och tid, automat, butik, belopp och sist
+ * ordernumret i grått. I tidsordning (nyaste först) står raderna under dagsrubriker med
+ * dagens antal och summa. Telefon: bara pack, titel, automat · tid och belopp (CSS).
+ * Hela raden är en knapp som öppnar ordern. Sidan scrollar; nästa sida hämtas i förväg.
  */
-function canonicalOrder(rows: readonly OrderRow[]): readonly OrderRow[] {
-  return [...rows].sort((a, b) => {
-    if (a.orderedAt !== b.orderedAt) return a.orderedAt < b.orderedAt ? 1 : -1;
-    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
-  });
-}
-
 export function OrderList({
   query,
   rows: initialRows,
   nextOffset: initialNext,
   totals,
+  days,
   refs,
   sort: initialSort,
   timeZone,
@@ -98,6 +77,7 @@ export function OrderList({
   rows: readonly OrderRow[];
   nextOffset: number | null;
   totals: OrderTotals;
+  days: readonly OrderDayTotal[];
   refs: OrderRefs;
   sort: OrderSort;
   timeZone: string;
@@ -114,9 +94,6 @@ export function OrderList({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<OrderSort>(initialSort);
-  // Tabellen sorterar på en nyckel (servern kan inte följa en sekundär); ett skiftklick
-  // ritar om tabellen med bara den första.
-  const [resets, setResets] = useState(0);
   const complete = next === null;
 
   // --- Nästa sida ----------------------------------------------------------
@@ -161,42 +138,29 @@ export function OrderList({
   useEffect(() => {
     loadMoreRef.current = loadMore;
   }, [loadMore]);
-  const canAutoLoad = !error;
-  const canAutoLoadRef = useRef(canAutoLoad);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const canAutoLoad = !error && next !== null;
   useEffect(() => {
-    canAutoLoadRef.current = canAutoLoad;
-  }, [canAutoLoad]);
-
-  const wrapper = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = wrapper.current;
-    if (!el) return;
-    const onScroll = (e: Event) => {
-      const t = e.target as HTMLElement | null;
-      if (!t || !canAutoLoadRef.current) return;
-      if (t.scrollHeight - t.scrollTop - t.clientHeight < PREFETCH_PX) void loadMoreRef.current();
-    };
-    el.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    return () => el.removeEventListener("scroll", onScroll, { capture: true });
-  }, []);
+    const el = sentinel.current;
+    if (!el || !canAutoLoad || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void loadMoreRef.current();
+      },
+      { rootMargin: PREFETCH_MARGIN },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [canAutoLoad, rows.length]);
 
   // --- Sortering -----------------------------------------------------------
-  const onSortChange = useCallback(
-    (keys: ReadonlyArray<SortKey>) => {
-      const first = keys[0];
-      let nextSort: OrderSort;
-      if (!first || !isSortKey(first.key)) {
-        // Tredje klicket tar bort sorteringen i tabellen. Står listan redan i
-        // standardordningen (nyaste först) vänder vi den i stället.
-        nextSort = sameSort(sort, DEFAULT_SORT) ? { key: "tid", dir: "asc" } : DEFAULT_SORT;
-      } else {
-        nextSort = { key: first.key, dir: first.dir };
-      }
-      if (keys.length > 1) setResets((n) => n + 1);
+  const changeSort = useCallback(
+    (key: OrderSortKey) => {
+      const nextSort = nextSortFor(sort, key);
       if (sameSort(nextSort, sort)) return;
       setSort(nextSort);
       if (complete) {
-        // Allt är laddat: tabellen sorterar själv, URL:en följer med utan serverförfrågan.
+        // Allt är laddat: listan sorterar själv, URL:en följer med utan serverförfrågan.
         const sp = withOrderParams(new URLSearchParams(window.location.search), { sort: nextSort });
         const q = sp.toString();
         window.history.replaceState(
@@ -211,232 +175,118 @@ export function OrderList({
     [complete, onServerSort, sort],
   );
 
-  // --- Kolumner ------------------------------------------------------------
-  const wide = useWide();
-  const allColumns = useMemo<Column<OrderRow>[]>(() => {
-    const titleRank = rankMap(refs.titles);
-    const machineRank = rankMap(refs.machines);
-    const storeRank = rankMap(refs.stores);
-    const titles = new Map(refs.titles.map((t) => [t.id, t.name]));
-    const machines = new Map(refs.machines.map((m) => [m.id, m]));
-    const stores = new Map(refs.stores.map((s) => [s.id, s.name]));
-    const rank = (m: Map<string, number>, id: string | null) =>
-      id === null ? Number.NaN : (m.get(id) ?? Number.NaN);
-    return [
-      {
-        key: "nr",
-        header: "Ordernummer",
-        width: 132,
-        hideable: false,
-        sortValue: (r) => r.externalId,
-        render: (r) => (
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            aria-label={`Visa order ${r.externalId}`}
-            data-order-button={r.id}
-            onClick={() => onOpen(r)}
-            className="inline-flex min-h-7 w-full items-center rounded-v2-sm text-v2-sm font-[550] text-v2-ink underline decoration-v2-line underline-offset-4 transition-colors hover:decoration-v2-ink max-md:min-h-11"
-          >
-            {r.externalId}
-          </button>
-        ),
-        footer: "Summa",
-      },
-      {
-        key: "tid",
-        hideOnMobile: true,
-        header: "Tid",
-        width: 132,
-        sortValue: (r) => Date.parse(r.orderedAt),
-        render: (r) => (
-          <span className="tnum text-v2-sm text-v2-mute">
-            {formatAt(r.orderedAt, timeZone, now)}
-          </span>
-        ),
-      },
-      {
-        key: "titel",
-        header: "Titel",
-        width: 240,
-        sortValue: (r) => rank(titleRank, r.titleId),
-        render: (r) => {
-          const name = r.titleId ? titles.get(r.titleId) : undefined;
-          const text = name ? (
-            <span className="block min-w-0 truncate" title={name}>
-              {name}
-            </span>
-          ) : (
-            <span className="block min-w-0 truncate text-muted" title={r.rawTitle ?? undefined}>
-              {r.rawTitle ?? MISSING}
-            </span>
-          );
-          // Testköp står kvar i listan men räknas inte i summan.
-          const label = isTestPurchase(r, changed) ? (
-            <span className="flex min-w-0 items-center gap-2">
-              {text}
-              <StatusTag status="neutral" className="h-5 shrink-0">
-                {TEST_PURCHASE_LABEL}
-              </StatusTag>
-            </span>
-          ) : (
-            text
-          );
-          // Klick på titeln öppnar också ordern (tangentbord: ordernumret är knappen).
-          // Under 768 px står tid och automat på en andra rad, eftersom kolumnerna saknas.
-          const machine = r.machineId ? machines.get(r.machineId) : undefined;
-          return (
-            <div className="block w-full cursor-pointer leading-tight" onClick={() => onOpen(r)}>
-              {label}
-              {/* Automatkoden står först och kortas aldrig; tiden får ge vika om raden är smal. */}
-              <span className="tnum mt-0.5 flex min-w-0 text-v2-xs whitespace-nowrap text-v2-mute md:hidden">
-                <span className="shrink-0">{machine ? machine.code : "Okopplad"}</span>
-                <span className="shrink-0 whitespace-pre">{" · "}</span>
-                <span className="min-w-0 truncate">{formatAt(r.orderedAt, timeZone, now)}</span>
-              </span>
-            </div>
-          );
-        },
-      },
-      {
-        key: "automat",
-        hideOnMobile: true,
-        header: "Automat",
-        width: 112,
-        sortValue: (r) => rank(machineRank, r.machineId),
-        render: (r) => {
-          const m = r.machineId ? machines.get(r.machineId) : undefined;
-          return m ? (
-            <span className="text-v2-sm" title={m.name}>
-              {m.code}
-            </span>
-          ) : (
-            <span className="text-muted">Okopplad</span>
-          );
-        },
-      },
-      {
-        key: "butik",
-        hideOnMobile: true,
-        header: "Butik",
-        width: 200,
-        sortValue: (r) => rank(storeRank, r.storeId),
-        render: (r) => {
-          const name = r.storeId ? stores.get(r.storeId) : undefined;
-          return name ? (
-            <span title={name}>{name}</span>
-          ) : (
-            <span className="text-muted">{MISSING}</span>
-          );
-        },
-      },
-      {
-        key: "belopp",
-        header: "Belopp",
-        numeric: true,
-        width: 120,
-        sortValue: (r) => r.amountOre,
-        render: (r) => formatAmountOre(r.amountOre),
-        // Hela kronor, som rubriken (design.md: summaraden säger samma belopp som rubriken).
-        footer: formatSek(totals.amountOre / 100),
-      },
-    ];
-  }, [refs, timeZone, now, onOpen, totals.amountOre, changed]);
-  // Under 768 px: ordernummer, titel (med tid och automat under) och belopp ryms utan
-  // sidledsscroll. Butiken finns i detaljvyn. Kolumnerna och andra raden döljs med CSS
-  // (rätt redan före hydrering); bredderna och radhöjden följer skärmen i JS.
-  const columns = useMemo(
-    () =>
-      wide
-        ? allColumns
-        : allColumns
-            .filter((c) => MOBILE_COLUMNS.has(c.key))
-            .map((c) =>
-              c.key === "titel"
-                ? { ...c, width: undefined }
-                : { ...c, width: MOBILE_WIDTH[c.key], header: c.key === "nr" ? "Nr" : c.header },
-            ),
-    [allColumns, wide],
+  // --- Raderna ---------------------------------------------------------------
+  const lookups = useMemo(
+    () => ({
+      titles: new Map(refs.titles.map((t) => [t.id, t.name])),
+      machines: new Map(refs.machines.map((m) => [m.id, m])),
+      stores: new Map(refs.stores.map((st) => [st.id, st])),
+    }),
+    [refs],
+  );
+  const shown = useMemo(
+    () => (complete ? sortRows(rows, sort, refs) : rows),
+    [complete, rows, sort, refs],
+  );
+  const today = useMemo(() => businessDateAt(now, timeZone), [now, timeZone]);
+  // I tidsordning (nyaste först) grupperas raderna per dag; annars en enda lista.
+  const groups: DayGroup[] | null = useMemo(
+    () => (sort.key === "tid" && sort.dir === "desc" ? groupByDay(shown, days, today) : null),
+    [shown, sort, days, today],
   );
 
-  const tableRows = useMemo(() => (complete ? canonicalOrder(rows) : rows), [complete, rows]);
-  const defaultSort = useMemo(() => [{ key: sort.key, dir: sort.dir }], [sort]);
-  const sortSig = `${sort.key}:${sort.dir}:${resets}`;
+  const renderRow = (r: OrderRow, group: DayGroup | null) => {
+    const clock = timeOf(r.orderedAt, timeZone);
+    const recent = group !== null && (group.label === "I dag" || group.label === "I går");
+    return (
+      <OrderRowItem
+        key={r.id}
+        row={r}
+        title={(r.titleId ? lookups.titles.get(r.titleId) : undefined) ?? null}
+        machine={r.machineId ? lookups.machines.get(r.machineId) : undefined}
+        store={r.storeId ? lookups.stores.get(r.storeId) : undefined}
+        when={
+          recent ? `${group.label.toLowerCase()} ${clock}` : formatAt(r.orderedAt, timeZone, now)
+        }
+        shortWhen={group ? clock : formatAt(r.orderedAt, timeZone, now)}
+        test={isTestPurchase(r, changed)}
+        onOpen={onOpen}
+      />
+    );
+  };
+
   const partial = rows.length < totals.count;
 
   return (
-    <div className="flex min-w-0 flex-col">
-      <div className="flex flex-col gap-2 px-[18px] py-2.5 sm:flex-row sm:items-center sm:justify-between">
-        <p className="tnum text-v2-sm text-v2-mute" aria-live="polite" aria-atomic="true">
-          <span className="text-fg">{formatInt(totals.count)}</span>
-          {NBSP}order
-          {/* Under md räcker antalet: sorteringen syns på kolumnrubriken. */}
-          <span className="max-md:sr-only">
-            {partial ? (
-              <>
-                <span aria-hidden className="text-subtle">
-                  {" · "}
-                </span>
-                <span className="text-fg">{formatInt(rows.length)}</span> laddade
-              </>
-            ) : null}
-            <span aria-hidden className="text-subtle">
-              {" · "}
-            </span>
-            sorterat på <span className="text-fg">{SORT_LABEL[sort.key]}</span>
-            <span aria-hidden> {sort.dir === "asc" ? "↑" : "↓"}</span>
-            <span className="sr-only"> {sort.dir === "asc" ? "stigande" : "fallande"}</span>
-          </span>
-          {pending ? (
-            <>
-              <span aria-hidden className="text-subtle">
-                {" · "}
+    <div className="ord-list">
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {formatInt(totals.count)} order{partial ? `, ${formatInt(rows.length)} visas` : ""},
+        sorterade på {SORT_LABEL[sort.key]} {sort.dir === "asc" ? "stigande" : "fallande"}
+        {pending ? ", hämtar" : ""}
+      </p>
+
+      <div className="ord-head" role="group" aria-label="Sortera listan">
+        {HEAD.map((h) => {
+          const active = sort.key === h.key;
+          const dirText = active ? (sort.dir === "asc" ? "stigande" : "fallande") : null;
+          return (
+            <button
+              key={h.key}
+              type="button"
+              className={cn("ord-hc", h.num && "num", active && "on")}
+              aria-pressed={active}
+              aria-label={`Sortera på ${h.label.toLowerCase()}${dirText ? `, nu ${dirText}` : ""}`}
+              onClick={() => changeSort(h.key)}
+            >
+              {h.label}
+              <span aria-hidden="true" className="ar">
+                {active ? (sort.dir === "asc" ? "↑" : "↓") : ""}
               </span>
-              hämtar
-            </>
-          ) : null}
-        </p>
-        <ExportButton count={totals.count} />
+            </button>
+          );
+        })}
       </div>
 
-      <div
-        ref={wrapper}
-        className={cn(
-          "min-w-0 px-[18px] pb-2 transition-opacity duration-fast",
-          pending && "opacity-60",
+      <div className={cn("ord-body", pending && "busy")} aria-busy={pending || undefined}>
+        {groups ? (
+          groups.map((g) => (
+            <section key={g.date} className="ord-day" aria-labelledby={`ord-d-${g.date}`}>
+              <h3 id={`ord-d-${g.date}`} className="ord-dh">
+                <b>{g.label}</b>
+                {g.total ? (
+                  <em className="tnum">
+                    {formatInt(g.total.count)}
+                    {NBSP}order · {formatAmountOre(g.total.amountOre)}
+                  </em>
+                ) : null}
+              </h3>
+              <ul>{g.rows.map((r) => renderRow(r, g))}</ul>
+            </section>
+          ))
+        ) : (
+          <ul className="ord-flat">{shown.map((r) => renderRow(r, null))}</ul>
         )}
-        aria-busy={pending || undefined}
-      >
-        <DataTable
-          key={sortSig}
-          columns={columns}
-          rows={tableRows}
-          rowKey={(r) => r.id}
-          caption={`Order, ${formatInt(totals.count)} st, sorterade på ${SORT_LABEL[sort.key].toLowerCase()}`}
-          defaultSort={defaultSort}
-          onSortChange={onSortChange}
-          virtualize={rows.length > 200}
-          dense={wide}
-          surface="bg"
-          maxHeight={rows.length > 200 ? (wide ? TABLE_HEIGHT : TABLE_HEIGHT_MOBILE) : undefined}
-        />
       </div>
+
+      <div ref={sentinel} aria-hidden="true" />
 
       {next !== null || error ? (
-        <div className="flex flex-col gap-3 border-t border-v2-line2 px-[18px] py-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="tnum text-v2-sm text-v2-mute">
-            Visar {formatInt(rows.length)} av {formatInt(totals.count)}.
+        <div className="ord-foot">
+          <p className="tnum">
+            Visar {formatInt(rows.length)} av {formatInt(totals.count)}
           </p>
           {error ? (
-            <StateMessage
-              kind="loading-failed"
-              compact
-              message={error}
-              action={{ label: "Försök igen", onClick: () => void loadMore() }}
-            />
+            <span className="flex flex-wrap items-center gap-3">
+              <span role="alert" className="text-v2-crit-text">
+                {error}
+              </span>
+              <Button size="sm" onClick={() => void loadMore()}>
+                Försök igen
+              </Button>
+            </span>
           ) : (
-            <Button size="sm" loading={loading} onClick={() => void loadMore()}>
-              Ladda fler
+            <Button size="sm" pending={loading} onClick={() => void loadMore()}>
+              Visa fler
             </Button>
           )}
         </div>
@@ -445,8 +295,103 @@ export function OrderList({
   );
 }
 
+function OrderRowItem({
+  row: r,
+  title,
+  machine,
+  store,
+  when,
+  shortWhen,
+  test,
+  onOpen,
+}: {
+  row: OrderRow;
+  title: string | null;
+  machine: MachineOption | undefined;
+  store: StoreOption | undefined;
+  when: string;
+  shortWhen: string;
+  test: boolean;
+  onOpen: (row: OrderRow) => void;
+}) {
+  const name = title ?? r.rawTitle;
+  return (
+    <li className="ord-li">
+      <button
+        type="button"
+        className={cn("ord-row", test && "test")}
+        aria-haspopup="dialog"
+        data-order-button={r.id}
+        onClick={() => onOpen(r)}
+      >
+        <span className="ord-c ord-c-t">
+          <span className="ord-pk">
+            <PackImage title={name} size="m" />
+          </span>
+          <span className="ord-tx">
+            <span className="ord-tn">
+              <span className={cn("truncate", !title && "text-v2-mute")} title={name ?? undefined}>
+                {name ?? MISSING}
+              </span>
+              {test ? (
+                <StatusTag status="neutral" className="h-5 shrink-0">
+                  {TEST_PURCHASE_LABEL}
+                </StatusTag>
+              ) : null}
+            </span>
+            {/* Dator: när. Telefon: automat och tid (kolumnerna finns inte där). */}
+            <span className="ord-ts ord-dk tnum">{when}</span>
+            <span className="ord-ts ord-ph tnum">
+              <MachineThumb machineId={r.machineId} size="xs" className="ord-mt-s" />
+              <span className="shrink-0">{machine ? machine.code : "Okopplad"}</span>
+              <span aria-hidden="true" className="shrink-0">
+                ·
+              </span>
+              <span className="min-w-0 truncate">{shortWhen}</span>
+            </span>
+          </span>
+        </span>
+        <span className="ord-c ord-c-m ord-dk">
+          {machine ? (
+            <>
+              <MachineThumb machineId={machine.id} size="xs" />
+              <span className="ord-tx">
+                <span className="ord-mc">{machine.code}</span>
+                <span className="ord-ts truncate">{machine.name}</span>
+              </span>
+            </>
+          ) : (
+            <span className="text-v2-mute">Okopplad</span>
+          )}
+        </span>
+        <span className="ord-c ord-c-s ord-dk">
+          {store ? (
+            <>
+              <StoreFace
+                name={store.name}
+                storeType={store.storeType}
+                city={store.city}
+                size="sm"
+              />
+              <span className="truncate" title={store.name}>
+                {store.name}
+              </span>
+            </>
+          ) : (
+            <span className="text-v2-mute">{MISSING}</span>
+          )}
+        </span>
+        <span className={cn("ord-c ord-c-a tnum", test && "text-v2-mute line-through")}>
+          {formatAmountOre(r.amountOre)}
+        </span>
+        <span className="ord-c ord-c-n ord-dk tnum">#{r.externalId}</span>
+      </button>
+    </li>
+  );
+}
+
 /** Hämtar CSV:n för hela urvalet (alla rader, inte bara de laddade) i vald sortering. */
-function ExportButton({ count }: { count: number }) {
+export function ExportButton({ count }: { count: number }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -481,15 +426,27 @@ function ExportButton({ count }: { count: number }) {
   };
 
   return (
-    // CSV är ett datorverktyg: dold på mobilen.
-    <div className="flex flex-col items-start gap-2 max-md:hidden sm:items-end">
+    // CSV är ett datorverktyg: dold på telefonen (CSS).
+    <div className="ord-export">
       <Button
         size="sm"
-        iconLeft="download"
-        loading={busy}
+        pending={busy}
         onClick={() => void run()}
         aria-label={`Exportera ${formatInt(count)} order som CSV`}
       >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
+        </svg>
         Exportera CSV
       </Button>
       {error ? (

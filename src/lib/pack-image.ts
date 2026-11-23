@@ -34,7 +34,7 @@ export const PACK_IMAGES = {
   "perfect-order": [132, 240],
   "phantasmal-flames": [132, 240],
   "prismatic-evolutions": [131, 240],
-  "scarlet-violet-151": [177, 240],
+  "scarlet-violet-151": [131, 240],
   "surging-sparks": [131, 240],
   "temporal-forces": [133, 240],
   "twilight-masquerade": [132, 240],

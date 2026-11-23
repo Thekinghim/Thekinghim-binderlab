@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 
 import { routeById } from "@/components/shell/nav";
 import { toURLSearchParams } from "@/components/shell/period-state";
-import { StateMessage } from "@/components/ui/state-message";
+import { ButtonLink } from "@/components/v2/button";
+import { Empty, emptyPacks } from "@/components/v2/empty";
 import { formatValue } from "@/components/v2/format";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
@@ -11,7 +12,8 @@ import { formatPeriodShort, MISSING } from "@/lib/format";
 import { OPERATOR_ROLES, requireRoute, scopeFiltered } from "@/server/data/core";
 
 import { OrderBrowser } from "./_components/order-browser";
-import { isoToLocalDate, orderHeadline, sentence } from "./_lib/headline";
+import { OrderPhoneBar } from "./_components/order-filters";
+import { isoToLocalDate, orderHeadline } from "./_lib/headline";
 import { hasPageFilter, listSignature, lockedListQuery, withOrderParams } from "./_lib/params";
 import { titleChoices } from "./_lib/refs";
 import { loadOrderDetailFor, loadOrderListFor } from "./_lib/service";
@@ -63,14 +65,29 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
   const canOpenImport = routeById("datakallor").roles.includes(ctx.role);
   const canMarkTestPurchase = (OPERATOR_ROLES as readonly string[]).includes(ctx.role);
 
+  // Tomma lägen: en solfjäder av organisationens mest sålda titlar, en fet rad och en knapp.
+  const titleNames = new Map(list.refs.titles.map((t) => [t.id, t.name]));
+  const packs = emptyPacks([
+    ...list.topTitleIds.map((id) => titleNames.get(id)),
+    ...list.refs.titles.filter((t) => !t.archived).map((t) => t.name),
+  ]);
   let empty = null;
   if (!list.hasOrders) {
     empty = (
-      <StateMessage
-        kind="empty"
-        message="Inga order är importerade ännu."
-        action={canOpenImport ? { label: "Importera orderlistan", href: "/datakallor" } : undefined}
-      />
+      <Empty
+        size="l"
+        packs={packs}
+        title="Inga order är importerade än"
+        action={
+          canOpenImport ? (
+            <ButtonLink href="/datakallor" variant="act" touch>
+              Importera orderlistan
+            </ButtonLink>
+          ) : undefined
+        }
+      >
+        Order kommer från automaternas försäljning när en datakälla är kopplad.
+      </Empty>
     );
   } else if (list.totals.count === 0 && list.rows.length === 0) {
     // Inga rader alls. Bara testköp ger rader men antal 0: då visas listan (de går att ångra).
@@ -80,25 +97,38 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
     all.set("period", "allt");
     empty =
       pageFiltered || scoped ? (
-        <StateMessage
-          kind="no-results"
-          message={`Ingen order ${periodText} matchar ${
+        <Empty
+          size="l"
+          packs={packs}
+          title={`Ingen order ${periodText} matchar ${
             params.q ? `”${params.q}”` : "filtret"
-          }${scoped ? " i vald butik eller automat" : ""}.`}
+          }${scoped ? " i vald butik eller automat" : ""}`}
           action={
-            pageFiltered
-              ? {
-                  label: "Rensa sökning och titel",
-                  href: `/order?${withOrderParams(sp, { q: "", titleId: null, orderId: null })}`,
-                }
-              : { label: "Sök i hela historiken", href: `/order?${all}` }
+            pageFiltered ? (
+              <ButtonLink
+                href={`/order?${withOrderParams(sp, { q: "", titleId: null, orderId: null })}`}
+                variant="act"
+                touch
+              >
+                Rensa sökning och titel
+              </ButtonLink>
+            ) : (
+              <ButtonLink href={`/order?${all}`} variant="act" touch>
+                Sök i hela historiken
+              </ButtonLink>
+            )
           }
         />
       ) : (
-        <StateMessage
-          kind="empty"
-          message={sentence(`Inga order ${periodText}`)}
-          action={{ label: "Visa hela historiken", href: `/order?${all}` }}
+        <Empty
+          size="l"
+          packs={packs}
+          title={`Inga order ${periodText}`}
+          action={
+            <ButtonLink href={`/order?${all}`} variant="act" touch>
+              Visa hela historiken
+            </ButtonLink>
+          }
         />
       );
   }
@@ -119,8 +149,14 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
         ];
 
   return (
-    <V2Page title="Order" date={headerDate(now, ctx.timeZone)} period filters>
+    <V2Page title="Order" date={headerDate(now, ctx.timeZone)} period filters className="ord-v2">
       <SubNav />
+      <OrderPhoneBar
+        q={params.q}
+        titleId={params.titleId}
+        topTitleIds={list.topTitleIds}
+        titleOptions={titleChoices(list.refs.titles, params.titleId)}
+      />
       <div className={PAGE_BODY}>
         <PageIntro title={headline.title} aside={headline.aside} facts={meta} />
 
@@ -131,8 +167,10 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
             rows={list.rows}
             nextOffset={list.nextOffset}
             totals={list.totals}
+            days={list.days}
             refs={list.refs}
             titleOptions={titleChoices(list.refs.titles, params.titleId)}
+            topTitleIds={list.topTitleIds}
             q={params.q}
             titleId={params.titleId}
             sort={params.sort}

@@ -1,0 +1,162 @@
+/*
+ * Lönsamhetens hjältekort (skissen 05): vinsten med stapeln | intäkt och order | titlar utan
+ * inköpspris. På telefon staplas delarna.
+ */
+.lh {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(180px, 0.6fr) minmax(0, 1fr);
+}
+.lh-main,
+.lh-side,
+.lh-miss {
+  min-width: 0;
+  padding: 18px 20px;
+}
+.lh-side,
+.lh-miss {
+  border-left: 1px solid var(--v2-line2);
+}
+.lh-lab {
+  display: block;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-sm);
+}
+.lh-big {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 12px;
+}
+.lh-big .lh-v {
+  font-size: 36px;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.lh-big .lh-v small {
+  font-size: 0.5em;
+  font-weight: 550;
+  letter-spacing: 0;
+}
+.lh-bar {
+  max-width: 560px;
+}
+.lh-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-xs);
+}
+.lh-legend b {
+  color: var(--v2-profit-text);
+  font-weight: 650;
+}
+.lh-cmp {
+  margin: 6px 0 0;
+  color: var(--v2-faint, var(--v2-mute));
+  font-size: var(--v2-t-xs);
+}
+.lh-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+}
+.lh-side dt {
+  color: var(--v2-mute);
+  font-size: var(--v2-t-sm);
+}
+.lh-side dd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+}
+.lh-miss {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: 0 12px 12px 0;
+  background: linear-gradient(90deg, #fffaf0, #fff 80%);
+}
+.lh-miss .v2-fan {
+  flex: none;
+}
+.lh-miss > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.lh-miss b {
+  font-weight: 650;
+}
+.lh-miss span {
+  color: var(--v2-mute);
+  font-size: var(--v2-t-sm);
+}
+.lh-setp {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin-top: 4px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--v2-warn-soft, #fff1d6);
+  box-shadow: 0 0 0 1px var(--v2-warn, #e0a400);
+  color: var(--v2-warn-text);
+  font-size: var(--v2-t-sm);
+  font-weight: 600;
+  transition: transform 150ms var(--v2-ease);
+}
+.lh-setp:active {
+  transform: scale(0.97);
+}
+
+@media (max-width: 1240px) {
+  .lh {
+    grid-template-columns: minmax(0, 1.4fr) minmax(160px, 0.6fr);
+  }
+  .lh-miss {
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid var(--v2-line2);
+    border-radius: 0 0 12px 12px;
+  }
+}
+@media (max-width: 900px) {
+  .lh {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lh-main,
+  .lh-side,
+  .lh-miss {
+    padding: 14px 16px;
+  }
+  .lh-big .lh-v {
+    font-size: 32px;
+  }
+  .lh-side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 10px 24px;
+    border-left: 0;
+    border-top: 1px solid var(--v2-line2);
+  }
+  .lh-setp {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lh-setp {
+    transition: none;
+  }
+}

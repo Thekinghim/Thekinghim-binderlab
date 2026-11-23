@@ -326,6 +326,7 @@ describe("utskick till den som inte längre får larmet", () => {
       results: [{ channel: "email", status: "sent", detail: "test" }],
       goneDevices: [],
       okDevices: [],
+      failedDevices: [],
       status: "sent",
     };
   }

@@ -109,71 +109,95 @@ export function ActionsList({
           const hasCall = telHref(r.phone) !== null;
           return (
             <div
-              className={cn("arow", r.kind === "offline" && "off")}
+              className={cn("arow", r.kind === "offline" && "off wide")}
               key={r.key}
               data-hem-action={r.kind}
             >
-              <div className="an">
-                <b title={r.title}>{r.title}</b>
-                {r.sub ? <small>{r.sub}</small> : null}
-                {r.price ? (
+              {r.kind === "offline" ? (
+                // Offline: en rad som i mocken, märket direkt efter namnet och resten under.
+                <div className="an">
+                  <span className="anh">
+                    <b title={r.title}>{r.title}</b>
+                    <Badge tone={r.tone} dot>
+                      {r.badge}
+                    </Badge>
+                  </span>
                   <small>
-                    Säljs för {krExact(r.price.salePriceOre)}, inköp {krExact(r.price.unitCostOre)}
+                    {r.sub ? `${r.sub} · ` : ""}senast hörd {sinceText(r.offlineSince, nowMs)}
+                    <LossText ore={r.lossOre} />
                   </small>
-                ) : null}
-              </div>
-              <div className="ai">
-                <div className="flex items-center gap-3">
-                  <Badge tone={r.tone} dot>
-                    {r.badge}
-                  </Badge>
-                  {r.fillBp !== null && r.kind !== "offline" ? (
-                    <span className="afill" aria-label={`${Math.round(r.fillBp / 100)} % fylld`}>
-                      <span className="track">
-                        <i
-                          className={r.kind === "tom" ? "c" : "o"}
-                          style={{
-                            transform: `scaleX(${Math.min(1, Math.max(0, r.fillBp / 10_000))})`,
-                          }}
-                        />
-                      </span>
-                      <span className={`pct ${r.kind === "tom" ? "text-v2-crit-text" : "o"}`}>
-                        {Math.round(r.fillBp / 100)}
-                        {NBSP}%
-                      </span>
-                    </span>
-                  ) : null}
                 </div>
-                <small>
-                  {r.kind === "offline" ? (
-                    <>Senast hörd {sinceText(r.offlineSince, nowMs)}</>
-                  ) : r.kind === "pris" && r.price ? (
-                    r.price.suggestedPriceOre !== null ? (
-                      <>
-                        Höj till <b>{krExact(r.price.suggestedPriceOre)}</b>: nu{" "}
-                        {krExact(r.price.profitOre)} per pack efter avgifter
-                      </>
-                    ) : (
-                      <>Priset täcker inte inköp och avgifter</>
-                    )
-                  ) : (
-                    <>
-                      {r.kind === "tom" ? "Tom" : r.kind === "startklar" ? "Ny automat" : r.badge}
-                      {r.packs !== null ? (
-                        <>
-                          {" "}
-                          · ta med{" "}
-                          <b>
-                            {formatInt(r.packs)}
-                            {NBSP}pack
-                          </b>
-                        </>
+              ) : (
+                <>
+                  <div className="an">
+                    <b title={r.title}>{r.title}</b>
+                    {r.sub ? <small>{r.sub}</small> : null}
+                    {r.price ? (
+                      <small>
+                        Säljs för {krExact(r.price.salePriceOre)}, inköp{" "}
+                        {krExact(r.price.unitCostOre)}
+                      </small>
+                    ) : null}
+                  </div>
+                  <div className="ai">
+                    <div className="flex items-center gap-3">
+                      <Badge tone={r.tone} dot>
+                        {r.badge}
+                      </Badge>
+                      {r.fillBp !== null ? (
+                        <span
+                          className="afill"
+                          aria-label={`${Math.round(r.fillBp / 100)} % fylld`}
+                        >
+                          <span className="track">
+                            <i
+                              className={r.kind === "tom" ? "c" : "o"}
+                              style={{
+                                transform: `scaleX(${Math.min(1, Math.max(0, r.fillBp / 10_000))})`,
+                              }}
+                            />
+                          </span>
+                          <span className={`pct ${r.kind === "tom" ? "text-v2-crit-text" : "o"}`}>
+                            {Math.round(r.fillBp / 100)}
+                            {NBSP}%
+                          </span>
+                        </span>
                       ) : null}
-                    </>
-                  )}
-                  <LossText ore={r.lossOre} />
-                </small>
-              </div>
+                    </div>
+                    <small>
+                      {r.kind === "pris" && r.price ? (
+                        r.price.suggestedPriceOre !== null ? (
+                          <>
+                            Höj till <b>{krExact(r.price.suggestedPriceOre)}</b>: nu{" "}
+                            {krExact(r.price.profitOre)} per pack efter avgifter
+                          </>
+                        ) : (
+                          <>Priset täcker inte inköp och avgifter</>
+                        )
+                      ) : (
+                        <>
+                          {r.kind === "tom"
+                            ? "Tom"
+                            : r.kind === "startklar"
+                              ? "Ny automat"
+                              : r.badge}
+                          {r.packs !== null ? (
+                            <>
+                              {" "}
+                              · ta med{" "}
+                              <b>
+                                {formatInt(r.packs)}
+                                {NBSP}pack
+                              </b>
+                            </>
+                          ) : null}
+                        </>
+                      )}
+                      <LossText ore={r.lossOre} />
+                    </small>
+                  </div>
+                </>
+              )}
               <div className="ago">
                 {r.kind === "offline" ? (
                   <>

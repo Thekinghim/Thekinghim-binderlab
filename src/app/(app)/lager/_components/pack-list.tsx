@@ -2,7 +2,7 @@
 
 import { ChannelTags } from "@/components/ui/channel-tags";
 import { Select } from "@/components/ui/field";
-import { Empty } from "@/components/v2/empty";
+import { Empty, emptyPacks } from "@/components/v2/empty";
 import { Notice } from "@/components/v2/notice";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
@@ -84,7 +84,7 @@ export function PackList({
       </div>
 
       {list.lines.length === 0 && list.missing.length === 0 ? (
-        <Empty title={`${machine.code} räcker utan påfyllning i dag.`}>
+        <Empty packs={emptyPacks([])} done title={`${machine.code} räcker utan påfyllning i dag`}>
           Inget säljer slut före nästa planerade besök.
         </Empty>
       ) : (

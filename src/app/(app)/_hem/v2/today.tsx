@@ -6,11 +6,8 @@ import type { ReactNode } from "react";
 
 import { Card } from "@/components/v2/card";
 import { ButtonLink } from "@/components/v2/button";
-import { KpiBand, KpiTile } from "@/components/v2/kpi-tile";
 import { PackImage } from "@/components/v2/pack-image";
-import { RollingNumber } from "@/components/v2/rolling-number";
 import { formatInt, NBSP } from "@/lib/format";
-import type { KpiBandTile } from "@/server/data/v2/analytics/kpi-band";
 import type { LiveOrder } from "@/server/data/v2/analytics/live";
 
 import { ActionsList, CalmLine } from "./actions-card";
@@ -35,7 +32,7 @@ export function TodayLine({ today }: { today: HemToday }) {
   if (c.offline > 0)
     parts.push(
       <Link key="o" href="/automater?f=offline" className="o c">
-        <b>{formatInt(c.offline)}</b> offline
+        <b>{formatInt(c.offline)} offline</b>
       </Link>,
     );
   if (c.startklar > 0)
@@ -58,6 +55,14 @@ export function TodayLine({ today }: { today: HemToday }) {
       </span>
     );
   }
+  // Med automater offline: hur många av de uppsatta som är i drift (mockens rad).
+  if (c.offline > 0 && today.installed > 0)
+    parts.push(
+      <span key="d">
+        {formatInt(Math.max(0, today.installed - c.offline))} av {formatInt(today.installed)}{" "}
+        automater i drift
+      </span>,
+    );
   return (
     <span className="today">
       {parts.map((p, i) => (
@@ -67,46 +72,6 @@ export function TodayLine({ today }: { today: HemToday }) {
         </span>
       ))}
     </span>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* KPI-bandet                                                          */
-/* ------------------------------------------------------------------ */
-
-function tileValue(t: KpiBandTile): ReactNode {
-  // Utan försäljning står 0 (aldrig "–"): rutan säger då att inget sålts.
-  const value = t.value ?? 0;
-  if (t.unit === "ore") {
-    // Rullande siffror bara för vinsten och lagret (byggplanen 4.1).
-    return t.id === "profit" || t.id === "stock-value" ? (
-      <RollingNumber value={value} unit="kr" />
-    ) : (
-      krRound(value)
-    );
-  }
-  if (t.unit === "bp")
-    return `${(Math.round(value / 10) / 10).toLocaleString("sv-SE", { minimumFractionDigits: 1 })}${NBSP}%`;
-  return formatInt(value);
-}
-
-export function HemKpiBand({ tiles }: { tiles: readonly KpiBandTile[] }) {
-  return (
-    <KpiBand cols={8} ariaLabel="Nyckeltal för perioden">
-      {tiles.map((t) => (
-        <KpiTile
-          key={t.id}
-          label={t.label}
-          value={tileValue(t)}
-          deltaBp={t.deltaBp}
-          deltaUnit={t.deltaUnit}
-          neutral={t.neutral}
-          compare={t.compare ?? undefined}
-          trend={t.trend}
-          href={t.href}
-        />
-      ))}
-    </KpiBand>
   );
 }
 

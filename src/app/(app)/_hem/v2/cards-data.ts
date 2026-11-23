@@ -23,12 +23,9 @@ import {
   loadHemStock,
 } from "@/server/data/v2/analytics/hem-base";
 import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
-import { loadMoneyGoal } from "@/server/data/v2/analytics/goal";
 import { loadMoneyPay } from "@/server/data/v2/analytics/shops";
 import { loadMoneyWorst } from "@/server/data/v2/analytics/worst";
 import { loadFleetState } from "@/server/data/v2/fleet";
-
-import type { HomeGoal } from "../goals";
 
 /* ------------------------------------------------------------------ */
 /* Resultat                                                            */
@@ -305,18 +302,6 @@ export async function loadWorstCard(): Promise<WorstCard | null> {
     };
   });
   return { medianOre: worst.medianProfitPerDayOre, rows };
-}
-
-/* ------------------------------------------------------------------ */
-/* Mål                                                                 */
-/* ------------------------------------------------------------------ */
-
-/** Månadens mål, samma som Pengar (organisationens vinstmål, annars intäktsmålet). */
-export async function loadGoalCard(): Promise<{ goals: HomeGoal[]; today: IsoDate } | null> {
-  const ctx = await loadContext();
-  if (!ctx.canSeeEconomy) return null;
-  const goal = await loadMoneyGoal();
-  return { goals: goal ? [goal] : [], today: ctx.today };
 }
 
 /* ------------------------------------------------------------------ */

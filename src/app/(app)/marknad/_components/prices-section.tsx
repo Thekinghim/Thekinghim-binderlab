@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 import type { TitlePriceTrend } from "@/analytics/pricing";
-import { Panel, PanelSection } from "@/components/ui/frame";
+import { Panel } from "@/components/ui/frame";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
+import { Card, CardBody } from "@/components/v2/card";
 import { formatInt, NBSP } from "@/lib/format";
 import { dayText, deltaOfBp, kronor, periodLabel } from "@/server/market/display";
 import type { PricesView } from "@/server/market/model";
@@ -86,7 +87,7 @@ function Trend({
   const expensive = anomalies.filter((a) => a.direction === "expensive").at(-1);
   const markerIndex = expensive ? trend.points.findIndex((p) => p.id === expensive.purchaseId) : -1;
   return (
-    <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
+    <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-12">
       <div className="min-w-0 lg:col-span-7">
         <Panel>
           <div className="flex flex-col gap-4">
@@ -136,34 +137,38 @@ function Trend({
         </Panel>
       </div>
       <div className="min-w-0 lg:col-span-5">
-        <Table
-          caption={`Leverantörer för ${name}`}
-          head={[
-            { label: "Leverantör" },
-            { label: "Median", numeric: true },
-            { label: "Mot titeln", numeric: true },
-            { label: "Senast", numeric: true, hideOnMobile: true },
-          ]}
-        >
-          {trend.suppliers.map((s, i) => (
-            <Row key={s.supplierId}>
-              <Cell header>
-                {ctx.names.supplier[s.supplierId] ?? s.supplierId}
-                {i === 0 && trend.suppliers.length > 1 ? (
-                  <span className="meta ml-2 text-v2-mute">billigast</span>
-                ) : null}
-              </Cell>
-              <Cell numeric>{kronor(s.medianOre)}</Cell>
-              <Cell numeric className="text-v2-mute">
-                {deltaOfBp(s.vsTitleMedianBp)}
-              </Cell>
-              <Cell numeric hideOnMobile className="text-v2-mute">
-                {kronor(s.lastOre)}
-                <span className="meta ml-2 text-v2-mute">{dayText(s.lastDate, ctx.today)}</span>
-              </Cell>
-            </Row>
-          ))}
-        </Table>
+        <Card title="Leverantörer">
+          <CardBody>
+            <Table
+              caption={`Leverantörer för ${name}`}
+              head={[
+                { label: "Leverantör" },
+                { label: "Median", numeric: true },
+                { label: "Mot titeln", numeric: true },
+                { label: "Senast", numeric: true, hideOnMobile: true },
+              ]}
+            >
+              {trend.suppliers.map((s, i) => (
+                <Row key={s.supplierId}>
+                  <Cell header>
+                    {ctx.names.supplier[s.supplierId] ?? s.supplierId}
+                    {i === 0 && trend.suppliers.length > 1 ? (
+                      <span className="meta ml-2 text-v2-mute">billigast</span>
+                    ) : null}
+                  </Cell>
+                  <Cell numeric>{kronor(s.medianOre)}</Cell>
+                  <Cell numeric className="text-v2-mute">
+                    {deltaOfBp(s.vsTitleMedianBp)}
+                  </Cell>
+                  <Cell numeric hideOnMobile className="text-v2-mute">
+                    {kronor(s.lastOre)}
+                    <span className="meta ml-2 text-v2-mute">{dayText(s.lastDate, ctx.today)}</span>
+                  </Cell>
+                </Row>
+              ))}
+            </Table>
+          </CardBody>
+        </Card>
       </div>
     </div>
   );
@@ -228,161 +233,188 @@ export function PricesSection({
           ) : undefined
         }
       />
-      <SourceStatus source={source} />
+      <Card as="div">
+        <CardBody>
+          <SourceStatus source={source} />
+        </CardBody>
+      </Card>
 
-      {!prices.trends.ok ? <StateMessage kind="error" message={prices.trends.message} /> : null}
+      {!prices.trends.ok ? (
+        <Card as="div">
+          <CardBody>
+            <StateMessage kind="error" message={prices.trends.message} />
+          </CardBody>
+        </Card>
+      ) : null}
 
       {anomalies.length > 0 ? (
-        <ul className="flex flex-col gap-4" aria-label="Avvikande inköp">
-          {anomalies
-            .slice()
-            .reverse()
-            .map((a) => (
-              <li key={a.key} className="flex min-w-0 flex-col gap-2 border-b border-v2-line pb-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <StatusTag status="warning">
-                    {a.direction === "expensive" ? "Dyrt" : "Billigt"}
-                  </StatusTag>
-                  <span className="meta text-v2-mute">
-                    {deltaOfBp(a.deviationBp)} mot medianen · {dayText(a.date, ctx.today)}
-                  </span>
-                </div>
-                <p className="max-w-3xl text-v2-mute">{a.text}</p>
-                <Evidence evidence={a.evidence} names={ctx.names} />
-              </li>
-            ))}
-        </ul>
+        <Card title="Avvikande inköp" count={anomalies.length}>
+          <CardBody>
+            <ul className="flex flex-col gap-4" aria-label="Avvikande inköp">
+              {anomalies
+                .slice()
+                .reverse()
+                .map((a) => (
+                  <li
+                    key={a.key}
+                    className="flex min-w-0 flex-col gap-2 border-b border-v2-line pb-4 last:border-b-0 last:pb-0"
+                  >
+                    <div className="flex flex-wrap items-center gap-3">
+                      <StatusTag status="warning">
+                        {a.direction === "expensive" ? "Dyrt" : "Billigt"}
+                      </StatusTag>
+                      <span className="meta text-v2-mute">
+                        {deltaOfBp(a.deviationBp)} mot medianen · {dayText(a.date, ctx.today)}
+                      </span>
+                    </div>
+                    <p className="max-w-3xl text-v2-mute">{a.text}</p>
+                    <Evidence evidence={a.evidence} names={ctx.names} />
+                  </li>
+                ))}
+            </ul>
+          </CardBody>
+        </Card>
       ) : null}
 
       {selected ? <Trend trend={selected} prices={prices} ctx={ctx} /> : null}
 
       {trends.length > 0 ? (
-        <PanelSection label={`Alla titlar · ${formatInt(trends.length)}`}>
-          <Table
-            caption="Inköpspris per titel"
-            head={[
-              { label: "Titel" },
-              { label: "Inköp", numeric: true, hideOnMobile: true },
-              { label: "Median", numeric: true },
-              { label: "Senast", numeric: true, hideOnMobile: true },
-              { label: "Förändring", numeric: true },
-              ...(source.kind === "ready" ? [{ label: "Marknadspris", numeric: true }] : []),
-            ]}
-          >
-            {trends.map((t) => {
-              const ext = source.latest[t.titleId];
-              const isSelected = selected?.titleId === t.titleId;
-              return (
-                <Row key={t.titleId}>
-                  <Cell header>
-                    <Link
-                      href={titleHref(ctx, t.titleId)}
-                      aria-current={isSelected ? "true" : undefined}
-                      className="rounded-v2-sm underline decoration-line-strong underline-offset-4 hover:decoration-fg aria-[current=true]:font-[550] aria-[current=true]:no-underline"
-                    >
-                      {ctx.names.title[t.titleId] ?? t.titleId}
-                    </Link>
-                  </Cell>
-                  <Cell numeric hideOnMobile>
-                    {formatInt(t.purchases)}
-                  </Cell>
-                  <Cell numeric>{kronor(t.medianOre)}</Cell>
-                  <Cell numeric hideOnMobile className="text-v2-mute">
-                    {kronor(t.last.unitCostOre)}
-                  </Cell>
-                  <Cell numeric>{t.changeBp === null ? "–" : deltaOfBp(t.changeBp)}</Cell>
-                  {source.kind === "ready" ? (
-                    <Cell numeric className="text-v2-mute">
-                      {ext
-                        ? ext.currency === "SEK"
-                          ? kronor(ext.priceMinor)
-                          : `${formatInt(ext.priceMinor / 100)}${NBSP}${ext.currency}`
-                        : "–"}
+        <Card title={`Alla titlar · ${formatInt(trends.length)}`}>
+          <CardBody>
+            <Table
+              caption="Inköpspris per titel"
+              head={[
+                { label: "Titel" },
+                { label: "Inköp", numeric: true, hideOnMobile: true },
+                { label: "Median", numeric: true },
+                { label: "Senast", numeric: true, hideOnMobile: true },
+                { label: "Förändring", numeric: true },
+                ...(source.kind === "ready" ? [{ label: "Marknadspris", numeric: true }] : []),
+              ]}
+            >
+              {trends.map((t) => {
+                const ext = source.latest[t.titleId];
+                const isSelected = selected?.titleId === t.titleId;
+                return (
+                  <Row key={t.titleId}>
+                    <Cell header>
+                      <Link
+                        href={titleHref(ctx, t.titleId)}
+                        aria-current={isSelected ? "true" : undefined}
+                        className="rounded-v2-sm underline decoration-line-strong underline-offset-4 hover:decoration-fg aria-[current=true]:font-[550] aria-[current=true]:no-underline"
+                      >
+                        {ctx.names.title[t.titleId] ?? t.titleId}
+                      </Link>
                     </Cell>
-                  ) : null}
-                </Row>
-              );
-            })}
-          </Table>
-        </PanelSection>
+                    <Cell numeric hideOnMobile>
+                      {formatInt(t.purchases)}
+                    </Cell>
+                    <Cell numeric>{kronor(t.medianOre)}</Cell>
+                    <Cell numeric hideOnMobile className="text-v2-mute">
+                      {kronor(t.last.unitCostOre)}
+                    </Cell>
+                    <Cell numeric>{t.changeBp === null ? "–" : deltaOfBp(t.changeBp)}</Cell>
+                    {source.kind === "ready" ? (
+                      <Cell numeric className="text-v2-mute">
+                        {ext
+                          ? ext.currency === "SEK"
+                            ? kronor(ext.priceMinor)
+                            : `${formatInt(ext.priceMinor / 100)}${NBSP}${ext.currency}`
+                          : "–"}
+                      </Cell>
+                    ) : null}
+                  </Row>
+                );
+              })}
+            </Table>
+          </CardBody>
+        </Card>
       ) : null}
 
       {entered.length > 0 ? (
-        <PanelSection label={`Inlagda inköpspriser · ${formatInt(entered.length)}`}>
-          <Table
-            caption="Inlagda inköpspriser per titel"
-            head={[{ label: "Titel" }, { label: "Gäller från" }, { label: "Pris", numeric: true }]}
-          >
-            {[...entered]
-              .sort((a, b) =>
-                (ctx.names.title[a.titleId] ?? a.titleId).localeCompare(
-                  ctx.names.title[b.titleId] ?? b.titleId,
-                  "sv",
-                ),
-              )
-              .map((e) => (
-                <Row key={e.titleId}>
-                  <Cell header>{ctx.names.title[e.titleId] ?? e.titleId}</Cell>
-                  <Cell className="meta whitespace-nowrap text-v2-mute">
-                    {dayText(e.validFrom, ctx.today)}
-                  </Cell>
-                  <Cell numeric>{kronor(e.unitCostOre)}</Cell>
-                </Row>
-              ))}
-          </Table>
-        </PanelSection>
+        <Card title={`Inlagda inköpspriser · ${formatInt(entered.length)}`}>
+          <CardBody>
+            <Table
+              caption="Inlagda inköpspriser per titel"
+              head={[
+                { label: "Titel" },
+                { label: "Gäller från" },
+                { label: "Pris", numeric: true },
+              ]}
+            >
+              {[...entered]
+                .sort((a, b) =>
+                  (ctx.names.title[a.titleId] ?? a.titleId).localeCompare(
+                    ctx.names.title[b.titleId] ?? b.titleId,
+                    "sv",
+                  ),
+                )
+                .map((e) => (
+                  <Row key={e.titleId}>
+                    <Cell header>{ctx.names.title[e.titleId] ?? e.titleId}</Cell>
+                    <Cell className="meta whitespace-nowrap text-v2-mute">
+                      {dayText(e.validFrom, ctx.today)}
+                    </Cell>
+                    <Cell numeric>{kronor(e.unitCostOre)}</Cell>
+                  </Row>
+                ))}
+            </Table>
+          </CardBody>
+        </Card>
       ) : null}
 
       {recentQuotes.length > 0 ? (
-        <PanelSection label="Senast registrerade priser">
-          <Table
-            caption="Senast registrerade leverantörspriser"
-            head={[
-              { label: "Datum" },
-              { label: "Titel" },
-              { label: "Leverantör", hideOnMobile: true },
-              { label: "Pris", numeric: true },
-              ...(ctx.canEdit ? [{ label: "Åtgärd" }] : []),
-            ]}
-          >
-            {recentQuotes.map((q) => (
-              <Row key={q.id}>
-                <Cell className="meta whitespace-nowrap text-v2-mute">
-                  {dayText(q.date, ctx.today)}
-                  <span className="block text-v2-mute">{q.isPurchase ? "Inköp" : "Offert"}</span>
-                </Cell>
-                <Cell header>{ctx.names.title[q.titleId] ?? q.titleId}</Cell>
-                <Cell hideOnMobile className="text-v2-mute">
-                  {ctx.names.supplier[q.supplierId] ?? q.supplierId}
-                </Cell>
-                <Cell numeric>
-                  {kronor(q.unitCostOre)}
-                  {q.quantity > 1 ? (
-                    <span className="meta ml-2 text-v2-mute">× {formatInt(q.quantity)}</span>
-                  ) : null}
-                </Cell>
-                {ctx.canEdit ? (
-                  <Cell>
-                    <ActionButton
-                      action={deleteQuote}
-                      payload={{ id: q.id }}
-                      variant="ghost"
-                      success="Priset borttaget"
-                      confirm={{
-                        title: "Ta bort priset",
-                        description: `${ctx.names.title[q.titleId] ?? ""}: ${kronor(q.unitCostOre)} från ${ctx.names.supplier[q.supplierId] ?? ""}, ${dayText(q.date, ctx.today)}. Borttagningen loggas.`,
-                        confirmLabel: "Ta bort",
-                        danger: true,
-                      }}
-                    >
-                      Ta bort
-                    </ActionButton>
+        <Card title="Senast registrerade priser">
+          <CardBody>
+            <Table
+              caption="Senast registrerade leverantörspriser"
+              head={[
+                { label: "Datum" },
+                { label: "Titel" },
+                { label: "Leverantör", hideOnMobile: true },
+                { label: "Pris", numeric: true },
+                ...(ctx.canEdit ? [{ label: "Åtgärd" }] : []),
+              ]}
+            >
+              {recentQuotes.map((q) => (
+                <Row key={q.id}>
+                  <Cell className="meta whitespace-nowrap text-v2-mute">
+                    {dayText(q.date, ctx.today)}
+                    <span className="block text-v2-mute">{q.isPurchase ? "Inköp" : "Offert"}</span>
                   </Cell>
-                ) : null}
-              </Row>
-            ))}
-          </Table>
-        </PanelSection>
+                  <Cell header>{ctx.names.title[q.titleId] ?? q.titleId}</Cell>
+                  <Cell hideOnMobile className="text-v2-mute">
+                    {ctx.names.supplier[q.supplierId] ?? q.supplierId}
+                  </Cell>
+                  <Cell numeric>
+                    {kronor(q.unitCostOre)}
+                    {q.quantity > 1 ? (
+                      <span className="meta ml-2 text-v2-mute">× {formatInt(q.quantity)}</span>
+                    ) : null}
+                  </Cell>
+                  {ctx.canEdit ? (
+                    <Cell>
+                      <ActionButton
+                        action={deleteQuote}
+                        payload={{ id: q.id }}
+                        variant="ghost"
+                        success="Priset borttaget"
+                        confirm={{
+                          title: "Ta bort priset",
+                          description: `${ctx.names.title[q.titleId] ?? ""}: ${kronor(q.unitCostOre)} från ${ctx.names.supplier[q.supplierId] ?? ""}, ${dayText(q.date, ctx.today)}. Borttagningen loggas.`,
+                          confirmLabel: "Ta bort",
+                          danger: true,
+                        }}
+                      >
+                        Ta bort
+                      </ActionButton>
+                    </Cell>
+                  ) : null}
+                </Row>
+              ))}
+            </Table>
+          </CardBody>
+        </Card>
       ) : null}
     </section>
   );

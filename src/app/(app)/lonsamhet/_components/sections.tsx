@@ -5,12 +5,22 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactNode, type 
 import { MobileTopRows } from "@/components/ui/mobile-top-list";
 import { Segmented } from "@/components/ui/segmented";
 import { StateMessage } from "@/components/ui/state-message";
+import { cn } from "@/lib/cn";
 import { formatMarginBp, formatSek, NBSP } from "@/lib/format";
 
 import { sentence, type SectionTitle } from "../_lib/headline";
 import type { ProfitLine, TrendKey, TrendSeries, ViewKey } from "../_lib/model";
 import { ANALYSIS_PARAM, TREND_PARAM, VIEW_PARAM, type AnalysisTab } from "../_lib/params";
-import { DEFAULT_SORT, ExportButton, ProfitTable, profitLabels, VIEW_NOUN } from "./profit-table";
+import { totalLine } from "../_lib/profit-list";
+import { ProfitList } from "./profit-list";
+import {
+  DEFAULT_SORT,
+  ExportButton,
+  ProfitTable,
+  profitLabels,
+  VIEW_NOUN,
+  VIEW_OPTIONS,
+} from "./profit-table";
 import type { SortKey } from "@/components/ui/data-table";
 import { ProfitTrendChart, type TrendDatum } from "./profit-trend-chart";
 
@@ -33,6 +43,7 @@ export function AnalysisCard({
   actions,
   children,
   sectionRef,
+  oneRow = false,
 }: {
   id: string;
   title: ReactNode;
@@ -40,10 +51,12 @@ export function AnalysisCard({
   actions?: ReactNode;
   children: ReactNode;
   sectionRef?: Ref<HTMLElement>;
+  /** Från 1100 px står växlarna till höger på rubrikens rad (bryts aldrig under). */
+  oneRow?: boolean;
 }) {
   return (
     <section ref={sectionRef} aria-labelledby={id} className="v2-card scroll-mt-28">
-      <div className="v2-card-hd flex-wrap gap-y-2">
+      <div className={cn("v2-card-hd flex-wrap gap-y-2", oneRow && "min-[1100px]:flex-nowrap")}>
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 id={id}>{title}</h2>
           {aside ? <p className="text-v2-sm text-v2-mute">{aside}</p> : null}
@@ -69,10 +82,8 @@ export function TableSection({
   tabs,
   initialView,
   views,
-  titles,
   totals,
   periodLabel,
-  days,
   fileStem,
   selectedTitle,
   showStoreShare = false,
@@ -81,6 +92,7 @@ export function TableSection({
   tabs?: ReactNode;
   initialView: ViewKey;
   views: Record<ViewKey, ProfitLine[]>;
+  /** Rubrikerna per vy (modellen). Listan har en fast rubrik ("Vinst per titel · 12 titlar"). */
   titles: Record<ViewKey, SectionTitle>;
   totals: ProfitLine;
   periodLabel: string;
@@ -94,12 +106,13 @@ export function TableSection({
 }) {
   const [view, setView] = useState<ViewKey>(initialView);
   const [sort, setSort] = useState<readonly SortKey[]>(DEFAULT_SORT);
+  // Staplarna (ProfitList) först; "Visa alla kolumner" ger hela tabellen med sortering.
+  const [asTable, setAsTable] = useState(false);
   const change = (v: ViewKey) => {
     setView(v);
     setSort(DEFAULT_SORT);
     replaceParam("vy", VIEW_PARAM[v]);
   };
-  const heading = titles[view];
   const rows = views[view];
   const selected =
     view === "title" && selectedTitle
@@ -115,25 +128,63 @@ export function TableSection({
     ref.current?.scrollIntoView({ block: "start" });
   }, [selectedTitle]);
 
+  const items = rows.filter((r) => r.kind === "item").length;
+  const exportButton = (
+    <ExportButton
+      view={view}
+      rows={rows}
+      totals={totals}
+      sort={sort}
+      fileName={`${fileStem}-per-${VIEW_PARAM[view]}`}
+      showStoreShare={showStoreShare}
+    />
+  );
+  // Exportera står i fotraden bredvid "Visa alla kolumner" (mocken), inte bland växlarna.
+  const footer = (
+    <>
+      <span>{totalLine(totals)}</span>
+      <span className="flex items-center gap-2">
+        {exportButton}
+        <button
+          type="button"
+          className="lp-toggle"
+          aria-pressed={asTable}
+          onClick={() => setAsTable((t) => !t)}
+        >
+          {asTable ? "Visa som staplar" : "Visa alla kolumner"}
+        </button>
+      </span>
+    </>
+  );
+
   return (
     <AnalysisCard
       sectionRef={ref}
       id="per-post"
-      title={heading.title}
-      aside={heading.aside || `Per ${VIEW_NOUN[view]} · ${days}${NBSP}d`}
+      title={
+        <>
+          {`Vinst per ${VIEW_NOUN[view]}`}
+          <span className="font-normal text-v2-mute">
+            {` · ${items}${NBSP}${items === 1 ? VIEW_NOUN[view] : VIEW_PLURAL[view]}, sorterat på vinst`}
+          </span>
+        </>
+      }
       actions={
         <>
           {tabs}
-          <ExportButton
-            view={view}
-            rows={rows}
-            totals={totals}
-            sort={sort}
-            fileName={`${fileStem}-per-${VIEW_PARAM[view]}`}
-            showStoreShare={showStoreShare}
-          />
+          {asTable ? null : (
+            // I tabelläget står växlaren i tabellens verktygsrad (DataTable).
+            <Segmented
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={change}
+              label="Visa lönsamhet per"
+              size="sm"
+            />
+          )}
         </>
       }
+      oneRow
     >
       {view === "title" && selectedTitle ? (
         <p
@@ -161,30 +212,46 @@ export function TableSection({
         <div className="v2-card-body">
           <StateMessage kind="empty" message={sentence(`Inga order under ${periodLabel}`)} />
         </div>
+      ) : asTable ? (
+        <>
+          {/* Alla kolumner (avgifter, VMB, butikernas andel) och sortering. På mobilen de fem
+              första raderna och "Visa alla N" (från md hela tabellen). */}
+          <div className="px-[18px] pt-2 pb-3">
+            <MobileTopRows
+              key={view}
+              // Över 200 rader virtualiseras tabellen (DataTable): då fälls inget ihop.
+              total={rows.length > 200 ? 0 : rows.length}
+              noun={VIEW_PLURAL[view]}
+              defaultOpen={selected !== null}
+            >
+              <ProfitTable
+                view={view}
+                onViewChange={change}
+                rows={rows}
+                totals={totals}
+                caption={`Lönsamhet per ${VIEW_NOUN[view]}, ${periodLabel}`}
+                sort={sort}
+                onSortChange={setSort}
+                selectedKey={selected?.key ?? null}
+                showStoreShare={showStoreShare}
+                storeShareLabel={storeShareLabel}
+              />
+            </MobileTopRows>
+          </div>
+          <div className="lp-foot">{footer}</div>
+        </>
       ) : (
-        // På mobilen de fem första raderna och "Visa alla N" (från md hela tabellen).
-        <div className="px-[18px] pt-2 pb-3">
-          <MobileTopRows
+        <>
+          <ProfitList
             key={view}
-            // Över 200 rader virtualiseras tabellen (DataTable): då fälls inget ihop.
-            total={rows.length > 200 ? 0 : rows.length}
-            noun={VIEW_PLURAL[view]}
-            defaultOpen={selected !== null}
-          >
-            <ProfitTable
-              view={view}
-              onViewChange={change}
-              rows={rows}
-              totals={totals}
-              caption={`Lönsamhet per ${VIEW_NOUN[view]}, ${periodLabel}`}
-              sort={sort}
-              onSortChange={setSort}
-              selectedKey={selected?.key ?? null}
-              showStoreShare={showStoreShare}
-              storeShareLabel={storeShareLabel}
-            />
-          </MobileTopRows>
-        </div>
+            view={view}
+            rows={rows}
+            totals={totals}
+            selectedKey={selected?.key ?? null}
+            showStoreShare={showStoreShare}
+            footer={footer}
+          />
+        </>
       )}
     </AnalysisCard>
   );
@@ -343,7 +410,7 @@ export function TrendSection({
 // ---------------------------------------------------------------------------
 
 const ANALYSIS_OPTIONS: ReadonlyArray<{ value: AnalysisTab; label: string }> = [
-  { value: "table", label: "Tabell" },
+  { value: "table", label: "Lista" },
   { value: "trend", label: "Utveckling" },
   { value: "rhythm", label: "Rytm" },
 ];

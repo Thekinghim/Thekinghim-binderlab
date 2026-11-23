@@ -1,0 +1,290 @@
+/*
+ * Inköpspriser som hylla (visuellt, skissen 04): rutor med packbild och prislapp, titlar utan
+ * pris först med streckad ram. Bara under .ip-shelf / .ip-sheet / .ip-inline.
+ */
+
+.ip-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 14px 16px 16px;
+  list-style: none;
+}
+.ip-tile {
+  position: relative;
+  min-width: 0;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--v2-line2);
+  animation: ip-rise 0.36s var(--v2-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 25ms);
+  transition: box-shadow 0.15s var(--v2-ease);
+}
+.ip-tile.miss {
+  box-shadow: none;
+  outline: 1.5px dashed var(--v2-crit-icon);
+  outline-offset: -1.5px;
+  background: #fffafa;
+}
+.ip-tile.on {
+  box-shadow: 0 0 0 2px var(--v2-ink);
+}
+.ip-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: 100%;
+  padding: 12px;
+  border-radius: inherit;
+  color: inherit;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.ip-hit:focus-visible {
+  outline: 2px solid var(--v2-ink);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .ip-tile:not(.miss):hover {
+    box-shadow:
+      0 0 0 1px var(--v2-line),
+      0 4px 14px rgb(26 26 26 / 0.07);
+  }
+}
+.ip-stage {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 104px;
+  margin-bottom: 10px;
+}
+.ip-stage::after {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -2px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.14), transparent);
+}
+.ip-stage .v2-pk {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 1px 1px rgb(26 26 26 / 0.18)) drop-shadow(0 4px 6px rgb(26 26 26 / 0.12));
+}
+.ip-nm {
+  display: block;
+  font-weight: 650;
+  font-size: var(--v2-t-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ip-lost {
+  margin-top: 6px;
+  font-size: var(--v2-t-xs);
+  color: var(--v2-crit-text);
+}
+.ip-set {
+  display: flex;
+  justify-content: center;
+  margin-top: auto;
+  padding: 6px 10px;
+  border-radius: var(--v2-r-md);
+  background: #fff;
+  box-shadow: 0 0 0 1px #f5b9c1;
+  color: var(--v2-crit-text);
+  font-size: var(--v2-t-sm);
+  font-weight: 600;
+  transition: transform 0.12s var(--v2-ease);
+}
+.ip-lost + .ip-set {
+  margin-top: 10px;
+}
+.ip-hit:active .ip-set {
+  transform: scale(0.97);
+}
+.ip-tag {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: #f6f6f6;
+  overflow: hidden;
+}
+.ip-tag > span {
+  padding: 6px 8px;
+  min-width: 0;
+}
+.ip-tag > span + span {
+  border-left: 1px solid #fff;
+}
+.ip-tag small {
+  display: block;
+  font-size: 11px;
+  color: var(--v2-mute);
+}
+.ip-tag b {
+  font-weight: 650;
+  font-size: var(--v2-t-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ip-kvar {
+  margin-top: 6px;
+  font-size: var(--v2-t-xs);
+  font-weight: 600;
+  color: var(--v2-profit);
+  font-variant-numeric: tabular-nums;
+}
+.ip-kvar.neg {
+  color: var(--v2-crit-text);
+}
+.ip-kvar.no {
+  color: var(--v2-faint);
+  font-weight: 500;
+}
+@keyframes ip-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Arket på telefon: packbilden och raden om order utan pris överst; kortets ram tas bort. */
+.ip-sheet .ip-shd {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--v2-line2);
+}
+.ip-sheet .ip-shd .v2-pk {
+  filter: drop-shadow(0 1px 1px rgb(26 26 26 / 0.16)) drop-shadow(0 8px 12px rgb(26 26 26 / 0.16));
+}
+.ip-sheet .ip-shd .lost {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--v2-crit-soft);
+  color: var(--v2-crit-text);
+  font-size: var(--v2-t-sm);
+  font-weight: 600;
+}
+.ip-sheet .ip-shd p {
+  margin: 0;
+  color: var(--v2-mute);
+  font-size: var(--v2-t-sm);
+}
+.ip-sheet > .v2-card {
+  box-shadow: none;
+  background: none;
+  border-radius: 0;
+}
+.ip-sheet > .v2-card > .v2-card-hd {
+  display: none;
+}
+/* Det som inte behövs för att sätta pris: hopfällt sist i formulärets kolumn. */
+.ip-sheet .ip-more {
+  order: 99;
+  border-top: 1px solid var(--v2-line2);
+  padding-top: 12px;
+}
+.ip-sheet .ip-more > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--v2-ink);
+  font-size: var(--v2-t-md);
+  font-weight: 550;
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.ip-sheet .ip-more > summary::-webkit-details-marker {
+  display: none;
+}
+.ip-sheet .ip-more > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid var(--v2-mute);
+  border-bottom: 2px solid var(--v2-mute);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 200ms var(--v2-ease);
+}
+.ip-sheet .ip-more[open] > summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+.ip-sheet .ip-more-b {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ip-sheet .ip-more > summary::after {
+    transition: none;
+  }
+}
+
+@media (max-width: 900px) {
+  /* Telefon: redigeraren öppnas som ark (editor-frame.tsx), aldrig under listan. */
+  .ip-inline {
+    display: none;
+  }
+  .ip-shelf {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 12px 14px;
+  }
+  .ip-hit {
+    padding: 10px 8px;
+  }
+  .ip-stage {
+    height: 100px;
+  }
+  .ip-nm {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.25;
+    min-height: 2.5em;
+  }
+  .ip-lost .dl {
+    display: none;
+  }
+  .ip-tag {
+    grid-template-columns: 1fr;
+  }
+  .ip-tag > span {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 4px;
+    padding: 4px 7px;
+  }
+  .ip-tag > span + span {
+    border-left: 0;
+    border-top: 1px solid #fff;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ip-tile {
+    animation-name: ip-fade;
+  }
+  .ip-hit:active .ip-set {
+    transform: none;
+  }
+}
+@keyframes ip-fade {
+  from {
+    opacity: 0;
+  }
+}

@@ -24,6 +24,8 @@ interface MachineIn {
 interface StoreIn {
   readonly id: string;
   readonly name: string;
+  readonly storeType?: string | null;
+  readonly city?: string | null;
 }
 
 /** Sorterade namnlistor (titlar på namn, automater på kod, butiker på namn). */
@@ -43,7 +45,14 @@ export function buildRefs(input: {
     machines: input.machines
       .map((m) => ({ id: m.id, code: m.code, name: m.name }))
       .sort(by((m) => m.code)),
-    stores: input.stores.map((s) => ({ id: s.id, name: s.name })).sort(by((s) => s.name)),
+    stores: input.stores
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        ...(s.storeType !== undefined ? { storeType: s.storeType } : {}),
+        ...(s.city !== undefined ? { city: s.city } : {}),
+      }))
+      .sort(by((s) => s.name)),
   };
 }
 
