@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { Badge, type BadgeTone } from "@/components/v2/badge";
 import { ButtonLink } from "@/components/v2/button";
 import { Card, CardBody } from "@/components/v2/card";
-import { Empty } from "@/components/v2/empty";
+import { Empty, emptyPacks } from "@/components/v2/empty";
 import { Notice } from "@/components/v2/notice";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
@@ -376,7 +376,7 @@ async function FreePacksView({
         </Card>
       ) : (
         <Card>
-          <Empty title="Inga gratis-pack än." />
+          <Empty packs={emptyPacks([])} title="Inga gratis-pack än" />
         </Card>
       )}
     </>
