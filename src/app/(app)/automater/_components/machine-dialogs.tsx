@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { parseIsoDate } from "@/components/shell/period-state";
 import { addDays, maxDate, type IsoDate } from "@/domain";
 import { formatDate } from "@/lib/format";
+import { MACHINE_LOOK_LABEL, MACHINE_LOOKS } from "@/lib/machine-look";
 
 import {
   createMachine,
@@ -405,6 +406,7 @@ export function MachineActions({
             name: text(data, "name"),
             serial: text(data, "serial"),
             activeFrom: text(data, "activeFrom"),
+            appearance: text(data, "appearance") || undefined,
           });
           return r.ok ? done("Ändringen är sparad") : r;
         }}
@@ -443,6 +445,15 @@ export function MachineActions({
                 required
               />
             </div>
+            <Select
+              name="appearance"
+              label="Utseende"
+              defaultValue={machine.appearance}
+              options={MACHINE_LOOKS.map((look) => ({
+                value: look,
+                label: MACHINE_LOOK_LABEL[look],
+              }))}
+            />
           </>
         ) : null}
       </FormDialog>

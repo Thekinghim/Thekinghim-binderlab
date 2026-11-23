@@ -56,12 +56,13 @@ export async function createMachine(input: {
   return withViewer((v) => createMachineFor(v, input));
 }
 
-/** Ändrar namn, serienummer och driftstart. */
+/** Ändrar namn, serienummer, driftstart och utseende. */
 export async function updateMachine(input: {
   machineId: string;
   name: string;
   serial?: string;
   activeFrom: string;
+  appearance?: string;
 }): Promise<ActionResult> {
   return withViewer((v) => updateMachineFor(v, input));
 }

@@ -120,9 +120,10 @@ async function machine(id: string) {
     active_from: string | null;
     active_to: string | null;
     serial: string | null;
+    appearance: string | null;
   }>(
     db(),
-    sql`select code, name, serial, active_from::text, active_to::text from public.machines where id = ${id}`,
+    sql`select code, name, serial, appearance, active_from::text, active_to::text from public.machines where id = ${id}`,
   );
   return m!;
 }
@@ -257,6 +258,36 @@ describe("redigera", () => {
     });
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/^BL-001 har order från 10.mars/);
+  });
+
+  it("utseendet sparas och bara giltiga värden går in", async () => {
+    expect((await machine(F.machineId)).appearance).toBe("stjarnor");
+    expect(
+      await updateMachineFor(owner, {
+        machineId: F.machineId,
+        name: "Automat Ett",
+        activeFrom: "2025-01-01",
+        appearance: "gul",
+      }),
+    ).toEqual({ ok: true });
+    expect((await machine(F.machineId)).appearance).toBe("gul");
+    // Utelämnat = oförändrat.
+    await updateMachineFor(owner, {
+      machineId: F.machineId,
+      name: "Automat Ett",
+      activeFrom: "2025-01-01",
+    });
+    expect((await machine(F.machineId)).appearance).toBe("gul");
+    const bad = await updateMachineFor(owner, {
+      machineId: F.machineId,
+      name: "Automat Ett",
+      activeFrom: "2025-01-01",
+      appearance: "lila",
+    });
+    expect(bad.ok).toBe(false);
+    await expect(
+      db().execute(sql`update public.machines set appearance = 'lila' where id = ${F.machineId}`),
+    ).rejects.toThrow();
   });
 
   it("driftstart efter första placeringen nekas", async () => {

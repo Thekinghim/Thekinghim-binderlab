@@ -12,6 +12,7 @@ import type { MachineRef, StockLevelRef, StoreRef, TitleRef } from "@/analytics/
 import type { PeriodKey, ResolvedPeriod } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
 import type { CostLines } from "@/lib/cost-lines";
+import type { MachineLook } from "@/lib/machine-look";
 import type {
   EconomicsSources,
   IsoDate,
@@ -140,6 +141,8 @@ export interface MachineRecord extends MachineRef {
   readonly storeId: string | null;
   readonly isExample: boolean;
   readonly archived: boolean;
+  /** Utseende (machines.appearance, läses bara). Saknas = svart med stjärnor. */
+  readonly appearance?: MachineLook;
 }
 
 /** Butik. */

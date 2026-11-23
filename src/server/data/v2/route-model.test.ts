@@ -22,6 +22,7 @@ function machine(id: string, city: string, over: Partial<FleetMachine> = {}): Fl
     id,
     code: id.toUpperCase(),
     name: `Automat ${id}`,
+    appearance: "stjarnor",
     store: {
       id: `s-${id}`,
       name: `Butik ${id}`,

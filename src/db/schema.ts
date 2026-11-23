@@ -318,6 +318,11 @@ export const machines = pgTable("machines", {
   archivedAt: ts("archived_at"),
   /** Vem som fyller på (20261104170000_managerpaket_ansvar.sql). null = Båda. */
   responsibleUserId: uuid("responsible_user_id"),
+  /**
+   * Utseende (20261227200000_automat_utseende.sql): 'stjarnor' (svart med stjärnor) eller
+   * 'gul'. null = 'stjarnor'. Bara för bilden av automaten (MachineGlyph).
+   */
+  appearance: text("appearance").default("stjarnor"),
   ...stamps(),
 });
 

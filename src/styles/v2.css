@@ -2583,3 +2583,12 @@
     }
   }
 }
+
+/* Bilden av automaten (MachineGlyph). Ingen rörelse: den syns i listor många gånger om dagen. */
+@layer components {
+  .v2-mglyph {
+    display: inline-block;
+    flex: none;
+    vertical-align: middle;
+  }
+}

@@ -245,6 +245,9 @@ Det här kan inte skripten göra, och sammanfattningen påminner om det som gäl
   secret, skapa en ES256-nyckel och Rotate keys.
 - **Egen domän** (t.ex. `app.binderlab.se`): lägg till den i Vercel → Settings → Domains och kör igen med
   `--app-url https://app.binderlab.se`.
+- **Automatens utseende** (`20261227200000_automat_utseende.sql`): alla automater blir svarta med stjärnor. Den gula
+  står i Sega gubben: sätt BL-001 till Gul under Automater → BL-001 → Redigera → Utseende (eller
+  `update machines set appearance = 'gul' where code = 'BL-001'`).
 - **Valfritt**: Sentry, Claude API (`ANTHROPIC_API_KEY`), sms-leverantör. Kör igen med värdena i miljön.
 - **`DATABASE_URL` för Preview**, om utvecklingsprojektets lösenord inte är känt: kör igen med
   `SUPABASE_DEV_DB_PASSWORD=<lösenordet>` (Supabase → Database → Settings), eller med `--byt-dev-losenord`.

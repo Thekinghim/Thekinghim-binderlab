@@ -356,7 +356,12 @@ export async function updateMachineFor(viewer: Viewer, raw: unknown): Promise<Ac
       }
       await tx
         .update(s.machines)
-        .set({ name: input.name, serial: input.serial, activeFrom: input.activeFrom })
+        .set({
+          name: input.name,
+          serial: input.serial,
+          activeFrom: input.activeFrom,
+          ...(input.appearance ? { appearance: input.appearance } : {}),
+        })
         .where(and(eq(s.machines.organizationId, orgId), eq(s.machines.id, m.id)));
       return { ok: true as const };
     }),

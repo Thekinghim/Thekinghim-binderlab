@@ -9,6 +9,7 @@ import type { FleetStatus, FleetStatusTone, MachineFill } from "@/analytics/flee
 import type { GeoPoint } from "@/analytics/visits";
 import type { Substitute, VisitDay, VisitStop } from "@/analytics/visits";
 import type { IsoDate } from "@/domain";
+import type { MachineLook } from "@/lib/machine-look";
 
 /** Butiken automaten står i (aktuell placering). Kontaktuppgifter syns för alla roller. */
 export interface FleetStore {
@@ -39,6 +40,8 @@ export interface FleetMachine {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  /** Utseende (machines.appearance, läses bara): bilden av automaten (MachineGlyph). */
+  readonly appearance: MachineLook;
   readonly store: FleetStore | null;
   readonly status: FleetStatus;
   /** "Offline", "Tom", "Fyll på i dag", "Startklar", "Ström av", "Tom om 2 d", "I drift". */

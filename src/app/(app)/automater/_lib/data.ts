@@ -23,6 +23,7 @@ import {
   type MachineRecord,
 } from "@/server/data/core";
 import { storeShareLabel, storeShareTerms } from "@/lib/store-share";
+import { DEFAULT_MACHINE_LOOK } from "@/lib/machine-look";
 import { isUuid } from "@/server/access";
 import { storeContractStates, type StoreContractState } from "@/analytics/contracts/signed";
 import { loadSignableContractsFor } from "@/server/contracts";
@@ -485,6 +486,7 @@ export async function loadMachineDetail(
       code: machine.code,
       name: machine.name,
       serial: machine.serial,
+      appearance: machine.appearance ?? DEFAULT_MACHINE_LOOK,
       activeFrom: machine.activeFrom,
       activeTo: machine.activeTo,
       storeId: store?.id ?? null,

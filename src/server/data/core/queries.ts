@@ -15,6 +15,7 @@ import type { AlertRef, AnalyticsOrder, ReportDraftRef } from "@/analytics/todos
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/locale";
+import { machineLookOf } from "@/lib/machine-look";
 import { toSafeInteger } from "@/db/types";
 import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
 import {
@@ -330,6 +331,7 @@ export async function queryMachines(
       activeTo: s.machines.activeTo,
       isExample: s.machines.isExample,
       archivedAt: s.machines.archivedAt,
+      appearance: s.machines.appearance,
     })
     .from(s.machines)
     .where(eq(s.machines.organizationId, orgId))
@@ -347,6 +349,7 @@ export async function queryMachines(
     activeTo: r.activeTo,
     isExample: r.isExample,
     archived: r.archivedAt !== null,
+    appearance: machineLookOf(r.appearance),
     storeId: current.get(r.id) ?? null,
   }));
 }

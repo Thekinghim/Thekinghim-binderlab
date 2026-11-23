@@ -8,6 +8,7 @@
 import type { StoreContractState } from "@/analytics/contracts/signed";
 import type { HealthStatus } from "@/analytics/health";
 import type { IsoDate, StoreAgreement } from "@/domain";
+import type { MachineLook } from "@/lib/machine-look";
 
 /** Automatens läge i registret (active_from / active_to mot i dag). */
 export type MachineLifecycle = "active" | "planned" | "decommissioned";
@@ -242,6 +243,8 @@ export interface MachineEditable {
   readonly code: string;
   readonly name: string;
   readonly serial: string | null;
+  /** Utseende (machines.appearance): "Utseende" i Redigera. */
+  readonly appearance: MachineLook;
   readonly activeFrom: IsoDate | null;
   readonly activeTo: IsoDate | null;
   readonly storeId: string | null;

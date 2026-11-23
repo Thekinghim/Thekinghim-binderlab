@@ -178,6 +178,7 @@ export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<Fleet
       activeFrom: m.activeFrom,
       activeTo: m.activeTo,
       archived: m.archived,
+      appearance: m.appearance,
     })),
     stores,
     health,

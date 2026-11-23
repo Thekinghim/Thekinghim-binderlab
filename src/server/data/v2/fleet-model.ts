@@ -27,6 +27,7 @@ import {
 import { isPowerOffAt, type PowerHours } from "@/analytics/health/power";
 import { isMachineActive } from "@/analytics/todos/common";
 import { addDays, type IsoDate } from "@/domain";
+import { DEFAULT_MACHINE_LOOK, type MachineLook } from "@/lib/machine-look";
 
 import type { FleetMachine, FleetState, FleetStore } from "./types";
 
@@ -38,6 +39,8 @@ export interface FleetMachineInput {
   readonly activeFrom: IsoDate | null;
   readonly activeTo: IsoDate | null;
   readonly archived?: boolean;
+  /** Utseende (machines.appearance). Saknas = svart med stjärnor. */
+  readonly appearance?: MachineLook;
 }
 
 export interface FleetEconomyInput {
@@ -173,6 +176,7 @@ export function buildFleetState(input: FleetInput): FleetState {
         id: m.id,
         code: m.code,
         name: m.name,
+        appearance: m.appearance ?? DEFAULT_MACHINE_LOOK,
         store: m.storeId ? (input.stores.get(m.storeId) ?? null) : null,
         status,
         statusLabel: fleetStatusLabel(status, daysLeft),

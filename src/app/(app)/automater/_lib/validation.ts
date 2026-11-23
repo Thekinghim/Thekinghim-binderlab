@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import { addDays, isIsoDate, type IsoDate } from "@/domain";
+import { MACHINE_LOOKS } from "@/lib/machine-look";
 
 /** Samma regel som databasens check på machines.code. */
 export const MACHINE_CODE = /^[A-Z0-9][A-Z0-9-]{0,31}$/;
@@ -62,6 +63,8 @@ export const updateMachineSchema = z.object({
   name,
   serial: optionalText(100, "Serienumret"),
   activeFrom: isoDate("Driftstart"),
+  /** Utseende. Utelämnat = oförändrat. */
+  appearance: z.enum(MACHINE_LOOKS, { message: "Välj ett utseende." }).optional(),
 });
 export type UpdateMachineInput = z.infer<typeof updateMachineSchema>;
 
