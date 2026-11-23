@@ -109,16 +109,25 @@ export default async function VartLagerPage({
       >
         <div className="v2-stack">
           {!view.hasWarehouse ? (
-            <>
-              <StateMessage kind="empty" message="Inget eget lager än." />
-              <PlaceBar places={[]} totals={{}} selected={null} canEdit={view.canAddPlace} />
-            </>
+            // V2: tomläget i ett kort, med lagerväljaren under (som tabellens kort).
+            <section aria-label="Vårt lager" className="v2-card">
+              <div className="v2-card-body">
+                <StateMessage kind="empty" message="Inget eget lager än." />
+              </div>
+              <div className="border-t border-v2-line2 px-1.5 py-1">
+                <PlaceBar places={[]} totals={{}} selected={null} canEdit={view.canAddPlace} />
+              </div>
+            </section>
           ) : view.rows.length === 0 ? (
-            <StateMessage
-              kind="empty"
-              message="Inga titlar än."
-              action={{ label: "Öppna Datakällor", href: "/datakallor" }}
-            />
+            <div className="v2-card">
+              <div className="v2-card-body">
+                <StateMessage
+                  kind="empty"
+                  message="Inga titlar än."
+                  action={{ label: "Öppna Datakällor", href: "/datakallor" }}
+                />
+              </div>
+            </div>
           ) : (
             <>
               <TodoList items={todos} done={heading.aside} />
@@ -155,15 +164,19 @@ export default async function VartLagerPage({
       }
     >
       {!view.hasWarehouse || view.rows.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message={view.hasWarehouse ? "Inga titlar än." : "Inget eget lager än."}
-          action={
-            view.canAddPlace
-              ? { label: "Lägg till ett lager", href: "/vart-lager?vy=andra" }
-              : undefined
-          }
-        />
+        <div className="v2-card">
+          <div className="v2-card-body">
+            <StateMessage
+              kind="empty"
+              message={view.hasWarehouse ? "Inga titlar än." : "Inget eget lager än."}
+              action={
+                view.canAddPlace
+                  ? { label: "Lägg till ett lager", href: "/vart-lager?vy=andra" }
+                  : undefined
+              }
+            />
+          </div>
+        </div>
       ) : (
         <LagerView
           rows={view.rows}

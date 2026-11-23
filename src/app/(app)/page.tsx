@@ -116,6 +116,13 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           <Suspense fallback={<SkeletonCard rows={5} className="o-act" />}>
             <Actions canRoute={canRoute} nowIso={ctx.now} />
           </Suspense>
+          {/* Påfyllaren (utan ekonomi) har ingen analys: Driftstatus bor då under Kräver åtgärd,
+              så att den inte blir ett ensamt kort i en egen sektion och lämnar ett hål här. */}
+          {!economy ? (
+            <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
+              <OpsCardView timeZone={ctx.timeZone} />
+            </Suspense>
+          ) : null}
           {economy ? (
             <Suspense fallback={<SkeletonCard rows={4} className="o-live" />}>
               <Live nowIso={ctx.now} />
@@ -152,50 +159,46 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         </Suspense>
       ) : null}
 
-      <section className="x-an" aria-labelledby="hem-analys">
-        <div className="x-hd">
-          <h2 id="hem-analys">Analys{periodName ? <span> · {periodName}</span> : null}</h2>
-          {economy ? <PeriodSegment className="aseg" /> : null}
-          {economy ? (
+      {economy ? (
+        <section className="x-an" aria-labelledby="hem-analys">
+          <div className="x-hd">
+            <h2 id="hem-analys">Analys{periodName ? <span> · {periodName}</span> : null}</h2>
+            <PeriodSegment className="aseg" />
             <Link className="lk text-v2-sm text-v2-mute" href="/pengar">
               Allt i Pengar →
             </Link>
-          ) : null}
-        </div>
-        <div className="x-grid">
-          {economy ? (
-            <>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <WhenCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <GeoCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <TopCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <WorstCardView />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <StockCardView />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <LossCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-                <ShopsCardView sp={sp} />
-              </Suspense>
-              <Suspense fallback={<SkeletonCard rows={4} className="x-c" />}>
-                <GoalCardView />
-              </Suspense>
-            </>
-          ) : null}
-          <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
-            <OpsCardView timeZone={ctx.timeZone} />
-          </Suspense>
-        </div>
-      </section>
+          </div>
+          <div className="x-grid">
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <WhenCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <GeoCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <TopCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <WorstCardView />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <StockCardView />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <LossCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+              <ShopsCardView sp={sp} />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={4} className="x-c" />}>
+              <GoalCardView />
+            </Suspense>
+            <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
+              <OpsCardView timeZone={ctx.timeZone} />
+            </Suspense>
+          </div>
+        </section>
+      ) : null}
     </V2Page>
   );
 }

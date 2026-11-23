@@ -457,7 +457,9 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
       unitsAfter: post.treated.length,
     };
   }
-  const useControl = pre.control.length > 0;
+  // Jämförelsegruppen behöver försäljning i båda fönstren: utan någon efter blir det väntade
+  // antalet noll och effekten går inte att räkna (då jämförs bara före och efter).
+  const useControl = pre.control.length > 0 && post.control.length > 0;
   const control: PriceChangeEffect["control"] = useControl
     ? machineMode
       ? "machines"

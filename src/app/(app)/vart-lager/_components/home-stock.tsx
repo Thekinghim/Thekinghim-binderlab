@@ -79,7 +79,13 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
 
   return (
     <div className="v2-stack">
-      <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
+      {/* V2: siffrorna i ett kort, också på telefon där de fälls ihop bakom "Fler siffror".
+          Kortet ritar kanten; remsans egna band- och fällradslinjer tas bort. */}
+      <div
+        data-frame="panel"
+        className="v2-card rise [&_section>div]:border-y-0 [&>div>button]:border-0 [&>div>button]:px-[18px] max-md:[&>div>div]:mt-0 max-md:[&>div>div]:border-t max-md:[&>div>div]:border-v2-line2"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
         <MobileFold summary="Fler siffror" meta={formatInt(kpiCount)}>
           <KpiStrip
             ariaLabel="Vårt lager i siffror"
@@ -507,8 +513,8 @@ function StockRow({
               autoComplete="off"
               aria-label={`Antal ${inPlace(place.name)}, ${row.name}`}
               className={cn(
-                "tnum h-12 w-24 rounded-sm border bg-bg px-3 text-right text-2xl font-medium text-fg transition-[border-color,background-color] duration-fast ease-instrument hover:border-muted",
-                negativeHere ? "border-signal text-signal-fg" : "border-line-control",
+                "v2-input num h-11 w-24 text-v2-lg font-[650]",
+                negativeHere && "border-v2-crit-icon text-v2-crit-text",
               )}
               value={value}
               disabled={pending}
@@ -531,8 +537,8 @@ function StockRow({
               onClick={onChoosePlace}
               aria-label={`Ändra antal, ${row.name}`}
               className={cn(
-                "tnum h-12 w-24 rounded-sm border border-line-control bg-bg px-3 text-right text-2xl font-medium hover:border-muted",
-                row.negative ? "text-signal-fg" : "text-fg",
+                "v2-input num h-11 w-24 cursor-pointer text-v2-lg font-[650]",
+                row.negative && "text-v2-crit-text",
               )}
             >
               {signedInt(row.home)}
@@ -540,8 +546,8 @@ function StockRow({
           ) : (
             <span
               className={cn(
-                "tnum text-2xl font-medium",
-                negativeHere ? "text-signal-fg" : "text-fg",
+                "tnum text-v2-lg font-[650]",
+                negativeHere ? "text-v2-crit-text" : "text-v2-ink",
               )}
             >
               {signedInt(count)}
@@ -582,7 +588,7 @@ function StockRow({
                     pattern="[0-9]*"
                     aria-label={`Antal ${row.own ? "packade" : "köpta"} pack, ${row.name}`}
                     placeholder="+"
-                    className="tnum h-11 w-16 rounded-sm border border-line-control bg-bg px-2 text-right text-base text-fg"
+                    className="v2-input num h-11 w-16 px-2"
                     value={buy}
                     disabled={pending}
                     onChange={(e) => setBuy(e.target.value)}
@@ -602,7 +608,7 @@ function StockRow({
                         autoComplete="off"
                         aria-label={`${r2.receiptPriceLabel}, ${row.name}`}
                         placeholder="pris"
-                        className="tnum h-11 w-20 rounded-sm border border-line-control bg-bg px-2 text-right text-base text-fg"
+                        className="v2-input num h-11 w-20 px-2"
                         value={price.text}
                         disabled={pending}
                         onChange={(e) => price.setText(e.target.value)}
@@ -806,8 +812,7 @@ function MoveSheet({
               value={amount}
               onFocus={(e) => e.currentTarget.select()}
               onChange={(e) => setQty(Math.trunc(Number(e.target.value)) || 0)}
-              className="tnum h-14 w-full min-w-0 [appearance:textfield] rounded-md border border-line-control bg-bg text-center text-3xl font-medium text-fg [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              style={{ fontSize: 28 }}
+              className="v2-input num h-14 [appearance:textfield] px-2 text-center text-[28px] font-[650] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <button
               type="button"
