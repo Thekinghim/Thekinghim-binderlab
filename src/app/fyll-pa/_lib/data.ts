@@ -21,6 +21,7 @@ import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { queryRefillSources, type RefillSources } from "@/server/data/core/places";
 import { mysteryBatchSql } from "@/server/data/core/queries";
 import { FIELD_REFILL_ROLES } from "@/server/data/field-refills";
+import { machineLookOf, type MachineLook } from "@/lib/machine-look";
 import { queryResponsibles } from "@/server/data/team";
 
 import {
@@ -62,6 +63,11 @@ export interface FillData {
    * Saknas i en sparad sida från en äldre version.
    */
   readonly stores?: Readonly<Record<string, FillStore>>;
+  /**
+   * V2: automatens utseende (machines.appearance) per automat, för bilden av automaten i
+   * listan. Saknas = svart med stjärnor (och i en sparad sida från en äldre version).
+   */
+  readonly looks?: Readonly<Record<string, MachineLook>>;
 }
 
 /** Butiken vid automaten (V2): det påfyllaren behöver för att komma dit och in. */
@@ -172,7 +178,12 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       awishPending,
     ] = await Promise.all([
       tx
-        .select({ id: s.machines.id, code: s.machines.code, name: s.machines.name })
+        .select({
+          id: s.machines.id,
+          code: s.machines.code,
+          name: s.machines.name,
+          appearance: s.machines.appearance,
+        })
         .from(s.machines)
         .where(and(eq(s.machines.organizationId, orgId), isNull(s.machines.archivedAt))),
       tx
@@ -325,6 +336,7 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       hasOthers: list.some((m) => !m.mine),
       recipes,
       awishPending,
+      looks: Object.fromEntries(machines.map((m) => [m.id, machineLookOf(m.appearance)])),
       restartAfterPush: placements
         .filter((p) => p.powerOn !== null && p.powerOff !== null)
         .map((p) => p.machineId),

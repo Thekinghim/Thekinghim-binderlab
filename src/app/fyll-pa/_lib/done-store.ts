@@ -22,6 +22,33 @@ export interface Done {
    * nya antal): skärmen visar dem först efter omstart. Saknas = ingen påminnelse.
    */
   readonly restart?: boolean;
+  /**
+   * Kvittot (V2): automaten, de påfyllda packen per titel, minuterna vid automaten och när.
+   * Saknas i en bekräftelse från en äldre version: då visas bara "Klart! N pack påfyllda".
+   */
+  readonly receipt?: DoneReceipt;
+}
+
+/** Kvittot efter Klar (V2). Bara antal, aldrig belopp. */
+export interface DoneReceipt {
+  readonly machineId: string;
+  /** "Automat 01". */
+  readonly name: string;
+  /** "Bio Fyren · Enköping". */
+  readonly place: string;
+  readonly items: readonly {
+    readonly titleId: string;
+    readonly name: string;
+    readonly qty: number;
+  }[];
+  /** Minuter vid automaten, null = okänt. */
+  readonly minutes: number | null;
+  /** När Klar trycktes (ISO). */
+  readonly at: string;
+  /** Nästa automat: ruttens nästa stopp, annars nästa som behöver påfyllning. */
+  readonly nextId: string | null;
+  /** Nästa är ruttens nästa stopp (stort "Kör dit"). */
+  readonly onRoute: boolean;
 }
 
 /** Så länge finns bekräftelsen kvar (Ångra gäller i 30 minuter). */

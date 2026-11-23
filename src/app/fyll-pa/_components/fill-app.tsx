@@ -82,18 +82,23 @@ import {
   type MachineLink,
 } from "../_lib/tiles";
 import { useFreshData } from "../_lib/use-fresh-data";
+import { bringStrip, listGroups, minutesAt, nextMachineId, receiptItems } from "../_lib/list";
 import { BringScreen } from "./bring-list";
 import {
-  ConfirmSheet,
-  FillCard,
-  MachineTop,
-  MysterySheet,
-  SayCard,
-  SlotSheet,
-  SlotTile,
-} from "./fill-v2";
+  BringCard,
+  DoneRow,
+  FullFold,
+  NeedCard,
+  NextCard,
+  placeLine,
+  ReceiptCard,
+  ReceiptSheet,
+  UnknownCard,
+  type NextStop,
+} from "./fill-list";
+import { usePhone } from "@/components/v2/use-media";
+import { ConfirmSheet, MachineTop, MysterySheet, SayCard, SlotSheet, SlotTile } from "./fill-v2";
 import { Button } from "@/components/v2/button";
-import { toastUndo } from "@/components/v2/toast";
 import { RollingNumber } from "@/components/v2/rolling-number";
 
 export interface FillAppProps {
@@ -231,6 +236,13 @@ export function FillApp({
   // rutt och laddade om sidan när en påfyllning sparades) är rättat med en gemensam rutt för
   // /fyll-pa och /fyll-pa/<automat>, se src/lib/rewrites.ts.
   const [done, setDone] = useDone(scope);
+  // V2: kvittot som ark direkt efter Klar (bara i minnet: en omladdning visar raden i listan).
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const phone = usePhone();
+  // "Allt fullt" utfällt.
+  const [fullOpen, setFullOpen] = useState(false);
+  // När automaten öppnades (minuterna på kvittot).
+  const openedAt = useRef<{ id: string; at: number } | null>(null);
   // Ta med-listan är öppen (utanför useState: överlever att sidan hämtas om).
   const [bring, setBring] = useBring(scope);
   const sources = data.sources;
@@ -595,6 +607,66 @@ export function FillApp({
   }, []);
 
   const selected = selectedId ? view.machines.find((m) => m.id === selectedId) : undefined;
+  useEffect(() => {
+    if (selectedId && openedAt.current?.id !== selectedId) {
+      openedAt.current = { id: selectedId, at: Date.now() };
+    }
+  }, [selectedId]);
+  const looks = data.looks ?? {};
+  const stores = data.stores ?? {};
+  const nextStopOf = (id: string | null | undefined): NextStop | null => {
+    const m = id ? view.machines.find((x) => x.id === id) : undefined;
+    if (!m) return null;
+    return {
+      machine: m,
+      store: stores[m.id] ?? null,
+      look: looks[m.id] ?? null,
+      link: links[m.id] ?? null,
+    };
+  };
+  const clockOf = (iso: string | undefined): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return null;
+    try {
+      return new Intl.DateTimeFormat("sv-SE", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone,
+      }).format(d);
+    } catch {
+      return null;
+    }
+  };
+  // Kvittot som ark (V2): på telefonen alltid, på datorn när en automat är öppen (listan har
+  // kortet i högerspalten).
+  const receiptSheet = (onMachine: boolean) =>
+    !simple && done && (phone || onMachine) ? (
+      <ReceiptSheet
+        done={done}
+        open={receiptOpen}
+        next={nextStopOf(done.receipt?.nextId)}
+        onClose={() => setReceiptOpen(false)}
+        onUndo={async () => {
+          setReceiptOpen(false);
+          await undoDone(done);
+        }}
+        onOpenNext={() => {
+          const id = done.receipt?.nextId;
+          if (!id) return;
+          setDone(null);
+          go(`${BASE}/${id}${done.receipt?.onRoute ? routeSuffix : ""}`);
+        }}
+        onEndDay={
+          route
+            ? () => {
+                setReceiptOpen(false);
+                router.push("/rutt");
+              }
+            : undefined
+        }
+      />
+    ) : null;
   const rejected = q.queue.filter((i) => i.status === "rejected");
   const waiting = q.queue.length - rejected.length;
 
@@ -610,172 +682,192 @@ export function FillApp({
   if (selectedId && selected) {
     const source = sourceOf(selected.id);
     return (
-      <MachineScreen
-        key={`${selected.id}/${source ?? ""}`}
-        v2={!simple}
-        store={data.stores?.[selected.id] ?? null}
-        machines={view.machines}
-        onPick={(id) => go(`${BASE}/${id}`)}
-        restartHint={(data.restartAfterPush ?? []).includes(selected.id)}
-        link={links[selected.id] ?? null}
-        route={
-          stopIndex >= 0
-            ? {
-                index: stopIndex,
-                total: stops.length,
-                ...(stopIndex > 0 ? { onPrev: () => goStop(stopIndex - 1) } : {}),
-                ...(stopIndex < stops.length - 1 ? { onNext: () => goStop(stopIndex + 1) } : {}),
+      <>
+        <MachineScreen
+          key={`${selected.id}/${source ?? ""}`}
+          v2={!simple}
+          store={data.stores?.[selected.id] ?? null}
+          machines={view.machines}
+          onPick={(id) => go(`${BASE}/${id}`)}
+          restartHint={(data.restartAfterPush ?? []).includes(selected.id)}
+          link={links[selected.id] ?? null}
+          route={
+            stopIndex >= 0
+              ? {
+                  index: stopIndex,
+                  total: stops.length,
+                  ...(stopIndex > 0 ? { onPrev: () => goStop(stopIndex - 1) } : {}),
+                  ...(stopIndex < stops.length - 1 ? { onNext: () => goStop(stopIndex + 1) } : {}),
+                }
+              : null
+          }
+          machine={selected}
+          places={sources.places.map((p) => ({
+            id: p.id,
+            name: p.name,
+            count: Object.values(view.stock[p.id] ?? {}).reduce((n, v) => n + Math.max(0, v), 0),
+          }))}
+          sourceId={source}
+          sourceStock={source ? (view.stock[source] ?? {}) : null}
+          recipes={data.recipes}
+          onPacked={(deltas) =>
+            setPacked((prev) => ({
+              base: data,
+              deltas: [...(prev.base === data ? prev.deltas : []), ...deltas],
+            }))
+          }
+          sourceReason={view.choice[selected.id]?.reason ?? null}
+          onSource={(id) => setOverride((prev) => ({ ...prev, [selected.id]: id }))}
+          syncLabel={syncLabels[selected.id]}
+          fresh={fresh[selected.id] ?? false}
+          online={q.online}
+          headerActions={
+            <div className="flex items-center gap-2">
+              {refreshButton}
+              <NetPill online={q.online} waiting={waiting} syncing={q.syncing} v2={!simple} />
+            </div>
+          }
+          notice={
+            <>
+              {noticeLine}
+              {pendingLine(selected)}
+            </>
+          }
+          onBack={() => (route ? router.push("/rutt") : go(BASE))}
+          onCounted={(titleId, value) => {
+            setCounted((prev) => {
+              const map = new Map(prev.base === data ? prev.map : []);
+              map.set(pairKey(selected.id, titleId), value);
+              return { base: data, map };
+            });
+            router.refresh();
+          }}
+          onDone={async (lines) => {
+            const now = new Date().toISOString();
+            const items: QueuedRefill[] = [];
+            let packs = 0;
+            // "Kvar hemma" = hela lagret man fyller från efter påfyllningen (samma tal som
+            // "N pack hemma" överst), inte bara de påfyllda titlarna.
+            let homeLeft = source
+              ? Object.values(view.stock[source] ?? {}).reduce((n, v) => n + Math.max(0, v), 0)
+              : 0;
+            for (const { row, quantity } of lines) {
+              const split = splitRefill(quantity, source ? row.home : 0);
+              packs += quantity;
+              homeLeft -= split.fromWarehouse;
+              for (const [n, fromWarehouse] of [
+                [split.fromWarehouse, true],
+                [split.direct, false],
+              ] as const) {
+                if (n <= 0) continue;
+                items.push({
+                  clientId: newClientId(),
+                  scope,
+                  machineId: selected.id,
+                  titleId: row.titleId,
+                  quantity: n,
+                  fromWarehouse,
+                  ...(fromWarehouse && source ? { fromLocationId: source } : {}),
+                  occurredAt: now,
+                  note: fromWarehouse ? "Fyll på" : "Fyll på (utan uttag ur vårt lager)",
+                  status: "queued",
+                  attempts: 0,
+                });
               }
-            : null
-        }
-        machine={selected}
-        places={sources.places.map((p) => ({
-          id: p.id,
-          name: p.name,
-          count: Object.values(view.stock[p.id] ?? {}).reduce((n, v) => n + Math.max(0, v), 0),
-        }))}
-        sourceId={source}
-        sourceStock={source ? (view.stock[source] ?? {}) : null}
-        recipes={data.recipes}
-        onPacked={(deltas) =>
-          setPacked((prev) => ({
-            base: data,
-            deltas: [...(prev.base === data ? prev.deltas : []), ...deltas],
-          }))
-        }
-        sourceReason={view.choice[selected.id]?.reason ?? null}
-        onSource={(id) => setOverride((prev) => ({ ...prev, [selected.id]: id }))}
-        syncLabel={syncLabels[selected.id]}
-        fresh={fresh[selected.id] ?? false}
-        online={q.online}
-        headerActions={
-          <div className="flex items-center gap-2">
-            {refreshButton}
-            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} v2={!simple} />
-          </div>
-        }
-        notice={
-          <>
-            {noticeLine}
-            {pendingLine(selected)}
-          </>
-        }
-        onBack={() => (route ? router.push("/rutt") : go(BASE))}
-        onCounted={(titleId, value) => {
-          setCounted((prev) => {
-            const map = new Map(prev.base === data ? prev.map : []);
-            map.set(pairKey(selected.id, titleId), value);
-            return { base: data, map };
-          });
-          router.refresh();
-        }}
-        onDone={async (lines) => {
-          const now = new Date().toISOString();
-          const items: QueuedRefill[] = [];
-          let packs = 0;
-          // "Kvar hemma" = hela lagret man fyller från efter påfyllningen (samma tal som
-          // "N pack hemma" överst), inte bara de påfyllda titlarna.
-          let homeLeft = source
-            ? Object.values(view.stock[source] ?? {}).reduce((n, v) => n + Math.max(0, v), 0)
-            : 0;
-          for (const { row, quantity } of lines) {
-            const split = splitRefill(quantity, source ? row.home : 0);
-            packs += quantity;
-            homeLeft -= split.fromWarehouse;
-            for (const [n, fromWarehouse] of [
-              [split.fromWarehouse, true],
-              [split.direct, false],
-            ] as const) {
-              if (n <= 0) continue;
-              items.push({
-                clientId: newClientId(),
-                scope,
-                machineId: selected.id,
-                titleId: row.titleId,
-                quantity: n,
-                fromWarehouse,
-                ...(fromWarehouse && source ? { fromLocationId: source } : {}),
-                occurredAt: now,
-                note: fromWarehouse ? "Fyll på" : "Fyll på (utan uttag ur vårt lager)",
-                status: "queued",
-                attempts: 0,
-              });
             }
-          }
-          if (items.length === 0) {
-            go(BASE);
-            return;
-          }
-          const out = await q.enqueue(items);
-          if (source) setLastSource(source);
-          if (out.rejected.length > 0) {
-            toast({
-              title: t.fill.notSavedTitle,
-              description: out.rejected[0]?.error
-                ? t.serverError(out.rejected[0].error)
-                : t.fill.seeList,
-              tone: "critical",
-            });
-          } else if (out.offline && !q.persistent) {
-            toast({
-              title: t.fill.noConnection,
-              description: t.fill.tryWithNet,
-              tone: "critical",
-            });
-            return;
-          } else {
-            const rejectedIds = new Set(out.rejected.map((r) => r.clientId));
-            const d: Done = {
-              packs,
-              left: source ? t.fill.leftAt(Math.max(0, homeLeft), placeName(source)) : "",
-              offline: out.offline,
-              clientIds: items.map((i) => i.clientId).filter((id) => !rejectedIds.has(id)),
-              restart: needsRestartReminder(out.awish, [selected.id], data.restartAfterPush),
-            };
-            // V2, öppnad från Hem/Automater: tillbaka dit när allt sparades och Awish fick
-            // antalen (annars behövs beskedet här, t.ex. omstarten eller "Försök igen").
-            const savedIds = new Set(out.saved.map((i) => i.clientId));
-            if (
-              returnTo &&
-              !simple &&
-              stopIndex < 0 &&
-              !out.offline &&
-              !d.restart &&
-              (!out.awish || out.awish.state === "sent") &&
-              items.every((i) => savedIds.has(i.clientId)) &&
-              saveFillReturn({
-                title: t.fill.doneTitle(packs),
-                detail: `${selected.name}${d.left ? ` · ${d.left}` : ""}`,
-                packs,
-                clientIds: d.clientIds,
-              })
-            ) {
-              rememberSaved(out.saved);
-              router.push(returnTo);
-              router.refresh();
+            if (items.length === 0) {
+              go(BASE);
               return;
             }
-            setDone(d);
-            // V2, ruttläget: nästa stopp öppnas direkt, så Ångra står i en notis (i listan
-            // står bekräftelsen med Ångra i stället, en gång).
-            if (!simple && stopIndex >= 0 && stops[stopIndex + 1]) {
-              toastUndo(
-                t.fill.doneTitle(packs),
-                d.restart ? t.fill.restartScreen : d.offline ? t.fill.doneOffline : d.left,
-                () => void undoDone(d),
-                { id: "fyll-klar" },
-              );
+            const out = await q.enqueue(items);
+            if (source) setLastSource(source);
+            if (out.rejected.length > 0) {
+              toast({
+                title: t.fill.notSavedTitle,
+                description: out.rejected[0]?.error
+                  ? t.serverError(out.rejected[0].error)
+                  : t.fill.seeList,
+                tone: "critical",
+              });
+            } else if (out.offline && !q.persistent) {
+              toast({
+                title: t.fill.noConnection,
+                description: t.fill.tryWithNet,
+                tone: "critical",
+              });
+              return;
+            } else {
+              const rejectedIds = new Set(out.rejected.map((r) => r.clientId));
+              const routeNext = stopIndex >= 0 ? (stops[stopIndex + 1] ?? null) : null;
+              const doneAt = Date.now();
+              const d: Done = {
+                packs,
+                left: source ? t.fill.leftAt(Math.max(0, homeLeft), placeName(source)) : "",
+                offline: out.offline,
+                clientIds: items.map((i) => i.clientId).filter((id) => !rejectedIds.has(id)),
+                restart: needsRestartReminder(out.awish, [selected.id], data.restartAfterPush),
+                receipt: {
+                  machineId: selected.id,
+                  name: selected.name || selected.code,
+                  place: placeLine(selected, data.stores?.[selected.id] ?? null),
+                  items: receiptItems(lines),
+                  minutes: minutesAt(
+                    openedAt.current?.id === selected.id ? openedAt.current.at : null,
+                    doneAt,
+                  ),
+                  at: new Date(doneAt).toISOString(),
+                  nextId: nextMachineId({
+                    justFilled: selected.id,
+                    routeNext,
+                    machines: view.machines,
+                  }),
+                  onRoute: routeNext !== null,
+                },
+              };
+              // V2, öppnad från Hem/Automater: tillbaka dit när allt sparades och Awish fick
+              // antalen (annars behövs beskedet här, t.ex. omstarten eller "Försök igen").
+              const savedIds = new Set(out.saved.map((i) => i.clientId));
+              if (
+                returnTo &&
+                !simple &&
+                stopIndex < 0 &&
+                !out.offline &&
+                !d.restart &&
+                (!out.awish || out.awish.state === "sent") &&
+                items.every((i) => savedIds.has(i.clientId)) &&
+                saveFillReturn({
+                  title: t.fill.doneTitle(packs),
+                  detail: `${selected.name}${d.left ? ` · ${d.left}` : ""}`,
+                  packs,
+                  clientIds: d.clientIds,
+                })
+              ) {
+                rememberSaved(out.saved);
+                router.push(returnTo);
+                router.refresh();
+                return;
+              }
+              setDone(d);
+              // V2: kvittot som ark direkt (i ruttläget över nästa stopp, med "Kör dit"), med
+              // Ångra. I listan står bekräftelsen sedan kvar som en rad (telefonen) eller ett kort
+              // i högerspalten (datorn).
+              // Bara när arket faktiskt visas: på datorn utan rutt står kvittot som kort i
+              // listan, och ett kvarglömt "öppet" skulle annars visa det gamla kvittot igen
+              // (t.ex. med Bakåt till automaten).
+              const ahead = stopIndex >= 0 ? stops[stopIndex + 1] : undefined;
+              if (!simple && (phone || ahead)) setReceiptOpen(true);
             }
-          }
-          if (out.saved.length > 0) rememberSaved(out.saved);
-          reportAwish(out.awish, [selected.id]);
-          // Ruttläget: nästa stopp direkt; sista stoppet (eller vanligt läge) tillbaka till listan.
-          // Bekräftelsen syns direkt, sedan hämtas datan om för den adressen.
-          const nextStop = stopIndex >= 0 ? stops[stopIndex + 1] : undefined;
-          go(nextStop ? `${BASE}/${nextStop}${routeSuffix}` : BASE);
-          if (out.saved.length > 0) router.refresh();
-        }}
-      />
+            if (out.saved.length > 0) rememberSaved(out.saved);
+            reportAwish(out.awish, [selected.id]);
+            // Ruttläget: nästa stopp direkt; sista stoppet (eller vanligt läge) tillbaka till listan.
+            // Bekräftelsen syns direkt, sedan hämtas datan om för den adressen.
+            const nextStop = stopIndex >= 0 ? stops[stopIndex + 1] : undefined;
+            go(nextStop ? `${BASE}/${nextStop}${routeSuffix}` : BASE);
+            if (out.saved.length > 0) router.refresh();
+          }}
+        />
+        {receiptSheet(true)}
+      </>
     );
   }
 
@@ -836,6 +928,15 @@ export function FillApp({
     sources.places.length === 1 ? t.fill.stockAt(sources.places[0]!.name) : t.fill.stockAll;
 
   if (!simple) {
+    const groups = listGroups(shown);
+    const bring = bringStrip(groups.need);
+    const firstNext = nextStopOf(groups.need[0]?.id);
+    const ariaOf = (m: (typeof shown)[number]) =>
+      t.fill.cardAria(m.place, needLabel(m, t), m.fillPct);
+    const openMachine = (id: string) => {
+      setDone(null);
+      go(`${BASE}/${id}`);
+    };
     const awishLine =
       waitingShown.length === 1 ? (
         pendingLine(waitingShown[0]!)
@@ -890,9 +991,6 @@ export function FillApp({
             </div>
           ) : null}
         </section>
-        {done ? (
-          <DoneV2 done={done} onClose={() => setDone(null)} onUndo={() => undoDone(done)} />
-        ) : null}
         {awishLine}
         {rejected.length > 0 ? (
           <RejectedList
@@ -923,34 +1021,99 @@ export function FillApp({
           <p className="text-v2-md text-v2-mute">{t.fill.noneMine}</p>
         ) : null}
         {shown.length > 0 ? (
-          <Button
-            className="min-h-11 self-start"
-            onClick={() => {
-              setBring({ chosen: null, placeId: null });
-              window.scrollTo({ top: 0 });
-            }}
-          >
-            <Icon name="stock" size={16} />
-            {t.fill.bringOpen}
-          </Button>
-        ) : null}
-        <ul className="list" aria-label={t.fill.machines}>
-          {shown.map((m) => (
-            <li key={m.id}>
-              <FillCard
-                machine={m}
-                store={data.stores?.[m.id] ?? null}
-                link={links[m.id] ?? null}
-                href={`${BASE}/${m.id}`}
-                ariaLabel={t.fill.cardAria(m.place, needLabel(m, t), m.fillPct)}
+          <div className="fl">
+            <div className="fl-main">
+              {done && !(phone && receiptOpen) ? (
+                <DoneRow
+                  done={done}
+                  clock={clockOf(done.receipt?.at)}
+                  status={phone}
+                  onUndo={() => undoDone(done)}
+                  onClose={() => setDone(null)}
+                />
+              ) : null}
+              <ul className="fl-group" aria-label={t.fill.machines}>
+                {groups.need.length > 0 ? (
+                  <li>
+                    <ul className="fl-list">
+                      {groups.need.map((m, i) => (
+                        <li key={m.id}>
+                          <NeedCard
+                            m={m}
+                            store={stores[m.id] ?? null}
+                            link={links[m.id] ?? null}
+                            look={looks[m.id] ?? null}
+                            href={`${BASE}/${m.id}`}
+                            ariaLabel={ariaOf(m)}
+                            next={i === 0}
+                            onOpen={() => openMachine(m.id)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ) : null}
+                {groups.unknown.length > 0 ? (
+                  <li>
+                    <p className="fl-sec">Okänd nivå</p>
+                    <ul className="fl-group">
+                      {groups.unknown.map((m) => (
+                        <li key={m.id}>
+                          <UnknownCard
+                            m={m}
+                            store={stores[m.id] ?? null}
+                            link={links[m.id] ?? null}
+                            look={looks[m.id] ?? null}
+                            href={`${BASE}/${m.id}`}
+                            ariaLabel={ariaOf(m)}
+                            onOpen={() => openMachine(m.id)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ) : null}
+                {groups.full.length > 0 ? (
+                  <li>
+                    <FullFold
+                      machines={groups.full}
+                      looks={looks}
+                      links={links}
+                      stores={stores}
+                      // Inget att fylla alls: listan är redan utfälld.
+                      open={fullOpen || (groups.need.length === 0 && groups.unknown.length === 0)}
+                      onToggle={() => setFullOpen((o) => !o)}
+                      hrefOf={(id) => `${BASE}/${id}`}
+                      ariaOf={ariaOf}
+                      onOpen={openMachine}
+                    />
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+            <aside className="fl-side" aria-label="Ta med och nästa">
+              {done && !phone ? (
+                <ReceiptCard
+                  done={done}
+                  onClose={() => setDone(null)}
+                  onUndo={() => undoDone(done)}
+                />
+              ) : null}
+              {firstNext ? (
+                <NextCard next={firstNext} onOpen={() => openMachine(firstNext.machine.id)} />
+              ) : null}
+              <BringCard
+                items={bring.items}
+                total={bring.total}
                 onOpen={() => {
-                  setDone(null);
-                  go(`${BASE}/${m.id}`);
+                  setBring({ chosen: null, placeId: null });
+                  window.scrollTo({ top: 0 });
                 }}
               />
-            </li>
-          ))}
-        </ul>
+            </aside>
+          </div>
+        ) : null}
+        {receiptSheet(false)}
       </div>
     );
   }
@@ -2382,50 +2545,5 @@ function CountForm({
         {t.common.cancel}
       </Button>
     </form>
-  );
-}
-
-/** Bekräftelsen efter Klar i V2: "Klart! 12 pack påfyllda", omstart och Ångra. */
-function DoneV2({
-  done,
-  onUndo,
-  onClose,
-}: {
-  done: Done;
-  onUndo: () => Promise<void>;
-  onClose: () => void;
-}) {
-  const t = useT();
-  const [busy, setBusy] = useState(false);
-  return (
-    <section className="pn done" role="status" aria-live="polite">
-      <span className="ok" aria-hidden="true">
-        <Icon name="check" size={20} />
-      </span>
-      <h2>{t.fill.doneTitle(done.packs)}</h2>
-      <p className="sub">{done.offline ? t.fill.doneOffline : done.left}</p>
-      {done.restart ? (
-        // Butiken stänger av strömmen på natten: skärmen läser antalen när den startar.
-        <p className="restart" data-restart-reminder>
-          {t.fill.restartScreen}
-        </p>
-      ) : null}
-      <div className="acts">
-        <Button onClick={onClose}>{t.common.close}</Button>
-        <Button
-          pending={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await onUndo();
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? t.common.undoing : t.common.undo}
-        </Button>
-      </div>
-    </section>
   );
 }

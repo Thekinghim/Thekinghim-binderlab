@@ -25,15 +25,7 @@ import {
   type FillRow,
   type PackAsk,
 } from "../_lib/model";
-import {
-  listChip,
-  needLine,
-  shortAtHome,
-  stepperBounds,
-  tileView,
-  urgentPacks,
-  type MachineLink,
-} from "../_lib/tiles";
+import { shortAtHome, stepperBounds, tileView, type MachineLink } from "../_lib/tiles";
 
 /* -------------------------------------------------------------------------- */
 /* Hjälpare                                                                   */
@@ -573,87 +565,6 @@ export function SlotSheet({
         <div className="ss-cnt">{countSlot}</div>
       </div>
     </Sheet>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Listan: ett kort per automat                                               */
-/* -------------------------------------------------------------------------- */
-
-/**
- * En automat i listan (V2, val A): namn, kod och stad, fyllnaden som stapel med procent,
- * "Ta med N pack", upp till sex packbilder för titlar som är slut eller snart slut (bleka när
- * de är slut) och ett märke (Offline, Slut, Fyll på i dag, Strömmen av).
- */
-export function FillCard({
-  machine: m,
-  store,
-  link,
-  href,
-  ariaLabel,
-  onOpen,
-}: {
-  machine: FillMachine;
-  store: FillStore | null;
-  link?: MachineLink | null;
-  href: string;
-  ariaLabel: string;
-  onOpen: () => void;
-}) {
-  const place = store?.name ?? m.place;
-  const title = m.name && m.name !== place ? `${m.name} · ${place}` : place;
-  const chip = listChip(m, link);
-  const need = needLine(m);
-  const packs = urgentPacks(m);
-  return (
-    <a
-      href={href}
-      onClick={(e) => {
-        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-        e.preventDefault();
-        onOpen();
-      }}
-      aria-label={ariaLabel}
-      className={cn(
-        "mcard",
-        chip?.tone === "critical" ? "crit" : chip?.tone === "warning" && "hot",
-      )}
-    >
-      <span className="top2">
-        <span className="min-w-0">
-          <b>{title}</b>
-          <small>{[m.code, store?.city].filter(Boolean).join(" · ")}</small>
-        </span>
-        {chip ? (
-          <Badge tone={chip.tone} dot={chip.tone !== "warning"}>
-            {chip.text}
-          </Badge>
-        ) : null}
-      </span>
-      {m.fillPct !== null ? (
-        <span className="fillrow">
-          <span className="bar" aria-hidden="true">
-            <i
-              className={cn("now", m.fillPct <= 25 && "o")}
-              style={{ transform: `scaleX(${Math.max(0, Math.min(1, m.fillPct / 100))})` }}
-            />
-          </span>
-          <span className="pc">{`${formatInt(m.fillPct)}${NBSP}%`}</span>
-        </span>
-      ) : (
-        <span className="need none">Hur full den är syns efter nästa läsning</span>
-      )}
-      <span className="foot2">
-        <span className={cn("need", need.none && "none")}>{need.text}</span>
-        {packs.length > 0 ? (
-          <span className="pks" aria-hidden="true">
-            {packs.map((p) => (
-              <PackImage key={p.titleId} title={p.name} size="m" className={cn(p.empty && "dim")} />
-            ))}
-          </span>
-        ) : null}
-      </span>
-    </a>
   );
 }
 
