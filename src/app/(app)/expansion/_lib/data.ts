@@ -136,6 +136,9 @@ export interface UnitEconomicsPageData {
   readonly names: Names;
   /** Automater i filtret. */
   readonly machineIds: string[];
+  // --- Visuellt (Enhetsekonomi): butiken under automatens namn. Bara läsning. ---
+  /** Automatens butik i perioden (senaste placeringen), automat-id → butiks-id. */
+  readonly machineStores: Record<string, string>;
 }
 
 export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<UnitEconomicsPageData> {
@@ -170,7 +173,20 @@ export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<Unit
     investments: investments.filter((i) => inScope.has(i.machineId)),
     names: namesOf(input),
     machineIds,
+    machineStores: latestStoreByMachine(input.current.placements),
   };
+}
+
+// --- Visuellt (Enhetsekonomi): automatens senaste butik i perioden. Bara läsning. ---
+function latestStoreByMachine(
+  placements: ReadonlyArray<{ machineId: string; storeId: string; from: string }>,
+): Record<string, string> {
+  const latest = new Map<string, { storeId: string; from: string }>();
+  for (const pl of placements) {
+    const prev = latest.get(pl.machineId);
+    if (!prev || pl.from > prev.from) latest.set(pl.machineId, pl);
+  }
+  return Object.fromEntries([...latest].map(([id, pl]) => [id, pl.storeId]));
 }
 
 function namesOf(input: {

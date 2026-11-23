@@ -30,6 +30,8 @@ import { loadMasterData, requireRoute } from "@/server/data/core";
 
 import { pickTab, ViewTabs } from "../automater/_components/view-tabs";
 import { splitNumber } from "../butiker/_lib/head";
+import { faceOf, loadStoreFaces, type FaceProps } from "../butiker/_lib/visual-data";
+import { StoreFace } from "@/components/v2/store-face";
 import { EvidenceDetails } from "../ekonomi/_components/evidence";
 import { isoToDate, periodText, plural, sek } from "../ekonomi/_lib/view";
 import { ContractArchive } from "./_components/contract-archive";
@@ -157,12 +159,14 @@ export default async function KontraktPage({
   const tab = pickTab(TABS, sp.vy);
   // Intäktsöversikten (12 månaders order) bara på fliken Intäkt. Status och signering står
   // på kontraktsraderna (ingen egen fråga).
-  const [data, setup, signatures, master, sales] = await Promise.all([
+  const [data, setup, signatures, master, sales, faces] = await Promise.all([
     loadContractsFor(viewer, ctx.today, { overview: tab === "intakt" }),
     canEdit ? loadContractSetupFor(viewer, ctx.today) : null,
     loadContractSignaturesFor(viewer),
     loadMasterData(),
     loadStoreSalesFor(viewer),
+    // Visuellt: butikens symbol före namnet (typ och stad, bara läsning).
+    loadStoreFaces(),
   ]);
   const statuses = new Map(
     data.contracts.map((c) => [
@@ -338,6 +342,7 @@ export default async function KontraktPage({
                         stores={stores}
                         agreementOptions={agreementOptions}
                         agreements={data.agreements}
+                        face={faceOf(faces, row.storeId)}
                       />
                     );
                   })}
@@ -431,13 +436,20 @@ export default async function KontraktPage({
                           key: "butik",
                           header: "Butik",
                           cell: (row) => (
-                            <span className="flex min-w-0 flex-col">
-                              <span className="[overflow-wrap:anywhere] text-v2-ink">
-                                {storeName.get(row.storeId) ?? "Okänd butik"}
-                              </span>
-                              <span className="text-v2-xs text-v2-mute">
-                                {CATEGORY[row.category]}
-                                {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
+                            <span className="flex min-w-0 items-center gap-3">
+                              <StoreFace
+                                name={storeName.get(row.storeId)}
+                                {...faceOf(faces, row.storeId)}
+                                size="sm"
+                              />
+                              <span className="flex min-w-0 flex-col">
+                                <span className="[overflow-wrap:anywhere] text-v2-ink">
+                                  {storeName.get(row.storeId) ?? "Okänd butik"}
+                                </span>
+                                <span className="text-v2-xs text-v2-mute">
+                                  {CATEGORY[row.category]}
+                                  {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
+                                </span>
                               </span>
                             </span>
                           ),
@@ -488,12 +500,19 @@ export default async function KontraktPage({
                       key={c.id}
                       className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-v2-line2 px-[18px] py-3 first:border-t-0"
                     >
-                      <span className="min-w-0 text-v2-sm text-v2-mute">
-                        <span className="text-v2-md text-v2-ink">
-                          {storeName.get(c.storeId) ?? "Okänd butik"}
+                      <span className="flex min-w-0 items-center gap-3 text-v2-sm text-v2-mute">
+                        <StoreFace
+                          name={storeName.get(c.storeId)}
+                          {...faceOf(faces, c.storeId)}
+                          size="sm"
+                        />
+                        <span className="min-w-0">
+                          <span className="text-v2-md text-v2-ink">
+                            {storeName.get(c.storeId) ?? "Okänd butik"}
+                          </span>
+                          {" · "}
+                          {day(c.validFrom)} – {c.validTo ? day(c.validTo) : "tills vidare"}
                         </span>
-                        {" · "}
-                        {day(c.validFrom)} – {c.validTo ? day(c.validTo) : "tills vidare"}
                       </span>
                       {canEdit ? (
                         <ContractArchive
@@ -544,6 +563,7 @@ function ContractItem({
   stores,
   agreementOptions,
   agreements,
+  face,
 }: {
   row: ContractRow;
   contract: ContractRecord | undefined;
@@ -557,6 +577,7 @@ function ContractItem({
   stores: { id: string; name: string }[];
   agreementOptions: AgreementOption[];
   agreements: AgreementRecord[];
+  face: FaceProps;
 }) {
   const st = ROW_STATUS[row.status];
   const id = c ? `avtal-${c.id}` : undefined;
@@ -634,16 +655,19 @@ function ContractItem({
           </div>
         ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-col">
-            <Link
-              href={`/butiker/${row.storeId}`}
-              className="truncate rounded-v2-sm text-v2-md font-[550] text-v2-ink hover:underline max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
-            >
-              {row.storeName}
-            </Link>
-            <span className={cn("text-v2-sm", row.terms ? "text-v2-mute" : "text-v2-faint")}>
-              {row.terms ?? "Inga villkor"}
-            </span>
+          <div className="flex min-w-0 items-center gap-3">
+            <StoreFace name={row.storeName} storeType={face.storeType} city={face.city} size="md" />
+            <div className="flex min-w-0 flex-col">
+              <Link
+                href={`/butiker/${row.storeId}`}
+                className="truncate rounded-v2-sm text-v2-md font-[550] text-v2-ink hover:underline max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
+              >
+                {row.storeName}
+              </Link>
+              <span className={cn("text-v2-sm", row.terms ? "text-v2-mute" : "text-v2-faint")}>
+                {row.terms ?? "Inga villkor"}
+              </span>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={TONE[row.status]} dot={row.alert || row.status === "due"}>

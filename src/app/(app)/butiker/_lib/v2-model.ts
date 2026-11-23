@@ -5,7 +5,7 @@
  * betalda avräkningar. Här filtreras, grupperas och sorteras bara.
  */
 
-export type ShopFilter = "alla" | "betala" | "natt" | "alltid";
+export type ShopFilter = "alla" | "betala" | "natt" | "alltid" | "offline";
 
 export interface ShopListRow {
   readonly id: string;
@@ -14,6 +14,8 @@ export interface ShopListRow {
   readonly payOre: number;
   readonly power: { readonly on: string; readonly off: string } | null;
   readonly profitOre: number;
+  /** Automater offline i butiken (filtret Offline). Saknas = 0. */
+  readonly offline?: number;
 }
 
 /** Sök på butikens namn eller stad (skiftlägesokänsligt, svenska tecken som de är). */
@@ -26,8 +28,13 @@ export function matchesShop(row: Pick<ShopListRow, "name" | "city">, query: stri
   );
 }
 
-export function inFilter(row: Pick<ShopListRow, "payOre" | "power">, filter: ShopFilter): boolean {
+export function inFilter(
+  row: Pick<ShopListRow, "payOre" | "power" | "offline">,
+  filter: ShopFilter,
+): boolean {
   switch (filter) {
+    case "offline":
+      return (row.offline ?? 0) > 0;
     case "betala":
       return row.payOre > 0;
     case "natt":
@@ -45,6 +52,7 @@ export function filterCounts(rows: readonly ShopListRow[]): Record<ShopFilter, n
     betala: rows.filter((r) => inFilter(r, "betala")).length,
     natt: rows.filter((r) => inFilter(r, "natt")).length,
     alltid: rows.filter((r) => inFilter(r, "alltid")).length,
+    offline: rows.filter((r) => inFilter(r, "offline")).length,
   };
 }
 
@@ -86,6 +94,16 @@ export function groupByCity<R extends ShopListRow>(rows: readonly R[]): ShopGrou
         Number(a.city === NO_CITY_LABEL) - Number(b.city === NO_CITY_LABEL) ||
         a.city.localeCompare(b.city, "sv"),
     );
+}
+
+/**
+ * Butikerna i en lista (visuellt/06): mest vinst först, butiker utan automat och vinst sist,
+ * lika vinst i bokstavsordning.
+ */
+export function sortByProfit<R extends Pick<ShopListRow, "name" | "profitOre">>(
+  rows: readonly R[],
+): R[] {
+  return [...rows].sort((a, b) => b.profitOre - a.profitOre || a.name.localeCompare(b.name, "sv"));
 }
 
 /** Butiken som visas först: den första med något att betala, annars den första i listan. */

@@ -7,6 +7,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { ourProfitLabel } from "@/lib/store-share";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatDelta, formatSek, MISSING } from "@/lib/format";
+import { StoreFace } from "@/components/v2/store-face";
 
 import type { StoreRow } from "../_lib/types";
 
@@ -69,10 +70,14 @@ export function shortMonth(month: string): string {
 /** Åtgärderna om avtalet, som står som egen rad under namnet (inte i statusen). */
 const AGREEMENT_ISSUES: ReadonlySet<string> = new Set(["no-agreement", "agreement-gap"]);
 
+/** Butikens typ och stad för symbolen (visuellt/06), id → ansikte. */
+type Faces = Readonly<Record<string, { storeType: string | null; city: string | null }>>;
+
 function columns(
   monthLabel: string,
   showStoreShare: boolean,
   totals: { toStoreOre: number } | null = null,
+  faces: Faces | null = null,
 ): Column<StoreRow>[] {
   const all: Column<StoreRow>[] = [
     {
@@ -88,36 +93,46 @@ function columns(
         // varningen utan avtal) och status, så att Intäkt och Till butiken ryms bredvid.
         <Link
           href={r.href}
-          className="flex max-w-32 min-w-0 flex-col rounded-xs py-1 hover:text-fg sm:max-w-56 md:max-w-52"
+          className="flex max-w-40 min-w-0 items-center gap-3 rounded-xs py-1 hover:text-fg sm:max-w-64 md:max-w-60"
         >
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="font-medium text-fg">{r.name}</span>
-            {r.isExample ? <StatusTag status="neutral">Exempel</StatusTag> : null}
+          {faces ? (
+            <StoreFace
+              name={r.name}
+              storeType={faces[r.id]?.storeType}
+              city={faces[r.id]?.city}
+              size="sm"
+            />
+          ) : null}
+          <span className="flex min-w-0 flex-col">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-medium text-fg">{r.name}</span>
+              {r.isExample ? <StatusTag status="neutral">Exempel</StatusTag> : null}
+            </span>
+            {r.place ? (
+              <span className="truncate text-sm text-muted max-md:hidden" title={r.place}>
+                {r.place}
+              </span>
+            ) : null}
+            {r.agreementGap ? (
+              <span className="text-sm whitespace-normal text-signal-fg" data-no-agreement>
+                {r.agreementGap.short}
+              </span>
+            ) : r.terms ? (
+              <span className="text-sm whitespace-normal text-muted md:hidden">{r.terms}</span>
+            ) : null}
+            {r.issue && !AGREEMENT_ISSUES.has(r.issue.id) ? (
+              // Under md som vanlig text (inte en etikett), så att kolumnen är smal nog för
+              // Intäkt och Till butiken bredvid.
+              <span
+                className={`text-sm whitespace-normal md:hidden ${r.issue.level === "critical" ? "text-signal-fg" : "text-muted"}`}
+              >
+                {r.issue.level === "critical" ? (
+                  <span className="sr-only">Kräver åtgärd: </span>
+                ) : null}
+                {r.issue.short}
+              </span>
+            ) : null}
           </span>
-          {r.place ? (
-            <span className="truncate text-sm text-muted max-md:hidden" title={r.place}>
-              {r.place}
-            </span>
-          ) : null}
-          {r.agreementGap ? (
-            <span className="text-sm whitespace-normal text-signal-fg" data-no-agreement>
-              {r.agreementGap.short}
-            </span>
-          ) : r.terms ? (
-            <span className="text-sm whitespace-normal text-muted md:hidden">{r.terms}</span>
-          ) : null}
-          {r.issue && !AGREEMENT_ISSUES.has(r.issue.id) ? (
-            // Under md som vanlig text (inte en etikett), så att kolumnen är smal nog för
-            // Intäkt och Till butiken bredvid.
-            <span
-              className={`text-sm whitespace-normal md:hidden ${r.issue.level === "critical" ? "text-signal-fg" : "text-muted"}`}
-            >
-              {r.issue.level === "critical" ? (
-                <span className="sr-only">Kräver åtgärd: </span>
-              ) : null}
-              {r.issue.short}
-            </span>
-          ) : null}
         </Link>
       ),
     },
@@ -281,6 +296,7 @@ export function StoreTable({
   monthLabel,
   showStoreShare = true,
   showTotal = false,
+  faces,
 }: {
   rows: readonly StoreRow[];
   caption: string;
@@ -289,11 +305,13 @@ export function StoreTable({
   showStoreShare?: boolean;
   /** Summaraden "Till butikerna totalt" (butikslistan). */
   showTotal?: boolean;
+  /** Butikernas symboler (typ och stad per id); utan visas bara namnen. */
+  faces?: Faces;
 }) {
   const toStoreOre = showTotal ? rows.reduce((n, r) => n + r.toStoreOre, 0) : null;
   const cols = useMemo(
-    () => columns(monthLabel, showStoreShare, toStoreOre === null ? null : { toStoreOre }),
-    [monthLabel, showStoreShare, toStoreOre],
+    () => columns(monthLabel, showStoreShare, toStoreOre === null ? null : { toStoreOre }, faces),
+    [monthLabel, showStoreShare, toStoreOre, faces],
   );
   return (
     <DataTable

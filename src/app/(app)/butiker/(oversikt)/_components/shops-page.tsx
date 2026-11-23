@@ -11,7 +11,9 @@ import { loadPeriod, requireRoute } from "@/server/data/core";
 import { loadShops } from "@/server/data/v2/analytics/shops";
 
 import { ShopsView } from "../../_components/v2/shops-view";
+import { loadShopVisuals } from "../../_lib/visual-data";
 import "../../../pengar/_components/money.css";
+import "../../_components/v2/shops-visual.css";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -21,7 +23,11 @@ type SearchParams = Record<string, string | string[] | undefined>;
  */
 export async function ShopsPage({ sp }: { sp: SearchParams }) {
   const ctx = await requireRoute("butiker");
-  const [data, p] = await Promise.all([loadShops(sp), loadPeriod(sp)]);
+  const [data, p, visuals] = await Promise.all([
+    loadShops(sp),
+    loadPeriod(sp),
+    loadShopVisuals(sp),
+  ]);
   const days = isSingleDay(p.resolved)
     ? periodNameInline(p.resolved)
     : `${formatInt(p.days)}${NBSP}d`;
@@ -94,6 +100,8 @@ export async function ShopsPage({ sp }: { sp: SearchParams }) {
           days={days}
           canEdit={data.canEdit}
           initialId={valj}
+          visuals={visuals}
+          sizeByProfit={ctx.role === "owner"}
         />
       )}
       <p className="g4-note">

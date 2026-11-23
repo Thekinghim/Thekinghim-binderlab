@@ -1,0 +1,849 @@
+/*
+ * Butiker, visuellt/06: kartan, listan med butikens symbol och butikskortet med banner.
+ * Allt under .bt6 (eller .bt6-*) så att inget läcker. Bygger på G4 (pengar/money.css).
+ * Rörelse: prickar och rader tonar in en gång (opacity/transform), staplarna växer (scaleX);
+ * vid reducerad rörelse står allt still.
+ */
+
+@layer components {
+  /* ---- Kartkortet: karta + sidoruta ---- */
+  .bt6-mapcard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 250px;
+    overflow: hidden;
+    padding: 0;
+  }
+  .bt6-map {
+    position: relative;
+    height: 340px;
+    min-width: 0;
+    overflow: hidden;
+    background: #f5f5f3;
+    border-right: 1px solid var(--v2-line2, var(--v2-line));
+  }
+  .bt6-map > svg {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  .bt6-map.ready > svg {
+    opacity: 1;
+  }
+  .bt6-map .water {
+    fill: #dfe8ee;
+    stroke: #cfdbe3;
+    stroke-width: 1;
+  }
+  .bt6-map .refs circle {
+    fill: #b5b5b5;
+  }
+  .bt6-map .refs text {
+    font-size: 11px;
+    fill: var(--v2-faint);
+  }
+  .bt6-map .lead {
+    fill: #fff;
+    stroke: #8a8a8a;
+    stroke-width: 1.5;
+    stroke-dasharray: 3 2.6;
+  }
+  .bt6-map .dot {
+    cursor: pointer;
+    outline: none;
+  }
+  .bt6-map .dot .hit {
+    fill: transparent;
+  }
+  .bt6-map .dot .fill {
+    fill: var(--v2-ink);
+    stroke: #fff;
+    stroke-width: 2.5;
+    transition: fill 0.15s ease;
+  }
+  .bt6-map .dot.off .fill {
+    fill: var(--v2-crit-icon, #e22c38);
+  }
+  .bt6-map .dot .halo {
+    fill: rgb(226 44 56 / 0.16);
+  }
+  .bt6-map .dot .sel {
+    fill: none;
+    stroke: var(--v2-ink);
+    stroke-width: 2;
+  }
+  .bt6-map .dot:focus-visible .sel,
+  .bt6-map .dot:focus-visible .fill {
+    stroke: var(--v2-focus, #005bd3);
+  }
+  .bt6-map .dot .n {
+    fill: #fff;
+    font-size: 11px;
+    font-weight: 650;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .bt6-map .dot:not(.off):hover .fill {
+      fill: #1a1a1a;
+    }
+  }
+  .bt6-map .labels text {
+    font-size: 12px;
+    font-weight: 550;
+    fill: var(--v2-body2, #4a4a4a);
+    paint-order: stroke;
+    stroke: #f5f5f3;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+    pointer-events: none;
+  }
+  .bt6-map .labels text.on {
+    fill: var(--v2-ink);
+    font-weight: 650;
+  }
+  .bt6-map .labels text.lead {
+    font-size: 11px;
+    font-weight: 500;
+    fill: var(--v2-mute);
+  }
+  .bt6-map .labels text.off {
+    fill: var(--v2-crit);
+  }
+  .bt6-map .tip rect {
+    fill: var(--v2-ink);
+  }
+  .bt6-map .tip text {
+    fill: #fff;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  /* Prickarna dyker upp en gång, en i taget (skala från mitten). */
+  @media (prefers-reduced-motion: no-preference) {
+    .bt6-map.ready .dot,
+    .bt6-map.ready .lead {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: bt6-pop 380ms var(--v2-ease) both;
+      animation-delay: calc(var(--i, 0) * 35ms + 120ms);
+    }
+    .bt6-map.ready .tip {
+      animation: bt6-fade 240ms ease both 360ms;
+    }
+  }
+  @keyframes bt6-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes bt6-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .bt6-mfilter {
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    z-index: 2;
+    display: flex;
+    gap: 6px;
+    max-width: calc(100% - 24px);
+  }
+  .bt6-mfilter .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 3px 5px 3px 5px;
+    border-radius: 16px;
+    background: #fff;
+    font-size: var(--v2-t-xs);
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow:
+      0 0 0 1px var(--v2-line),
+      0 2px 6px rgb(0 0 0 / 0.06);
+  }
+  .bt6-mfilter .chip:not(:has(.v2-sface)) {
+    padding-left: 10px;
+  }
+  .bt6-mfilter .chip.ghost {
+    padding: 3px 10px;
+    color: var(--v2-mute);
+    font-weight: 500;
+  }
+  .bt6-mfilter .chip button {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background: var(--v2-bg);
+    color: var(--v2-mute);
+  }
+  .bt6-legend {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 2;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 7px 11px;
+    border-radius: 10px;
+    background: rgb(255 255 255 / 0.92);
+    backdrop-filter: blur(6px);
+    box-shadow: 0 0 0 1px var(--v2-line2, var(--v2-line));
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+    white-space: nowrap;
+  }
+  .bt6-legend i {
+    display: inline-block;
+    margin-right: 5px;
+    vertical-align: -2px;
+    border-radius: 50%;
+  }
+  .bt6-legend i.d {
+    background: var(--v2-ink);
+  }
+  .bt6-legend i.o {
+    width: 10px;
+    height: 10px;
+    background: var(--v2-crit-icon, #e22c38);
+  }
+  .bt6-legend i.x {
+    width: 11px;
+    height: 11px;
+    border: 1.5px dashed var(--v2-mute);
+  }
+  .bt6-zoom {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow:
+      0 0 0 1px var(--v2-line),
+      0 2px 6px rgb(0 0 0 / 0.06);
+  }
+  .bt6-zoom button {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 28px;
+    color: var(--v2-body2, #4a4a4a);
+    font-size: 16px;
+  }
+  .bt6-zoom button + button {
+    border-top: 1px solid var(--v2-line2, var(--v2-line));
+  }
+  .bt6-zoom button:disabled {
+    color: var(--v2-off, #b5b5b5);
+  }
+
+  .bt6-mside {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    padding: 14px 16px;
+  }
+  .bt6-mside .k,
+  .bt6-leads .k {
+    font-size: var(--v2-t-sm);
+    font-weight: 500;
+    color: var(--v2-mute);
+  }
+  .bt6-mside .big {
+    margin-top: 2px;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    color: var(--v2-ink);
+  }
+  .bt6-mside .big small {
+    margin-left: 5px;
+    font-size: var(--v2-t-md);
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--v2-mute);
+  }
+  .bt6-leads ul {
+    margin-top: 6px;
+  }
+  .bt6-leads li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--v2-line2, var(--v2-line));
+  }
+  .bt6-leads .ring {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px dashed var(--v2-faint);
+    background: #fff;
+  }
+  .bt6-leads b {
+    display: block;
+    font-size: var(--v2-t-sm);
+    font-weight: 600;
+    color: var(--v2-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bt6-leads li > span > span {
+    display: block;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bt6-leads .st {
+    flex: none;
+    margin-left: auto;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--v2-bg);
+    color: var(--v2-body2, #4a4a4a);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .bt6-leads .st.y {
+    background: var(--v2-warn-soft);
+    color: var(--v2-warn-text);
+  }
+  .bt6-leads li.more {
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .bt6-leads .none {
+    margin-top: 6px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+
+  /* ---- Listan: symbol + namn, kurva före vinsten ---- */
+  .bt6 .g4-bhead.bt6-row,
+  .bt6 .g4-brow.bt6-row {
+    grid-template-columns: 36px minmax(0, 1fr) 132px 84px 84px 70px;
+    column-gap: 12px;
+  }
+  /* Raden under namnet får brytas (hellre två rader än en kapad mening). */
+  .bt6 .g4-brow.bt6-row .ch {
+    white-space: normal;
+    overflow: visible;
+    text-wrap: pretty;
+  }
+  .bt6 .g4-bhead.bt6-row .hb {
+    grid-column: span 2;
+  }
+  .bt6 .g4-brow.bt6-row {
+    position: relative;
+    min-height: 62px;
+  }
+  .bt6 .g4-brow.bt6-row[aria-current="true"] {
+    box-shadow: inset 3px 0 0 var(--v2-ink);
+  }
+  .bt6 .g4-brow .ch .warn {
+    color: var(--v2-warn-text);
+  }
+  .bt6 .g4-brow .ch .dn {
+    color: var(--v2-crit);
+  }
+  .bt6 .g4-brow .ch .g4-nchip {
+    margin-left: 6px;
+  }
+  .bt6 .g4-brow .r.zero,
+  .bt6 .bt6-ph .zero {
+    color: var(--v2-faint);
+  }
+  .bt6 .g4-brow .vin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .bt6-spark {
+    flex: none;
+  }
+  .bt6-spark polyline {
+    fill: none;
+    stroke: var(--v2-off, #b5b5b5);
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  .bt6-ph {
+    display: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .bt6-rows > li {
+      animation: bt6-fade 260ms ease both;
+      animation-delay: calc(var(--i, 0) * 22ms);
+    }
+  }
+
+  /* ---- Butikskortet: banner, huvud, tal, mest sålda ---- */
+  .bt6-card {
+    overflow: hidden;
+  }
+  .bt6-banner {
+    position: relative;
+    height: 178px;
+    overflow: hidden;
+    background:
+      radial-gradient(
+        120% 90% at 30% 110%,
+        color-mix(in srgb, var(--sf-fg) 26%, #fff) 0%,
+        transparent 60%
+      ),
+      linear-gradient(160deg, var(--sf-bg), color-mix(in srgb, var(--sf-bg) 70%, var(--sf-fg) 30%));
+  }
+  .bt6-banner::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgb(255 255 255 / 0.55) 1px, transparent 1.2px);
+    background-size: 14px 14px;
+    mask-image: linear-gradient(90deg, transparent, #000 50%);
+  }
+  .bt6-banner .fan {
+    position: absolute;
+    left: 30px;
+    bottom: -14px;
+    margin: 0;
+  }
+  .bt6-banner .v2-fan-floor {
+    display: none;
+  }
+  .bt6-banner .mach {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .bt6-banner .mach .m {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .bt6-banner .mach .v2-mthumb {
+    filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.18));
+  }
+  .bt6-banner .mach .lb,
+  .bt6-banner .mach .plus {
+    max-width: 92px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgb(26 26 26 / 0.55);
+    backdrop-filter: blur(4px);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bt6-banner .mach .plus {
+    align-self: center;
+  }
+  .bt6-head {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    padding: 0 18px 14px;
+  }
+  .bt6-head .v2-sface.lg {
+    margin-top: -30px;
+  }
+  .bt6-head h2,
+  .bt6-head h3 {
+    font-size: var(--v2-t-xl);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    color: var(--v2-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bt6-head p {
+    margin-top: 2px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .bt6-head .cityc {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .bt6-head .cityc i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--sf-fg);
+  }
+  .bt6-num {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--v2-line2, var(--v2-line));
+    border-bottom: 1px solid var(--v2-line2, var(--v2-line));
+  }
+  .bt6-num > div {
+    min-width: 0;
+    padding: 11px 18px;
+  }
+  .bt6-num > div + div {
+    border-left: 1px solid var(--v2-line2, var(--v2-line));
+  }
+  .bt6-num dt {
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+    white-space: nowrap;
+  }
+  .bt6-num dd {
+    margin-top: 2px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    color: var(--v2-ink);
+    white-space: nowrap;
+  }
+  .bt6-num dd.up {
+    color: var(--v2-profit);
+  }
+  .bt6-top {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 18px;
+  }
+  .bt6-top .k {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: var(--v2-t-sm);
+  }
+  .bt6-top .k b {
+    font-weight: 600;
+  }
+  .bt6-top .k span {
+    color: var(--v2-mute);
+    white-space: nowrap;
+  }
+  .bt6-top ol {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .bt6-top li {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) 80px 34px;
+    gap: 10px;
+    align-items: center;
+    font-size: var(--v2-t-sm);
+  }
+  .bt6-top .pk {
+    justify-self: center;
+    height: 30px !important;
+    width: auto !important;
+    filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.15));
+  }
+  .bt6-top .t {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bt6-top .bar {
+    height: 6px;
+    border-radius: 3px;
+    background: #efefef;
+    overflow: hidden;
+  }
+  .bt6-top .bar i {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: var(--v2-ink);
+    transform-origin: left center;
+    transform: scaleX(var(--w));
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .bt6-top .bar i {
+      animation: bt6-grow 520ms var(--v2-ease) both;
+      animation-delay: calc(var(--i, 0) * 50ms + 80ms);
+    }
+  }
+  @keyframes bt6-grow {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  .bt6-top .n {
+    text-align: right;
+    font-weight: 600;
+  }
+  .bt6-pay {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 2px 18px 6px;
+    padding: 12px 14px;
+    border-radius: var(--v2-r-lg);
+    background: var(--v2-warn-soft);
+  }
+  .bt6-pay > div {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .bt6-pay .lab {
+    font-size: var(--v2-t-xs);
+    color: var(--v2-warn-text);
+  }
+  .bt6-pay .amt {
+    font-size: 20px;
+    font-weight: 650;
+    color: var(--v2-ink);
+  }
+  .bt6-pay .due {
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+  }
+  .bt6-pay .due.dn {
+    color: var(--v2-crit);
+  }
+  .bt6-facts {
+    padding: 4px 18px 10px;
+  }
+  .bt6-facts > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-top: 1px solid var(--v2-line2, var(--v2-line));
+    font-size: var(--v2-t-sm);
+  }
+  .bt6-facts > div:first-child {
+    border-top: 0;
+  }
+  .bt6-facts dt {
+    color: var(--v2-mute);
+    white-space: nowrap;
+  }
+  .bt6-facts dd {
+    font-weight: 550;
+    text-align: right;
+    color: var(--v2-ink);
+  }
+  .bt6-facts dd b {
+    font-weight: 550;
+  }
+  .bt6-more {
+    border-top: 1px solid var(--v2-line);
+  }
+  .bt6-more > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 44px;
+    padding: 10px 18px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+    cursor: pointer;
+    list-style: none;
+  }
+  .bt6-more > summary::-webkit-details-marker {
+    display: none;
+  }
+  .bt6-more > summary svg {
+    flex: none;
+    transition: transform 0.2s var(--v2-ease);
+  }
+  .bt6-more[open] > summary svg {
+    transform: rotate(180deg);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .bt6-more > summary:hover {
+      color: var(--v2-ink);
+    }
+  }
+  .bt6-card > .g4-more {
+    border-top: 1px solid var(--v2-line);
+    font-weight: 550;
+  }
+
+  /* ---- En butik: huvudet med banner (vänster) och mest sålda (höger) ---- */
+  .bt6-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
+    overflow: hidden;
+    padding: 0;
+  }
+  .bt6-hero .bt6-banner {
+    height: 168px;
+  }
+  .bt6-hero-main {
+    min-width: 0;
+  }
+  .bt6-hero-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    border-left: 1px solid var(--v2-line2, var(--v2-line));
+  }
+  .bt6-hero .bt6-top {
+    padding: 14px 18px;
+  }
+  .bt6-hero-none {
+    padding: 14px 18px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+
+  /* ---- Telefon (≤ 900 px) ---- */
+  @media (max-width: 900px) {
+    .bt6-mapcard {
+      display: block;
+      margin-inline: -12px;
+      margin-bottom: -12px;
+      border-radius: 0;
+      box-shadow: none;
+      background: transparent;
+      border-bottom: 1px solid var(--v2-line);
+    }
+    .bt6-map {
+      height: 236px;
+      border-right: 0;
+      padding-bottom: 0;
+    }
+    .bt6-legend {
+      left: 0;
+      right: 0;
+      bottom: 0;
+      justify-content: center;
+      padding: 7px 9px;
+      border-radius: 0;
+      box-shadow: 0 -1px 0 var(--v2-line2, var(--v2-line));
+      font-size: 11.5px;
+    }
+    .bt6-mfilter {
+      left: 10px;
+      top: 10px;
+    }
+    .bt6 .g4-bhead.bt6-row {
+      display: none;
+    }
+    .bt6-list.v2-card {
+      margin-inline: -12px;
+      border-radius: 0;
+      box-shadow: 0 1px 0 var(--v2-line);
+    }
+    .bt6 .g4-brow.bt6-row {
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      grid-template-areas: "f nm ph";
+      column-gap: 12px;
+      padding: 12px 16px;
+    }
+    .bt6 .g4-brow.bt6-row > .v2-sface {
+      grid-area: f;
+    }
+    .bt6 .g4-brow.bt6-row .nmc {
+      grid-area: nm;
+    }
+    .bt6 .g4-brow.bt6-row .vin,
+    .bt6 .g4-brow.bt6-row .vpm,
+    .bt6 .g4-brow.bt6-row .vsh,
+    .bt6 .g4-brow.bt6-row .due,
+    .bt6 .g4-brow.bt6-row .shr,
+    .bt6 .g4-brow .ch .dt {
+      display: none;
+    }
+    .bt6-ph {
+      grid-area: ph;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .bt6-ph b {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .bt6-ph b.up {
+      color: var(--v2-profit);
+    }
+    .bt6-ph span {
+      font-size: var(--v2-t-sm);
+      color: var(--v2-mute);
+    }
+    .bt6-ph span.o {
+      color: var(--v2-warn-text);
+      font-weight: 600;
+    }
+    /* Lägre band på telefon: packen fyller det i stället för en tredjedel. */
+    .bt6-banner,
+    .bt6-hero .bt6-banner {
+      height: 132px;
+    }
+    .bt6-hero {
+      display: block;
+    }
+    .bt6-hero-side {
+      border-left: 0;
+      border-top: 1px solid var(--v2-line2, var(--v2-line));
+    }
+    .bt6-hero .bt6-top,
+    .bt6-hero-none {
+      padding: 12px 16px;
+    }
+    .bt6-num > div {
+      padding: 11px 16px;
+    }
+    .bt6-top,
+    .bt6-facts {
+      padding-inline: 16px;
+    }
+    .bt6-top li {
+      grid-template-columns: 22px minmax(0, 1fr) 72px 30px;
+    }
+    .bt6-pay {
+      margin-inline: 16px;
+    }
+  }
+}

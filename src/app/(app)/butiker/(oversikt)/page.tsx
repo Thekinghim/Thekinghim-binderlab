@@ -20,6 +20,7 @@ import { OwnersView } from "../_components/owners-view";
 import { SettlementsView } from "../_components/settlements-view";
 import { StoreTable } from "../_components/store-table";
 import { loadStoreList } from "../_lib/data";
+import { loadStoreFaces } from "../_lib/visual-data";
 import {
   activeStores,
   dayText,
@@ -107,8 +108,12 @@ export default async function ButikerPage({
  * alla butiker i en tabell och butikerna på väg in med sina startlistor.
  */
 async function LegacyStoreList({ sp }: { sp: Record<string, string | string[] | undefined> }) {
-  const data = await loadStoreList(sp);
+  const [data, faceMap] = await Promise.all([loadStoreList(sp), loadStoreFaces()]);
   const { ctx, rows, period, headline } = data;
+  // Visuellt: butikens symbol (typ och stad) i tabellerna.
+  const faces = Object.fromEntries(
+    [...faceMap].map(([id, f]) => [id, { storeType: f.storeType, city: f.city }]),
+  );
   // I drift: automat i dag eller försäljning. Butiker på väg in visas för sig.
   const active = activeStores(rows);
   const prospects = prospectStores(rows);
@@ -273,6 +278,7 @@ async function LegacyStoreList({ sp }: { sp: Record<string, string | string[] | 
                   caption={`Butiker, intäkt och till butiken ${period.rangeLabel}`}
                   showStoreShare={data.showStoreShare}
                   showTotal
+                  faces={faces}
                 />
               </CardBody>
             </section>
@@ -302,6 +308,7 @@ async function LegacyStoreList({ sp }: { sp: Record<string, string | string[] | 
                         monthLabel={data.monthLabel}
                         caption="Butiker utan automat"
                         showStoreShare={data.showStoreShare}
+                        faces={faces}
                       />
                     </MobileFold>
                   )}

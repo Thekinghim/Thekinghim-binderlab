@@ -177,6 +177,9 @@ export interface ShopRow {
   /** Butiken har ingen automat i dag och har inte sålt (på väg in). */
   readonly prospect: boolean;
   readonly href: string;
+  // --- Visuellt (Butiker): kontraktets läge i butikskortet. Bara läsning. ---
+  /** Kontraktet (signerat, osignerat, saknas), eller null om okänt (ur butikslistan). */
+  readonly contract: "signed" | "unsigned" | "missing" | null;
 }
 
 export interface ShopsData {
@@ -393,6 +396,8 @@ export async function loadShops(sp: SearchParamsInput): Promise<ShopsData | null
           : null,
         prospect: machines.length === 0 && r.orders === 0,
         href: r.href,
+        // --- Visuellt (Butiker): kontraktets läge. Bara läsning. ---
+        contract: r.contract,
       };
     });
   return {

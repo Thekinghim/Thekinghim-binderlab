@@ -24,13 +24,16 @@ import { ReportDetailsToggle } from "../_components/report-details-toggle";
 import { StoreRevenueChart } from "../_components/charts";
 import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/detail-tables";
 import { StoreKpis } from "../_components/kpis";
+import { StoreHero } from "../_components/store-hero";
 import { ClosedMonthsBanner } from "../../_manad/closed-note";
 import { StoreOwnerPicker } from "../_components/owner-dialogs";
 import { StoreActions } from "../_components/store-dialogs";
 import { Sub } from "../_components/sub";
 import "../_components/store.css";
+import "../_components/v2/shops-visual.css";
 import { pickTab, ViewTabs } from "../../automater/_components/view-tabs";
 import { loadStoreDetail, storeNameOf, type StoreDetailData } from "../_lib/data";
+import { loadStoreBanner } from "../_lib/visual-data";
 import { loadOwnersFor, type OwnerView } from "../_lib/owner-service";
 import { currentViewer } from "../_lib/session";
 import {
@@ -82,9 +85,11 @@ export default async function StorePage({
 }) {
   const { butik } = await params;
   const sp = await searchParams;
-  const [data, owners] = await Promise.all([
+  const [data, owners, banner] = await Promise.all([
     loadStoreDetail(decodeURIComponent(butik), sp),
     currentViewer().then((viewer) => loadOwnersFor(viewer)),
+    // Visuellt: symbolen och de mest sålda packen (bara antal, ett fel ger en tom banner).
+    loadStoreBanner(decodeURIComponent(butik), sp),
   ]);
   if (!data) notFound();
   // Butikens ägare (bolaget), och de aktiva ägarna att välja bland.
@@ -140,6 +145,13 @@ export default async function StorePage({
         <Suspense fallback={null}>
           <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
         </Suspense>
+        <StoreHero
+          name={store.name}
+          face={{ storeType: banner.face.storeType, city: banner.face.city ?? store.city }}
+          sales={banner.sales}
+          machines={placed.map((m) => ({ id: m.machineId, name: m.name }))}
+          days={days}
+        />
         <PageIntro
           title={headline.title}
           aside={headline.aside}

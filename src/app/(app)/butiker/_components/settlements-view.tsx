@@ -30,6 +30,8 @@ import {
 import { DeletePaymentButton, RegisterPaymentButton } from "./payment-actions";
 import { CloseMonthButton, ReopenMonthButton } from "../../_manad/period-controls";
 import { MoneyCount } from "./money-count";
+import { StoreFace } from "@/components/v2/store-face";
+import { faceOf, loadStoreFaces, type StoreFaceInfo } from "../_lib/visual-data";
 import {
   exactKr,
   missingLines,
@@ -64,10 +66,12 @@ const dayLabel = (d: string) =>
  * knapp). Butiker utan avtal förra månaden (räknas som 0 %) varnas före "Skapa".
  */
 export async function SettlementsView({ viewer, today }: { viewer: Viewer; today: string }) {
-  const [page, periods, payments] = await Promise.all([
+  const [page, periods, payments, faces] = await Promise.all([
     loadSettlementPageFor(viewer),
     loadPeriodOverviewFor(viewer),
     loadPaymentListFor(viewer),
+    // Visuellt: butikens symbol före namnet (typ och stad, bara läsning).
+    loadStoreFaces(),
   ]);
   const closedBy = new Map(periods.closed.map((c) => [c.month as string, c]));
   const reopenedBy = new Map(periods.reopened.map((r) => [r.month as string, r]));
@@ -199,85 +203,91 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                     key={r.id}
                     className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line py-3"
                   >
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <span className="truncate text-md text-fg">{r.storeName}</span>
-                      {r.month === page.month && noDeal.has(r.storeId) && !r.paidOn ? (
-                        <span className="text-sm text-signal-fg" data-no-agreement>
-                          {noAgreementLine(noDeal.get(r.storeId)!).replace(`${r.storeName}: `, "")}{" "}
-                          <Link
-                            href={`/butiker/${r.storeId}?vy=avtal`}
-                            className="underline underline-offset-4"
-                          >
-                            Lägg in avtal →
-                          </Link>
-                        </span>
-                      ) : null}
-                      <span className="meta truncate text-subtle">
-                        {r.state === "paid" && r.paidOn
-                          ? `Betald ${dayLabel(r.paidOn)}${r.paidFromPayments ? " med betalningar" : ""}`
-                          : (r.statement?.modelText ?? "")}
-                      </span>
-                      {r.advanceText ? (
-                        <span className="text-sm text-fg" data-advance={r.id}>
-                          {r.advanceText}.
-                          {!r.paidOn && !r.blocked ? (
-                            <>
-                              {" "}
-                              Avräkningen {exactKr(r.amountOre)}.{" "}
-                              <span className={r.leftOre < 0 ? "text-signal-fg" : ""}>
-                                {leftLine(r.leftOre)}.
-                              </span>
-                            </>
-                          ) : null}
-                        </span>
-                      ) : null}
-                      {r.blocked ? (
-                        <span className="text-sm text-signal-fg">
-                          Kan inte räknas: {r.blocked}{" "}
-                          <Link href="/inkopspriser" className="underline underline-offset-4">
-                            Inköpspriser →
-                          </Link>
-                        </span>
-                      ) : !r.paidOn && r.storedAmountOre !== r.amountOre ? (
-                        <span className="meta text-subtle">
-                          Nytt belopp, var {kr(Math.abs(r.storedAmountOre))}
-                        </span>
-                      ) : null}
-                      <PaidCompare row={r} canEdit={page.canEdit} />
-                      {!r.paidOn
-                        ? r.corrections.map((c) => (
-                            <span
-                              key={c.sourceId}
-                              className="flex flex-wrap items-center gap-x-3 text-sm text-fg"
-                              data-correction
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Face faces={faces} id={r.storeId} name={r.storeName} />
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <span className="truncate text-md text-fg">{r.storeName}</span>
+                        {r.month === page.month && noDeal.has(r.storeId) && !r.paidOn ? (
+                          <span className="text-sm text-signal-fg" data-no-agreement>
+                            {noAgreementLine(noDeal.get(r.storeId)!).replace(
+                              `${r.storeName}: `,
+                              "",
+                            )}{" "}
+                            <Link
+                              href={`/butiker/${r.storeId}?vy=avtal`}
+                              className="underline underline-offset-4"
                             >
-                              {correctionStep(c).label}: {c.amountOre < 0 ? "−" : "+"}
-                              {exactKr(Math.abs(c.amountOre))}
-                              {page.canEdit ? (
-                                <RemoveCorrectionButton
-                                  targetId={r.id}
-                                  sourceId={c.sourceId}
-                                  label={correctionStep(c).label}
-                                />
-                              ) : null}
-                            </span>
-                          ))
-                        : null}
-                      {r.statement && r.statement.steps.length > 0 ? (
-                        <details className="group text-sm">
-                          <summary className="cursor-pointer list-none text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
-                            Så räknas det
-                          </summary>
-                          <dl className="fade-in mt-2 flex flex-col gap-1">
-                            {r.statement.steps.map((s, i) => (
-                              <div key={i} className="flex justify-between gap-4">
-                                <dt className="min-w-0 text-muted">{s.label}</dt>
-                                <dd className="tnum shrink-0 text-fg">{kr(s.amountOre)}</dd>
-                              </div>
-                            ))}
-                          </dl>
-                        </details>
-                      ) : null}
+                              Lägg in avtal →
+                            </Link>
+                          </span>
+                        ) : null}
+                        <span className="meta truncate text-subtle">
+                          {r.state === "paid" && r.paidOn
+                            ? `Betald ${dayLabel(r.paidOn)}${r.paidFromPayments ? " med betalningar" : ""}`
+                            : (r.statement?.modelText ?? "")}
+                        </span>
+                        {r.advanceText ? (
+                          <span className="text-sm text-fg" data-advance={r.id}>
+                            {r.advanceText}.
+                            {!r.paidOn && !r.blocked ? (
+                              <>
+                                {" "}
+                                Avräkningen {exactKr(r.amountOre)}.{" "}
+                                <span className={r.leftOre < 0 ? "text-signal-fg" : ""}>
+                                  {leftLine(r.leftOre)}.
+                                </span>
+                              </>
+                            ) : null}
+                          </span>
+                        ) : null}
+                        {r.blocked ? (
+                          <span className="text-sm text-signal-fg">
+                            Kan inte räknas: {r.blocked}{" "}
+                            <Link href="/inkopspriser" className="underline underline-offset-4">
+                              Inköpspriser →
+                            </Link>
+                          </span>
+                        ) : !r.paidOn && r.storedAmountOre !== r.amountOre ? (
+                          <span className="meta text-subtle">
+                            Nytt belopp, var {kr(Math.abs(r.storedAmountOre))}
+                          </span>
+                        ) : null}
+                        <PaidCompare row={r} canEdit={page.canEdit} />
+                        {!r.paidOn
+                          ? r.corrections.map((c) => (
+                              <span
+                                key={c.sourceId}
+                                className="flex flex-wrap items-center gap-x-3 text-sm text-fg"
+                                data-correction
+                              >
+                                {correctionStep(c).label}: {c.amountOre < 0 ? "−" : "+"}
+                                {exactKr(Math.abs(c.amountOre))}
+                                {page.canEdit ? (
+                                  <RemoveCorrectionButton
+                                    targetId={r.id}
+                                    sourceId={c.sourceId}
+                                    label={correctionStep(c).label}
+                                  />
+                                ) : null}
+                              </span>
+                            ))
+                          : null}
+                        {r.statement && r.statement.steps.length > 0 ? (
+                          <details className="group text-sm">
+                            <summary className="cursor-pointer list-none text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+                              Så räknas det
+                            </summary>
+                            <dl className="fade-in mt-2 flex flex-col gap-1">
+                              {r.statement.steps.map((s, i) => (
+                                <div key={i} className="flex justify-between gap-4">
+                                  <dt className="min-w-0 text-muted">{s.label}</dt>
+                                  <dd className="tnum shrink-0 text-fg">{kr(s.amountOre)}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </details>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="tnum text-lg text-fg">
@@ -346,6 +356,7 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
 
       <PaymentsSection
         payments={payments}
+        faces={faces}
         canEdit={page.canEdit}
         stores={page.stores}
         today={today}
@@ -362,7 +373,10 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                 key={p.storeId}
                 className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line py-3"
               >
-                <span className="min-w-0 truncate text-fg">{p.storeName}</span>
+                <span className="flex min-w-0 items-center gap-3">
+                  <Face faces={faces} id={p.storeId} name={p.storeName} />
+                  <span className="min-w-0 truncate text-fg">{p.storeName}</span>
+                </span>
                 <div className="flex items-center gap-3">
                   {p.users > 0 ? (
                     <StatusTag status="ok">Inne</StatusTag>
@@ -473,11 +487,13 @@ function PaidCompare({ row, canEdit }: { row: SettlementRow; canEdit: boolean })
  */
 function PaymentsSection({
   payments,
+  faces,
   canEdit,
   stores,
   today,
 }: {
   payments: readonly PaymentListItem[];
+  faces: ReadonlyMap<string, StoreFaceInfo>;
   canEdit: boolean;
   stores: readonly { id: string; name: string }[];
   today: string;
@@ -508,24 +524,27 @@ function PaymentsSection({
                 className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 border-b border-line py-3"
                 data-payment={p.id}
               >
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-md text-fg">
-                    {p.storeName} · {period}
-                  </span>
-                  <span className="meta text-subtle">
-                    Betald {dayLabel(p.paidOn)}
-                    {p.note ? ` · ${p.note}` : ""}
-                  </span>
-                  <ul className="mt-1 flex flex-col gap-0.5 text-sm">
-                    {p.parts.map((part) => (
-                      <li key={part.month} className="flex flex-wrap gap-x-2">
-                        <span className="text-fg">
-                          {dayRangeText(part)}: {exactKr(part.amountOre)}
-                        </span>
-                        <span className="text-muted">{part.effect}</span>
-                      </li>
-                    ))}
-                  </ul>
+                <div className="flex min-w-0 items-start gap-3">
+                  <Face faces={faces} id={p.storeId} name={p.storeName} />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate text-md text-fg">
+                      {p.storeName} · {period}
+                    </span>
+                    <span className="meta text-subtle">
+                      Betald {dayLabel(p.paidOn)}
+                      {p.note ? ` · ${p.note}` : ""}
+                    </span>
+                    <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+                      {p.parts.map((part) => (
+                        <li key={part.month} className="flex flex-wrap gap-x-2">
+                          <span className="text-fg">
+                            {dayRangeText(part)}: {exactKr(part.amountOre)}
+                          </span>
+                          <span className="text-muted">{part.effect}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="tnum text-lg text-fg">{exactKr(p.amountOre)}</span>
@@ -546,4 +565,18 @@ function PaymentsSection({
       )}
     </section>
   );
+}
+
+/** Butikens symbol (visuellt/06) före namnet i listorna. Dekor: namnet står bredvid. */
+function Face({
+  faces,
+  id,
+  name,
+}: {
+  faces: ReadonlyMap<string, StoreFaceInfo>;
+  id: string;
+  name: string;
+}) {
+  const f = faceOf(faces, id);
+  return <StoreFace name={name} storeType={f.storeType} city={f.city} size="sm" />;
 }
