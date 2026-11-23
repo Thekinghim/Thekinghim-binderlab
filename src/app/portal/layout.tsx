@@ -10,6 +10,7 @@ import { PortalThemeScope } from "./_components/portal-theme";
 import { PORTAL_ROOT_ID } from "./_components/theme-script";
 
 import "./_components/portal.css";
+import "./_components/portal-hero.css";
 
 export const metadata: Metadata = {
   title: { default: "Butiksportal", template: "%s · Butiksportal · Binderlab" },

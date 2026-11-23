@@ -7,6 +7,8 @@ import "server-only";
 
 import { monthOf, type IsoMonth } from "@/domain";
 
+import { getServiceDb } from "@/db/client";
+
 import { withUserDbFor } from "../access";
 import { pgErrorOf } from "../errors";
 
@@ -34,6 +36,7 @@ import {
   type PortalReportDetail,
   type PortalReportListItem,
 } from "./queries";
+import { queryPortalScreens, screensForPortal, type PortalMachineScreen } from "./screens";
 import type { PortalContext } from "./session";
 
 export interface PortalOverviewData {
@@ -44,6 +47,26 @@ export interface PortalOverviewData {
   hasAgreement: boolean;
   /** Butikens val "Visa detaljer i rapporten": falskt = inga titlar och inget snittköp. */
   details: boolean;
+  /** Automaterna i butiken i dag som bilden visar dem (utseende och pack på skärmen). */
+  screens: PortalMachineScreen[];
+}
+
+/**
+ * Skärmarna för automaterna som står i butiken i dag. Id:na kommer ur portal_machines (som
+ * användaren, med RLS), aldrig ur förfrågan; se screens.ts. `details` är butikens val (läst
+ * som användaren): utan detaljer visar bilden inga titlar.
+ */
+async function loadScreens(
+  ctx: PortalContext,
+  machinesToday: readonly { machineId: string }[],
+  details: boolean,
+): Promise<PortalMachineScreen[]> {
+  const screens = await queryPortalScreens(
+    getServiceDb(),
+    ctx.store.organizationId,
+    machinesToday.map((m) => m.machineId),
+  );
+  return screensForPortal(screens, details);
 }
 
 export async function loadPortalOverview(
@@ -53,7 +76,7 @@ export async function loadPortalOverview(
 ): Promise<PortalOverviewData> {
   const { store } = ctx;
   const today = todayIn(store.timezone, now);
-  return withUserDbFor(ctx.user, async (tx) => {
+  const data = await withUserDbFor(ctx.user, async (tx) => {
     const machines = await queryPortalMachines(tx, store.storeId);
     const agreements = await queryPortalAgreements(tx, store.storeId);
     const firstSale = await queryPortalFirstSale(tx, store.storeId, today);
@@ -71,6 +94,7 @@ export async function loadPortalOverview(
       hasAgreement: agreements.length > 0,
     };
   });
+  return { ...data, screens: await loadScreens(ctx, data.machinesToday, data.details) };
 }
 
 export async function loadPortalReports(ctx: PortalContext): Promise<PortalReportListItem[]> {
@@ -98,6 +122,7 @@ export interface PortalFaultData {
   faults: PortalFault[];
   machinesToday: { machineId: string; code: string; name: string }[];
   machineNames: Record<string, string>;
+  screens: PortalMachineScreen[];
 }
 
 export async function loadPortalFaults(
@@ -105,11 +130,19 @@ export async function loadPortalFaults(
   now: Date = new Date(),
 ): Promise<PortalFaultData> {
   const today = todayIn(ctx.store.timezone, now);
-  return withUserDbFor(ctx.user, async (tx) => {
+  const data = await withUserDbFor(ctx.user, async (tx) => {
     const machines = await queryPortalMachines(tx, ctx.store.storeId);
     const faults = await queryPortalFaults(tx, ctx.store.storeId);
+    const details = await queryPortalReportDetails(tx, ctx.store.storeId);
     const machineNames: Record<string, string> = {};
     for (const m of machines) machineNames[m.machineId] = `${m.code} ${m.name}`;
-    return { faults, machinesToday: machinesInStoreToday(machines, today), machineNames };
+    return {
+      faults,
+      machinesToday: machinesInStoreToday(machines, today),
+      machineNames,
+      details,
+    };
   });
+  const { details, ...rest } = data;
+  return { ...rest, screens: await loadScreens(ctx, data.machinesToday, details) };
 }
