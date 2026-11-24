@@ -101,6 +101,9 @@ const VIEWER_OWN_ROWS_ONLY = [
   "weekly_summaries",
   // Notis vid varje försäljning: vilka order som har notifierats, bara ägare och admin.
   "sale_notifications",
+  // Awish styrning: API-läget och granskningsloggen, bara ägare och admin.
+  "awish_actions",
+  "awish_api_state",
 ];
 
 let F: TenantFixture;
