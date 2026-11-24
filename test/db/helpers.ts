@@ -1214,6 +1214,11 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
           select organization_id, id from public.orders where organization_id = ${orgId}
           order by ordered_at limit 1`,
     );
+    // Om Awish krånglar: hälsan per Awish-väg (20261229000000_awish_halsa.sql), skrivs av servern.
+    await tx.execute(
+      sql`insert into public.awish_path_health (organization_id, data_source_id, path, active_route)
+          values (${orgId}, ${source!.id}, 'stock', 'open_api')`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {
