@@ -230,3 +230,72 @@ describe("texter", () => {
     expect(longFallbacks([long], NOW)).toEqual([long]);
   });
 });
+
+describe("webbpanelen som vanlig väg (påfyllningar, varor, fack)", () => {
+  it("ingen statusrad och ingen varning om reservväg, hur länge det än har varit så", () => {
+    const pushViaWeb = path({
+      path: "push",
+      activeRoute: "webbpanelen",
+      lastSuccessRoute: "webbpanelen",
+      fallbackSince: ago(3 * 24 * 60),
+    });
+    const goodsViaWeb = { ...pushViaWeb, path: "goods" as const };
+    expect(awishStatusLines(facts([pushViaWeb, goodsViaWeb]), when)).toEqual([]);
+    expect(longFallbacks([pushViaWeb, goodsViaWeb], NOW)).toEqual([]);
+  });
+});
+
+describe("automater som inte läses fast lagret fungerar", () => {
+  const linked = (readMinutesAgo: number | null) => ({
+    readAt: readMinutesAgo === null ? null : ago(readMinutesAgo),
+    linkedAt: ago(10 * 24 * 60),
+  });
+
+  it("en av tre inte läst på 45 min: en varning (inte kritisk) med tiden", () => {
+    const f: AwishWatchFacts = {
+      ...facts([path()]),
+      linkedStock: [linked(3), linked(4), linked(45)],
+    };
+    const lines = awishLines(f, NOW, when);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      key: "awish:stock",
+      level: "warning",
+      title: `En automat har inte lästs från Awish sedan ${when(ago(45))}`,
+    });
+  });
+
+  it("alla lästa nyligen: inget; aldrig läst sedan kopplingen: sägs", () => {
+    expect(
+      awishLines({ ...facts([path()]), linkedStock: [linked(3), linked(20)] }, NOW, when),
+    ).toEqual([]);
+    const never = awishLines(
+      { ...facts([path()]), linkedStock: [linked(3), linked(null), linked(null)] },
+      NOW,
+      when,
+    );
+    expect(never[0]?.title).toBe("2 automater har aldrig lästs från Awish");
+  });
+
+  it("hela lagret trasigt: det kritiska larmet gäller, inte varningen", () => {
+    const broken = path({
+      activeRoute: "senast_kanda",
+      lastSuccessAt: ago(50),
+      failingSince: ago(45),
+      lastErrorKind: "unavailable",
+    });
+    const lines = awishLines(
+      { ...facts([broken]), linkedStock: [linked(50), linked(50)] },
+      NOW,
+      when,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.level).toBe("critical");
+  });
+});
+
+describe("429 från webbpanelen", () => {
+  it("på enkel svenska", () => {
+    expect(awishErrorText("rate_limited")).toBe("Awish tar inte emot fler anrop just nu");
+  });
+});

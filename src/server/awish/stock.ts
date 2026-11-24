@@ -827,9 +827,19 @@ async function syncSlots(
 }
 
 /** Open API får så här lång tid per automat när webbpanelen finns som reserv. */
-export const GRPC_WITH_FALLBACK_MS = 5_000;
+export const GRPC_WITH_FALLBACK_MS = 8_000;
+/** Uppdatera i Fyll på (någon väntar): Open API får så här lång tid per automat. */
+export const GRPC_INTERACTIVE_MS = 5_000;
+/** Så många Open API-fel i rad (nere, tidsgräns) innan resten går direkt till webbpanelen. */
+export const GRPC_ERRORS_TO_TRIP = 2;
+/**
+ * Ett tomt svar för en automat som har fack godtas när förra lyckade läsningen är så här
+ * gammal (facken har troligen verkligen tagits bort i Awish) och webbpanelen, när den finns,
+ * också svarar tomt.
+ */
+export const EMPTY_ACCEPT_AFTER_MS = 60 * 60_000;
 
-/** Fel som säger att Open API inte fungerar alls just nu (in-run-brytaren slår till). */
+/** Fel som räknas som att Open API inte fungerar (nere, tidsgräns, internt fel …). */
 function grpcDown(error: AwishApiError): boolean {
   return (
     error.kind === "server" ||
@@ -840,8 +850,28 @@ function grpcDown(error: AwishApiError): boolean {
   );
 }
 
+/**
+ * Slår in-run-brytaren till direkt? Internt fel (gRPC 13, som 24 nov. 2026), nekad inloggning
+ * och ändrat API gör det. Nere och tidsgräns först efter GRPC_ERRORS_TO_TRIP fel i rad, så att
+ * en kort hicka inte flyttar alla läsningar till webbpanelen i 15 minuter.
+ */
+function grpcTrips(error: AwishApiError, inRow: number, after = GRPC_ERRORS_TO_TRIP): boolean {
+  if (error.kind === "server" || error.kind === "auth" || error.kind === "changed") return true;
+  return grpcDown(error) && inRow >= after;
+}
+
 function errorDetail(error: AwishApiError): string {
   return `${error.kind} ${error.grpcCode ?? "-"} ${(error.technical ?? "").slice(0, 160)}`.trim();
+}
+
+/** Automaten lästes men har inga fack i Awish: tiden sätts och facken töms (bara visningen). */
+async function markReadEmpty(db: Db, orgId: string, machineId: string, at: Date): Promise<void> {
+  await db.execute(
+    sql`update public.stock_locations
+        set awish_synced_at = ${at.toISOString()}::timestamptz, awish_fill = '[]'::jsonb
+        where organization_id = ${orgId}::uuid and machine_id = ${machineId}::uuid
+          and kind = 'machine' and archived_at is null`,
+  );
 }
 
 /** Tomt svar för en automat som hade fack förra gången: inte att lita på. */
@@ -857,12 +887,14 @@ function emptyReadError(): AwishApiError {
  * körningens tidsgräns (deadlineAt): automater som inte hinns med tas nästa gång.
  *
  * Reservvägen (webbpanelen, ./stock-web-fallback): finns en sparad webbinloggning får Open API
- * högst GRPC_WITH_FALLBACK_MS och ett försök per automat; svarar den inte (internt fel, nere,
- * tidsgräns, inloggning) läses samma fack via webbpanelen. Efter första sådana felet i
- * körningen hoppas Open API över för resten av automaterna, och brytaren (health.ts) öppnas
- * i 15 minuter: nästa körningar går direkt till webbpanelen, och efter tiden provas Open API
- * på första automaten. Ett tomt svar för en automat som hade fack förra gången sparas inte
- * (förra läsningen behålls). Hälsan för vägen "stock" sparas efter körningen.
+ * högst GRPC_WITH_FALLBACK_MS per försök (ett snabbt nytt försök när Awish är nere); svarar
+ * den inte (internt fel, nere, tidsgräns, inloggning) läses samma fack via webbpanelen. Vid
+ * internt fel, eller två fel i rad (nere, tidsgräns; även automaterna och orderna i samma
+ * körning räknas), hoppas Open API över för resten av automaterna, och brytaren (health.ts)
+ * öppnas i 15 minuter: nästa körningar går direkt till webbpanelen, och efter tiden provas
+ * Open API på första automaten. Ett tomt svar för en automat som hade fack förra gången
+ * sparas inte (förra läsningen behålls), utom när det har hållit i sig i en timme (och
+ * webbpanelen också svarar tomt, när den finns). Hälsan för vägen "stock" sparas efter körningen.
  */
 export async function syncSourceStock(
   db: Db,
@@ -879,6 +911,16 @@ export async function syncSourceStock(
      * verifyWebIds). Bara synken, inte Uppdatera i Fyll på.
      */
     verifyWebIds?: boolean;
+    /**
+     * Open API-fel i rad tidigare i samma körning (automaterna, orderna). Når de
+     * GRPC_ERRORS_TO_TRIP går facken direkt till webbpanelen och brytaren öppnas.
+     */
+    grpcErrorsBefore?: number;
+    /**
+     * Någon väntar på svaret (Uppdatera i Fyll på): Open API får GRPC_INTERACTIVE_MS och
+     * första felet räcker för att gå till webbpanelen.
+     */
+    interactive?: boolean;
   },
 ): Promise<AwishStockSummary> {
   const fallback =
@@ -889,11 +931,17 @@ export async function syncSourceStock(
         })
       : opts.fallback;
   const health = opts.health !== false;
-  const machines = await query<{ external_id: string; machine_id: string; had_slots: boolean }>(
+  const machines = await query<{
+    external_id: string;
+    machine_id: string;
+    had_slots: boolean;
+    synced_at: Date | string | null;
+  }>(
     db,
     sql`select sm.external_id, sm.machine_id::text as machine_id,
                coalesce(jsonb_typeof(l.awish_fill) = 'array'
-                        and jsonb_array_length(l.awish_fill) > 0, false) as had_slots
+                        and jsonb_array_length(l.awish_fill) > 0, false) as had_slots,
+               l.awish_synced_at as synced_at
         from public.source_machines sm
         join public.machines m on m.organization_id = sm.organization_id and m.id = sm.machine_id
         left join public.stock_locations l
@@ -905,14 +953,42 @@ export async function syncSourceStock(
         -- Den som lästes längst sedan först: hinns inte alla med fortsätter nästa körning där.
         order by l.awish_synced_at asc nulls first, sm.external_id`,
   );
+  let grpcError: AwishApiError | null = null;
   const hasFallback =
     fallback !== null && machines.length > 0 && (await (fallback.available?.() ?? true));
   // Brytaren: Open API felade nyss, gå direkt till webbpanelen (bara när den finns).
   let skipGrpc =
     hasFallback && health && (await breakerOpen(db, source.id, "stock", "open_api", opts.now()));
+  // Automaterna och orderna svarade inte i samma körning: Open API hänger eller är nere.
+  let grpcInRow = Math.max(0, opts.grpcErrorsBefore ?? 0);
+  let tripped = false;
+  if (hasFallback && !skipGrpc && grpcInRow >= GRPC_ERRORS_TO_TRIP) {
+    skipGrpc = true;
+    tripped = true;
+    grpcError = new AwishApiError(
+      "timeout",
+      "Awish Open API svarade inte på automaterna eller orderna.",
+      4,
+    );
+  }
+  // Med reserv: högst 8 s per försök, ett snabbt nytt försök om Awish är nere (inte efter en
+  // tidsgräns, då är tiden redan använd) och inget nytt försök vid internt fel.
   const grpcCall = hasFallback
-    ? { timeoutMs: GRPC_WITH_FALLBACK_MS, attempts: 1, retryServer: false }
+    ? {
+        timeoutMs: opts.interactive ? GRPC_INTERACTIVE_MS : GRPC_WITH_FALLBACK_MS,
+        attempts: opts.interactive ? 1 : 2,
+        retryServer: false,
+        retryTimeout: false,
+      }
     : undefined;
+  const tripAfter = opts.interactive ? 1 : GRPC_ERRORS_TO_TRIP;
+  const nowMs = opts.now().getTime();
+  /** Är förra lyckade läsningen så gammal att ett tomt svar ska godtas? */
+  const emptyAccepted = (syncedAt: Date | string | null) => {
+    if (syncedAt === null) return true;
+    const t = (syncedAt instanceof Date ? syncedAt : new Date(syncedAt)).getTime();
+    return !Number.isFinite(t) || nowMs - t >= EMPTY_ACCEPT_AFTER_MS;
+  };
 
   let read = 0;
   let viaWeb = 0;
@@ -922,7 +998,6 @@ export async function syncSourceStock(
   let failed = 0;
   let deferred = 0;
   let firstError: string | undefined;
-  let grpcError: AwishApiError | null = null;
   let webError: AwishApiError | null = null;
   let lastError: unknown = null;
   /** En automat som Open API läste (för id-kontrollen). */
@@ -948,9 +1023,12 @@ export async function syncSourceStock(
     try {
       let products: AwishProduct[] | null = null;
       let web = false;
+      /** Båda vägarna svarade tomt (Open API och webbpanelen). */
+      let bothEmpty = false;
       if (!skipGrpc) {
         try {
           products = await api.products(m.external_id, grpcCall);
+          grpcInRow = 0;
           if (sample === null && products.length > 0)
             sample = { externalId: m.external_id, products };
           // Tomt svar för en automat som har fack: prova webbpanelen innan det godtas.
@@ -959,6 +1037,8 @@ export async function syncSourceStock(
             if (viaWebNow && viaWebNow.length > 0) {
               products = viaWebNow;
               web = true;
+            } else if (viaWebNow) {
+              bothEmpty = true;
             }
           }
         } catch (error) {
@@ -966,8 +1046,12 @@ export async function syncSourceStock(
           if (error.kind !== "budget") {
             grpcError ??= error;
             lastError = error;
+            if (grpcDown(error)) grpcInRow += 1;
             // In-run-brytaren: resten av automaterna går direkt till webbpanelen.
-            if (grpcDown(error)) skipGrpc = true;
+            if (grpcTrips(error, grpcInRow, tripAfter)) {
+              skipGrpc = true;
+              tripped = true;
+            }
           }
           products = await viaFallback(m.external_id);
           if (!products) throw error;
@@ -981,7 +1065,22 @@ export async function syncSourceStock(
         }
         web = true;
       }
-      if (products.length === 0 && m.had_slots) throw emptyReadError();
+      // Tomt godtas först när det har hållit i sig (förra lyckade läsningen är äldre än en
+      // timme) och, med reserv, när webbpanelen också svarar tomt: då är facken verkligen
+      // borttagna i Awish och saldot ska rensas.
+      const acceptEmpty = emptyAccepted(m.synced_at) && (bothEmpty || !hasFallback);
+      if (products.length === 0 && m.had_slots && !acceptEmpty) {
+        throw emptyReadError();
+      }
+      if (products.length === 0) {
+        // Automaten har inga fack i Awish (ny, eller facken borttagna): läst, men inget att
+        // spara. Tiden sätts ändå, så att den inte ser oläst ut (vakten, Hem). Saldot i
+        // Binderlab rörs inte (ägaren ser det i Lager).
+        await markReadEmpty(db, source.organization_id, m.machine_id, opts.now());
+        read += 1;
+        if (web) viaWeb += 1;
+        continue;
+      }
       const r = await applyMachineStock(db, {
         organizationId: source.organization_id,
         dataSourceId: source.id,
@@ -1024,11 +1123,20 @@ export async function syncSourceStock(
     const now = opts.now();
     // Brytaren för Open API behövs bara när det finns en reserv att gå till. Utan reserv (t.ex.
     // webbpanelens brytare är öppen) skrivs den inte, så att den inte ersätter webbpanelens.
-    if (hasFallback && grpcErr && grpcDown(grpcErr)) {
+    if (hasFallback && grpcErr && tripped) {
       await openBreaker(db, source.id, "stock", "open_api", grpcErr.kind, now);
     }
+    // Ingen automat hanns med (tiden tog slut innan facken): räknas som att lagret inte
+    // lästes, så att vakten larmar om det håller i sig (inte tyst).
+    const allDeferred = read === 0 && failed === 0 && deferred > 0;
     const route =
-      viaWeb > 0 ? "webbpanelen" : read > 0 ? "open_api" : failed > 0 ? "senast_kanda" : null;
+      viaWeb > 0
+        ? "webbpanelen"
+        : read > 0
+          ? "open_api"
+          : failed > 0 || allDeferred
+            ? "senast_kanda"
+            : null;
     if (route !== null) {
       await recordPathResult(db, {
         organizationId: source.organization_id,
@@ -1038,11 +1146,23 @@ export async function syncSourceStock(
         ok: read > 0,
         // Lästes något: felet som gjorde att en väg inte räckte (Open API, tomt svar). Lästes
         // inget: helst webbpanelens fel (reserven var sista utvägen), annars Open API:s.
-        error: read > 0 ? (grpcErr ?? lastError ?? undefined) : (webErr ?? grpcErr ?? lastError),
+        error:
+          read > 0
+            ? (grpcErr ?? lastError ?? undefined)
+            : allDeferred
+              ? (grpcErr ??
+                new AwishApiError(
+                  "budget",
+                  "Tiden räckte inte till att läsa lagret i automaterna.",
+                ))
+              : (webErr ?? grpcErr ?? lastError),
         now,
       });
     }
-    if (webErr && (webErr.kind === "auth" || webErr.kind === "changed")) {
+    if (
+      webErr &&
+      (webErr.kind === "auth" || webErr.kind === "changed" || webErr.kind === "rate_limited")
+    ) {
       await openBreaker(db, source.id, "stock", "webbpanelen", webErr.kind, now);
     }
     const s = sample as { externalId: string; products: AwishProduct[] } | null;

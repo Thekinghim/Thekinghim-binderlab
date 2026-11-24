@@ -229,6 +229,11 @@ describe("ingen väg för lagret", () => {
 
   it("det fungerar igen: larmet stängs och en push om det", async () => {
     await record("stock", "webbpanelen", true, base + 45, internal());
+    // Reservvägen läste automaten (annars larmar vakten att just den inte läses).
+    await db().execute(
+      sql`update public.stock_locations set awish_synced_at = ${at(base + 45).toISOString()}::timestamptz
+          where organization_id = ${orgId}::uuid and machine_id = ${machineId}::uuid`,
+    );
     await syncWatchAlerts(db(), orgId, at(base + 45), ENV);
     await syncWatchAlerts(db(), orgId, at(base + 50), ENV);
     expect((await alerts("awish:stock")).map((a) => a.status)).toEqual(["closed"]);

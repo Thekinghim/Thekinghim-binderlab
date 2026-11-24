@@ -527,36 +527,66 @@ const AWISH_PROVIDERS: readonly string[] = [
   "awish_grpc",
 ];
 
-/** Ordernummer (av de givna betalda raderna) vars betaltid och belopp finns i en annan Awish-källa. */
-async function awishSaleElsewhere(
+/**
+ * Ordernummer (av de givna betalda raderna) vars betaltid (sekund) och belopp finns i en
+ * annan Awish-källa: samma försäljning med andra ordernummer. Ett mot ett: finns en sådan
+ * order i den andra källan räknas bara en inkommande rad med samma tid och belopp som
+ * dubblett, så att två riktiga köp samma sekund för samma pris (t.ex. i två automater) inte
+ * båda försvinner.
+ */
+export async function awishSalesElsewhere(
   tx: Tx,
   organizationId: string,
   dataSourceId: string,
-  rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number; isPaid: boolean }>,
+  rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number }>,
 ): Promise<Set<string>> {
-  const paid = rows.filter((r) => r.isPaid);
-  if (paid.length === 0) return new Set();
-  const payload = paid.map((r) => ({
+  if (rows.length === 0) return new Set();
+  const payload = rows.map((r) => ({
     external_id: r.externalId,
     ordered_at: r.paidAtUtc.toISOString(),
     amount_ore: r.amountOre,
   }));
   const found = await query<{ external_id: string }>(
     tx,
-    sql`select distinct r.external_id
-        from jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
-          as r(external_id text, ordered_at timestamptz, amount_ore bigint)
-        where exists (
-          select 1 from public.orders o
+    sql`with incoming as (
+          select r.external_id, r.ordered_at, r.amount_ore,
+                 row_number() over (partition by r.ordered_at, r.amount_ore
+                                    order by r.external_id) as n
+          from (select distinct * from jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
+                  as x(external_id text, ordered_at timestamptz, amount_ore bigint)) r
+        ),
+        existing as (
+          select o.ordered_at, o.amount_ore, count(*) as c
+          from public.orders o
           join public.data_sources ds
             on ds.organization_id = o.organization_id and ds.id = o.data_source_id
           where o.organization_id = ${organizationId}::uuid
             and o.data_source_id <> ${dataSourceId}::uuid
             and ds.provider in ('awish_csv', 'awish_web', 'awish_extension', 'awish_grpc')
-            and o.ordered_at = r.ordered_at and o.amount_ore = r.amount_ore
-        )`,
+            and (o.ordered_at, o.amount_ore) in (select ordered_at, amount_ore from incoming)
+          group by o.ordered_at, o.amount_ore
+        )
+        select i.external_id
+        from incoming i
+        join existing e on e.ordered_at = i.ordered_at and e.amount_ore = i.amount_ore
+        where i.n <= e.c`,
   );
   return new Set(found.map((r) => r.external_id));
+}
+
+/** Ordernummer (av de givna betalda raderna) som finns i en annan Awish-källa (se ovan). */
+async function awishSaleElsewhere(
+  tx: Tx,
+  organizationId: string,
+  dataSourceId: string,
+  rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number; isPaid: boolean }>,
+): Promise<Set<string>> {
+  return awishSalesElsewhere(
+    tx,
+    organizationId,
+    dataSourceId,
+    rows.filter((r) => r.isPaid),
+  );
 }
 
 /** Antal ej betalda rader för en sparad import (räknas inte rad för rad). */

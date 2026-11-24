@@ -234,7 +234,11 @@ går aldrig tyst. Fungerar reservvägen blir det bara en lugn rad, ingen push.
 | Automaternas status (Machines) svarar inte          | Använder senast kända automater; synken av order och fack fortsätter. Inga falska offline-larm. Varning efter 30 min, kritiskt efter 2 h (`watch:awish:machines`). | Synka nu. Titta i Awish om en automat verkligen står still.                                                        |
 | Påfyllningar når inte Awish                         | Sparar alltid i Binderlab först och försöker igen själv. Larm när något har väntat över 60 min (`watch:awish:push`).                                               | "Försök igen" i Fyll på, eller skriv antalet i Awish.                                                              |
 | Inloggningen till webbpanelen fungerar inte         | Slutar försöka i 6 timmar (så att Awish-kontot inte låses). Larm direkt: "Inloggningen till webbpanelen fungerar inte".                                            | Byt lösenord i Datakällor → Awish → Ändra inloggning.                                                              |
-| Kontots slutdag kan inte läsas                      | Läser den via webbpanelen i stället; försöker igen efter en timme.                                                                                                 | Inget. Kontroll varnar efter 48 h.                                                                                 |
+| Kontots slutdag kan inte läsas                      | Läser den via webbpanelen i stället; försöker igen efter en timme. En känd slutdag skrivs aldrig över med "ingen" eller en oläslig text.                           | Inget. Kontroll varnar efter 48 h.                                                                                 |
+| Open API hänger (inget svar, inget fel)             | Automaterna får högst en fjärdedel av synkens tid, orderna resten utom 3/8 som alltid hålls för facken. Svarar ingen av dem läses facken direkt via webbpanelen.   | Inget. Larmen för automater och order går som vanligt.                                                             |
+| En automat läses inte, de andra gör det             | Varning efter 30 min: "En automat har inte lästs från Awish sedan …" (`watch:awish:stock`). Hem visar tiden för den automat som lästes längst sedan.               | Titta i Datakällor om automaten finns i Awish.                                                                     |
+| Webbpanelen svarar 429 (för många anrop)            | Inget nytt försök i samma körning; brytaren pausar i 5 min. Påfyllningen väntar och skickas sedan.                                                                 | Inget.                                                                                                             |
+| Kampanj: svaret från Awish försvann                 | Nästa försök läser Awishs lista först. Finns kampanjen redan räknas den som visad (ingen dubblett). En rad som fastnat som "skickas" i 10 min försöks igen.        | Inget.                                                                                                             |
 
 **Larm och push.** En push per väg när den slutar fungera (nyckel `watch:awish:<väg>`, en öppen åt gången), och en
 när den fungerar igen ("Lagret läses från Awish igen", "Alla påfyllningar har nått Awish", "Försäljningen hämtas
@@ -246,7 +250,23 @@ att larmet är öppet.
 | Fel                                                  | Brytaren öppen |
 | ---------------------------------------------------- | -------------- |
 | Awish internt fel, nere, för långsamt, konstiga data | 15 min         |
+| Webbpanelen: för många anrop (429)                   | 5 min          |
 | Inloggningen fungerar inte, Awish har ändrat något   | 6 h            |
+
+Facken byter till webbpanelen direkt vid internt fel (13); vid "nere" eller "för långsamt" först efter två fel i rad
+(automaterna och orderna i samma körning räknas), så att en kort hicka inte flyttar alla läsningar i 15 minuter.
+
+**Tidsgränser.** Varje anrop till Awish har ett tak som aldrig går förbi funktionens tid: synken 40 s (av 60), en
+påfyllning 25 s + 5 s per extra automat (högst 45 s), ny vara, ändra vara och fack 45 s, kampanjerna i cron till 57 s.
+Cronen kör i ordningen synk → nya försök med påfyllningar (till 50 s) → vakten → offlinelarm → försäljningsnotiser →
+kampanjer.
+
+**Påfyllningar som aldrig försvinner.** Automaten markeras som väntande _innan_ något skickas till Awish; markeringen
+tas bort när sändningen gick fram. Stoppas funktionen mitt i står automaten kvar som väntande: nästa läsning av facken
+sänker inte saldot, och den automatiska körningen försöker igen (5, 10, 20, 40, 60 min). Automatiska försök görs bara
+för sändningar som felade det senaste dygnet; äldre väntar på "Försök igen" i Fyll på. Ett nytt försök med en
+skrivning läser facket först och skickar inte igen om det har ändrats (då gick det första fram), så ett sålt pack
+läggs aldrig tillbaka.
 
 **Läget i databasen** (ägaren eller Claude, med organisationens id):
 
@@ -259,7 +279,8 @@ order by path;
 
 `active_route`: `open_api` (som vanligt), `webbpanelen` (reservvägen), `senast_kanda` (ingen väg, senaste datan
 visas), `ingen`. `failing_since` tom = någon väg fungerar. `fallback_since` (migreringen
-`20261229200000_kontroll_awish_vagar.sql`) = på reservvägen sedan.
+`20261229200000_kontroll_awish_vagar.sql`) = på reservvägen sedan. För påfyllningar, varor och fack är webbpanelen
+den vanliga vägen, så där är `fallback_since` alltid tom och Kontroll varnar inte.
 
 **Det som inte går att lösa helt, och planen:**
 

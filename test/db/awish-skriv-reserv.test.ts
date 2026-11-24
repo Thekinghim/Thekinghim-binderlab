@@ -282,6 +282,140 @@ describe("påfyllning till Awish när webbpanelen krånglar", () => {
   });
 });
 
+describe("påfyllning till Awish: tidsgräns, väntande före sändningen och 429", () => {
+  it("webbpanelen hänger: sändningen håller sin tid och automaten väntar", async () => {
+    await setLevel("BL-001", "30th Celebration", 5);
+    fake.state.now = () => Date.now();
+    fake.state.delayMs = 6_000;
+    const started = Date.now();
+    const r = await ws.pushMachinesToAwish(orgId, [machines["BL-001"]!.id], {
+      serviceDb: db(),
+      makeClient: (o) => createAwishWebClient({ ...o, baseUrl: fake.baseUrl }),
+      sleep: noSleep,
+      deadlineAt: Date.now() + 2_500,
+    });
+    // Klientens egen tidsgräns: inget anrop går förbi sändningens tid (aldrig 15 s × 3).
+    expect(Date.now() - started).toBeLessThan(4_500);
+    expect(r.machines[0]).toMatchObject({ status: "error" });
+    expect(await pending()).toEqual([machines["BL-001"]!.id]);
+    fake.state.delayMs = 0;
+  }, 20_000);
+
+  it("automaten står som väntande medan sändningen pågår (ett avbrott tappar inget)", async () => {
+    await setLevel("BL-001", "30th Celebration", 4);
+    let during: string[] | null = null;
+    const spy = (o: Parameters<typeof createAwishWebClient>[0] = {}) => {
+      const real = makeClient(o);
+      return {
+        ...real,
+        async products(id: number) {
+          during = await pending();
+          return real.products(id);
+        },
+      };
+    };
+    const r = await ws.pushMachinesToAwish(orgId, [machines["BL-001"]!.id], {
+      ...pushDeps(),
+      makeClient: spy,
+    });
+    expect(r.machines[0]).toMatchObject({ status: "pushed" });
+    expect(during).toEqual([machines["BL-001"]!.id]);
+    expect(await pending()).toEqual([]);
+  });
+
+  it("429: ett enda anrop, inget nytt försök, brytaren pausar de automatiska försöken", async () => {
+    await setLevel("BL-001", "30th Celebration", 9);
+    fake.state.rateLimit = 1;
+    const r = await ws.pushMachinesToAwish(orgId, [machines["BL-001"]!.id], pushDeps());
+    expect(r.machines[0]).toMatchObject({ status: "error", errorKind: "rate_limited" });
+    expect(signins()).toBe(1);
+    expect(await pending()).toEqual([machines["BL-001"]!.id]);
+    expect(await breakerOpen(db(), sourceId, "push", "webbpanelen")).toBe(true);
+    const out = await ws.retryPendingAwishPushesForAll(db(), {
+      deadline: Date.now() + 30_000,
+      now: () => minutes(2),
+      makeClient,
+      sleep: noSleep,
+      organizationIds: [orgId],
+    });
+    // Inget nytt anrop inom de första minuterna (väntetiden och brytaren).
+    expect(out).toMatchObject({ tried: 0 });
+    expect(signins()).toBe(1);
+    // Brytaren gäller fem minuter: senare görs försöket och går fram (långt fram, så att
+    // väntetiden efter de andra testernas försök i organisationen också har gått).
+    const later = await ws.retryPendingAwishPushesForAll(db(), {
+      deadline: Date.now() + 30_000,
+      now: () => minutes(600),
+      makeClient,
+      sleep: noSleep,
+      organizationIds: [orgId],
+    });
+    expect(later).toMatchObject({ tried: 1, cleared: 1 });
+    expect(await pending()).toEqual([]);
+  });
+
+  it("ett nytt försök lägger inte tillbaka ett pack som såldes efter att det första gick fram", async () => {
+    await setLevel("BL-002", "30th Celebration", 6);
+    fake.state.products["1002"]![0]!.currentInventory = 1;
+    const landedThenLost = (o: Parameters<typeof createAwishWebClient>[0] = {}) => {
+      const real = makeClient(o);
+      let first = true;
+      return {
+        ...real,
+        async setProductInventory(
+          id: number,
+          input: Parameters<typeof real.setProductInventory>[1],
+        ) {
+          await real.setProductInventory(id, input);
+          if (first) {
+            first = false;
+            // Ett köp direkt efter, och svaret på skrivningen går förlorat.
+            fake.state.products["1002"]![0]!.currentInventory -= 1;
+            throw new AwishApiError("timeout", "Awish svarade inte inom 15 s.");
+          }
+        },
+      };
+    };
+    const before = productWrites();
+    const r = await ws.pushMachinesToAwish(orgId, [machines["BL-002"]!.id], {
+      ...pushDeps(),
+      makeClient: landedThenLost,
+    });
+    expect(r.machines[0]).toMatchObject({ status: "pushed" });
+    expect(productWrites() - before).toBe(1);
+    expect(fake.state.products["1002"]![0]!.currentInventory).toBe(5);
+  });
+
+  it("sändningar som felade för mer än ett dygn sedan försöks inte igen automatiskt", async () => {
+    // Inget annat väntar (de andra testerna i organisationen).
+    await ws.retryPendingAwishPushes(orgId, null, pushDeps());
+    expect(await pending()).toEqual([]);
+    const [old] = await asUser(owner, (tx) =>
+      tx
+        .insert(s.machines)
+        .values({ organizationId: orgId, code: "BL-009", name: "Gammal", activeFrom: "2026-10-01" })
+        .returning(),
+    );
+    await db().execute(
+      sql`insert into public.automation_log (organization_id, kind, machine_id, units, occurred_at)
+          values (${orgId}::uuid, 'awish_push_failed', ${old!.id}::uuid, 0,
+                  now() - interval '25 hours')`,
+    );
+    expect(await pending()).toContain(old!.id);
+    const writes = productWrites();
+    const out = await ws.retryPendingAwishPushesForAll(db(), {
+      deadline: Date.now() + 30_000,
+      makeClient,
+      sleep: noSleep,
+      organizationIds: [orgId],
+    });
+    expect(out).toMatchObject({ organizations: 0, tried: 0 });
+    expect(productWrites()).toBe(writes);
+    // Den väntar kvar för Försök igen i Fyll på.
+    expect(await pending()).toContain(old!.id);
+  });
+});
+
 describe("Ny produkt: CreateGood som tappar svaret", () => {
   const input = (name: string) => ({
     name,
@@ -466,5 +600,68 @@ describe("kampanjer när Open API krånglar", () => {
     });
     expect(r).toMatchObject({ shown: 1, failed: 0 });
     expect(createBanners()).toHaveLength(1);
+  });
+
+  it("CreateBanner gick fram men svaret och listan försvann: nytt försök ger ingen dubblett", async () => {
+    const lost = (creds: { appId: string; appSecret: string; appKey: string }) => {
+      const api = connect(creds);
+      return {
+        ...api,
+        createBanner: async (i: Parameters<typeof api.createBanner>[0]) => {
+          await api.createBanner(i);
+          failBanners = 1; // Kontrollen efteråt går inte heller att läsa.
+          throw new AwishApiError("timeout", "Awish svarade inte inom 10 s.", 4);
+        },
+      };
+    };
+    const created = await createCampaignFor(
+      await viewerFor(campOwner, campOrg),
+      {
+        title: "Dubblettskydd",
+        machineIds: [],
+        startsOn: null,
+        endsOn: "2026-11-16",
+        titleId: null,
+        reuseImageFrom: null,
+      },
+      PNG,
+      { connect: lost, store, env, now: () => NOW },
+    );
+    expect(created).toMatchObject({ shown: 0, failed: 1 });
+    const mine = () =>
+      createBanners().filter((c) => (c.request as { title?: string }).title === "Dubblettskydd");
+    expect(mine()).toHaveLength(1);
+    // Det automatiska försöket ser att kampanjen redan finns: visad, inget nytt CreateBanner.
+    failBanners = 0;
+    await publishAllDueCampaigns({ db: db(), connect, now: at(6) });
+    const [cm] = await rows<{ status: string; awish_banner_id: string | null }>(
+      db(),
+      sql`select cm.status, cm.awish_banner_id from public.campaign_machines cm
+          join public.campaigns c on c.organization_id = cm.organization_id and c.id = cm.campaign_id
+          where cm.organization_id = ${campOrg}::uuid and c.title = 'Dubblettskydd'`,
+    );
+    expect(cm).toMatchObject({ status: "shown" });
+    expect(cm?.awish_banner_id).not.toBeNull();
+    expect(mine()).toHaveLength(1);
+  });
+
+  it("en rad som fastnade som 'skickas' (funktionen stoppades) försöks igen", async () => {
+    const [c] = await rows<{ id: string }>(
+      db(),
+      sql`select cm.id from public.campaign_machines cm
+          join public.campaigns c on c.organization_id = cm.organization_id and c.id = cm.campaign_id
+          where cm.organization_id = ${campOrg}::uuid and c.title = 'Dubblettskydd'`,
+    );
+    await db().execute(
+      sql`update public.campaign_machines set status = 'sending' where id = ${c!.id}::uuid`,
+    );
+    // Tio minuter senare (räknat från radens ändring) blir den misslyckad med ett nytt försök.
+    await publishAllDueCampaigns({ db: db(), connect, now: new Date(Date.now() + 11 * 60_000) });
+    const [after] = await rows<{ status: string; next_retry_at: Date | null }>(
+      db(),
+      sql`select status, next_retry_at from public.campaign_machines where id = ${c!.id}::uuid`,
+    );
+    expect(after?.status).toBe("failed");
+    expect(after?.next_retry_at).not.toBeNull();
   });
 });

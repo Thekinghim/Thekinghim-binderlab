@@ -621,3 +621,101 @@ describe("(j) Awish-CSV efter API-orderna", () => {
     expect(sales[0]?.n).toBe(1);
   });
 });
+
+describe("(l) Open API hänger (paketen försvinner, inget fel kommer)", () => {
+  it("automaterna och orderna får var sin del av tiden; facken läses via webbpanelen", async () => {
+    const org = await setupOrg();
+    await org.sync();
+    fake.state.delayByMethod = { Machines: 30_000, Orders: 30_000, Products: 30_000 };
+    const started = Date.now();
+    // Riktig klocka och en kort körning (12 s): automaterna högst 3 s, orderna till 7,5 s,
+    // och minst 4,5 s kvar för facken.
+    const r = await syncAwishSource(
+      { db: db(), connect, now: () => new Date(), makeWebClient, timeBudgetMs: 12_000 },
+      { dataSourceId: org.sourceId, trigger: "manual" },
+    );
+    expect(Date.now() - started).toBeLessThan(14_000);
+    expect(r.ok).toBe(false);
+    // Automaterna och orderna svarade inte: facken går direkt till webbpanelen.
+    expect(r.stock).toMatchObject({ read: 2, viaWeb: 2, deferred: 0 });
+    // Inget går tyst: automaterna och lagret har sin hälsa, och brytaren är öppen.
+    const machines = await org.health("machines");
+    expect(machines).toMatchObject({ active_route: "senast_kanda", last_error_kind: "timeout" });
+    expect(machines?.failing_since).not.toBeNull();
+    const stock = await org.health("stock");
+    expect(stock).toMatchObject({ active_route: "webbpanelen", breaker_route: "open_api" });
+    expect(stock?.failing_since).toBeNull();
+    expect((await org.health("orders"))?.failing_since).not.toBeNull();
+    fake.state.delayByMethod = {};
+  }, 30_000);
+
+  it("en enda gång nere byter inte väg: ett snabbt nytt försök, ingen brytare", async () => {
+    const org = await setupOrg();
+    fake.state.failWith = { Products: grpc.status.UNAVAILABLE };
+    fake.state.failTimes = { Products: 1 };
+    org.setNow(minutes(org.now(), 5));
+    const r = await org.sync();
+    expect(r.stock).toMatchObject({ read: 2, failed: 0 });
+    expect(r.stock?.viaWeb).toBeUndefined();
+    const stock = await org.health("stock");
+    expect(stock).toMatchObject({ active_route: "open_api", breaker_route: null });
+  });
+});
+
+describe("(m) Facken borttagna i Awish (tomt svar som håller i sig)", () => {
+  it("båda vägarna tomma i över en timme: saldot rensas, annars behålls det", async () => {
+    const org = await setupOrg();
+    await org.sync();
+    const before = await fillOf(org.machineIds[0]!);
+    expect(before.fill?.length ?? 0).toBeGreaterThan(0);
+    fake.state.products = { "2": [], "3": [...GRPC_SLOTS] };
+    web.state.products = { "2": [], "3": webSlots() };
+    org.setNow(minutes(org.now(), 5));
+    expect((await org.sync()).stock).toMatchObject({ read: 1, failed: 1 });
+    expect((await fillOf(org.machineIds[0]!)).fill).toEqual(before.fill);
+
+    org.setNow(minutes(org.now(), 61));
+    const r = await org.sync();
+    expect(r.stock).toMatchObject({ read: 2, failed: 0 });
+    const after = await fillOf(org.machineIds[0]!);
+    expect(after.fill ?? []).toEqual([]);
+    expect(iso(after.at)).toBe(org.now().toISOString());
+  });
+});
+
+describe("(n) Kontots slutdag skrivs aldrig över med inget", () => {
+  const expires = async (sourceId: string) =>
+    one<{ expires: Date | null; checked: Date | null }>(
+      db(),
+      sql`select awish_expires_at as expires, awish_merchant_checked_at as checked
+          from public.data_sources where id = ${sourceId}::uuid`,
+    );
+
+  it("webbpanelen utan slutdag behåller den kända; en oläslig slutdag är ett fel", async () => {
+    const org = await setupOrg({
+      beforeFirstSync: () => {
+        fake.state.failWith = { Merchant: grpc.status.INTERNAL };
+      },
+    });
+    const known = await expires(org.sourceId);
+    expect(iso(known.expires)).toBe("2027-04-18T15:48:54.000Z");
+
+    // Ett dygn senare: Open API felar igen, och panelen skickar ingen slutdag.
+    web.state.merchantExpiredAt = null;
+    org.setNow(minutes(org.now(), 25 * 60));
+    await org.sync();
+    const kept = await expires(org.sourceId);
+    expect(iso(kept.expires)).toBe("2027-04-18T15:48:54.000Z");
+    expect(iso(kept.checked)).toBe(org.now().toISOString());
+
+    // Ännu ett dygn: panelen skickar något som inte går att läsa. Slutdagen står kvar, och
+    // läsningen räknas som misslyckad (Kontroll vet att den inte är kontrollerad).
+    web.state.merchantExpiredAt = "snart";
+    org.setNow(minutes(org.now(), 25 * 60));
+    await org.sync();
+    const after = await expires(org.sourceId);
+    expect(iso(after.expires)).toBe("2027-04-18T15:48:54.000Z");
+    expect(iso(after.checked)).toBe(iso(kept.checked));
+    expect((await org.health("merchant"))?.failing_since).not.toBeNull();
+  });
+});

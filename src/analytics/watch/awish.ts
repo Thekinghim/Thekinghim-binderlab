@@ -59,9 +59,19 @@ export interface AwishPushFacts {
   readonly oldestAt: string | null;
 }
 
+/** En automat som är kopplad till Awish: när facken senast lästes. */
+export interface AwishLinkedStockFacts {
+  /** Senaste lästa facken (ISO), null = aldrig. */
+  readonly readAt: string | null;
+  /** När automaten kopplades (ISO). */
+  readonly linkedAt: string;
+}
+
 export interface AwishWatchFacts {
   readonly paths: readonly AwishPathFacts[];
   readonly push: AwishPushFacts | null;
+  /** De kopplade automaterna och när de lästes (saknas = okänt). */
+  readonly linkedStock?: readonly AwishLinkedStockFacts[] | null;
 }
 
 const MINUTE_MS = 60_000;
@@ -108,6 +118,8 @@ export function awishErrorText(kind: string | null, code: number | null = null):
       return "finns inte i Awish";
     case "budget":
       return "tiden tog slut";
+    case "rate_limited":
+      return "Awish tar inte emot fler anrop just nu";
     case null:
     case undefined:
       return "okänt fel";
@@ -161,7 +173,10 @@ export function awishStockLine(f: AwishWatchFacts, now: Date, when: WhenText): W
   if (!p) return null;
   const since = brokenSince(p);
   const minutes = minutesSince(since, now);
-  if (since === null || minutes === null || minutes <= AWISH_STOCK_MAX_MINUTES) return null;
+  // Vägen fungerar: kanske ändå inte för alla automater. Felar den men inte i 30 min än:
+  // inget (det kritiska larmet kommer när det har hållit i sig).
+  if (since === null) return awishStaleMachinesLine(f, p, when);
+  if (minutes === null || minutes <= AWISH_STOCK_MAX_MINUTES) return null;
   const title = p.lastSuccessAt
     ? `Lagret har inte lästs sedan ${when(p.lastSuccessAt)}`
     : "Lagret har aldrig lästs från Awish";
@@ -174,6 +189,42 @@ export function awishStockLine(f: AwishWatchFacts, now: Date, when: WhenText): W
     "critical",
     title,
     `${why} Fyll på och Lager visar senaste läsningen. Påfyllningar sparas som vanligt.`,
+    "/datakallor#awish-halsa",
+    "Öppna Datakällor",
+  );
+}
+
+/**
+ * Lagret läses, men inte för alla automater: "2 automater har inte lästs sedan 14:05". En
+ * varning (inte kritisk): de andra automaterna och påfyllningarna fungerar.
+ */
+function awishStaleMachinesLine(
+  f: AwishWatchFacts,
+  p: AwishPathFacts,
+  when: WhenText,
+): WatchLine | null {
+  // Lagret lästes senast vid lastSuccessAt; en automat som inte har lästs på 30 min före det
+  // (eller aldrig sedan den kopplades) hänger efter medan de andra läses.
+  if (!p.lastSuccessAt) return null;
+  const lastOk = new Date(p.lastSuccessAt);
+  const stale = (f.linkedStock ?? []).filter((m) => {
+    const minutes = minutesSince(m.readAt ?? m.linkedAt, lastOk);
+    return minutes !== null && minutes > AWISH_STOCK_MAX_MINUTES;
+  });
+  if (stale.length === 0) return null;
+  const n = stale.length;
+  const oldestAt = stale.reduce<string | null>(
+    (o, m) => (m.readAt !== null && (o === null || m.readAt < o) ? m.readAt : o),
+    null,
+  );
+  const who = n === 1 ? "En automat har" : `${n} automater har`;
+  return line(
+    "awish:stock",
+    "warning",
+    oldestAt
+      ? `${who} inte lästs från Awish sedan ${when(oldestAt)}`
+      : `${who} aldrig lästs från Awish`,
+    "Lagret i de andra automaterna läses som vanligt. Fyll på visar senaste läsningen för dem. Se Datakällor.",
     "/datakallor#awish-halsa",
     "Öppna Datakällor",
   );
@@ -243,6 +294,16 @@ export function awishLines(f: AwishWatchFacts, now: Date, when: WhenText): Watch
   ].filter((l): l is WatchLine => l !== null);
 }
 
+/**
+ * Vägar där webbpanelen är den vanliga vägen (Open API kan inte skriva påfyllningar eller
+ * varor): "via webbpanelen" är där inte en reserv, och ger ingen statusrad eller varning.
+ */
+export const AWISH_WEB_NATIVE_PATHS: ReadonlySet<AwishPathName> = new Set([
+  "push",
+  "goods",
+  "slots",
+]);
+
 /** Vad raden heter för ägaren. */
 export const AWISH_PATH_LABEL: Readonly<Record<AwishPathName, string>> = {
   orders: "Försäljning",
@@ -269,7 +330,7 @@ export function awishStatusLines(f: AwishWatchFacts, when: WhenText): AwishStatu
   const out: AwishStatusLine[] = [];
   const seen = new Set<AwishPathName>();
   for (const p of f.paths) {
-    if (seen.has(p.path)) continue;
+    if (seen.has(p.path) || AWISH_WEB_NATIVE_PATHS.has(p.path)) continue;
     if (p.activeRoute !== "webbpanelen" || p.failingSince !== null) continue;
     seen.add(p.path);
     const since = p.fallbackSince ? ` sedan ${when(p.fallbackSince)}` : "";
@@ -291,6 +352,7 @@ export function longFallbacks(
   hours = AWISH_FALLBACK_MAX_HOURS,
 ): AwishPathFacts[] {
   return paths.filter((p) => {
+    if (AWISH_WEB_NATIVE_PATHS.has(p.path)) return false;
     const m = minutesSince(p.fallbackSince, now);
     return m !== null && m > hours * 60 && p.activeRoute !== "open_api";
   });

@@ -104,3 +104,21 @@ describe("nextPushRetryAt (väntetid per organisation)", () => {
     expect([1, 2, 3, 4, 5, 9].map(after)).toEqual([10, 20, 40, 60, 60, 60]);
   });
 });
+
+describe("429 och tiden för en sändning", () => {
+  it("429 (rate_limited) försöks aldrig igen", async () => {
+    const op = failing(1, () => new AwishApiError("rate_limited", "för många"));
+    await expect(withWriteRetry(op, { idempotent: true, sleep: async () => {} })).rejects.toThrow(
+      "för många",
+    );
+    expect(op).toHaveBeenCalledTimes(1);
+    expect(isRetryableAwishError(new AwishApiError("rate_limited", "x"))).toBe(false);
+  });
+
+  it("25 s för en automat, 5 s till per automat, högst 45 s", async () => {
+    const { interactivePushBudgetMs } = await import("./web-service");
+    expect(interactivePushBudgetMs(1)).toBe(25_000);
+    expect(interactivePushBudgetMs(3)).toBe(35_000);
+    expect(interactivePushBudgetMs(20)).toBe(45_000);
+  });
+});

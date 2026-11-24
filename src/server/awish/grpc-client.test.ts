@@ -211,6 +211,60 @@ describe("klienten mot en låtsas-Awish (gRPC på 127.0.0.1)", () => {
     }
   });
 
+  it("stegets egen tid (synken) ger timeout och inga fler försök; körningens tid ger budget", async () => {
+    const api = createAwishClient(creds(), {
+      address: fake.address,
+      tls: false,
+      sleep: noSleep,
+      deadlineAt: Date.now() + 60_000,
+    });
+    try {
+      fake.state.delayByMethod = { Machines: 4_000 };
+      const started = Date.now();
+      await expect(
+        api.machines(
+          { currentPage: 1, perPage: 50 },
+          { stepLeftMs: () => started + 1_500 - Date.now() },
+        ),
+      ).rejects.toMatchObject({ kind: "timeout" });
+      expect(Date.now() - started).toBeLessThan(3_000);
+    } finally {
+      fake.state.delayByMethod = {};
+      api.close();
+    }
+    const short = createAwishClient(creds(), {
+      address: fake.address,
+      tls: false,
+      sleep: noSleep,
+      deadlineAt: Date.now() + 1_500,
+    });
+    try {
+      fake.state.delayByMethod = { Machines: 4_000 };
+      await expect(
+        short.machines({ currentPage: 1, perPage: 50 }, { stepLeftMs: () => 30_000 }),
+      ).rejects.toMatchObject({ kind: "budget" });
+    } finally {
+      fake.state.delayByMethod = {};
+      short.close();
+    }
+  });
+
+  it("retryTimeout av: en tidsgräns provas inte igen (tiden är redan använd)", async () => {
+    const api = createAwishClient(creds(), { address: fake.address, tls: false, sleep: noSleep });
+    try {
+      fake.state.delayByMethod = { Products: 2_500 };
+      const started = Date.now();
+      await expect(
+        api.products("2", { timeoutMs: 1_000, attempts: 2, retryTimeout: false }),
+      ).rejects.toMatchObject({ kind: "timeout" });
+      // Ett försök (1 s), inte två (minst 2 s).
+      expect(Date.now() - started).toBeLessThan(1_900);
+    } finally {
+      fake.state.delayByMethod = {};
+      api.close();
+    }
+  });
+
   it("en server som inte svarar ger UNAVAILABLE på svenska", async () => {
     const api = createAwishClient(creds(), {
       address: "127.0.0.1:1",

@@ -7,8 +7,8 @@
  * data, manuellt eller ingen. Vakten, Datakällor och Kontroll läser raderna
  * (loadAwishHealth), så att ett fel aldrig går tyst.
  *
- * Brytaren: en väg som felar (Awish internt fel, nere, tidsgräns) öppnas i 15 minuter, ett
- * inloggningsfel eller ett ändrat API i 6 timmar. Medan den är öppen hoppas vägen över och
+ * Brytaren: en väg som felar (Awish internt fel, nere, tidsgräns) öppnas i 15 minuter, för
+ * många anrop (429) i 5 minuter, ett inloggningsfel eller ett ändrat API i 6 timmar. Medan den är öppen hoppas vägen över och
  * reserven används direkt. När tiden har gått provas vägen en gång (halvöppen): lyckas den
  * stängs brytaren, annars öppnas den igen lika länge.
  *
@@ -59,6 +59,8 @@ export function breakerMinutes(kind: AwishErrorKind | null | undefined): number 
     case "timeout":
     case "invalid_response":
       return 15;
+    case "rate_limited":
+      return 5;
     case "auth":
     case "changed":
       return 360;

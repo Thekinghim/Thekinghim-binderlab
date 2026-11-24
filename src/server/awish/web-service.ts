@@ -11,7 +11,12 @@
 import { getServiceDb, type Db } from "@/db/client";
 import { sql } from "drizzle-orm";
 
-import { logAwishPushOutcomes, logAwishPushes, pendingAwishPushes } from "@/server/varde/log";
+import {
+  logAwishPushOutcomes,
+  logAwishPushes,
+  markAwishPushesPending,
+  pendingAwishPushes,
+} from "@/server/varde/log";
 
 import { AwishApiError, type AwishErrorKind } from "./grpc-client";
 import { breakerOpen, openBreaker, recordPathResult } from "./health";
@@ -33,6 +38,19 @@ export const WRITE_RETRY_WAITS_MS: readonly number[] = [500, 1_500, 4_000];
 export const WRITE_RETRY_MIN_CALL_MS = 1_000;
 /** Tidsgräns för en sändning som en användare väntar på (Fyll på, Klar). */
 export const INTERACTIVE_WRITE_BUDGET_MS = 25_000;
+/** Extra tid per automat utöver den första, och högsta tiden för en sändning. */
+export const INTERACTIVE_WRITE_PER_MACHINE_MS = 5_000;
+export const INTERACTIVE_WRITE_MAX_MS = 45_000;
+/** Automatiska nya försök tar bara sändningar som felade för högst så här länge sedan. */
+export const AUTO_RETRY_MAX_AGE_MS = 24 * 3_600_000;
+
+/** Tiden för en sändning med `machines` automater: 25 s + 5 s per extra automat, högst 45 s. */
+export function interactivePushBudgetMs(machines: number): number {
+  return Math.min(
+    INTERACTIVE_WRITE_MAX_MS,
+    INTERACTIVE_WRITE_BUDGET_MS + Math.max(0, machines - 1) * INTERACTIVE_WRITE_PER_MACHINE_MS,
+  );
+}
 
 export type Sleep = (ms: number) => Promise<void>;
 const realSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,9 +70,9 @@ export interface WriteRetryOptions {
 }
 
 /**
- * Fel där ett nytt försök kan hjälpa: Awish svarar inte (5xx, nätverk, 429 räknas som
- * unavailable) eller svarade inte i tid. Aldrig auth (kontot kan spärras av upprepade
- * inloggningar), changed (koden måste ändras) eller server (Awish sa nej).
+ * Fel där ett nytt försök kan hjälpa: Awish svarar inte (5xx, nätverk) eller svarade inte i
+ * tid. Aldrig auth (kontot kan spärras av upprepade inloggningar), rate_limited (429: fler
+ * anrop gör det värre), changed (koden måste ändras) eller server (Awish sa nej).
  */
 export function isRetryableAwishError(error: unknown): boolean {
   return (
@@ -292,13 +310,24 @@ export async function pushMachinesToAwish(
   if (!creds) return { status: "off", reason: "no_credentials", machines: [] };
 
   const codes = await machineCodes(db, organizationId, ids);
-  const client = (deps.makeClient ?? createAwishWebClient)(deps.clientOptions ?? {});
+  const nowMs = deps.nowMs ?? (() => Date.now());
+  const deadlineAt = deps.deadlineAt ?? nowMs() + interactivePushBudgetMs(ids.length);
+  // Klientens egen tidsgräns: inget enskilt anrop (inloggning, läsning) får gå förbi
+  // sändningens tid, så att funktionen aldrig stoppas av plattformen mitt i.
+  const client = (deps.makeClient ?? createAwishWebClient)({
+    ...(deps.clientOptions ?? {}),
+    deadlineAt: Math.min(deps.clientOptions?.deadlineAt ?? Infinity, deadlineAt),
+  });
   const machines: MachinePushResult[] = [];
   let loggedIn = false;
   let firstError: unknown = null;
-  const nowMs = deps.nowMs ?? (() => Date.now());
-  const deadlineAt = deps.deadlineAt ?? nowMs() + INTERACTIVE_WRITE_BUDGET_MS;
   const retry = { deadlineAt, now: nowMs, ...(deps.sleep ? { sleep: deps.sleep } : {}) };
+  if (!deps.dryRun) {
+    // Väntande FÖRE sändningen: stoppas funktionen mitt i (tidsgräns hos plattformen) står
+    // automaterna kvar som väntande, så att påfyllningen inte försvinner och nästa läsning
+    // av facken inte sänker saldot. Raderna stängs nedan när sändningen gick fram.
+    await markAwishPushesPending(db, organizationId, ids);
+  }
 
   for (const machineId of ids) {
     const code = codes.get(machineId) ?? null;
@@ -329,8 +358,9 @@ export async function pushMachinesToAwish(
       }
       const want = await machineTitleStock(db, organizationId, machineId);
       if (!loggedIn) {
-        // Inloggningen tål att göras om vid 503/tidsgräns, men aldrig vid nekad inloggning.
-        await withWriteRetry(() => client.login(creds), { idempotent: true, ...retry });
+        // Klienten provar inloggningen igen vid 503/tidsgräns (inom tiden), aldrig vid nekad
+        // inloggning eller 429. Inget eget nytt försök här: då blir det för många inloggningar.
+        await client.login(creds);
         loggedIn = true;
       }
       const products = await client.products(awishId);
@@ -353,14 +383,23 @@ export async function pushMachinesToAwish(
         continue;
       }
       for (const u of plan.updates) {
-        // Absolut antal: samma anrop två gånger ger samma fack, så det tål ett nytt försök.
+        // Absolut antal: samma anrop två gånger ger samma fack. Men ett försök som ändå gick
+        // fram, följt av ett köp, får inte lägga tillbaka det sålda packet: före ett nytt
+        // försök läses facken om, och har facket ändrats sedan planen skickas inget igen.
+        let retrying = false;
         await withWriteRetry(
-          () =>
-            client.setProductInventory(u.productId, {
+          async () => {
+            if (retrying) {
+              const slot = (await client.products(awishId)).find((p) => p.id === u.productId);
+              if (!slot || slot.currentInventory !== u.previousInventory) return;
+            }
+            retrying = true;
+            await client.setProductInventory(u.productId, {
               goodId: u.goodId,
               status: u.status,
               currentInventory: u.currentInventory,
-            }),
+            });
+          },
           { idempotent: true, ...retry },
         );
       }
@@ -448,6 +487,7 @@ async function recordPushHealth(
       : failed.some((m) => m.errorKind === "auth")
         ? new AwishApiError("auth", "Awish nekade inloggningen.")
         : null;
+  const rateLimited = failed.some((m) => m.errorKind === "rate_limited");
   const budgetOnly = failed.length > 0 && failed.every((m) => m.errorKind === "budget");
   try {
     await recordPathResult(db, {
@@ -471,6 +511,9 @@ async function recordPushHealth(
     });
     if (authError) {
       await openBreaker(db, dataSourceId, "push", "webbpanelen", "auth");
+    } else if (rateLimited) {
+      // 429: inga automatiska försök på 5 minuter (fler anrop gör det värre).
+      await openBreaker(db, dataSourceId, "push", "webbpanelen", "rate_limited");
     }
   } catch (error) {
     console.error(
@@ -613,12 +656,21 @@ export async function retryPendingAwishPushesForAll(
   };
   const nowMs = opts.nowMs ?? (() => Date.now());
   const now = opts.now ?? (() => new Date(nowMs()));
-  let orgs: Array<{ organization_id: string; oldest: unknown; machines: number }>;
+  let orgs: Array<{
+    organization_id: string;
+    oldest: unknown;
+    machines: number;
+    machine_ids: string[];
+  }>;
+  // Bara sändningar som felade det senaste dygnet: äldre väntar på "Försök igen" i Fyll på
+  // (Binderlabs antal kan vara inaktuellt, och en gammal sändning ska inte skriva över Awish).
+  const since = new Date(now().getTime() - AUTO_RETRY_MAX_AGE_MS).toISOString();
   try {
     orgs = Array.from(
       await db.execute(sql`
         select x.organization_id::text as organization_id, min(x.occurred_at) as oldest,
-               count(*)::int as machines
+               count(*)::int as machines,
+               array_agg(x.machine_id::text order by x.occurred_at) as machine_ids
         from (
           select distinct on (a.organization_id, a.machine_id)
                  a.organization_id, a.machine_id, a.kind, a.occurred_at
@@ -629,6 +681,7 @@ export async function retryPendingAwishPushesForAll(
         ) x
         join public.organizations o on o.id = x.organization_id
         where x.kind = 'awish_push_failed' and o.archived_at is null and not o.is_demo
+          and x.occurred_at > ${since}::timestamptz
         group by x.organization_id
         order by min(x.occurred_at)`),
     ) as typeof orgs;
@@ -677,7 +730,7 @@ export async function retryPendingAwishPushesForAll(
                     ${now().toISOString()}::timestamptz)`,
       );
       out.tried += 1;
-      const r = await retryPendingAwishPushes(orgId, null, {
+      const r = await retryPendingAwishPushes(orgId, org.machine_ids ?? [], {
         serviceDb: db,
         ...(opts.makeClient ? { makeClient: opts.makeClient } : {}),
         ...(opts.clientOptions ? { clientOptions: opts.clientOptions } : {}),

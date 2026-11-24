@@ -8,6 +8,7 @@ import {
   campaignState,
   campaignWindow,
   findCreatedBanner,
+  findExistingBanner,
   sniffCampaignImage,
   suggestCampaigns,
   SUGGEST_MAX,
@@ -115,6 +116,14 @@ describe("kampanjbilden i Awish", () => {
     expect(
       findCreatedBanner(after, after, { coverImage: "https://x/a.png", title: "Nytt" }),
     ).toBeNull();
+  });
+
+  it("finns redan (samma bild, text och slut): ett nytt försök skickar inget", () => {
+    const list = [b("5", { expiredAt: 100 }), b("7", { expiredAt: 200 })];
+    const wanted = { coverImage: "https://x/a.png", title: "Nytt" };
+    expect(findExistingBanner(list, { ...wanted, expiredAt: 200 })?.id).toBe("7");
+    expect(findExistingBanner(list, { ...wanted, expiredAt: 300 })).toBeNull();
+    expect(findExistingBanner(list, { ...wanted, title: "Annat", expiredAt: 100 })).toBeNull();
   });
 });
 

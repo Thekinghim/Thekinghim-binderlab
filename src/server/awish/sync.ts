@@ -55,14 +55,16 @@ import {
 } from "@/import/adapters/awish-grpc";
 import { sha256Hex } from "@/import/hash";
 import { classify, commitClassification, type ImportSummary } from "@/import/pipeline";
-import { IMPORT_PIPELINE_VERSION } from "@/import/run-import";
+import { awishSalesElsewhere, IMPORT_PIPELINE_VERSION } from "@/import/run-import";
 
 import {
+  AWISH_MIN_CALL_MS,
   AWISH_PER_PAGE,
   AwishApiError,
   awishClientConfigFromEnv,
   createAwishClient,
   type AwishApi,
+  type AwishCallOptions,
   type AwishClientOptions,
   type AwishCredentials,
 } from "./grpc-client";
@@ -93,6 +95,16 @@ export const MAX_MACHINE_PAGES = 10;
  * fortsätter nästa körning.
  */
 export const TIME_BUDGET_MS = 40_000;
+/**
+ * Varje steg i en källas körning får en egen del av tiden, så att ett Awish som hänger
+ * (paketen försvinner, inget fel kommer) inte äter upp tiden för facken och reservvägen:
+ * automaterna högst en fjärdedel, och för facken och slutdagen hålls minst 3/8 kvar.
+ */
+export const MACHINES_SHARE = 0.25;
+export const STOCK_RESERVE_SHARE = 0.375;
+/** Automaterna: ett försök får högst så här lång tid (ms). */
+export const MACHINES_CALL_MS = 8_000;
+
 /** En källa påbörjas inte med mindre tid kvar än så här (den tas nästa körning). */
 export const MIN_SOURCE_MS = 8_000;
 /** "Testa anslutningen": kort tidsgräns och inga nya försök, så att svaret kommer snabbt. */
@@ -319,7 +331,12 @@ async function syncStockWatchingDrops(
   db: Db,
   api: AwishApi,
   source: { id: string; organization_id: string },
-  opts: { now: () => Date; deadlineAt: number; fallback?: StockFallback | null },
+  opts: {
+    now: () => Date;
+    deadlineAt: number;
+    fallback?: StockFallback | null;
+    interactive?: boolean;
+  },
 ): Promise<{ stock: AwishStockSummary; dropped: string[] }> {
   const before = await balancesOrNull(db, source.organization_id, "före läsningen");
   const stock = await syncSourceStock(db, api, source, opts);
@@ -449,11 +466,14 @@ export interface FetchedMachine extends AwishGrpcMachine {
  * Alla automater (högst MAX_MACHINE_PAGES sidor). Antalet sidor som i paging.ts:
  * last_page, annars total, annars has_more, annars tills en sida inte är full.
  */
-export async function fetchMachines(api: AwishApi): Promise<FetchedMachine[]> {
+export async function fetchMachines(
+  api: AwishApi,
+  call?: AwishCallOptions,
+): Promise<FetchedMachine[]> {
   const all: FetchedMachine[] = [];
   let perPage: number | null = null;
   for (let page = 1; page <= MAX_MACHINE_PAGES; page += 1) {
-    const res = await api.machines({ currentPage: page, perPage: AWISH_PER_PAGE });
+    const res = await api.machines({ currentPage: page, perPage: AWISH_PER_PAGE }, call);
     all.push(
       ...res.items.map((m) => ({
         id: m.id,
@@ -719,6 +739,22 @@ export async function syncAwishSource(
     ...(deps.makeWebClient ? { makeClient: deps.makeWebClient } : {}),
   });
   const steps: AwishSyncSteps = {};
+  // Stegens egna tidsgränser (se MACHINES_SHARE): facken och reservvägen får alltid tid.
+  const runMs = Math.max(0, deadlineAt - clock());
+  const ordersUntil = deadlineAt - Math.round(runMs * STOCK_RESERVE_SHARE);
+  const machinesUntil = Math.min(ordersUntil, clock() + Math.round(runMs * MACHINES_SHARE));
+  const machinesCall = { stepLeftMs: () => machinesUntil - clock(), timeoutMs: MACHINES_CALL_MS };
+  /** Svarar Awish Open API inte alls (hänger eller nere) i den här körningen? */
+  let grpcErrorsInRow = 0;
+  const grpcStepFailed = (error: unknown) => {
+    if (
+      (error instanceof AwishApiError &&
+        (error.kind === "timeout" || error.kind === "unavailable" || error.kind === "server")) ||
+      (error instanceof AwishSyncStop && error.message === NO_ORDERS_IN_TIME)
+    ) {
+      grpcErrorsInRow += 1;
+    }
+  };
   const record = (path: "machines" | "orders", route: AwishRoute, ok: boolean, error?: unknown) =>
     recordPathResult(deps.db, {
       organizationId: source.organization_id,
@@ -747,7 +783,7 @@ export async function syncAwishSource(
     let machinesFresh = false;
     let connectivitySaved = new Set<string>();
     try {
-      machines = await fetchMachines(api);
+      machines = await fetchMachines(api, machinesCall);
       machinesFresh = true;
       // Anslutningen per automat, före orderna: ett fel eller stopp i orderna får inte tysta
       // offlinelarmet.
@@ -755,6 +791,7 @@ export async function syncAwishSource(
       steps.machines = { ok: true, via: "open_api" };
       await record("machines", "open_api", true);
     } catch (error) {
+      grpcStepFailed(error);
       machines = await knownMachines(deps.db, source);
       steps.machines = { ok: false, via: "senast_kanda", errorKind: kindOf(error) };
       if (!isBudget(error)) {
@@ -776,7 +813,10 @@ export async function syncAwishSource(
       const known = await maxKnownId(deps.db, source);
       collected = await collectOrders({
         fetchPage: async (page) => {
-          const res = await api.orders({ currentPage: page, perPage: AWISH_PER_PAGE });
+          const res = await api.orders(
+            { currentPage: page, perPage: AWISH_PER_PAGE },
+            { stepLeftMs: () => ordersUntil - clock() },
+          );
           return {
             items: res.items,
             total: res.total,
@@ -790,9 +830,13 @@ export async function syncAwishSource(
         now: started,
         sourceTimezone: source.source_timezone,
         maxPages: deps.maxPages ?? MAX_ORDER_PAGES,
-        deadlineAt,
+        deadlineAt: ordersUntil,
         clock,
-        isOutOfTime: (e) => e instanceof AwishApiError && e.kind === "budget",
+        // Körningens tid, eller orderstegets egen tid, tog slut: det som hanns med sparas.
+        isOutOfTime: (e) =>
+          e instanceof AwishApiError &&
+          (e.kind === "budget" ||
+            (e.kind === "timeout" && clock() >= ordersUntil - AWISH_MIN_CALL_MS)),
       });
       pages = collected.pages;
       fetched = collected.orders.length;
@@ -845,6 +889,7 @@ export async function syncAwishSource(
       await record("orders", "open_api", true);
     } catch (error) {
       ordersError = error;
+      grpcStepFailed(error);
       if (!(error instanceof AwishApiError) && !(error instanceof AwishSyncStop)) {
         console.error("[awish] orderna kunde inte hämtas", error);
       }
@@ -867,6 +912,9 @@ export async function syncAwishSource(
           deadlineAt,
           fallback,
           verifyWebIds: true,
+          // Automaterna och orderna svarade inte (hänger, nere): facken går direkt till
+          // webbpanelen i stället för att vänta på samma Open API en gång till.
+          grpcErrorsBefore: grpcErrorsInRow,
         });
         steps.stock = stockStep(stock);
       } catch (error) {
@@ -1149,6 +1197,7 @@ export async function readFillStock(
       now,
       deadlineAt,
       fallback,
+      interactive: true,
     }));
   } catch (error) {
     if (!(error instanceof AwishApiError)) console.error("[awish] facken kunde inte läsas", error);
@@ -1309,20 +1358,28 @@ export async function refreshMerchantExpiry(
   let expiresAt: Date | null = null;
   let via: AwishRoute | null = null;
   let grpcError: unknown = null;
+  // En text som finns men inte går att tolka är ett fel, inte "ingen slutdag": annars
+  // skrivs en känd slutdag över med null och Kontroll slutar varna.
+  const unreadable = () =>
+    new AwishApiError("invalid_response", "Awish skickade en slutdag som inte gick att läsa.");
   try {
     const merchant = await api.merchant();
     expiresAt = parseMerchantExpiry(merchant.expiredAt, source.source_timezone);
+    if (expiresAt === null && (merchant.expiredAt ?? "").trim() !== "") throw unreadable();
     via = "open_api";
   } catch (error) {
     grpcError = error;
     console.warn(`[awish] Merchant kunde inte läsas (${kindOf(error)})`);
   }
+  // Tiden tog slut före läsningen: inget försök gjordes, så inget fel sparas (nästa körning).
+  if (via === null && isBudget(grpcError)) return null;
   let webError: unknown = null;
-  if (via === null && options.webExpiry && !isBudget(grpcError)) {
+  if (via === null && options.webExpiry) {
     try {
       const text = await options.webExpiry();
       if (text !== undefined) {
         expiresAt = parseMerchantExpiry(text, source.source_timezone);
+        if (expiresAt === null && (text ?? "").trim() !== "") throw unreadable();
         via = "webbpanelen";
       }
     } catch (error) {
@@ -1330,6 +1387,8 @@ export async function refreshMerchantExpiry(
       console.warn(`[awish] slutdagen kunde inte läsas via webbpanelen (${kindOf(error)})`);
     }
   }
+  // Tiden tog slut även för reserven: inget sparas, nästa körning försöker igen.
+  if (via === null && grpcError === null && isBudget(webError)) return null;
   const ok = via !== null;
   await recordPathResult(db, {
     organizationId: source.organization_id,
@@ -1346,7 +1405,12 @@ export async function refreshMerchantExpiry(
   try {
     await db.execute(
       sql`update public.data_sources
-          set awish_expires_at = ${expiresAt?.toISOString() ?? null}::timestamptz,
+          -- Webbpanelen utan slutdag skriver aldrig över en känd slutdag (Open API är facit).
+          set awish_expires_at = ${
+            via === "webbpanelen" && expiresAt === null
+              ? sql`awish_expires_at`
+              : sql`${expiresAt?.toISOString() ?? null}::timestamptz`
+          },
               awish_merchant_checked_at = ${at.toISOString()}::timestamptz
           where organization_id = ${source.organization_id}::uuid and id = ${source.id}::uuid`,
     );
@@ -1551,27 +1615,7 @@ async function sameSaleElsewhere(
   source: SourceRow,
   rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number }>,
 ): Promise<Set<string>> {
-  if (rows.length === 0) return new Set();
-  const payload = rows.map((r) => ({
-    external_id: r.externalId,
-    ordered_at: r.paidAtUtc.toISOString(),
-    amount_ore: r.amountOre,
-  }));
-  const found = await query<{ external_id: string }>(
-    tx,
-    sql`select distinct r.external_id
-        from jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
-          as r(external_id text, ordered_at timestamptz, amount_ore bigint)
-        where exists (
-          select 1 from public.orders o
-          join public.data_sources ds on ds.organization_id = o.organization_id and ds.id = o.data_source_id
-          where o.organization_id = ${source.organization_id}::uuid
-            and o.data_source_id <> ${source.id}::uuid
-            and ds.provider in ('awish_csv', 'awish_web', 'awish_extension', 'awish_grpc')
-            and o.ordered_at = r.ordered_at and o.amount_ore = r.amount_ore
-        )`,
-  );
-  return new Set(found.map((r) => r.external_id));
+  return awishSalesElsewhere(tx, source.organization_id, source.id, rows);
 }
 
 /** Alla aktiva awish_grpc-källor (cron). En källa i taget; ett fel stoppar inte de andra. */

@@ -67,6 +67,14 @@ export interface NewProductDeps {
   sleep?: Sleep;
 }
 
+/** Högsta tid för alla anrop till webbpanelen i en åtgärd (ny vara, ändra vara, fack). */
+export const WEB_ACTION_BUDGET_MS = 45_000;
+/**
+ * Skrivlåset släpps av databasen om transaktionen står stilla så här länge (funktionen
+ * stoppades mitt i): ingen anslutning hålls kvar och nästa skrivning kan göras.
+ */
+export const WRITE_LOCK_IDLE_MS = 90_000;
+
 /** Tidsgräns och väntan för nya försök i en skrivning som användaren väntar på. */
 export function interactiveRetry(deps: Pick<NewProductDeps, "sleep">) {
   return {
@@ -204,7 +212,15 @@ export async function loggedInClient(
   const creds = await readWebCredentials(db, status.sourceId);
   if (!creds)
     throw new NewProductError("Spara Awish-inloggningen först (Mer → Datakällor → Awish).");
-  const client = (deps.makeWebClient ?? createAwishWebClient)(deps.webClientOptions ?? {});
+  // Ett tak för alla anrop i åtgärden: ett Awish som hänger får aldrig hålla kvar
+  // användaren (eller skrivlåset nedan) längre än WEB_ACTION_BUDGET_MS.
+  const client = (deps.makeWebClient ?? createAwishWebClient)({
+    ...(deps.webClientOptions ?? {}),
+    deadlineAt: Math.min(
+      deps.webClientOptions?.deadlineAt ?? Infinity,
+      Date.now() + WEB_ACTION_BUDGET_MS,
+    ),
+  });
   await client.login(creds);
   return { db, client, sourceId: status.sourceId };
 }
@@ -228,6 +244,9 @@ export async function withAwishWriteLock<T>(
         "Ett annat anrop till Awish pågår redan. Vänta en stund och försök igen.",
       );
     }
+    await tx.execute(
+      sql`select set_config('idle_in_transaction_session_timeout', ${String(WRITE_LOCK_IDLE_MS)}, true)`,
+    );
     return fn();
   });
 }
@@ -455,6 +474,9 @@ async function saveInBinderlab(viewer: Viewer, plan: NewProductPlan): Promise<st
   });
 }
 
+/** Väntan före varje ny läsning av varorna efter ett CreateGood som inte svarade. */
+export const CREATE_GOOD_RECHECK_MS: readonly number[] = [500, 1_000, 1_500];
+
 /**
  * CreateGood är inte idempotent: ett blint nytt försök kan skapa varan två gånger. Vid
  * tidsgräns eller 503 läses varorna först. Finns den nya varan redan tog Awish emot den
@@ -472,11 +494,15 @@ export async function createGoodOnce(
     return;
   } catch (error) {
     if (!isRetryableAwishError(error)) throw error;
-    // En kort stund först, så att en vara som Awish just skapade hinner synas i listan.
-    await (sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms))))(500);
-    const found = await createdNow().catch(() => null);
-    if (found === null) throw error;
-    if (found.length > 0) return;
+    const wait = sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+    // Listan läses upp till tre gånger under ungefär 3 s, så att en vara som Awish just
+    // skapade (men som syns först efter en stund) inte skickas en gång till.
+    for (const ms of CREATE_GOOD_RECHECK_MS) {
+      await wait(ms);
+      const found = await createdNow().catch(() => null);
+      if (found === null) throw error;
+      if (found.length > 0) return;
+    }
     await client.createGood(input);
   }
 }

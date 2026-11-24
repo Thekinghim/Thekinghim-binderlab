@@ -18,6 +18,7 @@
 import "server-only";
 
 import { sql } from "drizzle-orm";
+import { cache } from "react";
 
 import {
   AWISH_WATCH_KEYS,
@@ -226,9 +227,35 @@ export async function loadAwishWatchFacts(db: Db, orgId: string): Promise<AwishW
           where l.kind = 'awish_push_failed' and m.archived_at is null`,
     ),
   ) as { pending: number; oldest: unknown }[];
+  // Kopplade automater vars fack inte har lästs på 30 min (en automat kan fela medan de andra
+  // läses: då ser vägen frisk ut). Arkiverade och pausade källor räknas inte.
+  const linked = Array.from(
+    await db.execute(
+      sql`select l.awish_synced_at as read_at, k.created_at as linked_at
+          from (
+            select distinct on (sm.machine_id) sm.machine_id, sm.created_at
+            from public.source_machines sm
+            join public.data_sources ds
+              on ds.organization_id = sm.organization_id and ds.id = sm.data_source_id
+            where sm.organization_id = ${orgId}::uuid and sm.machine_id is not null
+              and ds.provider = 'awish_grpc' and ds.archived_at is null and ds.status = 'active'
+              and sm.external_id ~ '^[0-9]{1,30}$'
+            order by sm.machine_id, sm.created_at
+          ) k
+          join public.machines m on m.organization_id = ${orgId}::uuid and m.id = k.machine_id
+          left join public.stock_locations l
+            on l.organization_id = ${orgId}::uuid and l.machine_id = k.machine_id
+           and l.kind = 'machine' and l.archived_at is null
+          where m.archived_at is null`,
+    ),
+  ) as { read_at: unknown; linked_at: unknown }[];
   return {
     paths,
     push: { pendingMachines: Number(push?.pending ?? 0), oldestAt: iso(push?.oldest ?? null) },
+    linkedStock: linked.flatMap((r) => {
+      const linkedAt = iso(r.linked_at);
+      return linkedAt ? [{ readAt: iso(r.read_at), linkedAt }] : [];
+    }),
   };
 }
 
@@ -548,9 +575,19 @@ export async function awishFreshnessFor(
   const [org] = Array.from(
     await db.execute(
       sql`select o.timezone,
-                 (select max(l.awish_synced_at) from public.stock_locations l
+                 -- Den automat som lästes längst sedan bestämmer: en automat som inte
+                 -- läses får inte gömmas bakom de färska.
+                 (select min(l.awish_synced_at) from public.stock_locations l
+                   join public.machines m
+                     on m.organization_id = l.organization_id and m.id = l.machine_id
                    where l.organization_id = o.id and l.machine_id is not null
-                     and l.archived_at is null) as stock_at
+                     and l.archived_at is null and m.archived_at is null
+                     and exists (
+                       select 1 from public.source_machines sm
+                       join public.data_sources ds
+                         on ds.organization_id = sm.organization_id and ds.id = sm.data_source_id
+                       where sm.organization_id = o.id and sm.machine_id = l.machine_id
+                         and ds.provider = 'awish_grpc' and ds.archived_at is null)) as stock_at
           from public.organizations o where o.id = ${orgId}::uuid`,
     ),
   ) as { timezone: string; stock_at: unknown }[];
@@ -594,16 +631,30 @@ export async function awishFreshnessFor(
  */
 export async function loadAwishFreshnessFor(
   viewer: Viewer,
-  now: Date = new Date(),
+  now?: Date,
 ): Promise<AwishFreshness | null> {
   const role = viewer.organization.role;
   const operator = role === "owner" || role === "admin";
+  // En gång per sidvisning (Hem läser den både för Live och bannern).
+  if (now === undefined) return freshnessOnce(viewer.organization.id, operator);
+  return loadFreshness(viewer.organization.id, operator, now);
+}
+
+function loadFreshness(
+  orgId: string,
+  operator: boolean,
+  now: Date,
+): Promise<AwishFreshness | null> {
   return safely(
     "Awish-färskheten",
     async () => {
-      const f = await awishFreshnessFor(getServiceDb(), viewer.organization.id, now);
+      const f = await awishFreshnessFor(getServiceDb(), orgId, now);
       return operator ? f : { ...f, banner: null, status: [] };
     },
     null,
   );
 }
+
+const freshnessOnce = cache((orgId: string, operator: boolean) =>
+  loadFreshness(orgId, operator, new Date()),
+);

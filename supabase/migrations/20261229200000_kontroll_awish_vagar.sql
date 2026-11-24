@@ -6,6 +6,8 @@
 -- trigger, så att servern som skriver hälsan (src/server/awish/health.ts) inte behöver veta
 -- om den:
 --
+-- - push, goods, slots: alltid null. Där är webbpanelen den vanliga vägen (Open API kan inte
+--   skriva), så "via webbpanelen" är inte en reserv och ska aldrig varna.
 -- - active_route = 'open_api': null (Open API fungerar igen).
 -- - active_route = 'webbpanelen': behålls, eller sätts till försökets tid om den saknas.
 -- - annars (senast_kanda, manuell, ingen): behålls som den var.
@@ -25,7 +27,7 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if new.active_route = 'open_api' then
+  if new.path in ('push', 'goods', 'slots') or new.active_route = 'open_api' then
     new.fallback_since := null;
   elsif new.active_route = 'webbpanelen' then
     new.fallback_since := coalesce(

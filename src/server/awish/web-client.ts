@@ -301,8 +301,9 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
   let tokens: AwishWebTokens | null = null;
 
   /**
-   * Ett anrop med nya försök för läsningar: Awish nere (5xx), begränsat (429) eller
-   * tidsgräns provas igen (högst readAttempts, 0,5 s och 1,5 s väntan) om tiden räcker.
+   * Ett anrop med nya försök för läsningar: Awish nere (5xx) eller tidsgräns provas igen
+   * (högst readAttempts, 0,5 s och 1,5 s väntan) om tiden räcker. Begränsat (429) provas inte
+   * igen (rate_limited).
    * Skrivningar provas aldrig igen här (web-service.ts avgör det).
    */
   async function call<T>(
@@ -372,9 +373,10 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
       );
     }
     if (res.status === 429) {
+      // Inget nytt försök (varken här eller i web-service.ts): brytaren pausar en stund.
       throw toApiError(
         "Awish tar inte emot fler anrop just nu. Försök igen om en stund.",
-        "unavailable",
+        "rate_limited",
       );
     }
     if (res.status >= 500) {

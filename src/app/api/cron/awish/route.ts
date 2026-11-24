@@ -29,11 +29,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 /** Försäljningsnotiserna slutar ta om hand nya köp så här långt in i körningen (av 60 s). */
-const SALE_PUSH_STOP_MS = 50_000;
+const SALE_PUSH_STOP_MS = 54_000;
 /** Nya försök med väntande sändningar till Awish: högst så här länge … */
 const AWISH_PUSH_RETRY_BUDGET_MS = 20_000;
-/** … och aldrig efter så här långt in i körningen (av 60 s). */
-const AWISH_PUSH_RETRY_STOP_MS = 45_000;
+/**
+ * … och aldrig efter så här långt in i körningen (av 60 s). Körs direkt efter synken (högst
+ * 40 s), så att det alltid finns tid kvar även när Open API är långsamt; varje anrop till
+ * webbpanelen kortas till tidsgränsen.
+ */
+const AWISH_PUSH_RETRY_STOP_MS = 50_000;
+/** Kampanjerna: inget anrop till Awish efter så här långt in i körningen (av 60 s). */
+const CAMPAIGNS_STOP_MS = 57_000;
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
@@ -126,6 +132,10 @@ export async function GET(request: Request): Promise<Response> {
   // som har stannat eller misslyckats flera gånger i rad, kontrollen eller larmjobbet som
   // inte har kört, och när ingen nås av larmen. Det här jobbet går var femte minut och
   // larmar därför om de jobb som bara går en gång per dygn. Ett fel här stoppar inget.
+  // Påfyllningar som inte nådde Awish: nytt försök med väntetid per organisation, direkt
+  // efter synken (före vakten, så att en sändning som just gick fram inte larmar), med en egen
+  // tidsgräns. Ett fel här stoppar inte synken.
+  const pushRetry = await retryAwishPushesAfterSync(startedAt);
   const watch = await syncWatchAlertsForAll(db);
   // Offlinelarmet: larmjobbet körs bara en gång om dagen, så organisationer med en automat
   // som är offline (eller ett öppet offlinelarm) utvärderas här direkt efter synken
@@ -146,19 +156,21 @@ export async function GET(request: Request): Promise<Response> {
   )) {
     invalidateUnpaidSettlements(org);
   }
+  // Notis vid varje försäljning till dem som har slagit på den: nya köp i den här synken (och
+  // i en Synka nu sedan förra körningen). Med en egen tidsgräns. Ett fel här stoppar inte
+  // synken.
+  const salePush = await runSaleNotificationsAfterSync(startedAt);
   // Kampanjer med en senare start som användaren redan har bekräftat (Kampanjer): de vars
-  // starttid har passerat skickas till Awish nu. Ett fel här stoppar inte synken.
-  const campaigns = await publishAllDueCampaigns({ db: getServiceDb() }).catch((error: unknown) => {
+  // starttid har passerat skickas till Awish nu. Sist, med en tidsgräns: inget anrop till
+  // Awish går förbi CAMPAIGNS_STOP_MS (det som inte hinns med skickas nästa körning). Ett fel
+  // här stoppar inte synken.
+  const campaigns = await publishAllDueCampaigns({
+    db: getServiceDb(),
+    deadlineAt: startedAt + CAMPAIGNS_STOP_MS,
+  }).catch((error: unknown) => {
     console.error("[kampanjer] schemalagda kampanjer", error instanceof Error ? error.name : "fel");
     return null;
   });
-  // Påfyllningar som inte nådde Awish: nytt försök med väntetid per organisation, efter
-  // kampanjerna och före notiserna, med en egen tidsgräns. Ett fel här stoppar inte synken.
-  const pushRetry = await retryAwishPushesAfterSync(startedAt);
-  // Notis vid varje försäljning till dem som har slagit på den: nya köp i den här synken (och
-  // i en Synka nu sedan förra körningen). Sist, med en egen tidsgräns, så att en långsam
-  // push-tjänst inte håller upp kampanjerna. Ett fel här stoppar inte synken.
-  const salePush = await runSaleNotificationsAfterSync(startedAt);
   // Inga hemligheter och inga order i svaret, bara räknare och felmeddelanden.
   return json(
     {

@@ -360,6 +360,8 @@ async function querySyncHealth(
         from public.awish_path_health h
         where h.organization_id = ${orgId}::uuid and h.fallback_since is not null
           and h.active_route <> 'open_api'
+          -- Webbpanelen är den vanliga vägen för påfyllningar, varor och fack (ingen reserv).
+          and h.path not in ('push', 'goods', 'slots')
         order by h.path`,
   );
   return {

@@ -180,13 +180,20 @@ export interface AwishPage<T> {
 }
 
 export interface AwishApi {
-  merchant(): Promise<AwishMerchant>;
-  machines(page: { currentPage: number; perPage: number }): Promise<AwishPage<AwishMachine>>;
-  orders(page: {
-    currentPage: number;
-    perPage: number;
-    machineIds?: string[];
-  }): Promise<AwishPage<AwishOrder>>;
+  merchant(call?: AwishCallOptions): Promise<AwishMerchant>;
+  /** `call`: steget får en egen tidsgräns (synken), se AwishCallOptions. */
+  machines(
+    page: { currentPage: number; perPage: number },
+    call?: AwishCallOptions,
+  ): Promise<AwishPage<AwishMachine>>;
+  orders(
+    page: {
+      currentPage: number;
+      perPage: number;
+      machineIds?: string[];
+    },
+    call?: AwishCallOptions,
+  ): Promise<AwishPage<AwishOrder>>;
   order(id: string): Promise<AwishOrder | null>;
   /**
    * Automatens fack med antal (Products, ingen sidindelning). `call` kortar anropet när det
@@ -207,6 +214,15 @@ export interface AwishCallOptions {
    * av när en reservväg finns (då går den direkt dit).
    */
   readonly retryServer?: boolean;
+  /**
+   * Egen tid för just det här steget, utöver körningens: hur många ms steget har kvar just nu
+   * (räknat med anroparens klocka). Tar steget slut på sin tid blir felet "timeout" (Awish
+   * svarade inte i tid), inte "budget": resten av körningen har tid kvar och ska veta att
+   * Awish hänger.
+   */
+  readonly stepLeftMs?: () => number;
+  /** Prova igen efter en tidsgräns (standard ja). Av när ett nytt försök inte hinns med. */
+  readonly retryTimeout?: boolean;
 }
 
 /** En kampanjbild på automatens skärm (Banner). Tider i sekunder sedan 1970 (Unix). */
@@ -446,7 +462,12 @@ export type AwishErrorKind =
   /** Körningens tidsgräns (deadlineAt) nåddes; fortsätter nästa körning. */
   | "budget"
   /** Awish har ändrat sitt API (fält, typer eller signering) så att anropet inte längre passar. */
-  | "changed";
+  | "changed"
+  /**
+   * Webbpanelen tar inte emot fler anrop just nu (HTTP 429). Provas inte igen i samma körning:
+   * fler anrop gör det värre och upprepade inloggningar kan spärra kontot.
+   */
+  | "rate_limited";
 
 export class AwishApiError extends Error {
   readonly kind: AwishErrorKind;
@@ -571,6 +592,15 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 const BACKOFF_MS = [500, 1500];
 
 /** Fel när körningens tidsgräns nås: inget mer hämtas, nästa körning fortsätter. */
+/** Stegets egen tid tog slut (AwishCallOptions.stepLeftMs): Awish svarade inte i tid. */
+export function sliceTimeoutError(): AwishApiError {
+  return new AwishApiError(
+    "timeout",
+    "Awish svarade inte i tid. Synken försöker igen nästa gång.",
+    grpc.status.DEADLINE_EXCEEDED,
+  );
+}
+
 export function budgetError(): AwishApiError {
   return new AwishApiError(
     "budget",
@@ -653,46 +683,60 @@ export function createAwishClient(
     const attemptsMax = Math.max(1, Math.min(maxAttempts, per.attempts ?? maxAttempts));
     const ownLimit = Math.min(deadlineMs, per.timeoutMs ?? deadlineMs);
     const retryServer = retry && per.retryServer !== false;
+    // Stegets egen tid (synken: automaterna, orderna). Tar den slut är det Awish som hänger.
+    const sliceLeft = () => (per.stepLeftMs ? per.stepLeftMs() : Number.POSITIVE_INFINITY);
     let serverRetried = false;
     for (let attempt = 1; ; attempt += 1) {
-      const left = remaining();
-      if (left < AWISH_MIN_CALL_MS) throw budgetError();
+      const runLeft = remaining();
+      const stepLeft = sliceLeft();
+      const bySlice = stepLeft < runLeft;
+      const left = Math.min(runLeft, stepLeft);
+      if (left < AWISH_MIN_CALL_MS) throw bySlice ? sliceTimeoutError() : budgetError();
       const timeoutMs = Math.min(ownLimit, Math.floor(left));
       try {
         return await once(method, request, timeoutMs);
       } catch (error) {
         const mapped = mapGrpcError(error, options.address);
-        // Tidsgränsen kortades av körningens budget: det är budgeten som tog slut.
-        if (mapped.kind === "timeout" && timeoutMs < ownLimit) throw budgetError();
+        // Tidsgränsen kortades av körningens budget: det är budgeten som tog slut. Kortades
+        // den av stegets egen tid svarade Awish inte i tid (timeout).
+        if (mapped.kind === "timeout" && timeoutMs < ownLimit) {
+          throw bySlice ? sliceTimeoutError() : budgetError();
+        }
         const internal =
           retryServer && mapped.kind === "server" && mapped.grpcCode === grpc.status.INTERNAL;
-        const again =
-          retry && attempt < attemptsMax && (mapped.retryable || (internal && !serverRetried));
+        const retryable =
+          mapped.retryable && !(mapped.kind === "timeout" && per.retryTimeout === false);
+        const again = retry && attempt < attemptsMax && (retryable || (internal && !serverRetried));
         if (!again) throw mapped;
         if (internal) serverRetried = true;
         const backoff = BACKOFF_MS[attempt - 1] ?? 1500;
         // Hinner nästa försök inte med, ges felet direkt.
-        if (remaining() - backoff < AWISH_MIN_CALL_MS) throw mapped;
+        if (Math.min(remaining(), sliceLeft()) - backoff < AWISH_MIN_CALL_MS) throw mapped;
         await sleep(backoff);
       }
     }
   };
 
   return {
-    async merchant() {
-      const res = obj(await call("Merchant", {}));
+    async merchant(per) {
+      const res = obj(await call("Merchant", {}, true, per));
       return toMerchant(res.data);
     },
-    async machines(page) {
+    async machines(page, per) {
       return pageOf(
-        await call("Machines", { current_page: page.currentPage, per_page: page.perPage }),
+        await call(
+          "Machines",
+          { current_page: page.currentPage, per_page: page.perPage },
+          true,
+          per,
+        ),
         toMachine,
       );
     },
-    async orders(page) {
+    async orders(page, per) {
       const request: Obj = { current_page: page.currentPage, per_page: page.perPage };
       if (page.machineIds && page.machineIds.length > 0) request.machine_ids = page.machineIds;
-      return pageOf(await call("Orders", request), toOrder);
+      return pageOf(await call("Orders", request, true, per), toOrder);
     },
     async order(id) {
       const res = obj(await call("Order", { id }));

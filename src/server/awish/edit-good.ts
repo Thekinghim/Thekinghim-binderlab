@@ -94,8 +94,19 @@ export interface EditGoodDeps extends NewProductDeps {
   pageBudgetMs?: number;
 }
 
-/** Listan "Varor i Awish" väntar högst så här länge på automaternas fack. */
+/** Listan "Varor i Awish" väntar högst så här länge på automaternas fack … */
 export const GOODS_PAGE_BUDGET_MS = 15_000;
+/** … plus så här mycket per automat utöver den första, högst GOODS_PAGE_MAX_MS. */
+export const GOODS_PAGE_PER_MACHINE_MS = 2_000;
+export const GOODS_PAGE_MAX_MS = 35_000;
+
+/** Tiden för listan med `machines` automater. */
+export function goodsPageBudgetMs(machines: number): number {
+  return Math.min(
+    GOODS_PAGE_MAX_MS,
+    GOODS_PAGE_BUDGET_MS + Math.max(0, machines - 1) * GOODS_PAGE_PER_MACHINE_MS,
+  );
+}
 
 /** Väntar på `p` högst `ms`; annars ett tidsgränsfel (anropet får fortsätta i bakgrunden). */
 function within<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -388,9 +399,9 @@ export async function goodsOverviewFor(
   const orgId = viewer.organization.id;
   const now = (deps.now ?? (() => new Date()))();
   const { today, period } = salesPeriod(viewer, now);
-  const deadline = Date.now() + (deps.pageBudgetMs ?? GOODS_PAGE_BUDGET_MS);
-
+  const started = Date.now();
   const machines = await linkedMachines(viewer, sourceId);
+  const deadline = started + (deps.pageBudgetMs ?? goodsPageBudgetMs(machines.length));
   const goods = await withWebHealth(db, orgId, sourceId, "goods", () => client.allGoodsFull());
   const read = await readOverviewSlots(db, orgId, client, machines, goods, deadline, deps);
   const { slots, notices } = read;

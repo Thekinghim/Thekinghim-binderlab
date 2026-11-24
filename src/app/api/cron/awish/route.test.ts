@@ -174,33 +174,42 @@ describe("/api/cron/awish", () => {
     expect(campaigns).toHaveBeenCalledTimes(1);
   });
 
-  it("försäljningsnotisen körs sist, med en tidsgräns inom cronens minut", async () => {
+  it("försäljningsnotisen före kampanjerna, med en tidsgräns inom cronens minut", async () => {
     process.env.CRON_SECRET = SECRET;
     const before = Date.now();
     await GET(req(`Bearer ${SECRET}`));
-    // Efter kampanjerna: en långsam push-tjänst håller inte upp dem.
-    expect(campaigns.mock.invocationCallOrder[0]).toBeLessThan(
-      salePush.mock.invocationCallOrder[0]!,
+    // Notiserna först: kampanjerna (Awish) får det som är kvar och tas annars nästa körning.
+    expect(salePush.mock.invocationCallOrder[0]).toBeLessThan(
+      campaigns.mock.invocationCallOrder[0]!,
     );
     const { deadline } = salePush.mock.calls[0]![1] as { deadline: number };
     expect(deadline).toBeGreaterThan(before);
     expect(deadline).toBeLessThanOrEqual(Date.now() + 12_000);
+    // Kampanjerna har en tidsgräns före cronens minut (inget anrop till Awish efter den).
+    const { deadlineAt } = (campaigns.mock.calls[0] as unknown as [{ deadlineAt: number }])[0];
+    expect(deadlineAt).toBeGreaterThan(before);
+    expect(deadlineAt).toBeLessThanOrEqual(before + 57_000 + 1_000);
   });
 
-  it("påfyllningar som inte nådde Awish försöks igen efter kampanjerna, med egen tidsgräns", async () => {
+  it("påfyllningar som inte nådde Awish försöks igen direkt efter synken, med egen tidsgräns", async () => {
     process.env.CRON_SECRET = SECRET;
     const before = Date.now();
     await GET(req(`Bearer ${SECRET}`));
     expect(pushRetry).toHaveBeenCalledTimes(1);
-    expect(campaigns.mock.invocationCallOrder[0]).toBeLessThan(
-      pushRetry.mock.invocationCallOrder[0]!,
+    // Före vakten (en sändning som just gick fram larmar inte) och före kampanjerna och
+    // notiserna, så att de alltid får tid när Open API är långsamt.
+    expect(pushRetry.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      watch.mock.invocationCallOrder.at(-1)!,
+    );
+    expect(pushRetry.mock.invocationCallOrder[0]).toBeLessThan(
+      campaigns.mock.invocationCallOrder[0]!,
     );
     expect(pushRetry.mock.invocationCallOrder[0]).toBeLessThan(
       salePush.mock.invocationCallOrder[0]!,
     );
     const { deadline } = pushRetry.mock.calls[0]![1];
     expect(deadline).toBeGreaterThan(before);
-    expect(deadline).toBeLessThanOrEqual(before + 45_000);
+    expect(deadline).toBeLessThanOrEqual(Date.now() + 50_000);
   });
 
   it("ett fel i de nya försöken stoppar inte synkens svar", async () => {

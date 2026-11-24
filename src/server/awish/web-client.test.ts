@@ -104,7 +104,7 @@ describe("createAwishWebClient", () => {
     );
   });
 
-  it("läsningar provas igen två gånger vid 503, 429 och tidsgräns; skrivningar inte", async () => {
+  it("läsningar provas igen två gånger vid 503 och tidsgräns; 429 och skrivningar inte", async () => {
     const waits: number[] = [];
     const c = createAwishWebClient({
       baseUrl: fake.baseUrl,
@@ -118,13 +118,19 @@ describe("createAwishWebClient", () => {
     expect(await c.slots(1001)).toHaveLength(2);
     expect(waits).toEqual([500, 1500]);
 
+    // 429: inget nytt försök (fler anrop gör det värre), egen feltyp för brytaren.
     fake.state.rateLimit = 1;
+    const productsBefore = fake.state.calls.filter((x) => x.operationName === "Products").length;
+    await expect(c.products(1001)).rejects.toMatchObject({ kind: "rate_limited" });
+    expect(fake.state.calls.filter((x) => x.operationName === "Products")).toHaveLength(
+      productsBefore + 1,
+    );
     expect(await c.products(1001)).toHaveLength(2);
 
     fake.state.rateLimit = 1;
     await expect(
       c.setProductInventory(12, { goodId: 6, status: true, currentInventory: 1 }),
-    ).rejects.toMatchObject({ kind: "unavailable" });
+    ).rejects.toMatchObject({ kind: "rate_limited" });
     expect(fake.state.calls.filter((x) => x.operationName === "UpdateProduct")).toHaveLength(1);
   });
 

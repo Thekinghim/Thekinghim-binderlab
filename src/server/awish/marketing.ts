@@ -91,6 +91,19 @@ function defaultConnect(creds: AwishCredentials): AwishMarketingApi {
   });
 }
 
+/**
+ * Klienten med en tidsgräns för hela körningen (cron): inget anrop går förbi `deadlineAt`,
+ * så att funktionen inte stoppas mitt i.
+ */
+export function marketingConnectUntil(deadlineAt: number): MarketingConnect {
+  return (creds) =>
+    createAwishClient(creds, {
+      ...awishClientConfigFromEnv(),
+      deadlineMs: MARKETING_DEADLINE_MS,
+      deadlineAt,
+    });
+}
+
 /** Klient för organisationens Awish-konto. Kastar AwishNotConnectedError utan källa eller uppgifter. */
 export async function marketingClient(
   db: Db,
