@@ -47,6 +47,7 @@ import { currentViewer } from "../_lib/session";
 import { loadMachineScreens, type MachineScreen } from "../_lib/v2-data";
 import { MachineHero, type HeroRefill } from "./hero";
 import { StaffAccessCard } from "./_components/staff-access-card";
+import { StyrLink } from "./styr/_components/styr-link";
 import { withUserDbFor } from "@/server/access";
 import { queryRefillSources } from "@/server/data/core/places";
 import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
@@ -202,6 +203,15 @@ export default async function MachinePage({
               <ButtonLink href={`/fyll-pa/${machine.id}/qr`} touch className="min-[901px]:hidden">
                 QR för egen påfyllning
               </ButtonLink>
+              {ctx.role === "owner" || ctx.role === "admin" ? (
+                <Suspense fallback={null}>
+                  <StyrLink
+                    orgId={ctx.organization.id}
+                    machineId={machine.id}
+                    code={machine.code}
+                  />
+                </Suspense>
+              ) : null}
               <MachineActions
                 // Ny nyckel när länken "Välj butik" trycks på samma sida: rutan öppnas då.
                 key={openPlace ? `placera-${placeStore ?? ""}` : "vanlig"}

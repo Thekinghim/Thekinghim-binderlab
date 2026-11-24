@@ -1,0 +1,68 @@
+/* Styr automaten: farliga knappar, farozonen och loggen. */
+@layer components {
+  .v2-btn.styr-danger {
+    background: var(--v2-crit);
+    border-color: var(--v2-crit);
+    color: #fff;
+  }
+  .v2-btn.styr-danger-outline {
+    border-color: var(--v2-crit-line);
+    color: var(--v2-crit-text);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .v2-btn.styr-danger:not([disabled]):hover {
+      background: var(--v2-crit-text);
+    }
+    .v2-btn.styr-danger-outline:not([disabled]):hover {
+      background: var(--v2-crit-soft);
+    }
+  }
+  .styr-danger-zone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    border-top: 1px solid var(--v2-line2);
+    padding-top: 12px;
+  }
+  .styr-danger-card {
+    box-shadow: inset 0 0 0 1px var(--v2-crit-line);
+  }
+  .styr-log {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 18px 12px;
+    font-size: 13px;
+  }
+  .styr-log li {
+    display: grid;
+    grid-template-columns: 110px 140px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: baseline;
+    padding: 8px 0;
+    border-top: 1px solid var(--v2-line2);
+  }
+  .styr-log li:first-child {
+    border-top: 0;
+  }
+  @media (max-width: 900px) {
+    .styr-log {
+      padding: 4px 16px 12px;
+    }
+    .styr-log li {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 2px 12px;
+    }
+  }
+  .styr-st {
+    font-weight: 650;
+  }
+  .styr-st.failed {
+    color: var(--v2-crit-text);
+  }
+  .styr-st.unknown,
+  .styr-st.pending,
+  .styr-st.blocked {
+    color: var(--v2-mute);
+  }
+}
