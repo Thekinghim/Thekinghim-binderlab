@@ -16,11 +16,19 @@ import {
   createMachineStaff,
   listMachineStaff,
   resetStaffPin,
+  rotateStaffQr,
   setStaffDisabled,
   setStaffMachines,
   type StaffDeps,
 } from "../../src/server/data/machine-staff";
-import { signInWithPhonePin, staffSessionState } from "../../src/server/auth/phone-login";
+import {
+  PHONE_LOGIN_ERROR,
+  QR_LOGIN_ERROR,
+  checkOwnPin,
+  qrAccountName,
+  signInWithPhonePin,
+  staffSessionState,
+} from "../../src/server/auth/phone-login";
 import { listOrganizationsFor } from "../../src/server/access";
 
 import {
@@ -436,7 +444,7 @@ describe("påfyllning", () => {
       ).q;
     expect(await lvl(storeWarehouse)).toBe(2);
     expect(await lvl(central.id)).toBe(50);
-    // 4 > 2 kvar: sparas ändå, utan uttag, med noteringen.
+    // 4 > 2 kvar: sparas ändå, de 2 som finns tas ur butikens lager, med noteringen.
     const short = await refill(staff, orgId, m1, title1, 4);
     expect(short.ok).toBe(true);
     const ev = await one<{ note: string }>(
@@ -444,7 +452,8 @@ describe("påfyllning", () => {
       sql`select note from public.stock_events where id = ${short.value!.stock_event_id}`,
     );
     expect(ev.note).toContain("Butikens lager räckte inte");
-    expect(await lvl(storeWarehouse)).toBe(2);
+    expect(await lvl(storeWarehouse)).toBe(0);
+    expect(await lvl(central.id)).toBe(50);
   });
 
   it("Ångra fungerar bara på egna påfyllningar", async () => {
@@ -494,6 +503,68 @@ describe("påfyllning", () => {
     await setStaffDisabled({ userId: owner.id, email: owner.email }, orgId, staff.id, false, deps);
     expect(banned.get(staff.id)).toBe(false);
     expect((await refill(staff, orgId, m1, title1, 1)).ok).toBe(true);
+  });
+
+  it("telefonen väljer aldrig tid, notering eller mer än 500 pack", async () => {
+    const at = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    const r = await asUser(staff, (tx) =>
+      one<{ stock_event_id: string }>(
+        tx,
+        sql`select * from public.register_refill_once(${orgId}::uuid, ${randomUUID()}::uuid, ${m1}::uuid,
+              ${title2}::uuid, 1, true, ${at}::timestamptz, 'egen text', null)`,
+      ),
+    );
+    const ev = await one<{ recent: boolean; note: string }>(
+      db(),
+      sql`select occurred_at > now() - interval '1 minute' as recent, note from public.stock_events
+          where id = ${r.stock_event_id}`,
+    );
+    expect(ev.recent).toBe(true);
+    expect(ev.note).not.toContain("egen text");
+    expect((await refill(staff, orgId, m1, title2, 501)).code).toBe("22023");
+  });
+
+  it("ny PIN-kod: avstängt förblir avstängt; tokens från före gäller inte", async () => {
+    const ownerUser = { userId: owner.id, email: owner.email };
+    await setStaffDisabled(ownerUser, orgId, staff.id, true, deps);
+    const reset = await resetStaffPin(ownerUser, orgId, staff.id, deps);
+    expect(reset.ok && reset.disabled).toBe(true);
+    expect((await staffSessionState(db, staff.id)).state).toBe("expired");
+    await setStaffDisabled(ownerUser, orgId, staff.id, false, deps);
+    // En token (PostgREST) utfärdad före ny PIN-kod: nekas. Utfärdad efter: släpps in.
+    const asToken = (iat: number) =>
+      db().transaction(async (tx) => {
+        await tx.execute(
+          sql`select set_config('request.jwt.claims', ${JSON.stringify({ sub: staff.id, role: "authenticated", iat })}, true), set_config('role', 'authenticated', true)`,
+        );
+        return rows(tx, sql`select machine_id from public.staff_my_machines()`);
+      });
+    const now = Math.floor(Date.now() / 1000);
+    expect(await asToken(now - 3600)).toEqual([]);
+    expect((await asToken(now + 5)).length).toBe(1);
+  });
+
+  it("kan inte skapa en egen organisation eller tas bort från en klient", async () => {
+    const own = await asUser(staff, (tx) =>
+      attempt(tx, (sp) =>
+        sp.execute(sql`select public.create_organization('Egen', 'egen-bpf-x1')`),
+      ),
+    );
+    expect(own.code).toBe("BL062");
+    const first = await asUser(staff, (tx) =>
+      attempt(tx, (sp) =>
+        sp.execute(sql`select public.create_first_organization('Egen', 'egen-bpf-x2')`),
+      ),
+    );
+    expect(first.code).toBe("BL062");
+    const del = await asUser(owner, (tx) =>
+      attempt(tx, (sp) =>
+        sp.execute(
+          sql`delete from public.memberships where organization_id = ${orgId}::uuid and user_id = ${staff.id}::uuid`,
+        ),
+      ),
+    );
+    expect(del.code).toBe("42501");
   });
 
   it("byte av automater gäller direkt", async () => {
@@ -548,7 +619,7 @@ describe("inloggning med mobilnummer och PIN-kod", () => {
       ip: "1",
     });
     const unknown = await signInWithPhonePin(d, { phone: "0701111110", pin: "135790", ip: "1" });
-    expect(wrong).toEqual({ ok: false, error: "Fel mobilnummer eller PIN-kod." });
+    expect(wrong).toEqual({ ok: false, error: PHONE_LOGIN_ERROR });
     expect(unknown).toEqual(wrong);
     const ok = await signInWithPhonePin(d, { phone: s.phone, pin: s.pin, ip: "1" });
     expect(ok).toEqual({ ok: true, userId: s.userId, mustChangePin: true });
@@ -561,7 +632,7 @@ describe("inloggning med mobilnummer och PIN-kod", () => {
     expect(row.l).not.toBeNull();
   });
 
-  it("5 fel låser i 15 minuter (även med rätt PIN), 10 fel tills ny PIN-kod", async () => {
+  it("5 fel låser i 15 minuter (även med rätt PIN), 10 fel ett dygn; ny PIN-kod låser upp", async () => {
     const s = await newStaff();
     const d = loginDeps();
     const bad = s.pin === "135790" ? "246802" : "135790";
@@ -574,11 +645,12 @@ describe("inloggning med mobilnummer och PIN-kod", () => {
     );
     for (let i = 0; i < 5; i += 1)
       await signInWithPhonePin(d, { phone: s.phone, pin: bad, ip: "2" });
-    const l = await one<{ inf: boolean }>(
+    const l = await one<{ day: boolean }>(
       db(),
-      sql`select locked_until = 'infinity' as inf from private.phone_logins where user_id = ${s.userId}`,
+      sql`select locked_until between now() + interval '23 hours' and now() + interval '25 hours' as day
+          from private.phone_logins where user_id = ${s.userId}`,
     );
-    expect(l.inf).toBe(true);
+    expect(l.day).toBe(true);
     expect((await signInWithPhonePin(d, { phone: s.phone, pin: s.pin, ip: "2" })).ok).toBe(false);
     const reset = await resetStaffPin(
       { userId: owner.id, email: owner.email },
@@ -591,6 +663,75 @@ describe("inloggning med mobilnummer och PIN-kod", () => {
       expect((await signInWithPhonePin(d, { phone: s.phone, pin: reset.pin, ip: "2" })).ok).toBe(
         true,
       );
+  });
+
+  it("fel som är äldre än ett dygn glöms (under 10 fel)", async () => {
+    const s = await newStaff();
+    const d = loginDeps();
+    const bad = s.pin === "135790" ? "246802" : "135790";
+    for (let i = 0; i < 4; i += 1)
+      await signInWithPhonePin(d, { phone: s.phone, pin: bad, ip: "5" });
+    await db().execute(
+      sql`update private.phone_logins set last_failed_at = now() - interval '25 hours' where user_id = ${s.userId}`,
+    );
+    await signInWithPhonePin(d, { phone: s.phone, pin: bad, ip: "5" });
+    const row = await one<{ f: number; locked: boolean }>(
+      db(),
+      sql`select failed_attempts as f, locked_until is not null as locked from private.phone_logins where user_id = ${s.userId}`,
+    );
+    expect(row).toEqual({ f: 1, locked: false });
+  });
+
+  it("QR-nyckel + PIN loggar in; ny QR-kod gör den gamla ogiltig", async () => {
+    const p = phone();
+    const r = await createMachineStaff(
+      { userId: owner.id, email: owner.email },
+      orgId,
+      { name: "Kim Testsson", phone: p, machineIds: [m1] },
+      deps,
+    );
+    if (!r.ok) throw new Error(r.error);
+    expect(r.qrToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const stored = await one<{ h: string }>(
+      db(),
+      sql`select qr_token_hash as h from private.phone_logins where user_id = ${r.userId}`,
+    );
+    expect(stored.h).not.toContain(r.qrToken);
+    expect(await qrAccountName(db, r.qrToken)).toBe("Kim");
+    const d = loginDeps();
+    const bad = r.pin === "135790" ? "246802" : "135790";
+    expect(await signInWithPhonePin(d, { token: r.qrToken, pin: bad, ip: "6" })).toEqual({
+      ok: false,
+      error: QR_LOGIN_ERROR,
+    });
+    expect((await signInWithPhonePin(d, { token: r.qrToken, pin: r.pin, ip: "6" })).ok).toBe(true);
+    const rotated = await rotateStaffQr(
+      { userId: owner.id, email: owner.email },
+      orgId,
+      r.userId,
+      db,
+    );
+    expect(rotated.ok).toBe(true);
+    expect((await signInWithPhonePin(d, { token: r.qrToken, pin: r.pin, ip: "6" })).ok).toBe(false);
+    expect(await qrAccountName(db, r.qrToken)).toBeNull();
+    if (rotated.ok) {
+      expect(
+        (await signInWithPhonePin(d, { token: rotated.qrToken, pin: r.pin, ip: "6" })).ok,
+      ).toBe(true);
+    }
+    expect(
+      (
+        await rotateStaffQr(
+          { userId: otherOwner.id, email: otherOwner.email },
+          otherOrg,
+          r.userId,
+          db,
+        )
+      ).ok,
+    ).toBe(false);
+    expect(await qrAccountName(db, "x".repeat(43))).toBeNull();
+    expect(await checkOwnPin(db, r.userId, r.pin)).toBe(true);
+    expect(await checkOwnPin(db, r.userId, bad)).toBe(false);
   });
 
   it("gränsen per IP gäller", async () => {

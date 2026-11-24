@@ -18,9 +18,20 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Db } from "@/db/client";
-import { requireRoleFor, withUserDbFor, type SessionUser } from "@/server/access";
+import {
+  requireRoleFor,
+  requireTeamManagerFor,
+  withUserDbFor,
+  type SessionUser,
+} from "@/server/access";
 import type { AuthProvider } from "@/server/auth/types";
-import { generateStartPin, maskMobile, normalizeSwedishMobile } from "@/server/auth/phone";
+import {
+  generateQrToken,
+  generateStartPin,
+  hashQrToken,
+  maskMobile,
+  normalizeSwedishMobile,
+} from "@/server/auth/phone";
 import { hashPassword } from "@/server/auth/password";
 
 export const STAFF_ADMIN_ROLES = ["owner", "admin"] as const;
@@ -107,8 +118,10 @@ export async function createMachineStaff(
   orgId: string,
   raw: unknown,
   deps: StaffDeps,
-): Promise<StaffResult<{ pin: string; name: string; phone: string; userId: string }>> {
-  await requireRoleFor(user, orgId, STAFF_ADMIN_ROLES);
+): Promise<
+  StaffResult<{ pin: string; qrToken: string; name: string; phone: string; userId: string }>
+> {
+  await requireTeamManagerFor(user, orgId, STAFF_ADMIN_ROLES);
   const parsed = createInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Skriv namn och välj minst en automat." };
   const phone = normalizeSwedishMobile(parsed.data.phone);
@@ -128,12 +141,13 @@ export async function createMachineStaff(
 
   const pin = generateStartPin();
   const pinHash = await hashPassword(pin);
+  const qrToken = generateQrToken();
   const email = `tel-${randomBytes(12).toString("hex")}@binderlab.invalid`;
   const userId = await deps.provider.createSystemUser(email, parsed.data.name);
   try {
     await deps.db().transaction(async (tx) => {
-      await tx.execute(sql`insert into private.phone_logins (user_id, phone_e164, pin_hash, must_change_pin)
-        values (${userId}::uuid, ${phone}, ${pinHash}, true)`);
+      await tx.execute(sql`insert into private.phone_logins (user_id, phone_e164, pin_hash, must_change_pin, qr_token_hash)
+        values (${userId}::uuid, ${phone}, ${pinHash}, true, ${hashQrToken(qrToken)})`);
       const membership = Array.from(
         await tx.execute(sql`insert into public.memberships (organization_id, user_id, role, created_by)
           values (${orgId}::uuid, ${userId}::uuid, 'machine_refiller', ${user.userId}::uuid)
@@ -154,7 +168,7 @@ export async function createMachineStaff(
     }
     throw error;
   }
-  return { ok: true, pin, name: parsed.data.name, phone, userId };
+  return { ok: true, pin, qrToken, name: parsed.data.name, phone, userId };
 }
 
 /** Kontot måste vara en påfyllare i butiken i just den här organisationen. */
@@ -172,29 +186,51 @@ async function staffInOrg(
   return row?.id ?? null;
 }
 
-/** Ny PIN-kod (visas en gång): nollställer felräkningen och låset och slår på kontot. */
+/**
+ * Tar bort användarens sessioner hos Supabase Auth (inga förnyade tokens), och från och med
+ * nu gäller inga tokens utfärdade tidigare (phone_logins.sessions_valid_after, kontrolleras
+ * i private.staff_active). Telefoner som var inloggade loggas ut.
+ */
+async function endStaffSessions(db: () => Db, staffUserId: string): Promise<void> {
+  await db().execute(sql`update private.phone_logins
+    set sessions_valid_after = now(), updated_at = now() where user_id = ${staffUserId}::uuid`);
+  const [auth] = Array.from(
+    await db().execute(sql`select to_regclass('auth.sessions') is not null as has_sessions`),
+  ) as { has_sessions: boolean }[];
+  if (auth?.has_sessions) {
+    await db().execute(sql`delete from auth.sessions where user_id = ${staffUserId}::uuid`);
+  }
+}
+
+/**
+ * Ny PIN-kod (visas en gång): nollställer felräkningen och låset och loggar ut telefoner som
+ * var inloggade. Ett avstängt konto förblir avstängt.
+ */
 export async function resetStaffPin(
   user: SessionUser,
   orgId: string,
   staffUserId: unknown,
   deps: StaffDeps,
-): Promise<StaffResult<{ pin: string }>> {
-  await requireRoleFor(user, orgId, STAFF_ADMIN_ROLES);
+): Promise<StaffResult<{ pin: string; disabled: boolean }>> {
+  await requireTeamManagerFor(user, orgId, STAFF_ADMIN_ROLES);
   const id = uuid.safeParse(staffUserId);
   if (!id.success || !(await staffInOrg(deps.db, orgId, id.data))) {
     return { ok: false, error: "Påfyllaren finns inte." };
   }
   const pin = generateStartPin();
   const hash = await hashPassword(pin);
-  await deps.db().execute(sql`update private.phone_logins
-    set pin_hash = ${hash}, must_change_pin = true, failed_attempts = 0, locked_until = null,
-        disabled_at = null, last_used_at = now(), updated_at = now()
-    where user_id = ${id.data}::uuid`);
-  await deps.provider.setUserBanned?.(id.data, false);
-  return { ok: true, pin };
+  const row = Array.from(
+    await deps.db().execute(sql`update private.phone_logins
+      set pin_hash = ${hash}, must_change_pin = true, failed_attempts = 0, locked_until = null,
+          last_failed_at = null, last_used_at = now(), updated_at = now()
+      where user_id = ${id.data}::uuid
+      returning disabled_at is not null as disabled`),
+  )[0] as { disabled: boolean } | undefined;
+  await endStaffSessions(deps.db, id.data);
+  return { ok: true, pin, disabled: row?.disabled ?? false };
 }
 
-/** Stäng av (eller slå på) kontot. Avstängt gäller direkt i databasen. */
+/** Stäng av (eller slå på) kontot. Avstängt gäller direkt i databasen och loggar ut. */
 export async function setStaffDisabled(
   user: SessionUser,
   orgId: string,
@@ -202,7 +238,7 @@ export async function setStaffDisabled(
   disabled: boolean,
   deps: StaffDeps,
 ): Promise<StaffResult> {
-  await requireRoleFor(user, orgId, STAFF_ADMIN_ROLES);
+  await requireTeamManagerFor(user, orgId, STAFF_ADMIN_ROLES);
   const id = uuid.safeParse(staffUserId);
   if (!id.success || !(await staffInOrg(deps.db, orgId, id.data))) {
     return { ok: false, error: "Påfyllaren finns inte." };
@@ -211,10 +247,29 @@ export async function setStaffDisabled(
     disabled
       ? sql`update private.phone_logins set disabled_at = now(), updated_at = now() where user_id = ${id.data}::uuid`
       : sql`update private.phone_logins set disabled_at = null, failed_attempts = 0, locked_until = null,
-              last_used_at = now(), updated_at = now() where user_id = ${id.data}::uuid`,
+              last_failed_at = null, last_used_at = now(), updated_at = now() where user_id = ${id.data}::uuid`,
   );
+  if (disabled) await endStaffSessions(deps.db, id.data);
   await deps.provider.setUserBanned?.(id.data, disabled);
   return { ok: true };
+}
+
+/** Ny QR-kod: en ny hemlig nyckel (visas en gång). Den gamla QR-koden slutar gälla direkt. */
+export async function rotateStaffQr(
+  user: SessionUser,
+  orgId: string,
+  staffUserId: unknown,
+  db: () => Db,
+): Promise<StaffResult<{ qrToken: string }>> {
+  await requireTeamManagerFor(user, orgId, STAFF_ADMIN_ROLES);
+  const id = uuid.safeParse(staffUserId);
+  if (!id.success || !(await staffInOrg(db, orgId, id.data))) {
+    return { ok: false, error: "Påfyllaren finns inte." };
+  }
+  const qrToken = generateQrToken();
+  await db().execute(sql`update private.phone_logins
+    set qr_token_hash = ${hashQrToken(qrToken)}, updated_at = now() where user_id = ${id.data}::uuid`);
+  return { ok: true, qrToken };
 }
 
 /** Byter påfyllarens automater (systemrollen, efter rollkontroll mot databasen). */
@@ -225,7 +280,7 @@ export async function setStaffMachines(
   machineIds: unknown,
   db: () => Db,
 ): Promise<StaffResult> {
-  await requireRoleFor(user, orgId, STAFF_ADMIN_ROLES);
+  await requireTeamManagerFor(user, orgId, STAFF_ADMIN_ROLES);
   const id = uuid.safeParse(staffUserId);
   const ids = z.array(uuid).min(1).max(50).safeParse(machineIds);
   if (!ids.success) return { ok: false, error: "Välj minst en automat." };

@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Ny PIN-kod" };
 
 /** Första inloggningen (eller efter "Ny PIN-kod" från ägaren): välj en egen kod. */
 export default async function NewPinPage() {
-  await requireStaff();
+  const staff = await requireStaff();
   return (
     <div className="v2-card mt-4">
       <div className="v2-card-body flex flex-col gap-4">
@@ -18,7 +18,7 @@ export default async function NewPinPage() {
             6 siffror som bara du vet. Du använder den nästa gång du loggar in.
           </p>
         </div>
-        <NewPinForm />
+        <NewPinForm askCurrent={!staff.mustChangePin} />
       </div>
     </div>
   );

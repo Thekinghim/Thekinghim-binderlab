@@ -3,7 +3,7 @@
  * Rena funktioner, utan databas.
  */
 
-import { randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 
 /**
  * Ett svenskt mobilnummer (07x…) i formatet +467x…, annars null. Tar bort mellanslag,
@@ -67,4 +67,19 @@ export function generateStartPin(): string {
     const pin = String(randomInt(0, 1_000_000)).padStart(PIN_LENGTH, "0");
     if (validateNewPin(pin) === null) return pin;
   }
+}
+
+/** QR-kodens hemliga nyckel: 32 slumpade byte (base64url, 43 tecken). */
+export function generateQrToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+/** Ser ut som en QR-nyckel (43 tecken base64url). */
+export function isQrToken(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
+}
+
+/** sha256 (hex) av nyckeln: det enda som sparas (private.phone_logins.qr_token_hash). */
+export function hashQrToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }

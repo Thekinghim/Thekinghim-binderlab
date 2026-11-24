@@ -12,6 +12,7 @@ import { cache } from "react";
 
 import { getServiceDb } from "@/db/client";
 import { listOrganizationsFor, withUserDbFor, type SessionUser } from "@/server/access";
+import { getAuthProvider } from "@/server/auth";
 import { staffSessionState } from "@/server/auth/phone-login";
 import { getSessionUser, requireUser } from "@/server/session";
 
@@ -65,6 +66,11 @@ export const requireStaff = cache(async (): Promise<StaffContext> => {
   const state = await staffSessionState(getServiceDb, user.userId);
   if (state.state === "expired") redirect("/pafyll/ut");
   if (state.state === "none") redirect("/");
+  // Ny PIN-kod eller avstängning tar bort sessionerna: en gammal token gäller inte heller.
+  const provider = await getAuthProvider();
+  if (provider.sessionIsLive && !(await provider.sessionIsLive(user.userId))) {
+    redirect("/pafyll/ut");
+  }
   return { user, machines: await getStaffMachines(), mustChangePin: state.mustChangePin };
 });
 

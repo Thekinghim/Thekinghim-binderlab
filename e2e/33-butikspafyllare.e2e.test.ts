@@ -3,8 +3,9 @@
  *
  * 1. Ägaren (dator, 1440 × 900) öppnar automaten, Påfyllare i butiken → Lägg till påfyllare,
  *    skriver namn och mobilnummer och skapar kontot: PIN-koden och QR-koden visas.
- * 2. Personen (390 × 844) öppnar /m, loggar in med mobilnummer och PIN-kod, väljer en egen
- *    PIN-kod, fyller på (förslaget är förifyllt), trycker Klart och Ångra.
+ * 2. Personen (390 × 844) skannar QR-koden (/m/<nyckel>), skriver bara PIN-koden, väljer en
+ *    egen PIN-kod, fyller på (förslaget är förifyllt), trycker Klart och Ångra. På datorn
+ *    loggar hen in med mobilnummer och PIN-kod.
  * 3. Personen kommer aldrig åt appen: /, /automater, /lager, /fyll-pa, /portal och
  *    /installningar slutar på /pafyll, och ingenstans på /pafyll står "kr".
  *
@@ -35,6 +36,7 @@ const PHONE = `070${String(Date.now()).slice(-7)}`;
 
 let machine: { id: string; code: string };
 let pin = "";
+let qrLink = "";
 
 async function page(viewport: { width: number; height: number }, mobile = false): Promise<Page> {
   const opened = await openPage(browser, e2e().baseUrl, {
@@ -67,6 +69,13 @@ beforeAll(async () => {
     set awish_fill = ${sql.json([{ title_id: t!.id, units: 3, capacity: 10, channels: 1, empty: 0 }])},
         awish_synced_at = now()
     where organization_id = ${e2e().organizationId}::uuid and machine_id = ${machine.id}::uuid`;
+  // Vårt lager på automatens plats säger samma sak (det går före Awish-läsningen).
+  await sql`insert into public.stock_events (organization_id, location_id, title_id, kind, quantity, occurred_at)
+    select l.organization_id, l.id, ${t!.id}::uuid, 'count', 3, now()
+    from public.stock_locations l
+    where l.organization_id = ${e2e().organizationId}::uuid and l.kind = 'machine'
+      and l.machine_id = ${machine.id}::uuid and l.archived_at is null
+    limit 1`;
 });
 
 afterAll(async () => {
@@ -89,6 +98,8 @@ describe("påfyllare i butiken", () => {
     await shown.waitFor();
     pin = (await shown.innerText()).trim();
     expect(pin).toMatch(/^\d{6}$/);
+    qrLink = (await p.locator('[data-testid="staff-qr"]').getAttribute("data-link")) ?? "";
+    expect(qrLink).toMatch(/\/m\/[A-Za-z0-9_-]{43}$/);
     await screenshot(p, "butikspafyll-2-agare-pin-qr-1440");
     const [row] = await sql<{ hash: string }[]>`select pin_hash as hash from private.phone_logins
       where phone_e164 = ${`+46${PHONE.slice(1)}`}`;
@@ -103,10 +114,10 @@ describe("påfyllare i butiken", () => {
 
   it("personen loggar in, väljer PIN-kod, fyller på och ångrar (390 px)", async () => {
     const p = await page({ width: 390, height: 844 }, true);
-    await p.goto("/m");
+    await p.goto(new URL(qrLink).pathname);
     await p.waitForURL(/\/logga-in\/mobil/);
+    await p.getByText("Hej Testperson!").waitFor();
     await screenshot(p, "butikspafyll-3-inloggning-390");
-    await p.getByLabel("Mobilnummer").fill(PHONE);
     await p.getByLabel(/^PIN-kod/).fill(pin);
     await p.getByRole("button", { name: "Logga in" }).click();
     await p.waitForURL(/\/pafyll\/ny-pin/);
@@ -130,6 +141,9 @@ describe("påfyllare i butiken", () => {
     expect(saved!.n).toBeGreaterThan(0);
     await p.getByRole("button", { name: "Ångra (fel antal)" }).click();
     await p.getByText("Ångrat").waitFor();
+    // Klar: tillbaka till listan med förslaget igen (inte samma inskick en gång till).
+    await p.getByRole("button", { name: "Klar", exact: true }).click();
+    await p.getByRole("button", { name: /^Klart – jag har fyllt på 7 pack$/ }).waitFor();
     const [left] = await sql<
       { n: number }[]
     >`select count(*)::int as n from public.field_submissions f

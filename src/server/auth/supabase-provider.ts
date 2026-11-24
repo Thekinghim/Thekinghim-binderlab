@@ -290,6 +290,15 @@ export class SupabaseAuthProvider implements AuthProvider {
     return session && session.userId === userId ? session : null;
   }
 
+  async sessionIsLive(userId: string): Promise<boolean> {
+    const { data, error } = await this.userClient().auth.getUser();
+    if (error) {
+      // Bara ett tydligt nej från tjänsten (401/403: sessionen finns inte) loggar ut.
+      return !(error.status === 401 || error.status === 403);
+    }
+    return data.user?.id === userId;
+  }
+
   async setUserBanned(userId: string, banned: boolean): Promise<void> {
     const { error } = await this.adminClient().auth.admin.updateUserById(userId, {
       ban_duration: banned ? "876000h" : "none",

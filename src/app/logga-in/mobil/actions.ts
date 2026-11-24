@@ -6,12 +6,13 @@
  * skickas efteråt.
  */
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { getServiceDb } from "@/db/client";
 import { getAuthProvider } from "@/server/auth";
 import { signInWithPhonePin } from "@/server/auth/phone-login";
+import { STAFF_QR_COOKIE } from "@/server/auth/phone-qr-cookie";
 import { createRateLimiter } from "@/server/rate-limit";
 import { clientIp } from "@/server/request-info";
 
@@ -41,9 +42,14 @@ export async function signInWithPhone(
   const pin = String(form.get("pin") ?? "")
     .replace(/\s/g, "")
     .slice(0, 20);
+  // QR-koden: nyckeln ligger i en httpOnly-cookie (/m/<nyckel>), bara PIN-koden skrivs.
+  const token =
+    form.get("via") === "qr" ? ((await cookies()).get(STAFF_QR_COOKIE)?.value ?? "-") : undefined;
   const result = await signInWithPhonePin(
     { db: getServiceDb, provider: await getAuthProvider(), ipLimiter, phoneLimiter },
-    { phone, pin, ip: clientIp(await headers()) },
+    token !== undefined
+      ? { token, pin, ip: clientIp(await headers()) }
+      : { phone, pin, ip: clientIp(await headers()) },
   );
   if (!result.ok) return { error: result.error, phone };
   redirect(result.mustChangePin ? "/pafyll/ny-pin" : "/pafyll");

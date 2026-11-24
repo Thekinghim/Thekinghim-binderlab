@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatMobile,
+  generateQrToken,
   generateStartPin,
+  hashQrToken,
+  isQrToken,
   maskMobile,
   normalizeSwedishMobile,
   validateNewPin,
@@ -51,5 +54,19 @@ describe("PIN-koder", () => {
       expect(pin).toMatch(/^\d{6}$/);
       expect(validateNewPin(pin)).toBeNull();
     }
+  });
+});
+
+describe("QR-nyckeln", () => {
+  it("är 43 tecken base64url, slumpad, och bara hashen jämförs", () => {
+    const a = generateQrToken();
+    const b = generateQrToken();
+    expect(isQrToken(a)).toBe(true);
+    expect(a).not.toBe(b);
+    expect(hashQrToken(a)).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashQrToken(a)).toBe(hashQrToken(a));
+    expect(isQrToken("kort")).toBe(false);
+    expect(isQrToken(`${a.slice(0, 42)}/`)).toBe(false);
+    expect(isQrToken(undefined)).toBe(false);
   });
 });

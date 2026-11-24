@@ -186,7 +186,7 @@ export default async function MachinePage({
       tools={
         ctx.canEdit ? (
           <span className="flex items-center gap-2 max-[900px]:hidden">
-            <ButtonLink href={`/fyll-pa/${machine.id}/qr`}>QR för påfyllning</ButtonLink>
+            <ButtonLink href={`/fyll-pa/${machine.id}/qr`}>QR för egen påfyllning</ButtonLink>
           </span>
         ) : undefined
       }
@@ -200,7 +200,7 @@ export default async function MachinePage({
           {ctx.canEdit ? (
             <div className="acts">
               <ButtonLink href={`/fyll-pa/${machine.id}/qr`} touch className="min-[901px]:hidden">
-                QR för påfyllning
+                QR för egen påfyllning
               </ButtonLink>
               <MachineActions
                 // Ny nyckel när länken "Välj butik" trycks på samma sida: rutan öppnas då.

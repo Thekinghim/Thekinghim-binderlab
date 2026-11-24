@@ -114,6 +114,12 @@ export interface AuthProvider {
 
   /** Stänger av (eller slår på) ett konto. Avstängt: inga nya eller förnyade sessioner. */
   setUserBanned?(userId: string, banned: boolean): Promise<void>;
+
+  /**
+   * Finns den inloggades session kvar hos inloggningstjänsten? (Fråga mot servern, inte bara
+   * token.) false när sessionen tagits bort (ny PIN-kod, avstängt). Fel i nätet räknas inte.
+   */
+  sessionIsLive?(userId: string): Promise<boolean>;
 }
 
 /** Cookie-inställningar (delmängd av Next/@supabase/ssr). */

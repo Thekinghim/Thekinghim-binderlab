@@ -600,6 +600,12 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     module: "@/app/(app)/automater/[automat]/staff-actions",
+    name: "rotateStaffQrAction",
+    allowed: OP,
+    args: () => [crypto.randomUUID()],
+  },
+  {
+    module: "@/app/(app)/automater/[automat]/staff-actions",
     name: "setStaffDisabledAction",
     allowed: OP,
     args: () => [crypto.randomUUID(), true],

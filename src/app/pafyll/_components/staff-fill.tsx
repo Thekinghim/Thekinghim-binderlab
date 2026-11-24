@@ -27,9 +27,19 @@ interface Done {
   undone?: boolean;
 }
 
+/** Förslaget, men aldrig fler än butiken har (när butikens lager spåras). */
 function startValues(data: StaffFillData): Record<string, number> {
-  return Object.fromEntries(data.rows.map((r) => [r.titleId, r.suggested]));
+  return Object.fromEntries(
+    data.rows.map((r) => [r.titleId, Math.min(r.suggested, r.storeStock ?? r.suggested)]),
+  );
 }
+
+/** Högst så många som får plats (kapacitet minus pack i automaten), annars 500. */
+function maxOf(r: StaffFillData["rows"][number]): number {
+  return r.capacity !== null ? Math.max(r.capacity - r.units, 0) : 500;
+}
+
+const OFFLINE = "Ingen kontakt. Kolla wifi eller mobildata och tryck igen. Inget har sparats.";
 
 function freshIds(data: StaffFillData): Record<string, string> {
   return Object.fromEntries(data.rows.map((r) => [r.titleId, newClientId()]));
@@ -51,7 +61,15 @@ export function StaffFill({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [pending, start] = useTransition();
+  // Nya antal från servern (efter Klar): börja om från de nya förslagen.
+  const [shownData, setShownData] = useState(data);
+  if (shownData !== data) {
+    setShownData(data);
+    setQty(startValues(data));
+  }
   const total = useMemo(() => Object.values(qty).reduce((n, q) => n + q, 0), [qty]);
+  const allFull =
+    data.rows.length > 0 && data.rows.every((r) => r.capacity !== null && r.units >= r.capacity);
 
   const submit = () => {
     setError(null);
@@ -59,7 +77,14 @@ export function StaffFill({
       .filter((r) => (qty[r.titleId] ?? 0) > 0)
       .map((r) => ({ clientId: ids[r.titleId]!, titleId: r.titleId, quantity: qty[r.titleId]! }));
     start(async () => {
-      const res = await staffSubmitRefill({ orgId, machineId: data.machineId, items });
+      let res: Awaited<ReturnType<typeof staffSubmitRefill>>;
+      try {
+        res = await staffSubmitRefill({ orgId, machineId: data.machineId, items });
+      } catch {
+        // Samma id vid nästa tryck: sparades det ändå blir det inte dubbelt.
+        setError(OFFLINE);
+        return;
+      }
       if (!res.ok) {
         setError(res.error);
         return;
@@ -71,6 +96,8 @@ export function StaffFill({
         warnings: res.warnings,
       });
       setIds(freshIds(data));
+      // Inget kvar att skicka igen: knappen blir "Välj antal pack" tills nya antal kommer.
+      setQty(Object.fromEntries(data.rows.map((r) => [r.titleId, 0])));
       window.scrollTo({ top: 0 });
     });
   };
@@ -78,7 +105,14 @@ export function StaffFill({
   const undo = () => {
     if (!done) return;
     start(async () => {
-      const res = await staffUndo({ orgId, clientIds: done.clientIds });
+      setError(null);
+      let res: Awaited<ReturnType<typeof staffUndo>>;
+      try {
+        res = await staffUndo({ orgId, machineId: data.machineId, clientIds: done.clientIds });
+      } catch {
+        setError("Ingen kontakt. Kolla wifi eller mobildata och tryck Ångra igen.");
+        return;
+      }
       if (!res.ok) {
         setError(res.error);
         return;
@@ -105,7 +139,7 @@ export function StaffFill({
             </h1>
             <p className="text-v2-mute">
               {done.undone
-                ? "Påfyllningen är borttagen. Inget mer behöver göras."
+                ? "Borttaget. Tryck Klar och skriv rätt antal."
                 : done.awish === "pushed"
                   ? "Automaten är uppdaterad."
                   : "Sparat. Automaten uppdateras strax."}
@@ -114,7 +148,7 @@ export function StaffFill({
         </div>
         {done.warnings.length > 0 ? (
           <Notice tone="warning" title="Något pack sparades inte">
-            {done.warnings[0]}
+            Ett pack kunde inte sparas. Försök igen eller säg till ägaren.
           </Notice>
         ) : null}
         {error ? (
@@ -184,9 +218,14 @@ export function StaffFill({
                     <b className="block leading-tight">{r.title}</b>
                     <span className="text-v2-sm text-v2-mute">
                       {r.capacity !== null
-                        ? `Finns: ${r.units} av ${r.capacity}`
-                        : `Finns: ${r.units}`}
+                        ? `I automaten: ${r.units} av ${r.capacity}`
+                        : `I automaten: ${r.units}`}
                     </span>
+                    {r.capacity === null ? (
+                      <span className="block text-v2-sm text-v2-mute">
+                        Fyll tills facket är fullt och räkna hur många du lade i.
+                      </span>
+                    ) : null}
                     {r.storeStock !== null ? (
                       <span className="block text-v2-sm text-v2-mute">
                         I butiken: {r.storeStock}
@@ -197,7 +236,7 @@ export function StaffFill({
                     value={q}
                     onChange={(v) => setQty((prev) => ({ ...prev, [r.titleId]: v }))}
                     min={0}
-                    max={500}
+                    max={maxOf(r)}
                     label={r.title}
                     lessLabel={`Ett mindre: ${r.title}`}
                     moreLabel={`Ett till: ${r.title}`}
@@ -214,14 +253,13 @@ export function StaffFill({
         </ul>
       )}
 
-      {error ? (
-        <Notice tone="critical" live>
-          {error}
-        </Notice>
-      ) : null}
-
       <div className="fixed inset-x-0 bottom-0 border-t border-v2-line bg-v2-panel px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
-        <div className="mx-auto max-w-[560px]">
+        <div className="mx-auto flex max-w-[560px] flex-col gap-2">
+          {error ? (
+            <Notice tone="critical" live>
+              {error}
+            </Notice>
+          ) : null}
           <Button
             size="lg"
             variant="act"
@@ -230,7 +268,11 @@ export function StaffFill({
             disabled={total === 0}
             onClick={submit}
           >
-            {total === 0 ? "Välj antal pack" : `Klart – jag har fyllt på ${total} pack`}
+            {total > 0
+              ? `Klart – jag har fyllt på ${total} pack`
+              : allFull
+                ? "Automaten är full – inget att fylla på"
+                : "Välj antal pack"}
           </Button>
         </div>
       </div>

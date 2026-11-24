@@ -609,7 +609,7 @@ Checklista när panelen lämnas över (till en köpare eller en ny driftansvarig
 
 Kända brister och vad som återstår står sist i `README.md`.
 
-## Påfyllare i butiken (mobilnummer och PIN-kod)
+## Påfyllare i butiken (QR-kod och PIN-kod)
 
 Personal i en butik kan få ett eget konto som bara fyller på deras automat (rollen
 `machine_refiller`, migrationerna `20261228000000_butikspafyllare_roll.sql` och
@@ -617,21 +617,30 @@ Personal i en butik kan få ett eget konto som bara fyller på deras automat (ro
 
 **Skapa kontot (ägare eller admin):** Automater → automaten → kortet _Påfyllare i butiken_ →
 _Lägg till påfyllare_ → Namn, Mobilnummer, bocka för automaterna → _Skapa konto_. PIN-koden
-visas en gång tillsammans med QR-koden och länken `<appens adress>/m`. _Skriv ut QR-koden_
-och sätt den på automaten; _Kopiera meddelande_ ger ett sms att skicka till personen.
+visas en gång tillsammans med kontots QR-kod (`<appens adress>/m/<hemlig nyckel>`). _Skriv ut
+QR-koden_ och sätt den på automaten; _Kopiera meddelande_ ger ett sms att skicka till personen.
 
-**Personen:** skannar QR-koden (eller öppnar `/m`), skriver mobilnummer och PIN-kod, väljer en
-egen PIN-kod och kommer till `/pafyll`: en skärm med antal att lägga i per pack, _Klart_ och
+**Personen:** skannar QR-koden och skriver bara PIN-koden (nyckeln sparas i en httpOnly-cookie
+på telefonen). Utan QR-koden: `/m` och mobilnummer + PIN-kod. Väljer sedan en egen PIN-kod och
+kommer till `/pafyll`: en skärm med antal att lägga i per pack, _Klart_ och
 _Ångra_ (30 minuter). Inga priser, ingen försäljning, inga andra automater.
 
-**Hantera:** på samma kort: _Ny PIN-kod_ (låser upp ett låst konto), _Stäng av_ / _Slå på_
-och _Ändra automater_. Raden syns inte under Inställningar → Användare.
+**Hantera:** på samma kort: _Ny PIN-kod_ (låser upp ett låst konto och loggar ut telefoner som
+var inloggade; ett avstängt konto förblir avstängt), _Skriv ut ny QR-kod_ (ny nyckel, den gamla
+QR-koden slutar gälla direkt), _Stäng av_ / _Slå på_ och _Ändra automater_. Raden syns inte under
+Inställningar → Användare och kan inte tas bort därifrån (databasen nekar). Inte i Enkel vy.
 
 **Säkerhet:**
 
-- PIN-koden sparas bara som scrypt-hash i `private.phone_logins` (ingen klient kan läsa
-  tabellen). 5 fel i rad låser 15 minuter, 10 fel låser tills ägaren ger en ny PIN-kod; dessutom
-  10 försök per IP och 5 per nummer per 15 minuter.
+- PIN-koden sparas bara som scrypt-hash och QR-nyckeln (32 slumpade byte) bara som sha256 i
+  `private.phone_logins` (ingen klient kan läsa tabellen). Var 5:e fel låser 15 minuter, från
+  10 fel ett dygn i taget (ägaren låser upp med _Ny PIN-kod_); under 10 fel glöms fel som är
+  äldre än ett dygn. Dessutom 10 försök per IP och 5 per konto per 15 minuter.
+- Ny PIN-kod och avstängning tar bort användarens sessioner i `auth.sessions` och sätter
+  `sessions_valid_after`: en äldre token nekas i databasen (`iat`) och av servern
+  (`sessionIsLive`).
+- En påfyllare kan inte skapa en egen organisation (`create_organization` /
+  `create_first_organization` svarar BL062).
 - Sessionen är en vanlig Supabase-session för en egen användare (`tel-…@binderlab.invalid`,
   kan inte logga in med e-post). Kontot gäller 90 dagar efter senaste användning; avstängt
   spärras direkt i databasen (`private.staff_active`) och användaren bannas i Supabase.

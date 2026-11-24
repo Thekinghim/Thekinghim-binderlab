@@ -29,6 +29,12 @@ create table private.phone_logins (
   locked_until timestamptz,
   disabled_at timestamptz,
   last_used_at timestamptz,
+  -- Senaste felaktiga försöket: fel som är äldre än ett dygn räknas inte (under 10 fel).
+  last_failed_at timestamptz,
+  -- sha256 (hex) av QR-kodens hemliga nyckel (/m/<nyckel>). Ny QR-kod byter nyckel.
+  qr_token_hash text unique check (qr_token_hash ~ '^[0-9a-f]{64}$'),
+  -- Sessioner utfärdade före den här tiden gäller inte (ny PIN-kod, avstängning).
+  sessions_valid_after timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -128,6 +134,12 @@ as $$
       and m.role = 'machine_refiller'
       and p.disabled_at is null
       and coalesce(p.last_used_at, p.created_at) > now() - interval '90 days'
+      -- En token (direkt mot PostgREST) utfärdad före ny PIN-kod eller avstängning gäller
+      -- inte. Appens egna anrop har ingen iat; där kontrollerar servern sessionen.
+      and (p.sessions_valid_after is null
+           or not (coalesce(auth.jwt(), '{}'::jsonb) ? 'iat')
+           or (auth.jwt() ->> 'iat')::bigint
+              >= extract(epoch from date_trunc('second', p.sessions_valid_after))::bigint)
   )
 $$;
 
@@ -169,12 +181,10 @@ as $$
   limit 1
 $$;
 
-revoke all on function private.staff_active(uuid) from public, anon;
-revoke all on function private.staff_can_fill(uuid, uuid) from public, anon;
-revoke all on function private.staff_refill_source(uuid, uuid) from public, anon;
-grant execute on function private.staff_active(uuid) to authenticated;
-grant execute on function private.staff_can_fill(uuid, uuid) to authenticated;
-grant execute on function private.staff_refill_source(uuid, uuid) to authenticated;
+-- Bara funktionerna nedan (security definer) anropar dem: ingen klientroll.
+revoke all on function private.staff_active(uuid) from public, anon, authenticated;
+revoke all on function private.staff_can_fill(uuid, uuid) from public, anon, authenticated;
+revoke all on function private.staff_refill_source(uuid, uuid) from public, anon, authenticated;
 
 -- Butiken där automaten står i dag (bara namnet).
 create function private.machine_store_name(p_org uuid, p_machine uuid) returns text
@@ -239,12 +249,22 @@ begin
   limit 1;
   v_src := private.staff_refill_source(p_org, p_machine);
 
-  with fill as (
+  -- Pack i automaten: vårt lager på automatens plats när det finns (har påfyllningar efter
+  -- Awish-läsningen med), annars Awish-läsningen (samma regel som fillUnitsOf i appen).
+  with awish as (
     select (e ->> 'title_id')::uuid as title_id,
            greatest(coalesce((e ->> 'units')::integer, 0), 0) as units,
            greatest(coalesce((e ->> 'capacity')::integer, 0), 0) as capacity
     from jsonb_array_elements(coalesce(v_loc.awish_fill, '[]'::jsonb)) e
     where e ? 'title_id'
+  ),
+  fill as (
+    select a.title_id,
+           greatest(coalesce(sl.quantity::integer, a.units), 0) as units,
+           a.capacity
+    from awish a
+    left join public.stock_levels sl
+      on sl.organization_id = p_org and sl.location_id = v_loc.id and sl.title_id = a.title_id
   ),
   levels as (
     select sl.title_id, sl.quantity::integer as units
@@ -330,6 +350,7 @@ declare
   v_found boolean;
   r record;
   v_staff boolean := false;
+  v_withdraw integer;
 begin
   if v_uid is null
      or not (private.has_role(p_organization_id, 'owner', 'admin', 'refiller')
@@ -343,6 +364,12 @@ begin
     v_staff := true;
     p_from_location := null;
     p_from_warehouse := private.staff_refill_source(p_organization_id, p_machine_id) is not null;
+    -- Tid och notering väljs aldrig av telefonen: nu, och ingen egen text.
+    v_at := now();
+    v_note := null;
+    if p_quantity is null or p_quantity < 1 or p_quantity > 500 then
+      raise exception using errcode = '22023', message = 'Ange antal pack, minst 1 och högst 500.';
+    end if;
   end if;
   if p_quantity is null or p_quantity < 1 or p_quantity > 10000 then
     raise exception using errcode = '22023', message = 'Ange antal pack, minst 1 och högst 10 000.';
@@ -471,19 +498,15 @@ begin
     end if;
   end loop;
 
-  if p_from_warehouse and p_quantity > v_from_source then
+  v_withdraw := case when p_from_warehouse then greatest(p_quantity - v_from_source, 0) else 0 end;
+  if v_withdraw > 0 then
     v_available := private.location_level(p_organization_id, v_source, p_title_id);
-    if v_staff and v_available < p_quantity - v_from_source then
-      -- Butikspåfyllaren stoppas aldrig: sparas utan uttag ur lagret, med en varning.
-      -- Awish-uttag som redan räknats av ur källagret läggs då tillbaka (som utan lager).
-      if v_from_source > 0 then
-        v_return_loc := v_return_loc || v_source;
-        v_return_qty := v_return_qty || v_from_source;
-        v_from_source := 0;
-      end if;
-      p_from_warehouse := false;
+    if v_staff and v_available < v_withdraw then
+      -- Butikspåfyllaren stoppas aldrig: det som finns tas ur butikens lager, resten
+      -- sparas utan uttag, med en varning.
+      v_withdraw := greatest(v_available, 0);
       v_note := concat_ws(' – ', v_note, 'Butikens lager räckte inte – kontrollera lagret');
-    elsif v_available < p_quantity - v_from_source then
+    elsif v_available < v_withdraw then
       raise exception using errcode = '22023',
         message = format('%s har bara %s pack av %s.', v_source_name, v_available, v_title.name);
     end if;
@@ -498,12 +521,12 @@ begin
   )
   returning id into v_event;
 
-  if p_from_warehouse and p_quantity > v_from_source then
+  if v_withdraw > 0 then
     insert into public.stock_events (
       organization_id, location_id, title_id, kind, quantity, occurred_at, performed_by, note
     )
     values (
-      p_organization_id, v_source, p_title_id, 'adjustment', -(p_quantity - v_from_source), v_at,
+      p_organization_id, v_source, p_title_id, 'adjustment', -v_withdraw, v_at,
       v_uid, 'Uttag till påfyllning av ' || v_machine.code
     );
   end if;
@@ -553,9 +576,11 @@ begin
   -- Butikspåfyllaren: samma val av lager som i register_refill (sparas i inskicket).
   if not private.has_role(p_organization_id, 'owner', 'admin', 'refiller') then
     p_from_location := null;
+    p_occurred_at := null;
+    p_note := null;
+    v_at := now();
     v_src := private.staff_refill_source(p_organization_id, p_machine_id);
-    p_from_warehouse := v_src is not null
-      and private.location_level(p_organization_id, v_src, p_title_id) >= coalesce(p_quantity, 0);
+    p_from_warehouse := v_src is not null;
   end if;
   if p_client_id is null then
     raise exception using errcode = '22023', message = 'Inskicket saknar id.';
@@ -691,3 +716,129 @@ begin
 end
 $$;
 
+
+-- -----------------------------------------------------------------------------
+-- 6. En butikspåfyllare skapar aldrig en egen organisation (då skulle hen få appen).
+--    Kropparna från 20261102181500_onboarding_create_first_organization.sql, med
+--    kontrollen BL062 tillagd.
+-- -----------------------------------------------------------------------------
+
+create function private.is_phone_staff(p_uid uuid) returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select exists (select 1 from private.phone_logins p where p.user_id = p_uid)
+      or exists (select 1 from public.memberships m
+                 where m.user_id = p_uid and m.role = 'machine_refiller')
+$$;
+
+revoke all on function private.is_phone_staff(uuid) from public, anon, authenticated;
+
+create or replace function public.create_organization(p_name text, p_slug text)
+returns uuid
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_claims jsonb := coalesce(auth.jwt(), '{}'::jsonb);
+  v_org uuid;
+  v_display_name text;
+begin
+  if v_uid is null then
+    raise exception using errcode = '42501', message = 'Inloggning krävs.';
+  end if;
+
+  if exists (select 1 from public.memberships m
+             where m.user_id = v_uid and m.role = 'store') then
+    raise exception using errcode = 'BL061',
+      message = 'Kontot är ett butikskonto. Logga in med ett annat konto för att skapa en organisation.';
+  end if;
+
+  if private.is_phone_staff(v_uid) then
+    raise exception using errcode = 'BL062',
+      message = 'Kontot är en påfyllare i butiken och kan inte skapa en organisation.';
+  end if;
+
+  insert into public.organizations (name, slug)
+  values (btrim(p_name), lower(btrim(p_slug)))
+  returning id into v_org;
+
+  insert into public.memberships (organization_id, user_id, role)
+  values (v_org, v_uid, 'owner');
+
+  insert into public.organization_settings (organization_id) values (v_org);
+
+  insert into public.stock_locations (organization_id, kind, name, is_central)
+  values (v_org, 'warehouse', 'Centrallager', true);
+
+  v_display_name := coalesce(
+    nullif(btrim(v_claims -> 'user_metadata' ->> 'full_name'), ''),
+    nullif(split_part(coalesce(v_claims ->> 'email', ''), '@', 1), ''),
+    'Ägare'
+  );
+  insert into public.profiles (organization_id, user_id, display_name)
+  values (v_org, v_uid, v_display_name);
+
+  return v_org;
+end
+$$;
+
+create or replace function public.create_first_organization(p_name text, p_slug text)
+returns uuid
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then
+    raise exception using errcode = '42501', message = 'Inloggning krävs.';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('create_first_organization:' || v_uid::text, 0));
+
+  if exists (select 1 from public.memberships m
+             where m.user_id = v_uid and m.role = 'store') then
+    raise exception using errcode = 'BL061',
+      message = 'Kontot är ett butikskonto. Logga in med ett annat konto för att skapa en organisation.';
+  end if;
+
+  if private.is_phone_staff(v_uid) then
+    raise exception using errcode = 'BL062',
+      message = 'Kontot är en påfyllare i butiken och kan inte skapa en organisation.';
+  end if;
+
+  if exists (select 1 from public.memberships m
+             join public.organizations o on o.id = m.organization_id
+             where m.user_id = v_uid and o.archived_at is null) then
+    raise exception using errcode = 'BL060',
+      message = 'Du är redan med i en organisation. Byt organisation i menyn.';
+  end if;
+
+  return public.create_organization(p_name, p_slug);
+end
+$$;
+
+-- -----------------------------------------------------------------------------
+-- 7. En klient tar aldrig bort en butikspåfyllares medlemskap (då blir inloggningen kvar
+--    utan automater). Ägaren stänger av kontot på automatens sida i stället.
+-- -----------------------------------------------------------------------------
+
+create function private.memberships_machine_refiller_no_delete() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('anon', 'authenticated') and old.role = 'machine_refiller' then
+    raise exception using errcode = '42501',
+      message = 'En påfyllare i butiken tas inte bort här. Stäng av kontot på automatens sida.';
+  end if;
+  return old;
+end
+$$;
+
+revoke all on function private.memberships_machine_refiller_no_delete() from public;
+
+create trigger t12_machine_refiller_no_delete before delete on public.memberships
+  for each row execute function private.memberships_machine_refiller_no_delete();

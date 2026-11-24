@@ -9,7 +9,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { getServiceDb } from "@/db/client";
-import { setOwnPin, skipPinChange } from "@/server/auth/phone-login";
+import { checkOwnPin, setOwnPin, skipPinChange } from "@/server/auth/phone-login";
 import { validateNewPin } from "@/server/auth/phone";
 import { summariseAwishPush } from "@/server/awish/push-status";
 import { pushMachinesToAwish, recordAwishPushFailure } from "@/server/awish/web-service";
@@ -38,6 +38,22 @@ export type StaffSubmitResult =
   | { ok: true; packs: number; clientIds: string[]; awish: StaffAwish; warnings: string[] }
   | { ok: false; error: string };
 
+/** Skickar automatens antal till Awish (bara den här automaten). */
+async function pushToAwish(orgId: string, machineId: string): Promise<StaffAwish> {
+  try {
+    const pushed = await pushMachinesToAwish(orgId, [machineId], { withPending: false });
+    const summary = summariseAwishPush(pushed, [machineId]);
+    return summary === undefined || summary.state === "off"
+      ? "off"
+      : summary.state === "sent"
+        ? "pushed"
+        : "pending";
+  } catch {
+    await recordAwishPushFailure(orgId, [machineId]).catch(() => {});
+    return "pending";
+  }
+}
+
 /** "Klart – jag har fyllt på": sparar varje rad och skickar automatens antal till Awish. */
 export async function staffSubmitRefill(raw: unknown): Promise<StaffSubmitResult> {
   const staff = await requireStaff();
@@ -56,9 +72,10 @@ export async function staffSubmitRefill(raw: unknown): Promise<StaffSubmitResult
   const saved = result.results.filter((r) => r.status !== "rejected");
   const rejected = result.results.filter((r) => r.status === "rejected");
   if (saved.length === 0) {
+    // Databasens text är skriven för appen: personalen får en enkel mening.
     return {
       ok: false,
-      error: rejected[0]?.error ?? "Påfyllningen kunde inte sparas. Försök igen.",
+      error: "Påfyllningen kunde inte sparas. Försök igen eller säg till ägaren.",
     };
   }
   const savedIds = new Set(saved.map((r) => r.clientId));
@@ -66,51 +83,54 @@ export async function staffSubmitRefill(raw: unknown): Promise<StaffSubmitResult
     .filter((it) => savedIds.has(it.clientId))
     .reduce((n, it) => n + it.quantity, 0);
 
-  let awish: StaffAwish = "off";
-  if (result.savedMachineIds.length > 0) {
-    try {
-      const pushed = await pushMachinesToAwish(orgId, [machineId], { withPending: false });
-      const summary = summariseAwishPush(pushed, [machineId]);
-      awish =
-        summary === undefined || summary.state === "off"
-          ? "off"
-          : summary.state === "sent"
-            ? "pushed"
-            : "pending";
-    } catch {
-      await recordAwishPushFailure(orgId, [machineId]).catch(() => {});
-      awish = "pending";
-    }
-  }
+  const awish: StaffAwish =
+    result.savedMachineIds.length > 0 ? await pushToAwish(orgId, machineId) : "off";
   return {
     ok: true,
     packs,
     clientIds: [...savedIds],
     awish,
-    warnings: rejected.map((r) => r.error ?? "En rad kunde inte sparas."),
+    warnings: rejected.map(() => "En rad kunde inte sparas."),
   };
 }
 
-/** Ångra (egna påfyllningar, 30 minuter). */
+/** Ångra (egna påfyllningar, 30 minuter). Sedan får Awish automatens antal igen. */
 export async function staffUndo(
   raw: unknown,
 ): Promise<{ ok: true; packs: number } | { ok: false; error: string }> {
   const staff = await requireStaff();
-  const parsed = z.object({ orgId: uuid, clientIds: z.array(uuid).min(1).max(100) }).safeParse(raw);
+  const parsed = z
+    .object({ orgId: uuid, machineId: uuid, clientIds: z.array(uuid).min(1).max(100) })
+    .safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Inget att ångra." };
-  if (!staff.machines.some((m) => m.organizationId === parsed.data.orgId)) {
+  const { orgId, machineId, clientIds } = parsed.data;
+  if (!staff.machines.some((m) => m.organizationId === orgId && m.machineId === machineId)) {
     return { ok: false, error: "Inget att ångra." };
   }
-  return undoRefillItems(staff.user, parsed.data.orgId, parsed.data.clientIds);
+  const result = await undoRefillItems(staff.user, orgId, clientIds);
+  if (result.ok && result.packs > 0) await pushToAwish(orgId, machineId);
+  return result;
 }
 
 export interface PinState {
   error?: string;
 }
 
-/** Egen PIN-kod (två gånger). */
+/**
+ * Egen PIN-kod (två gånger). Utom direkt efter en PIN-kod från ägaren krävs den nuvarande
+ * koden, så att den som lånar en inloggad telefon inte kan låsa ute personen.
+ */
 export async function staffSetPin(_prev: PinState, form: FormData): Promise<PinState> {
   const staff = await requireStaff();
+  if (!staff.mustChangePin) {
+    const current = String(form.get("current") ?? "").replace(/\s/g, "");
+    if (
+      !/^\d{6}$/.test(current) ||
+      !(await checkOwnPin(getServiceDb, staff.user.userId, current))
+    ) {
+      return { error: "Fel nuvarande PIN-kod." };
+    }
+  }
   const pin = String(form.get("pin") ?? "");
   const again = String(form.get("again") ?? "");
   const problem = validateNewPin(pin);
