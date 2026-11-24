@@ -25,6 +25,14 @@
  *    (@/analytics/health/connectivity: offline efter 20 minuter, mot fladder) och,
  *    högst en gång per dygn, Awish-kontots slutdag (Merchant.expired_at). Fel här
  *    stoppar inte synken av order.
+ *
+ * Om Awish krånglar (docs/operations.md): stegen automater → order → fack → slutdag körs var
+ * för sig, och ett fel i ett steg stoppar inte de andra. Svarar Machines inte används
+ * källans senast kända automater (anslutningen ändras inte, inga falska offlinelarm).
+ * Facken och slutdagen har webbpanelen som reserv (./stock-web-fallback). Orderna har ingen
+ * reserv: läget flyttas inte fram, så nästa körning hämtar det som missades. Varje steg
+ * sparar sin väg i awish_path_health (./health) och i lastRun.steps. Källans `ok` betyder
+ * som förut att orderna hämtades.
  */
 
 import "server-only";
@@ -68,6 +76,9 @@ import {
 } from "./stock";
 import { machinesJustLow, type SlotBalance } from "./stock-drop";
 import { raiseOrderAttention, resolveOrderAttention, type OrderAttention } from "./order-attention";
+import { recordPathResult, type AwishRoute } from "./health";
+import { webStockFallback, type StockFallback } from "./stock-web-fallback";
+import type { AwishWebApi, AwishWebClientOptions } from "./web-client";
 
 type Row = Record<string, unknown>;
 
@@ -103,6 +114,8 @@ export interface AwishSyncDeps {
   connect?: (creds: AwishCredentials, options?: AwishConnectOptions) => AwishApi;
   maxPages?: number;
   timeBudgetMs?: number;
+  /** Webbpanelens klient för reservvägen (testerna ger låtsas-panelen). */
+  makeWebClient?: (options: AwishWebClientOptions) => AwishWebApi;
 }
 
 /** Tidsgränser som synken ger klienten (se grpc-client.ts). */
@@ -149,6 +162,21 @@ export interface AwishSyncState {
   alertCheckDue?: boolean;
 }
 
+/** Ett steg i en körning: lyckades det, vilken väg, och felets art. */
+export interface AwishSyncStep {
+  ok: boolean;
+  via: AwishRoute;
+  errorKind?: string;
+}
+
+/** Stegen i en körning (var för sig: ett fel i ett steg stoppar inte de andra). */
+export interface AwishSyncSteps {
+  machines?: AwishSyncStep;
+  orders?: AwishSyncStep;
+  stock?: AwishSyncStep;
+  merchant?: AwishSyncStep;
+}
+
 export interface AwishLastRun {
   at: string;
   ok: boolean;
@@ -163,8 +191,10 @@ export interface AwishLastRun {
   /** Saldot från Awish i den här körningen, om det lästes. */
   stock?: Pick<
     AwishStockSummary,
-    "machines" | "read" | "counts" | "warehouseOut" | "failed" | "deferred" | "error"
+    "machines" | "read" | "counts" | "warehouseOut" | "failed" | "deferred" | "error" | "viaWeb"
   >;
+  /** Stegen (automater, order, fack, kontots slutdag) var för sig. */
+  steps?: AwishSyncSteps;
 }
 
 export interface AwishSyncResult {
@@ -289,7 +319,7 @@ async function syncStockWatchingDrops(
   db: Db,
   api: AwishApi,
   source: { id: string; organization_id: string },
-  opts: { now: () => Date; deadlineAt: number },
+  opts: { now: () => Date; deadlineAt: number; fallback?: StockFallback | null },
 ): Promise<{ stock: AwishStockSummary; dropped: string[] }> {
   const before = await balancesOrNull(db, source.organization_id, "före läsningen");
   const stock = await syncSourceStock(db, api, source, opts);
@@ -555,6 +585,7 @@ export async function syncAwishSource(
       amountFormat?: "decimal" | null;
       pagingFields?: string[];
       stock?: AwishStockSummary | null;
+      steps?: AwishSyncSteps;
     } = {},
   ): Promise<AwishSyncResult> => {
     const at = now();
@@ -577,10 +608,12 @@ export async function syncAwishSource(
               warehouseOut: extra.stock.warehouseOut ?? 0,
               failed: extra.stock.failed,
               deferred: extra.stock.deferred,
+              ...(extra.stock.viaWeb ? { viaWeb: extra.stock.viaWeb } : {}),
               ...(extra.stock.error ? { error: extra.stock.error } : {}),
             },
           }
         : {}),
+      ...(extra.steps && Object.keys(extra.steps).length > 0 ? { steps: extra.steps } : {}),
     };
     const state: AwishSyncState = {
       v: 1,
@@ -679,12 +712,29 @@ export async function syncAwishSource(
 
   const clock = () => now().getTime();
   const api = (deps.connect ?? defaultConnect)(creds, { deadlineAt, clock });
+  // Reservvägen (webbpanelen) för facken och kontots slutdag: loggar in högst en gång.
+  const fallback = webStockFallback(deps.db, source.organization_id, {
+    deadlineAt,
+    now,
+    ...(deps.makeWebClient ? { makeClient: deps.makeWebClient } : {}),
+  });
+  const steps: AwishSyncSteps = {};
+  const record = (path: "machines" | "orders", route: AwishRoute, ok: boolean, error?: unknown) =>
+    recordPathResult(deps.db, {
+      organizationId: source.organization_id,
+      dataSourceId: source.id,
+      path,
+      route,
+      ok,
+      error,
+      now: now(),
+    });
   let pages = 0;
   let fetched = 0;
   try {
-    const machines = await fetchMachines(api);
-    // Anslutningen (online/offline) per automat, före orderna: ett fel eller stopp i
-    // orderna får inte tysta offlinelarmet. Ett fel här stoppar inte synken.
+    // 1. Automaterna. Svarar Machines inte används listan som redan finns i källan, så att
+    // order, fack och slutdag ändå läses. Anslutningen (online/offline) ändras då inte: inga
+    // falska offlinelarm, och Drift visar senast kända läge.
     const saveMachinesConnectivity = async (list: readonly FetchedMachine[]) => {
       try {
         return await saveConnectivity(deps.db, source, list, now());
@@ -693,92 +743,166 @@ export async function syncAwishSource(
         return new Set<string>();
       }
     };
-    const connectivitySaved = await saveMachinesConnectivity(machines);
-    const known = await maxKnownId(deps.db, source);
-    const collected = await collectOrders({
-      fetchPage: async (page) => {
-        const res = await api.orders({ currentPage: page, perPage: AWISH_PER_PAGE });
-        return {
-          items: res.items,
-          total: res.total,
-          perPage: res.perPage,
-          lastPage: res.lastPage,
-          hasMore: res.hasMore,
-        };
-      },
-      cursor: before.paging,
-      maxKnownId: known,
-      now: started,
-      sourceTimezone: source.source_timezone,
-      maxPages: deps.maxPages ?? MAX_ORDER_PAGES,
-      deadlineAt,
-      clock,
-      isOutOfTime: (e) => e instanceof AwishApiError && e.kind === "budget",
-    });
-    pages = collected.pages;
-    fetched = collected.orders.length;
-    // Ingen sida med order lästes (anropet tog slut på tid): det är ett fel, inte en lyckad
-    // hämtning av noll order. Annars flyttas "senast hämtat" fram och allt ser färskt ut
-    // medan försäljningen står still. Automaternas anslutning är redan sparad ovan.
-    if (collected.pages === 0 && collected.budgetExhausted) {
-      throw new AwishSyncStop(NO_ORDERS_IN_TIME);
+    let machines: FetchedMachine[];
+    let machinesFresh = false;
+    let connectivitySaved = new Set<string>();
+    try {
+      machines = await fetchMachines(api);
+      machinesFresh = true;
+      // Anslutningen per automat, före orderna: ett fel eller stopp i orderna får inte tysta
+      // offlinelarmet.
+      connectivitySaved = await saveMachinesConnectivity(machines);
+      steps.machines = { ok: true, via: "open_api" };
+      await record("machines", "open_api", true);
+    } catch (error) {
+      machines = await knownMachines(deps.db, source);
+      steps.machines = { ok: false, via: "senast_kanda", errorKind: kindOf(error) };
+      if (!isBudget(error)) {
+        console.warn(
+          `[awish] automaterna kunde inte läsas (${kindOf(error)}); senast kända används`,
+        );
+        await record("machines", "senast_kanda", false, error);
+      }
     }
 
-    // Beloppsformatet: så länge inget belopp med decimalpunkt har setts i källan
-    // stoppas körningen på ett betalt heltalsbelopp (kan vara öre, se AwishSyncState).
-    const amountFormat =
-      before.amountFormat ??
-      (collected.orders.some((o) => /^\s*\d+\.\d+\s*$/.test(o.amount)) ? "decimal" : null);
-    const integer = amountFormat === null ? integerPaidAmount(collected.orders) : undefined;
-    if (integer) {
-      throw new AwishSyncStop(
-        `Awish skickade beloppet "${integer.amount.trim().slice(0, 20)}" utan decimaler (order ${integer.id}). ` +
-          "Det är inte bekräftat om det är kronor eller öre, så inget importerades. Se docs/awish-api.md (Belopp).",
-      );
+    // 2. Orderna. Ett fel här stoppar inte facken eller slutdagen; läget (sidorna) flyttas
+    // inte fram, så nästa körning hämtar det som missades.
+    let ordersError: unknown = null;
+    let collected: Awaited<ReturnType<typeof collectOrders>> | null = null;
+    let outcome: ImportOutcome | null = null;
+    let amountFormat: "decimal" | null = before.amountFormat;
+    let balancesBefore: SlotBalance[] | null = null;
+    try {
+      const known = await maxKnownId(deps.db, source);
+      collected = await collectOrders({
+        fetchPage: async (page) => {
+          const res = await api.orders({ currentPage: page, perPage: AWISH_PER_PAGE });
+          return {
+            items: res.items,
+            total: res.total,
+            perPage: res.perPage,
+            lastPage: res.lastPage,
+            hasMore: res.hasMore,
+          };
+        },
+        cursor: before.paging,
+        maxKnownId: known,
+        now: started,
+        sourceTimezone: source.source_timezone,
+        maxPages: deps.maxPages ?? MAX_ORDER_PAGES,
+        deadlineAt,
+        clock,
+        isOutOfTime: (e) => e instanceof AwishApiError && e.kind === "budget",
+      });
+      pages = collected.pages;
+      fetched = collected.orders.length;
+      // Ingen sida med order lästes (anropet tog slut på tid): det är ett fel, inte en lyckad
+      // hämtning av noll order. Annars flyttas "senast hämtat" fram och allt ser färskt ut
+      // medan försäljningen står still. Automaternas anslutning är redan sparad ovan.
+      if (collected.pages === 0 && collected.budgetExhausted) {
+        throw new AwishSyncStop(NO_ORDERS_IN_TIME);
+      }
+
+      // Beloppsformatet: så länge inget belopp med decimalpunkt har setts i källan
+      // stoppas körningen på ett betalt heltalsbelopp (kan vara öre, se AwishSyncState).
+      amountFormat =
+        before.amountFormat ??
+        (collected.orders.some((o) => /^\s*\d+\.\d+\s*$/.test(o.amount)) ? "decimal" : null);
+      const integer = amountFormat === null ? integerPaidAmount(collected.orders) : undefined;
+      if (integer) {
+        throw new AwishSyncStop(
+          `Awish skickade beloppet "${integer.amount.trim().slice(0, 20)}" utan decimaler (order ${integer.id}). ` +
+            "Det är inte bekräftat om det är kronor eller öre, så inget importerades. Se docs/awish-api.md (Belopp).",
+        );
+      }
+
+      // Saldot FÖRE orderna: varje såld order drar ett pack direkt (stock_events 'sale'), så
+      // det är oftast orderna, inte läsningen av facken, som tar ett fack till 0. Läses saldot
+      // först efter orderna är facket redan tomt och ingenting ser ut att ha ändrats.
+      balancesBefore = await balancesOrNull(deps.db, source.organization_id, "före synken");
+      outcome = await importOrders(deps.db, source, {
+        orders: collected.orders,
+        machines,
+        refundReported: before.refundReported,
+        actorUserId: input.actorUserId ?? null,
+        trigger,
+        pages,
+      });
+
+      // Order att hantera för hand (återbetald efter importen, betald men oläslig): ett larm
+      // per order som står kvar i Att göra tills den är hanterad. De hanterade stängs.
+      await raiseOrderAttention(deps.db, source, outcome.attention, now());
+      await resolveOrderAttention(deps.db, source.organization_id, {
+        sourceId: source.id,
+        now: now(),
+      });
+
+      // Automater som importen just skapade får sitt läge nu.
+      if (machinesFresh) {
+        await saveMachinesConnectivity(machines.filter((m) => !connectivitySaved.has(m.id)));
+      }
+      steps.orders = { ok: true, via: "open_api" };
+      await record("orders", "open_api", true);
+    } catch (error) {
+      ordersError = error;
+      if (!(error instanceof AwishApiError) && !(error instanceof AwishSyncStop)) {
+        console.error("[awish] orderna kunde inte hämtas", error);
+      }
+      steps.orders = { ok: false, via: "senast_kanda", errorKind: kindOf(error) };
+      await record("orders", "senast_kanda", false, error);
     }
 
-    // Saldot FÖRE orderna: varje såld order drar ett pack direkt (stock_events 'sale'), så
-    // det är oftast orderna, inte läsningen av facken, som tar ett fack till 0. Läses saldot
-    // först efter orderna är facket redan tomt och ingenting ser ut att ha ändrats.
-    const balancesBefore = await balancesOrNull(deps.db, source.organization_id, "före synken");
-    const outcome = await importOrders(deps.db, source, {
-      orders: collected.orders,
-      machines,
-      refundReported: before.refundReported,
-      actorUserId: input.actorUserId ?? null,
-      trigger,
-      pages,
-    });
-
-    // Order att hantera för hand (återbetald efter importen, betald men oläslig): ett larm
-    // per order som står kvar i Att göra tills den är hanterad. De hanterade stängs.
-    await raiseOrderAttention(deps.db, source, outcome.attention, now());
-    await resolveOrderAttention(deps.db, source.organization_id, {
-      sourceId: source.id,
-      now: now(),
-    });
-
-    // Automater som importen just skapade får sitt läge nu.
-    await saveMachinesConnectivity(machines.filter((m) => !connectivitySaved.has(m.id)));
-
-    // Saldot i automaterna (Products) efter orderna, med den tid som är kvar. Ett fel
+    // 3. Saldot i automaterna (Products, reserv: webbpanelen) med den tid som är kvar. Ett fel
     // här stoppar inte synken av order: det loggas och läses om nästa gång.
     let stock: AwishStockSummary | null = null;
-    if (stockDue(before, trigger, started)) {
+    const readStock = stockDue(before, trigger, started);
+    // Orderna felade innan saldot lästes: jämförelsen för "just slut" utgår från saldot nu.
+    const baseline =
+      balancesBefore ??
+      (readStock ? await balancesOrNull(deps.db, source.organization_id, "före facken") : null);
+    if (readStock) {
       try {
-        stock = await syncSourceStock(deps.db, api, source, { now, deadlineAt });
+        stock = await syncSourceStock(deps.db, api, source, {
+          now,
+          deadlineAt,
+          fallback,
+          verifyWebIds: true,
+        });
+        steps.stock = stockStep(stock);
       } catch (error) {
         console.error("[awish] saldot kunde inte läsas", error);
+        steps.stock = { ok: false, via: "senast_kanda", errorKind: kindOf(error) };
       }
     }
     // Jämförs efter både orderna och facken: Awish är facit, så en order som drog saldot
     // till 0 men där facket visar sig ha pack kvar larmar inte.
     const stockDropped =
-      (outcome.summary?.new ?? 0) > 0 || (stock?.counts ?? 0) > 0
-        ? await droppedSince(deps.db, source.organization_id, balancesBefore)
+      (outcome?.summary?.new ?? 0) > 0 || (stock?.counts ?? 0) > 0
+        ? await droppedSince(deps.db, source.organization_id, baseline)
         : [];
-    // Awish-kontots slutdag, högst en gång per dygn.
-    await refreshMerchantExpiry(deps.db, api, source, now());
+    // 4. Awish-kontots slutdag, högst en gång per dygn (reserv: webbpanelens Profile).
+    const merchant = await refreshMerchantExpiry(deps.db, api, source, now(), {
+      webExpiry: fallback.merchantExpiry,
+    });
+    if (merchant !== null) steps.merchant = merchant;
+
+    if (ordersError !== null || !collected || !outcome) {
+      return finish(
+        {
+          ...base,
+          ok: false,
+          message: errorMessage(ordersError),
+          pages,
+          fetched,
+          historyDone: before.paging.historyDone,
+          stock,
+          stockDropped,
+        },
+        before.paging,
+        before.refundReported,
+        { stock, steps },
+      );
+    }
     return finish(
       {
         ok: true,
@@ -794,7 +918,7 @@ export async function syncAwishSource(
       },
       collected.cursor,
       outcome.refundReported,
-      { amountFormat, pagingFields: collected.pagingFields, stock },
+      { amountFormat, pagingFields: collected.pagingFields, stock, steps },
     );
   } catch (error) {
     if (!(error instanceof AwishApiError) && !(error instanceof AwishSyncStop)) {
@@ -811,9 +935,67 @@ export async function syncAwishSource(
       },
       before.paging,
       before.refundReported,
+      { steps },
     );
   } finally {
     api.close();
+  }
+}
+
+function isBudget(error: unknown): boolean {
+  return error instanceof AwishApiError && error.kind === "budget";
+}
+
+/** Felets art för lastRun.steps (inga texter). */
+function kindOf(error: unknown): string {
+  if (error instanceof AwishApiError) return error.kind;
+  if (error instanceof AwishSyncStop) return "stopp";
+  return "internt";
+}
+
+/** Facksteget ur sammanfattningen: vilken väg, och lyckades minst en automat? */
+export function stockStep(stock: AwishStockSummary): AwishSyncStep {
+  if (stock.machines === 0) return { ok: true, via: "open_api" };
+  if (stock.read === 0) {
+    const kind = /^awish: (\S+)/.exec(stock.error ?? "")?.[1];
+    return {
+      ok: stock.failed === 0,
+      via: "senast_kanda",
+      ...(kind ? { errorKind: kind } : stock.failed > 0 ? { errorKind: "spara" } : {}),
+    };
+  }
+  return { ok: true, via: (stock.viaWeb ?? 0) > 0 ? "webbpanelen" : "open_api" };
+}
+
+/**
+ * Källans automater som de senast lästes (source_machines), när Machines inte svarar. Inget
+ * om anslutningen: den lämnas orörd.
+ */
+async function knownMachines(
+  db: Db,
+  source: { id: string; organization_id: string },
+): Promise<FetchedMachine[]> {
+  try {
+    const found = await query<{
+      external_id: string;
+      external_name: string | null;
+      external_device_no: string | null;
+    }>(
+      db,
+      sql`select external_id, external_name, external_device_no from public.source_machines
+          where organization_id = ${source.organization_id}::uuid
+            and data_source_id = ${source.id}::uuid`,
+    );
+    return found.map((r) => ({
+      id: r.external_id,
+      name: r.external_name ?? "",
+      machineNo: r.external_device_no ?? "",
+      isOnline: false,
+      status: "",
+    }));
+  } catch (error) {
+    console.error("[awish] källans automater kunde inte läsas", error);
+    return [];
   }
 }
 
@@ -847,6 +1029,26 @@ export interface FillReadResult {
   status:
     "read" | "partial" | "failed" | "throttled" | "busy" | "paused" | "no_credentials" | "archived";
   stock: AwishStockSummary | null;
+  /**
+   * Lästes facken från Awish nu (minst en automat)? false: spärrat, upptaget, fel eller ingen
+   * läsning; sidan visar då "Läst HH:MM" (senaste läsningen), inte "Uppdaterat".
+   */
+  read: boolean;
+  /** Vägen: Open API, webbpanelen (reservvägen) eller senast kända (inget lästes nu). */
+  via: "open_api" | "webbpanelen" | "senast_kanda";
+}
+
+function fillResult(
+  status: FillReadResult["status"],
+  stock: AwishStockSummary | null,
+): FillReadResult {
+  const read = stock !== null && stock.read > 0;
+  return {
+    status,
+    stock,
+    read,
+    via: !read ? "senast_kanda" : (stock.viaWeb ?? 0) > 0 ? "webbpanelen" : "open_api",
+  };
 }
 
 /**
@@ -866,15 +1068,15 @@ export async function readFillStock(
   const deadlineAt = started.getTime() + deadlineMs;
   const source = await loadSource(deps.db, input.dataSourceId);
   if (!source || source.archived_at !== null || source.org_archived_at !== null) {
-    return { status: "archived", stock: null };
+    return fillResult("archived", null);
   }
-  if (source.status === "paused") return { status: "paused", stock: null };
+  if (source.status === "paused") return fillResult("paused", null);
   const before = parseState(source.cursor);
   if (!fillReadDue(before, started, input.minIntervalMs ?? FILL_READ_INTERVAL_MS)) {
-    return { status: "throttled", stock: null };
+    return fillResult("throttled", null);
   }
   if (before.leaseUntil && Date.parse(before.leaseUntil) > started.getTime()) {
-    return { status: "busy", stock: null };
+    return fillResult("busy", null);
   }
   // Låset gäller bara läsningen (plus marginal), inte synkens tre minuter.
   const leased: AwishSyncState = {
@@ -885,7 +1087,7 @@ export async function readFillStock(
   const leasedText = JSON.stringify(leased);
   // Jämför-och-skriv: två samtidiga tryck (två telefoner) ger en läsning.
   if (!(await writeState(deps.db, source, leased, source.cursor))) {
-    return { status: "busy", stock: null };
+    return fillResult("busy", null);
   }
 
   const release = async (stock: AwishStockSummary | null, dropped: readonly string[] = []) => {
@@ -929,7 +1131,7 @@ export async function readFillStock(
   }
   if (!creds) {
     await release(null);
-    return { status: "no_credentials", stock: null };
+    return fillResult("no_credentials", null);
   }
 
   const clock = () => now().getTime();
@@ -937,19 +1139,29 @@ export async function readFillStock(
   let dropped: string[] = [];
   const api = (deps.connect ?? defaultConnect)(creds, { deadlineAt, clock, maxAttempts: 1 });
   try {
-    ({ stock, dropped } = await syncStockWatchingDrops(deps.db, api, source, { now, deadlineAt }));
+    // Reservvägen (webbpanelen) får det som återstår av tidsgränsen när Open API inte svarar.
+    const fallback = webStockFallback(deps.db, source.organization_id, {
+      deadlineAt,
+      now,
+      ...(deps.makeWebClient ? { makeClient: deps.makeWebClient } : {}),
+    });
+    ({ stock, dropped } = await syncStockWatchingDrops(deps.db, api, source, {
+      now,
+      deadlineAt,
+      fallback,
+    }));
   } catch (error) {
     if (!(error instanceof AwishApiError)) console.error("[awish] facken kunde inte läsas", error);
   } finally {
     api.close();
     await release(stock, dropped);
   }
-  if (stock === null) return { status: "failed", stock: null };
+  if (stock === null) return fillResult("failed", null);
   if (stock.read === 0 && (stock.failed > 0 || stock.deferred > 0)) {
-    return { status: "failed", stock };
+    return fillResult("failed", stock);
   }
-  if (stock.failed > 0 || stock.deferred > 0) return { status: "partial", stock };
-  return { status: "read", stock };
+  if (stock.failed > 0 || stock.deferred > 0) return fillResult("partial", stock);
+  return fillResult("read", stock);
 }
 
 type ConnectivityRow = {
@@ -1070,10 +1282,15 @@ export async function saveConnectivity(
   return seen;
 }
 
+/** Efter ett misslyckat försök att läsa slutdagen provas det igen tidigast så här långt efter. */
+export const MERCHANT_RETRY_MS = 60 * 60_000;
+
 /**
- * Läser Merchant.expired_at högst en gång per dygn och sparar slutdagen. Tidpunkten för
- * läsningen sparas även när svaret saknar slutdag eller anropet misslyckas (då försöker
- * nästa dygn igen), så att ett fel inte ger ett anrop var femte minut. Kastar inte.
+ * Läser Merchant.expired_at högst en gång per dygn och sparar slutdagen. Svarar Open API inte
+ * läses slutdagen via webbpanelens Profile (`webExpiry`, samma inloggning som reservvägen för
+ * facken). Går ingen väg sparas inte tidpunkten för läsningen (då vet Kontroll att slutdagen
+ * inte är kontrollerad); nästa försök görs tidigast efter MERCHANT_RETRY_MS, inte var femte
+ * minut. Kastar inte. Returnerar steget, eller null när ingen läsning behövdes.
  */
 export async function refreshMerchantExpiry(
   db: Db,
@@ -1083,35 +1300,78 @@ export async function refreshMerchantExpiry(
     "id" | "organization_id" | "source_timezone" | "awish_merchant_checked_at"
   >,
   at: Date,
-): Promise<boolean> {
+  options: { webExpiry?: () => Promise<string | null | undefined> } = {},
+): Promise<AwishSyncStep | null> {
   const checked =
     source.awish_merchant_checked_at === null ? null : new Date(source.awish_merchant_checked_at);
-  if (!merchantCheckDue(checked, at)) return false;
+  if (!merchantCheckDue(checked, at)) return null;
+  if (await merchantFailedRecently(db, source.id, at)) return null;
   let expiresAt: Date | null = null;
-  let ok = false;
+  let via: AwishRoute | null = null;
+  let grpcError: unknown = null;
   try {
     const merchant = await api.merchant();
     expiresAt = parseMerchantExpiry(merchant.expiredAt, source.source_timezone);
-    ok = true;
+    via = "open_api";
   } catch (error) {
-    console.error("[awish] Merchant kunde inte läsas", error);
+    grpcError = error;
+    console.warn(`[awish] Merchant kunde inte läsas (${kindOf(error)})`);
+  }
+  let webError: unknown = null;
+  if (via === null && options.webExpiry && !isBudget(grpcError)) {
+    try {
+      const text = await options.webExpiry();
+      if (text !== undefined) {
+        expiresAt = parseMerchantExpiry(text, source.source_timezone);
+        via = "webbpanelen";
+      }
+    } catch (error) {
+      webError = error;
+      console.warn(`[awish] slutdagen kunde inte läsas via webbpanelen (${kindOf(error)})`);
+    }
+  }
+  const ok = via !== null;
+  await recordPathResult(db, {
+    organizationId: source.organization_id,
+    dataSourceId: source.id,
+    path: "merchant",
+    route: via ?? "senast_kanda",
+    ok,
+    error: grpcError ?? webError ?? undefined,
+    now: at,
+  });
+  if (!ok) {
+    return { ok: false, via: "senast_kanda", errorKind: kindOf(grpcError ?? webError) };
   }
   try {
     await db.execute(
-      ok
-        ? sql`update public.data_sources
-              set awish_expires_at = ${expiresAt?.toISOString() ?? null}::timestamptz,
-                  awish_merchant_checked_at = ${at.toISOString()}::timestamptz
-              where organization_id = ${source.organization_id}::uuid and id = ${source.id}::uuid`
-        : sql`update public.data_sources
-              set awish_merchant_checked_at = ${at.toISOString()}::timestamptz
-              where organization_id = ${source.organization_id}::uuid and id = ${source.id}::uuid`,
+      sql`update public.data_sources
+          set awish_expires_at = ${expiresAt?.toISOString() ?? null}::timestamptz,
+              awish_merchant_checked_at = ${at.toISOString()}::timestamptz
+          where organization_id = ${source.organization_id}::uuid and id = ${source.id}::uuid`,
     );
   } catch (error) {
     console.error("[awish] kontots slutdag kunde inte sparas", error);
+    return { ok: false, via: via!, errorKind: "spara" };
+  }
+  return { ok: true, via: via! };
+}
+
+/** Felade läsningen av slutdagen för mindre än MERCHANT_RETRY_MS sedan? */
+async function merchantFailedRecently(db: Db, dataSourceId: string, at: Date): Promise<boolean> {
+  try {
+    const [row] = await query<{ recent: boolean }>(
+      db,
+      sql`select (failing_since is not null
+                  and last_attempt_at > ${new Date(at.getTime() - MERCHANT_RETRY_MS).toISOString()}::timestamptz
+                  and last_attempt_at <= ${at.toISOString()}::timestamptz) as recent
+          from public.awish_path_health
+          where data_source_id = ${dataSourceId}::uuid and path = 'merchant'`,
+    );
+    return row?.recent === true;
+  } catch {
     return false;
   }
-  return ok;
 }
 
 interface ImportOutcome {

@@ -251,6 +251,26 @@ export async function openBreaker(
   }
 }
 
+/**
+ * Stänger brytaren för vägen i alla stigar (t.ex. webbpanelen efter ett nytt lösenord eller en
+ * lyckad "Testa reservvägen"). Kastar aldrig.
+ */
+export async function closeBreakers(
+  db: Executor,
+  dataSourceId: string,
+  route: AwishRoute,
+): Promise<void> {
+  try {
+    await db.execute(
+      sql`update public.awish_path_health
+          set breaker_route = null, breaker_open_until = null
+          where data_source_id = ${dataSourceId}::uuid and breaker_route = ${route}`,
+    );
+  } catch (error) {
+    console.error("[awish] brytaren kunde inte stängas", safeLog(error));
+  }
+}
+
 /** Gratis-pack: webbpanelens fack-id är samma som Open API:s (jämfört nu). */
 export async function markWebIdsVerified(
   db: Executor,

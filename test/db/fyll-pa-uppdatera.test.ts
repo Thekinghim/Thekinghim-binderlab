@@ -132,7 +132,12 @@ describe("Uppdatera i Fyll på", () => {
     const orders = calls("Orders");
     const machines = calls("Machines");
     const r = await refresh(refiller);
-    expect(r).toEqual({ status: "read", lastReadAt: now.toISOString() });
+    expect(r).toEqual({
+      status: "read",
+      lastReadAt: now.toISOString(),
+      read: true,
+      via: "open_api",
+    });
     const f = await fill();
     expect(f.fill?.reduce((n, e) => n + e.units, 0)).toBe(3);
     expect(new Date(f.at!).toISOString()).toBe(now.toISOString());
@@ -228,7 +233,7 @@ describe("Uppdatera i Fyll på", () => {
       connect,
       now: clock,
     });
-    expect(r).toEqual({ status: "none", lastReadAt: null });
+    expect(r).toEqual({ status: "none", lastReadAt: null, read: false, via: "senast_kanda" });
     expect(calls("Products")).toBe(products);
   });
 });

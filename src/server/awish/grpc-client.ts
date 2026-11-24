@@ -187,9 +187,25 @@ export interface AwishApi {
     machineIds?: string[];
   }): Promise<AwishPage<AwishOrder>>;
   order(id: string): Promise<AwishOrder | null>;
-  /** Automatens fack med antal (Products, ingen sidindelning). */
-  products(machineId: string): Promise<AwishProduct[]>;
+  /**
+   * Automatens fack med antal (Products, ingen sidindelning). `call` kortar anropet när det
+   * finns en reservväg (högst `timeoutMs`, `attempts` försök, inget nytt försök på internt fel).
+   */
+  products(machineId: string, call?: AwishCallOptions): Promise<AwishProduct[]>;
   close(): void;
+}
+
+/** Per anrop: kortare tidsgräns och färre försök (t.ex. när en reservväg finns). */
+export interface AwishCallOptions {
+  /** Högsta tidsgräns för ett försök (ms), utöver klientens och körningens. */
+  readonly timeoutMs?: number;
+  /** Högst så många försök (annars klientens maxAttempts). */
+  readonly attempts?: number;
+  /**
+   * Prova igen en gång när Awish svarar med internt fel (gRPC 13). Standard för läsningar;
+   * av när en reservväg finns (då går den direkt dit).
+   */
+  readonly retryServer?: boolean;
 }
 
 /** En kampanjbild på automatens skärm (Banner). Tider i sekunder sedan 1970 (Unix). */
@@ -242,7 +258,7 @@ export interface AwishBannerInput {
 /** Läsande och skrivande anrop för kampanjer och hämtkoder. */
 export interface AwishMarketingApi {
   /** Automatens fack (samma som AwishApi.products), för att välja facket för en kod. */
-  products(machineId: string): Promise<AwishProduct[]>;
+  products(machineId: string, call?: AwishCallOptions): Promise<AwishProduct[]>;
   banners(machineId: string): Promise<AwishBanner[]>;
   createBanner(input: AwishBannerInput): Promise<AwishWriteResult>;
   updateBanner(input: AwishBannerInput & { id: string }): Promise<AwishWriteResult>;
@@ -500,6 +516,15 @@ export function mapGrpcError(error: unknown, address: string): AwishApiError {
       code,
     );
   }
+  // Awish begränsar anropen (hur Awish signalerar det är inte känt; RESOURCE_EXHAUSTED är
+  // gRPC:s kod för det). Provas igen som när Awish inte svarar.
+  if (code === grpc.status.RESOURCE_EXHAUSTED) {
+    return new AwishApiError(
+      "unavailable",
+      "Awish tar inte emot fler anrop just nu. Synken försöker igen om en stund.",
+      code,
+    );
+  }
   if (code === grpc.status.DEADLINE_EXCEEDED) {
     return new AwishApiError(
       "timeout",
@@ -613,18 +638,37 @@ export function createAwishClient(
       );
     });
 
-  const call = async (method: string, request: Obj, retry: boolean = true): Promise<unknown> => {
+  /**
+   * Ett anrop med nya försök. `retry` false: skrivning, aldrig igen. Läsningar provas igen vid
+   * UNAVAILABLE/DEADLINE_EXCEEDED/RESOURCE_EXHAUSTED (högst maxAttempts) och en gång vid
+   * internt fel (gRPC 13), som Awish ibland svarar med en kort stund.
+   */
+  const call = async (
+    method: string,
+    request: Obj,
+    retry: boolean = true,
+    per: AwishCallOptions = {},
+  ): Promise<unknown> => {
+    const attemptsMax = Math.max(1, Math.min(maxAttempts, per.attempts ?? maxAttempts));
+    const ownLimit = Math.min(deadlineMs, per.timeoutMs ?? deadlineMs);
+    const retryServer = retry && per.retryServer !== false;
+    let serverRetried = false;
     for (let attempt = 1; ; attempt += 1) {
       const left = remaining();
       if (left < AWISH_MIN_CALL_MS) throw budgetError();
-      const timeoutMs = Math.min(deadlineMs, Math.floor(left));
+      const timeoutMs = Math.min(ownLimit, Math.floor(left));
       try {
         return await once(method, request, timeoutMs);
       } catch (error) {
         const mapped = mapGrpcError(error, options.address);
         // Tidsgränsen kortades av körningens budget: det är budgeten som tog slut.
-        if (mapped.kind === "timeout" && timeoutMs < deadlineMs) throw budgetError();
-        if (!retry || !mapped.retryable || attempt >= maxAttempts) throw mapped;
+        if (mapped.kind === "timeout" && timeoutMs < ownLimit) throw budgetError();
+        const internal =
+          retryServer && mapped.kind === "server" && mapped.grpcCode === grpc.status.INTERNAL;
+        const again =
+          retry && attempt < attemptsMax && (mapped.retryable || (internal && !serverRetried));
+        if (!again) throw mapped;
+        if (internal) serverRetried = true;
         const backoff = BACKOFF_MS[attempt - 1] ?? 1500;
         // Hinner nästa försök inte med, ges felet direkt.
         if (remaining() - backoff < AWISH_MIN_CALL_MS) throw mapped;
@@ -653,8 +697,8 @@ export function createAwishClient(
       const res = obj(await call("Order", { id }));
       return res.data ? toOrder(res.data) : null;
     },
-    async products(machineId) {
-      const res = obj(await call("Products", { machine_id: machineId }));
+    async products(machineId, per) {
+      const res = obj(await call("Products", { machine_id: machineId }, true, per));
       return (Array.isArray(res.data) ? res.data : []).map(toProduct);
     },
     async banners(machineId) {
