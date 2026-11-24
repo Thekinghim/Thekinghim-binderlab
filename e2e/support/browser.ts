@@ -35,7 +35,6 @@ export interface Locator {
   inputValue(): Promise<string>;
   getAttribute(name: string): Promise<string | null>;
   isVisible(): Promise<boolean>;
-  evaluate<R>(fn: (el: HTMLElement) => R): Promise<R>;
   count(): Promise<number>;
   allInnerTexts(): Promise<string[]>;
   first(): Locator;
