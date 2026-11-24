@@ -56,3 +56,11 @@ describe("packKey", () => {
     expect(packInitials("")).toBe("");
   });
 });
+
+describe("packKey: nya pack (24 nov 2026)", () => {
+  it("japanska 30th Celebration och Gem pack vol 7", () => {
+    expect(packKey("30th celebration Japanese")).toBe("30th-celebration-jp");
+    expect(packKey("30th Celebration")).toBe("30th-celebration");
+    expect(packKey("Gem pack vol 7")).toBe("gem-pack-vol7-cn");
+  });
+});

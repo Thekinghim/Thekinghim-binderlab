@@ -10,6 +10,7 @@
 export const PACK_IMAGES = {
   "151c-surprise-cn": [128, 240],
   "30th-celebration": [131, 240],
+  "30th-celebration-jp": [120, 240],
   "ascended-heroes": [131, 240],
   "black-bolt": [131, 240],
   "chaos-rising": [132, 240],
@@ -17,6 +18,7 @@ export const PACK_IMAGES = {
   "delta-reign": [132, 240],
   "destined-rivals": [131, 240],
   "fusion-strike": [131, 240],
+  "gem-pack-vol7-cn": [128, 240],
   "journey-together": [132, 240],
   "lorcana-into-the-inklands": [139, 240],
   "mega-dream-ex-jp": [130, 240],
@@ -83,6 +85,8 @@ export function packKey(title: string | null | undefined): PackKey | null {
   if (/151c|surprise|kines|\bcn\b/.test(t)) return "151c-surprise-cn";
   if (/151/.test(t)) return "scarlet-violet-151";
   if (/op[\s-]?13/.test(t)) return jp ? "op13-jp" : "op13-en";
+  if (/30th/.test(t)) return jp ? "30th-celebration-jp" : "30th-celebration";
+  if (/gem\s*pack/.test(t)) return "gem-pack-vol7-cn";
   return RULES.find(([needle]) => t.includes(needle))?.[1] ?? null;
 }
 
