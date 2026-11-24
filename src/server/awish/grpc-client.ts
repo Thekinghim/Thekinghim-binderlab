@@ -29,6 +29,7 @@ import protobuf from "protobufjs";
 import type { AwishGrpcOrder } from "@/import/adapters/awish-grpc";
 
 import { AWISH_PROVIDER_PROTO } from "./provider-proto";
+import { signRequest } from "./sign";
 
 /** Leverantörens server enligt dokumentationen (ingen TLS i exemplet). */
 export const DEFAULT_AWISH_GRPC_ADDRESS = "49.51.72.74:50051";
@@ -480,6 +481,18 @@ const KNOWN_MESSAGES: Array<{ match: RegExp; kind: AwishErrorKind; text: string 
     text: "Awish-kontot har gått ut. Förläng det hos Awish (Merchant → Merchant Detail).",
   },
   {
+    // Signerade skrivningar (v1.2.40+): före inloggningsfelen, "invalid signature" gäller
+    // signeringen och inte AppSecret/AppKey.
+    match: /time window/i,
+    kind: "server",
+    text: "Awish tyckte att klockan var fel. Försök igen om en minut.",
+  },
+  {
+    match: /sign(ature)?( verify)? failed|invalid sign|expected hexadecimal|hmac/i,
+    kind: "changed",
+    text: "Awish godkände inte signaturen. Testa under Datakällor → Awish API.",
+  },
+  {
     match: /permission denied|invalid token|token (is )?invalid|invalid signature|unauthori[sz]ed/i,
     kind: "auth",
     text: "Awish nekade anropet. AppSecret eller AppKey stämmer inte. Kontrollera dem under Merchant → Developer Center.",
@@ -666,14 +679,18 @@ export function createAwishClient(
       return toWriteResult(
         await call(
           "CreateBanner",
-          {
-            machine_id: input.machineId,
-            cover_image: input.coverImage,
-            title: input.title,
-            expired_at: input.expiredAt,
-            media_type: AWISH_MEDIA_IMAGE,
-            is_link: false,
-          },
+          signRequest(
+            "CreateBannerRequest",
+            {
+              machine_id: input.machineId,
+              cover_image: input.coverImage,
+              title: input.title,
+              expired_at: input.expiredAt,
+              media_type: AWISH_MEDIA_IMAGE,
+              is_link: false,
+            },
+            creds.appId,
+          ),
           false,
         ),
       );
@@ -682,14 +699,18 @@ export function createAwishClient(
       return toWriteResult(
         await call(
           "UpdateBanner",
-          {
-            id: input.id,
-            machine_id: input.machineId,
-            cover_image: input.coverImage,
-            title: input.title,
-            expired_at: input.expiredAt,
-            media_type: AWISH_MEDIA_IMAGE,
-          },
+          signRequest(
+            "UpdateBannerRequest",
+            {
+              id: input.id,
+              machine_id: input.machineId,
+              cover_image: input.coverImage,
+              title: input.title,
+              expired_at: input.expiredAt,
+              media_type: AWISH_MEDIA_IMAGE,
+            },
+            creds.appId,
+          ),
           false,
         ),
       );
@@ -702,13 +723,17 @@ export function createAwishClient(
       return toWriteResult(
         await call(
           "CreatePickupCode",
-          {
-            machine_id: input.machineId,
-            product_id: input.productId,
-            quantity: input.quantity,
-            expired_at: input.expiredAt,
-            status: true,
-          },
+          signRequest(
+            "CreatePickupCodesRequest",
+            {
+              machine_id: input.machineId,
+              product_id: input.productId,
+              quantity: input.quantity,
+              expired_at: input.expiredAt,
+              status: true,
+            },
+            creds.appId,
+          ),
           false,
         ),
       );

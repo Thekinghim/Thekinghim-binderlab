@@ -65,6 +65,7 @@ import {
 } from "./new-product";
 import { awishImageSrc } from "./image-proxy";
 import type { AwishWebApi } from "./web-client";
+import { goodsWriterFor } from "../awish-catalog/goods-api";
 
 export interface EditGoodDeps extends NewProductDeps {
   /** "Med VMB" (vyknappen); standard av, som Inköpspriser. */
@@ -573,7 +574,7 @@ export async function saveEditGoodFor(
   fingerprint: string,
   deps: EditGoodDeps = {},
 ): Promise<EditGoodResult> {
-  const { db, client } = await loggedInClient(viewer, deps);
+  const { db, client, sourceId } = await loggedInClient(viewer, deps);
   const orgId = viewer.organization.id;
   return withAwishWriteLock(db, orgId, async () => {
     const {
@@ -605,6 +606,8 @@ export async function saveEditGoodFor(
       permissions,
     );
 
+    // Webbpanelen eller API:t (Datakällor → Awish API → Varor till Awish).
+    const writer = await goodsWriterFor(viewer, client, sourceId, { db });
     const outcome = await withUserDbFor(
       viewer.user,
       async (tx): Promise<{ after: AwishGoodFull | null; readFailed: boolean }> => {
@@ -612,7 +615,7 @@ export async function saveEditGoodFor(
         const readBack = async () =>
           (await client.allGoodsFull()).find((g) => g.id === plan.goodId) ?? null;
         try {
-          await client.updateGood(plan.goodId, input);
+          await writer.updateGood(plan.goodId, input, fingerprint);
         } catch (error) {
           // Nekar Awish rullas Binderlab tillbaka. Men ett tappat svar (tidsgräns, 503) kan
           // betyda att Awish ändå sparade: då måste aliaset sparas, annars kopplas inte

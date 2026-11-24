@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { formatInt } from "@/lib/format";
 
-import { createCampaign, retryCampaign, stopCampaign } from "../actions";
+import { createCampaign, removeFromScreen, retryCampaign, stopCampaign } from "../actions";
 import { addDaysIso, dayLabel } from "../_lib/display";
 
 export interface MachineOption {
@@ -581,6 +581,57 @@ export function CampaignActions({
             </Button>
             <Button variant="danger-confirm" loading={pending} onClick={stop}>
               Ja, stäng av
+            </Button>
+          </>
+        }
+      />
+    </div>
+  );
+}
+
+/** "Ta bort från skärmen": kampanjbilden tas bort i Awish (slut eller avstängd kampanj). */
+export function RemoveFromScreen({ id, title }: { id: string; title: string }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  const [confirm, setConfirm] = useState(false);
+
+  const remove = () =>
+    start(async () => {
+      const r = await removeFromScreen(id).catch(() => ({
+        ok: false as const,
+        error: "Ingen kontakt med servern. Försök igen.",
+      }));
+      setConfirm(false);
+      if (!r.ok) {
+        toast({ title: "Inte borttagen", description: r.error, tone: "critical" });
+        return;
+      }
+      toast({
+        title: r.data.message,
+        tone: r.data.failed > 0 ? "critical" : "ok",
+      });
+      router.refresh();
+    });
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button variant="secondary" size="sm" disabled={pending} onClick={() => setConfirm(true)}>
+        Ta bort från skärmen
+      </Button>
+      <Modal
+        open={confirm}
+        onClose={() => (pending ? undefined : setConfirm(false))}
+        size="sm"
+        title="Ta bort från skärmen?"
+        description={`"${title}" tas bort i Awish. Det går inte att ångra.`}
+        footer={
+          <>
+            <Button variant="ghost" disabled={pending} onClick={() => setConfirm(false)}>
+              Avbryt
+            </Button>
+            <Button variant="danger-confirm" loading={pending} onClick={remove}>
+              Ja, ta bort
             </Button>
           </>
         }

@@ -19,6 +19,7 @@ import {
 } from "@/server/campaigns/model";
 import {
   createCampaignFor,
+  removeCampaignFromScreenFor,
   retryCampaignFor,
   stopCampaignFor,
   type CreatedCampaign,
@@ -98,6 +99,20 @@ export async function stopCampaign(
   try {
     const viewer = await operator();
     const data = await stopCampaignFor(viewer, idSchema.parse(id));
+    revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** "Ta bort från skärmen" (DeleteBanner) för en kampanj som är slut eller avstängd. */
+export async function removeFromScreen(
+  id: unknown,
+): Promise<ActionResult<{ removed: number; failed: number; message: string }>> {
+  try {
+    const viewer = await operator();
+    const data = await removeCampaignFromScreenFor(viewer, idSchema.parse(id));
     revalidateAppData();
     return { ok: true, data };
   } catch (error) {
