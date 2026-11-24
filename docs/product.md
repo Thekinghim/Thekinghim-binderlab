@@ -196,6 +196,14 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
 
 Hur varje siffra räknas står i `docs/berakningar.md`.
 
+### Påfyllare i butiken
+
+Butikens personal kan fylla på automaten själva. Ägaren skapar kontot på automatens sida
+(namn och mobilnummer) och får en PIN-kod och en QR-kod att sätta på automaten. Personalen
+loggar in med mobilnummer och PIN-kod och ser bara en skärm: hur många pack som ska i varje
+fack, _Klart_ och _Ångra_. Inga priser, ingen försäljning, inga andra automater eller butiker.
+Antalen skickas till automaten (Awish) direkt, och ägaren ser påfyllningen med personens namn.
+
 ## Siffror ur panelen
 
 Källa: en nyskapad databas efter `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo`, alltså exakt

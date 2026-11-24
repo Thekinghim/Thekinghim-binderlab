@@ -46,6 +46,7 @@ import { refillByText, stockAsideText } from "../_lib/refill-text";
 import { currentViewer } from "../_lib/session";
 import { loadMachineScreens, type MachineScreen } from "../_lib/v2-data";
 import { MachineHero, type HeroRefill } from "./hero";
+import { StaffAccessCard } from "./_components/staff-access-card";
 import { withUserDbFor } from "@/server/access";
 import { queryRefillSources } from "@/server/data/core/places";
 import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
@@ -265,6 +266,16 @@ export default async function MachinePage({
             </dl>
           }
         />
+
+        {ctx.canEdit ? (
+          <Suspense fallback={null}>
+            <StaffAccessCard
+              user={sessionUser}
+              orgId={ctx.organization.id}
+              machineId={machine.id}
+            />
+          </Suspense>
+        ) : null}
 
         {/* Resten av nyckeltalen (marginal, order, snittorder, butikernas andel): intäkt och
             vinst står i överdelen. */}

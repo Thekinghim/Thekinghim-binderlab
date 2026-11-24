@@ -19,6 +19,7 @@ export const ROLE_LABEL: Record<MembershipRole, string> = {
   viewer: "Läsare",
   refiller: "Påfyllare",
   store: "Butik",
+  machine_refiller: "Påfyllare (butik)",
 };
 
 /** Plural för räknare i rubriken och metadatablocket. */
@@ -28,6 +29,7 @@ const ROLE_PLURAL: Record<MembershipRole, string> = {
   viewer: "Läsare",
   refiller: "Påfyllare",
   store: "Butiker",
+  machine_refiller: "Påfyllare i butik",
 };
 
 /** Vad rollen ser och får göra, en mening. */
@@ -38,6 +40,8 @@ export const ROLE_SUMMARY: Record<MembershipRole, string> = {
   refiller: "Ser påfyllning och lager. Inga belopp.",
   store:
     "Ser butikens egen försäljning, ersättning och rapporter i butiksportalen. Inga inköpspriser.",
+  machine_refiller:
+    "Fyller bara på sina automater. Ser inga priser eller försäljning. Hanteras på automatens sida.",
 };
 
 export function isMemberRole(value: unknown): value is MemberRole {

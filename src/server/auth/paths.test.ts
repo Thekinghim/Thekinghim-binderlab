@@ -17,6 +17,7 @@ describe("öppna sökvägar", () => {
     "/api/cron/larm",
     "/api/cron/awish",
     "/api/version",
+    "/m",
   ])("%s är öppen", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });

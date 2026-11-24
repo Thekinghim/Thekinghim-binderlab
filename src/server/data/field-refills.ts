@@ -16,7 +16,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRoleFor, withUserDbFor } from "@/server/access";
+import { requireRoleFor, withUserDbFor, type SessionUser } from "@/server/access";
 import type { Viewer } from "@/server/data/core/loaders";
 
 /** Rollerna som registrerar påfyllningar (samma som register_refill). */
@@ -63,7 +63,19 @@ export async function syncRefillsFor(
   items: unknown,
 ): Promise<{ ok: boolean; results: RefillSyncResult[]; savedMachineIds: string[] }> {
   await requireRoleFor(viewer.user, viewer.organization.id, FIELD_REFILL_ROLES);
-  const orgId = viewer.organization.id;
+  return saveRefillItems(viewer.user, viewer.organization.id, items);
+}
+
+/**
+ * Sparar påfyllningarna som användaren, en i taget via register_refill_once. Rollen och
+ * automaten kontrolleras i databasen (appens roller, eller butikspåfyllaren för sina
+ * automater). Används av syncRefillsFor och av butikens Fyll på (/pafyll).
+ */
+export async function saveRefillItems(
+  user: SessionUser,
+  orgId: string,
+  items: unknown,
+): Promise<{ ok: boolean; results: RefillSyncResult[]; savedMachineIds: string[] }> {
   const list = z.array(z.unknown()).max(200).safeParse(items);
   if (!list.success) return { ok: false, results: [], savedMachineIds: [] };
   const results: RefillSyncResult[] = [];
@@ -80,7 +92,7 @@ export async function syncRefillsFor(
     }
     const it = parsed.data;
     try {
-      const rows = await withUserDbFor(viewer.user, (tx) =>
+      const rows = await withUserDbFor(user, (tx) =>
         tx.execute(sql`select stock_event_id, duplicate from public.register_refill_once(
           ${orgId}::uuid, ${it.clientId}::uuid, ${it.machineId}::uuid, ${it.titleId}::uuid,
           ${it.quantity}::integer, ${it.fromWarehouse}::boolean, ${it.occurredAt}::timestamptz,
@@ -110,11 +122,19 @@ export async function undoRefillsFor(
   clientIds: unknown,
 ): Promise<{ ok: true; packs: number } | { ok: false; error: string }> {
   await requireRoleFor(viewer.user, viewer.organization.id, FIELD_REFILL_ROLES);
+  return undoRefillItems(viewer.user, viewer.organization.id, clientIds);
+}
+
+/** Ångra som användaren (databasen kontrollerar roll, ägare av inskicket och automat). */
+export async function undoRefillItems(
+  user: SessionUser,
+  orgId: string,
+  clientIds: unknown,
+): Promise<{ ok: true; packs: number } | { ok: false; error: string }> {
   const ids = z.array(uuid).min(1).max(200).safeParse(clientIds);
   if (!ids.success) return { ok: false, error: "Inget att ångra." };
-  const orgId = viewer.organization.id;
   try {
-    const rows = await withUserDbFor(viewer.user, (tx) =>
+    const rows = await withUserDbFor(user, (tx) =>
       tx.execute(
         sql`select public.undo_field_refills(${orgId}::uuid, ${`{${ids.data.join(",")}}`}::uuid[]) as packs`,
       ),

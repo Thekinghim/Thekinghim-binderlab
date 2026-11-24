@@ -15,6 +15,7 @@ import { cache } from "react";
 
 import { listOrganizationsFor, withUserDbFor } from "../access";
 import { getSessionUser, requireUser, type SessionUser } from "../session";
+import { redirectStaffToRefill } from "../staff/session";
 
 import type { PortalStore } from "./model";
 import { queryPortalStores } from "./queries";
@@ -56,6 +57,7 @@ export async function requirePortalContext(): Promise<PortalContext> {
   if (ctx) return ctx;
   const user = await requireUser();
   if ((await listOrganizationsFor(user)).length > 0) redirect("/");
+  await redirectStaffToRefill();
   redirect("/portal/ingen-butik");
 }
 
@@ -69,6 +71,8 @@ export async function requirePortalContext(): Promise<PortalContext> {
 export async function redirectStoreUserToPortal(): Promise<void> {
   const user = await getSessionUser();
   if (!user) return;
+  // Påfyllare i butiken (rollen machine_refiller): bara /pafyll.
+  await redirectStaffToRefill();
   const stores = await withUserDbFor(user, queryPortalStores);
   if (stores.length > 0 && (await listOrganizationsFor(user)).length === 0) {
     redirect("/portal");

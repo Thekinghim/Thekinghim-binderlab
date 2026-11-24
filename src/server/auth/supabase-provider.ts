@@ -273,6 +273,32 @@ export class SupabaseAuthProvider implements AuthProvider {
     }
   }
 
+  async signInAsUser(userId: string): Promise<AuthSession | null> {
+    const admin = this.adminClient().auth.admin;
+    const { data: found, error: findError } = await admin.getUserById(userId);
+    const email = found?.user?.email;
+    if (findError || !email) {
+      return null;
+    }
+    // En inloggningslänk som aldrig mejlas: token_hash byts direkt mot sessionens cookies.
+    const { data, error } = await admin.generateLink({ type: "magiclink", email });
+    const hashed = data?.properties?.hashed_token;
+    if (error || !hashed) {
+      return null;
+    }
+    const session = await this.completeEmailLink(hashed, "magiclink");
+    return session && session.userId === userId ? session : null;
+  }
+
+  async setUserBanned(userId: string, banned: boolean): Promise<void> {
+    const { error } = await this.adminClient().auth.admin.updateUserById(userId, {
+      ban_duration: banned ? "876000h" : "none",
+    });
+    if (error) {
+      throw new Error(`Kontot kunde inte ändras (${error.code ?? error.status ?? "okänt"}).`);
+    }
+  }
+
   async setPassword(password: string): Promise<void> {
     const { error } = await this.userClient().auth.updateUser({ password });
     if (error) {

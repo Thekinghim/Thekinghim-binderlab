@@ -218,6 +218,20 @@ export class DevAuthProvider implements AuthProvider {
     return inserted.id;
   }
 
+  /** Inloggning med mobilnummer och PIN: koden är redan kontrollerad av servern. */
+  async signInAsUser(userId: string): Promise<AuthSession | null> {
+    const user = await this.userExists(userId);
+    if (!user) {
+      return null;
+    }
+    const session = { userId, email: user.email };
+    await this.startSession(session);
+    return session;
+  }
+
+  /** Lokalt räcker databasens kontroll (phone_logins.disabled_at). */
+  async setUserBanned(): Promise<void> {}
+
   async deleteUser(userId: string): Promise<void> {
     await this.options.db().execute(sql`delete from auth.users where id = ${userId}::uuid`);
   }

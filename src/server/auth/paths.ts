@@ -32,6 +32,8 @@ export function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/api/cron/") ||
     // Byggets id (för "Ny version av appen finns"): inga uppgifter, fungerar utloggad.
     pathname === "/api/version" ||
+    // Kort länk i QR-koden på automaten → /logga-in/mobil (ingen hemlighet).
+    pathname === "/m" ||
     STATIC_FILE.test(pathname)
   );
 }

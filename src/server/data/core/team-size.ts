@@ -16,7 +16,7 @@ export async function queryTeamSize(
     await tx.execute(sql`
       select
         (select count(*)::int from public.memberships m
-          where m.organization_id = ${orgId}::uuid and m.role <> 'store') as members,
+          where m.organization_id = ${orgId}::uuid and m.role not in ('store', 'machine_refiller')) as members,
         (select count(*)::int from public.invitations i
           where i.organization_id = ${orgId}::uuid and i.role <> 'store'
             and i.accepted_at is null and i.expires_at > now()) as pending`),

@@ -609,6 +609,41 @@ Checklista när panelen lämnas över (till en köpare eller en ny driftansvarig
 
 Kända brister och vad som återstår står sist i `README.md`.
 
+## Påfyllare i butiken (mobilnummer och PIN-kod)
+
+Personal i en butik kan få ett eget konto som bara fyller på deras automat (rollen
+`machine_refiller`, migrationerna `20261228000000_butikspafyllare_roll.sql` och
+`20261228000100_butikspafyllare.sql`).
+
+**Skapa kontot (ägare eller admin):** Automater → automaten → kortet _Påfyllare i butiken_ →
+_Lägg till påfyllare_ → Namn, Mobilnummer, bocka för automaterna → _Skapa konto_. PIN-koden
+visas en gång tillsammans med QR-koden och länken `<appens adress>/m`. _Skriv ut QR-koden_
+och sätt den på automaten; _Kopiera meddelande_ ger ett sms att skicka till personen.
+
+**Personen:** skannar QR-koden (eller öppnar `/m`), skriver mobilnummer och PIN-kod, väljer en
+egen PIN-kod och kommer till `/pafyll`: en skärm med antal att lägga i per pack, _Klart_ och
+_Ångra_ (30 minuter). Inga priser, ingen försäljning, inga andra automater.
+
+**Hantera:** på samma kort: _Ny PIN-kod_ (låser upp ett låst konto), _Stäng av_ / _Slå på_
+och _Ändra automater_. Raden syns inte under Inställningar → Användare.
+
+**Säkerhet:**
+
+- PIN-koden sparas bara som scrypt-hash i `private.phone_logins` (ingen klient kan läsa
+  tabellen). 5 fel i rad låser 15 minuter, 10 fel låser tills ägaren ger en ny PIN-kod; dessutom
+  10 försök per IP och 5 per nummer per 15 minuter.
+- Sessionen är en vanlig Supabase-session för en egen användare (`tel-…@binderlab.invalid`,
+  kan inte logga in med e-post). Kontot gäller 90 dagar efter senaste användning; avstängt
+  spärras direkt i databasen (`private.staff_active`) och användaren bannas i Supabase.
+- Rollen finns i ingen tabellpolicy: allt går genom `staff_my_machines()`,
+  `staff_fill_data()` och påfyllningsfunktionerna, som kontrollerar automaten
+  (`membership_machines`). Testerna: `test/db/butikspafyllare.test.ts`.
+
+**Var packen tas från:** sätt automatens _Fylls på från_ (Vårt lager) till butikens eget lager
+och flytta dit packen som skickas. Påfyllningarna dras då därifrån. Räcker det inte sparas
+påfyllningen ändå, utan uttag, med noteringen "Butikens lager räckte inte – kontrollera
+lagret". Utan eget butikslager spåras butikens påfyllningar inte i något lager.
+
 ## E2E-tester
 
 Sex flöden plus felövervakningen går genom webbläsaren med Playwright-biblioteket (inte

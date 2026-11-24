@@ -40,7 +40,14 @@ import { citext, ore, safeBigint } from "./types";
 // ---------------------------------------------------------------------------
 
 /** "store" är butiksportalens roll (fas 10): ingen åtkomst till appen, bara portal_*-RPC:erna. */
-export const memberRole = pgEnum("member_role", ["owner", "admin", "refiller", "viewer", "store"]);
+export const memberRole = pgEnum("member_role", [
+  "owner",
+  "admin",
+  "refiller",
+  "viewer",
+  "store",
+  "machine_refiller",
+]);
 export const organizationPlan = pgEnum("organization_plan", ["trial", "standard", "enterprise"]);
 export const commissionBase = pgEnum("commission_base", ["net_excl_vat", "profit_after_costs"]);
 export const lossTreatment = pgEnum("loss_treatment", ["zero", "proportional"]);
@@ -120,7 +127,7 @@ export const auditAction = pgEnum("audit_action", ["insert", "update", "delete"]
 /** Alla roller i memberships, även butiksportalens "store". */
 export type MembershipRole = (typeof memberRole.enumValues)[number];
 /** Appens roller. Butiksrollen ("store") når aldrig appen, bara /portal. */
-export type MemberRole = Exclude<MembershipRole, "store">;
+export type MemberRole = Exclude<MembershipRole, "store" | "machine_refiller">;
 export type StockEventKind = (typeof stockEventKind.enumValues)[number];
 
 // ---------------------------------------------------------------------------

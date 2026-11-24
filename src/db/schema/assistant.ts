@@ -22,8 +22,15 @@ import {
 } from "drizzle-orm/pg-core";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
-// Samma värden som `memberRole` i schema.ts (inklusive "store"); hålls i takt med den.
-const memberRoleRef = pgEnum("member_role", ["owner", "admin", "refiller", "viewer", "store"]);
+// Samma värden som `memberRole` i schema.ts (inklusive "store" och "machine_refiller"); hålls i takt med den.
+const memberRoleRef = pgEnum("member_role", [
+  "owner",
+  "admin",
+  "refiller",
+  "viewer",
+  "store",
+  "machine_refiller",
+]);
 
 export type AssistantLogStatus = "answered" | "unverified" | "refused" | "limit" | "error";
 export type AssistantProviderKind = "anthropic" | "local";

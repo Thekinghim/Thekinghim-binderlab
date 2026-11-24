@@ -143,6 +143,9 @@ const RPCS = [
   "set_test_purchase",
   // Exportera all data (20261111020100_granskning_dataexport.sql): loggar exporten och
   // begränsar till 3 per timme och organisation (ägaren).
+  // Påfyllare i butiken (20261228000100_butikspafyllare.sql): bara egna automater.
+  "staff_fill_data",
+  "staff_my_machines",
   "start_data_export",
   // Flera lager: flytt mellan egna lager och ångra flytt (ägare, admin).
   "transfer_stock",
@@ -699,6 +702,8 @@ describe("anon", () => {
       set_invitation_options: sql`gen_random_uuid(), gen_random_uuid(), 'simple', 'en'`,
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
       set_test_purchase: sql`gen_random_uuid(), gen_random_uuid(), true`,
+      staff_fill_data: sql`gen_random_uuid(), gen_random_uuid()`,
+      staff_my_machines: sql``,
       start_data_export: sql`gen_random_uuid()`,
       transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       undo_field_refills: sql`gen_random_uuid(), array[gen_random_uuid()]`,

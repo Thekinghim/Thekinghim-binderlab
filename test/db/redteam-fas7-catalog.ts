@@ -585,6 +585,31 @@ export const ACTIONS: ActionSpec[] = [
     allowed: FIELD,
     args: () => [[crypto.randomUUID()]],
   },
+  // Påfyllare i butiken på automatens sida (bara ägare och admin)
+  {
+    module: "@/app/(app)/automater/[automat]/staff-actions",
+    name: "createStaffAction",
+    allowed: OP,
+    args: (c) => [{ name: "Rödteam", phone: "0701234500", machineIds: [c.A.machineId] }],
+  },
+  {
+    module: "@/app/(app)/automater/[automat]/staff-actions",
+    name: "resetStaffPinAction",
+    allowed: OP,
+    args: () => [crypto.randomUUID()],
+  },
+  {
+    module: "@/app/(app)/automater/[automat]/staff-actions",
+    name: "setStaffDisabledAction",
+    allowed: OP,
+    args: () => [crypto.randomUUID(), true],
+  },
+  {
+    module: "@/app/(app)/automater/[automat]/staff-actions",
+    name: "setStaffMachinesAction",
+    allowed: OP,
+    args: (c) => [crypto.randomUUID(), [c.A.machineId]],
+  },
   // Uppdatera i Fyll på: läser facken i Awish nu (spärr per organisation)
   {
     module: "@/app/fyll-pa/actions",

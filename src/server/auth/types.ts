@@ -104,6 +104,16 @@ export interface AuthProvider {
 
   /** Sätter lösenord för den inloggade användaren (Supabase och dev). */
   setPassword?(password: string): Promise<void>;
+
+  /**
+   * Loggar in som en given användare (riktig session, inget mejl skickas). Bara för
+   * inloggning med mobilnummer och PIN-kod, efter att servern kontrollerat koden
+   * (src/server/auth/phone-login.ts).
+   */
+  signInAsUser?(userId: string): Promise<AuthSession | null>;
+
+  /** Stänger av (eller slår på) ett konto. Avstängt: inga nya eller förnyade sessioner. */
+  setUserBanned?(userId: string, banned: boolean): Promise<void>;
 }
 
 /** Cookie-inställningar (delmängd av Next/@supabase/ssr). */

@@ -63,6 +63,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         canUseLinks={canUseLinks}
         notice={notice}
       />
+      <p className="mt-4 text-v2-sm">
+        <a href="/logga-in/mobil" className="v2-auth-link">
+          Logga in med mobilnummer
+        </a>
+      </p>
     </AuthFrame>
   );
 }

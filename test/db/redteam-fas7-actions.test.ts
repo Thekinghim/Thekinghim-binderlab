@@ -146,6 +146,13 @@ const SPECIAL = new Set([
   // Eget språk (bara den egna profilen, ingen organisation); testas i test/db/enkel-vy.test.ts.
   "@/server/actions/locale#setMyLocale",
   "@/app/logga-in/actions#signIn",
+  // Inloggning med mobilnummer och PIN-kod och påfyllarens egna actions (rollen
+  // machine_refiller, ingen approll); testas i test/db/butikspafyllare.test.ts.
+  "@/app/logga-in/mobil/actions#signInWithPhone",
+  "@/app/pafyll/actions#staffSubmitRefill",
+  "@/app/pafyll/actions#staffUndo",
+  "@/app/pafyll/actions#staffSetPin",
+  "@/app/pafyll/actions#staffSkipPin",
   "@/app/logga-in/actions#requestMagicLink",
   "@/app/logga-in/actions#confirmMagicLink",
   // Inloggning utan organisation (egen inbjudan, eget lösenord via länk); testas i
