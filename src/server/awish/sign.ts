@@ -24,6 +24,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import protobuf from "protobufjs";
 
+import {
+  DOC_SIGN_FIELD,
+  DOC_TIMESTAMP_FIELD,
+  signFieldsFromEnv,
+  withDocSignFields,
+  type AwishSignFields,
+} from "./proto-doc-fields";
 import { AWISH_PROVIDER_PROTO } from "./provider-proto";
 
 /** Hur request_body byggs. present_sorted är standard. */
@@ -63,7 +70,7 @@ function protoRoot(): protobuf.Root {
     if (!common) throw new Error(`protobufjs saknar ${file}.`);
     root.addJSON(common.nested ?? {});
   }
-  protobuf.parse(AWISH_PROVIDER_PROTO, root, { keepCase: true });
+  protobuf.parse(withDocSignFields(AWISH_PROVIDER_PROTO), root, { keepCase: true });
   root.resolveAll();
   cachedRoot = root;
   return root;
@@ -76,7 +83,12 @@ function messageType(name: string): protobuf.Type {
 
 const LONG_TYPES = new Set(["int64", "uint64", "sint64", "fixed64", "sfixed64"]);
 const INT_TYPES = new Set(["int32", "uint32", "sint32", "fixed32", "sfixed32"]);
-const SKIPPED_TOP_LEVEL = new Set(["sign", "timestamp"]);
+const SKIPPED_TOP_LEVEL = new Set(["sign", "timestamp", DOC_SIGN_FIELD, DOC_TIMESTAMP_FIELD]);
+
+/** Har meddelandet dokumentationens extra fält 10/11 (se proto-doc-fields.ts)? */
+export function hasDocSignFields(messageTypeName: string): boolean {
+  return Boolean(messageType(messageTypeName).fields[DOC_SIGN_FIELD]);
+}
 const INTEGER_TEXT = /^-?\d+$/;
 
 /** Ett JSON-värde där stora heltal hålls som text och skrivs utan citattecken. */
@@ -242,12 +254,17 @@ export function awishSignature(appId: string, timestamp: number, body: string): 
     .digest("hex");
 }
 
-/** Begäran med timestamp (nu, i sekunder) och sign. Begäran i övrigt ändras inte. */
+/**
+ * Begäran med timestamp (nu, i sekunder) och sign. Begäran i övrigt ändras inte. För de sju
+ * meddelandena där dokumentationen och proto-filen har olika fältnummer skickas samma
+ * timestamp och sign även som doc_timestamp/doc_sign (fält 10/11), efter `fields`
+ * (standard AWISH_SIGN_FIELDS, annars "both").
+ */
 export function signRequest<T extends Record<string, unknown>>(
   messageTypeName: string,
   request: T,
   appId: string,
-  opts: { mode?: AwishSignMode; nowSeconds?: number } = {},
+  opts: { mode?: AwishSignMode; nowSeconds?: number; fields?: AwishSignFields } = {},
 ): T & { timestamp: number; sign: string } {
   const timestamp = Math.floor(opts.nowSeconds ?? Date.now() / 1000);
   const body = canonicalBody(messageTypeName, request, opts.mode ?? DEFAULT_AWISH_SIGN_MODE);
@@ -256,7 +273,15 @@ export function signRequest<T extends Record<string, unknown>>(
       ([k, v]) => !SKIPPED_TOP_LEVEL.has(k) && v !== undefined && v !== null,
     ),
   ) as T;
-  return { ...clean, timestamp, sign: awishSignature(appId, timestamp, body) };
+  const sign = awishSignature(appId, timestamp, body);
+  if (!hasDocSignFields(messageTypeName)) return { ...clean, timestamp, sign };
+  const fields = opts.fields ?? signFieldsFromEnv();
+  const doc = { [DOC_TIMESTAMP_FIELD]: timestamp, [DOC_SIGN_FIELD]: sign };
+  // Utan proto-filens sign/timestamp (servern läser bara 10/11).
+  if (fields === "doc")
+    return { ...clean, ...doc } as unknown as T & { timestamp: number; sign: string };
+  if (fields === "proto") return { ...clean, timestamp, sign };
+  return { ...clean, timestamp, sign, ...doc };
 }
 
 const HEX_64 = /^[0-9a-f]{64}$/;
@@ -272,9 +297,13 @@ export function verifyAwishSignature(a: {
   mode: AwishSignMode;
   nowSeconds: number;
   toleranceS?: number | null;
-}): "ok" | "bad_sign" | "out_of_window" {
-  const sign = a.request.sign;
-  const timestamp = Number(a.request.timestamp);
+  /** Vilka fältnummer servern läser (låtsas-Awish): proto-filens eller dokumentationens. */
+  fields?: "proto" | "doc";
+}): "ok" | "bad_sign" | "out_of_window" | "missing" {
+  const doc = a.fields === "doc" && hasDocSignFields(a.messageType);
+  const sign = doc ? a.request[DOC_SIGN_FIELD] : a.request.sign;
+  const timestamp = Number(doc ? a.request[DOC_TIMESTAMP_FIELD] : a.request.timestamp);
+  if (sign === undefined || sign === null || sign === "") return "missing";
   if (typeof sign !== "string" || !HEX_64.test(sign)) return "bad_sign";
   if (!Number.isSafeInteger(timestamp)) return "bad_sign";
   const tolerance = a.toleranceS === undefined ? AWISH_SIGN_TOLERANCE_S : a.toleranceS;
@@ -299,5 +328,7 @@ export function withoutSignature<T extends Record<string, unknown>>(
   const { sign: _sign, timestamp: _timestamp, ...rest } = request;
   void _sign;
   void _timestamp;
+  delete (rest as Record<string, unknown>)[DOC_SIGN_FIELD];
+  delete (rest as Record<string, unknown>)[DOC_TIMESTAMP_FIELD];
   return rest;
 }

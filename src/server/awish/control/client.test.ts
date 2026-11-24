@@ -9,13 +9,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { createAwishControlClient, assertTestSafeAddress, structToPlain } = await import("./client");
+const {
+  createAwishControlClient,
+  assertTestSafeAddress,
+  maskEmail,
+  maskTel,
+  structToPlain,
+  toControlWriteResult,
+  toMember,
+  versionOf,
+} = await import("./client");
 const { startFakeAwish } = await import("../testing/fake-server");
 const {
   AwishUnknownOutcomeError,
   CLOCK_MESSAGE,
   OFFLINE_MESSAGE,
   SIGN_FAILED_MESSAGE,
+  SIGN_MISSING_MESSAGE,
   UNSUPPORTED_MESSAGE,
   isSignError,
   mapControlError,
@@ -263,6 +273,28 @@ describe("skrivningar signeras och godtas", () => {
     api.close();
   });
 
+  it("dokumentationens fältnummer: timestamp och sign skickas på båda ställena", async () => {
+    fake.state.signFields = "doc";
+    const api = client();
+    await expect(api.controlPower({ machineId: "7", method: "REBOOT" })).resolves.toMatchObject({
+      code: 200,
+    });
+    const req = fake.state.calls.at(-1)!.request;
+    expect(String(req.doc_sign)).toBe(String(req.sign));
+    expect(String(req.doc_timestamp)).toBe(String(req.timestamp));
+    // Bara proto-filens nummer: en server som läser 10/11 ser ingen signatur.
+    const protoOnly = client({ signFields: "proto" });
+    await expect(protoOnly.controlPower({ machineId: "7", method: "REBOOT" })).rejects.toThrow(
+      SIGN_MISSING_MESSAGE,
+    );
+    fake.state.signFields = "proto";
+    await expect(
+      client({ signFields: "doc" }).controlPower({ machineId: "7", method: "REBOOT" }),
+    ).rejects.toThrow(SIGN_MISSING_MESSAGE);
+    api.close();
+    protoOnly.close();
+  });
+
   it("Awish sa nej (kod 500) blir AwishApiError", async () => {
     fake.state.writeCode = 500;
     const api = client();
@@ -300,9 +332,25 @@ describe("skrivningar signeras och godtas", () => {
 describe("felöversättning", () => {
   it("signatur före inloggning, tidsfönster före signatur", () => {
     expect(
-      mapControlError({ code: grpc.status.UNAUTHENTICATED, details: "invalid signature" }, "x")
-        .message,
+      mapControlError(
+        { code: grpc.status.UNAUTHENTICATED, details: "signature verify failed" },
+        "x",
+      ).message,
     ).toBe(SIGN_FAILED_MESSAGE);
+    // "invalid signature" är Awishs inloggningsfel (fel AppSecret/AppKey), inte signaturen.
+    const auth = mapControlError(
+      { code: grpc.status.UNAUTHENTICATED, details: "invalid signature" },
+      "x",
+    );
+    expect(auth.kind).toBe("auth");
+    expect(isSignError(auth)).toBe(false);
+    expect(
+      mapControlError({ code: grpc.status.UNAUTHENTICATED, details: "invalid sign" }, "x").message,
+    ).toBe(SIGN_FAILED_MESSAGE);
+    expect(
+      mapControlError({ code: grpc.status.UNAUTHENTICATED, details: "sign is required" }, "x")
+        .message,
+    ).toBe(SIGN_MISSING_MESSAGE);
     expect(
       mapControlError(
         { code: 16, details: "signature verify failed, timestamp is out of time window" },
@@ -333,6 +381,59 @@ describe("felöversättning", () => {
       mapControlError({ code: grpc.status.PERMISSION_DENIED, details: "permission denied" }, "x")
         .kind,
     ).toBe("auth");
+  });
+
+  it("ett nej i svaret tolkas som gRPC-felen och visar aldrig Awishs text", () => {
+    const sign = (() => {
+      try {
+        toControlWriteResult({ code: "401", message: "signature verify failed" });
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(isSignError(sign)).toBe(true);
+    const window = (() => {
+      try {
+        toControlWriteResult({ code: "401", message: "timestamp is out of time window" });
+      } catch (e) {
+        return e as Error;
+      }
+    })();
+    expect(window?.message).toBe(CLOCK_MESSAGE);
+    let other: unknown;
+    try {
+      toControlWriteResult({ code: "500", message: "内部错误 internal" });
+    } catch (e) {
+      other = e;
+    }
+    expect(other).toBeInstanceOf(AwishApiError);
+    expect((other as Error).message).toBe(
+      "Awish sa nej (kod 500). Försök igen eller titta i Awish.",
+    );
+    expect((other as InstanceType<typeof AwishApiError>).technical).toContain("内部错误");
+    expect(toControlWriteResult({ code: "200", message: "success" }).code).toBe(200);
+  });
+
+  it("Version: tålig mot tillägg, och ett byte av tillägget syns", () => {
+    const v = (x: unknown) =>
+      versionOf({ code: "200", data: { fields: { version: { stringValue: x } } } });
+    expect(v("1.2.41")).toBe("1.2.41");
+    expect(v("v1.2.41")).toBe("1.2.41");
+    expect(v("V1.2.41 build 7")).toBe("1.2.41 build 7");
+    expect(v("1.2.41-r2")).toBe("1.2.41-r2");
+    expect(() => v("okänd")).toThrow(/ingen version/);
+  });
+
+  it("medlemmar maskeras alltid hos oss, även om Awish skickar allt", () => {
+    expect(maskTel("0701234567")).toBe("070****67");
+    expect(maskTel("070****67")).toBe("070****67");
+    expect(maskTel("123")).toBe("***");
+    expect(maskEmail("anna.andersson@exempel.se")).toBe("a***@exempel.se");
+    expect(maskEmail("a***@exempel.se")).toBe("a***@exempel.se");
+    const m = toMember({ id: "1", name: "Anna", tel: "0701234567", email: "anna@x.se" });
+    expect(m.telMasked).toBe("070****67");
+    expect(m.emailMasked).toBe("a***@x.se");
+    expect(JSON.stringify(m)).not.toContain("0701234567");
   });
 
   it("controlErrorMessage ger aldrig rå feltext", () => {
@@ -371,6 +472,32 @@ describe("adress och TLS", () => {
     expect(probe.endpoint).toBe("plain");
     expect(probe.version).toBe("1.2.41");
     expect(probe.error).toMatch(/^TLS:/);
+  });
+
+  it("TLS har fungerat: ingen tyst övergång till okrypterad", async () => {
+    const cfg = { mode: "auto" as const, tlsAddress: "127.0.0.1:1", plainAddress: fake.address };
+    const probe = await probeEndpoint(
+      creds(),
+      cfg,
+      (c, o) =>
+        createAwishControlClient(c, { ...o, tls: false, deadlineMs: 2000, sleep: async () => {} }),
+      "present_sorted",
+      { noDowngrade: true },
+    );
+    expect(probe.endpoint).toBeNull();
+    expect(probe.error).toMatch(/TLS har fungerat förut/);
+  });
+
+  it("ett svar utan igenkänd version räknas som att adressen fungerar", async () => {
+    fake.state.version = "okänd";
+    const cfg = { mode: "auto" as const, tlsAddress: fake.address, plainAddress: fake.address };
+    const probe = await probeEndpoint(
+      creds(),
+      cfg,
+      (c, o) => createAwishControlClient(c, { ...o, tls: false, sleep: async () => {} }),
+      "present_sorted",
+    );
+    expect(probe).toMatchObject({ endpoint: "tls", version: null });
   });
 
   it("vägrar riktiga adresser under testerna", () => {

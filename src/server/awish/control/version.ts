@@ -3,7 +3,8 @@
  *
  * - checkAwishVersion: Version (osignerad läsning) sparas i awish_api_state. Byts versionen
  *   (eller är den nyare än proto-filen vi har inbäddad första gången) skapas ett systemlarm
- *   och Mata ut och Stäng av pausas tills ägaren eller admin har kvitterat. Bakgrund: ett
+ *   och skrivningar som rör fack, påfyllning, schema, Mata ut och Stäng av pausas tills
+ *   ägaren eller admin har kvitterat (VERSION_GATED_KINDS i guard.ts). Bakgrund: ett
  *   oannonserat byte av fältnumren (1.2.41) gjorde att facken lästes fel.
  * - probeSigning: provar signeringslägena med en ofarlig signerad skrivning (UpdateMerchant
  *   med samma tidszon som redan gäller, annars UpdateCategory med samma titel) och sparar
@@ -24,8 +25,15 @@ import { raiseSystemAlert, resolveSystemAlert } from "@/server/monitoring/system
 
 import { AWISH_SIGN_MODES, type AwishSignMode } from "../sign";
 import { apiFor, controlContextFor, type AwishApiState, type ControlDeps } from "./connect";
-import { probeEndpoint } from "./endpoint";
-import { AwishControlInputError, controlErrorMessage, isSignError } from "./errors";
+import { endpointAddress, probeEndpoint, TLS_LOST_MESSAGE } from "./endpoint";
+import { signFieldsFromEnv } from "../proto-doc-fields";
+import {
+  AwishControlInputError,
+  controlErrorMessage,
+  isSignError,
+  isSignMissingError,
+  SIGN_MISSING_MESSAGE,
+} from "./errors";
 import { newIdempotencyKey, runControlAction } from "./guard";
 import { ensureApiState, loadApiState, updateApiState } from "./state";
 import type { AwishControlApi } from "./types";
@@ -96,7 +104,7 @@ export async function checkAwishVersion(
       severity: "warning",
       title: `Awish bytte API-version: ${from} → ${version}`,
       detail:
-        "Kontrollera att facken och antalen ser rätt ut. Mata ut och Stäng av är pausade tills någon bekräftat under Datakällor.",
+        "Kontrollera att facken och antalen ser rätt ut. Ändringar via API (fack, påfyllning, schema, mata ut, stäng av) är pausade tills någon bekräftat under Datakällor. Påfyllningen går via webbpanelen så länge.",
       rule: "Awishs Version-svar skiljer sig från förra kontrollen.",
       link: "/datakallor",
       now,
@@ -112,7 +120,7 @@ async function requireOperatorNotDemo(viewer: Viewer, db: Db): Promise<string | 
 
 export type SimpleResult = { ok: true; message: string } | { ok: false; message: string };
 
-/** "Jag har kontrollerat": Mata ut och Stäng av fungerar igen. Ägare och admin. */
+/** "Jag har kontrollerat": ändringarna via API fungerar igen. Ägare och admin. */
 export async function acknowledgeAwishVersion(
   viewer: Viewer,
   deps: ControlDeps = {},
@@ -138,7 +146,7 @@ export async function acknowledgeAwishVersion(
   if (source.version) {
     await resolveSystemAlert(db, orgId, versionAlertKey(source.version)).catch(() => 0);
   }
-  return { ok: true, message: "Tack. Mata ut och Stäng av fungerar igen." };
+  return { ok: true, message: "Tack. Ändringar via API fungerar igen." };
 }
 
 /** "Testa anslutning": Version över TLS och den okrypterade. Ägare och admin. */
@@ -152,12 +160,23 @@ export async function probeEndpointFor(
   const orgId = viewer.organization.id;
   try {
     const ctx = await controlContextFor(db, orgId, deps);
-    const probe = await probeEndpoint(ctx.creds, ctx.endpointConfig, ctx.connect, ctx.signMode);
+    // TLS har fungerat: byt aldrig till okrypterad av oss själva (se probeEndpoint).
+    const noDowngrade = ctx.endpointConfig.mode === "auto" && ctx.state.endpoint === "tls";
+    const probe = await probeEndpoint(ctx.creds, ctx.endpointConfig, ctx.connect, ctx.signMode, {
+      noDowngrade,
+    });
     await updateApiState(db, orgId, ctx.sourceId, {
-      endpoint: probe.endpoint,
+      // TLS sparas kvar när den slutade svara: styrningen väntar hellre än går okrypterat.
+      endpoint: probe.endpoint ?? (noDowngrade ? "tls" : null),
       endpointCheckedAt: deps.now?.() ?? new Date(),
       endpointError: probe.error,
     });
+    if (noDowngrade && probe.endpoint === null) {
+      return {
+        ok: false,
+        message: `${TLS_LOST_MESSAGE} Tryck Använd okrypterad om du vill byta ändå.`,
+      };
+    }
     if (probe.endpoint === "tls")
       return { ok: true, message: "Krypterad anslutning (TLS) fungerar." };
     if (probe.endpoint === "plain") {
@@ -169,17 +188,58 @@ export async function probeEndpointFor(
   }
 }
 
-/** En ofarlig signerad skrivning: samma tidszon igen, eller samma kategorititel igen. */
-async function harmlessWrite(api: AwishControlApi): Promise<void> {
+/**
+ * "Använd okrypterad": ägaren eller admin väljer den okrypterade adressen när TLS har slutat
+ * svara. Görs bara om den okrypterade svarar på Version. Synken provar TLS igen varje timme
+ * och byter tillbaka när den fungerar.
+ */
+export async function chooseInsecureEndpointFor(
+  viewer: Viewer,
+  deps: ControlDeps = {},
+): Promise<SimpleResult> {
+  const db = deps.db ?? getServiceDb();
+  const demo = await requireOperatorNotDemo(viewer, db);
+  if (demo) return { ok: false, message: demo };
+  const orgId = viewer.organization.id;
+  try {
+    const ctx = await controlContextFor(db, orgId, deps);
+    if (ctx.endpointConfig.mode !== "auto") {
+      return { ok: false, message: "Adressen är låst i miljön (AWISH_CONTROL_ENDPOINT)." };
+    }
+    const api = ctx.connect(ctx.creds, {
+      ...endpointAddress("plain", ctx.endpointConfig),
+      signMode: ctx.signMode,
+    });
+    try {
+      await api.version();
+    } finally {
+      api.close();
+    }
+    await updateApiState(db, orgId, ctx.sourceId, {
+      endpoint: "plain",
+      endpointCheckedAt: deps.now?.() ?? new Date(),
+      endpointError: "Okrypterad vald av ägare eller admin. TLS provas igen varje timme.",
+    });
+    return { ok: true, message: "Okrypterad anslutning används nu. TLS provas igen varje timme." };
+  } catch (error) {
+    return { ok: false, message: controlErrorMessage(error) };
+  }
+}
+
+/**
+ * En ofarlig signerad skrivning: samma tidszon igen, eller samma kategorititel igen. Ger
+ * "merchant" när UpdateMerchant användes (ett av meddelandena där fältnumren skiljer).
+ */
+async function harmlessWrite(api: AwishControlApi): Promise<"merchant" | "category"> {
   const merchant = await api.merchantDetail();
   if (merchant.timezone) {
     await api.updateMerchantTimezone(merchant.timezone);
-    return;
+    return "merchant";
   }
   const [first] = await api.categories();
   if (first) {
     await api.updateCategory({ id: first.id, title: first.title });
-    return;
+    return "category";
   }
   throw new AwishControlInputError(
     "Hittar inget ofarligt att testa med (ingen tidszon och ingen kategori i Awish).",
@@ -189,6 +249,29 @@ async function harmlessWrite(api: AwishControlApi): Promise<void> {
 export interface SignProbeOutcome {
   mode: AwishSignMode | null;
   tried: AwishSignMode[];
+  /**
+   * Vilka fältnummer för timestamp/sign Awish läser i meddelandena där dokumentationen och
+   * proto-filen skiljer (proto-doc-fields.ts), eller null om det inte gick att avgöra.
+   */
+  fields: "proto" | "doc" | null;
+  missing: boolean;
+}
+
+/** Med båda paren fungerande: skicka bara proto-filens par och se om Awish saknar signaturen. */
+async function detectSignFields(
+  ctx: Awaited<ReturnType<typeof controlContextFor>>,
+  mode: AwishSignMode,
+): Promise<"proto" | "doc" | null> {
+  const api = apiFor(ctx, mode, "proto");
+  try {
+    await harmlessWrite(api);
+    return "proto";
+  } catch (error) {
+    if (isSignMissingError(error)) return "doc";
+    return null;
+  } finally {
+    api.close();
+  }
 }
 
 /**
@@ -217,14 +300,18 @@ export async function probeSigning(
         tried.push(mode);
         const api = apiFor(ctx, mode);
         try {
-          await harmlessWrite(api);
+          const used = await harmlessWrite(api);
           await updateApiState(db, orgId, ctx.sourceId, {
             signMode: mode,
             signStatus: "ok",
             signCheckedAt: deps.now?.() ?? new Date(),
             signError: null,
           });
-          return { mode, tried };
+          const fields =
+            used === "merchant" && signFieldsFromEnv(ctx.env) === "both"
+              ? await detectSignFields(ctx, mode)
+              : null;
+          return { mode, tried, fields, missing: false };
         } catch (error) {
           if (!isSignError(error)) throw error;
           lastSignError = error;
@@ -237,7 +324,7 @@ export async function probeSigning(
         signCheckedAt: deps.now?.() ?? new Date(),
         signError: controlErrorMessage(lastSignError),
       });
-      return { mode: null, tried };
+      return { mode: null, tried, fields: null, missing: isSignMissingError(lastSignError) };
     },
     { ...deps, db },
   );
@@ -247,11 +334,19 @@ export async function probeSigning(
     return {
       ok: false,
       mode: null,
-      message:
-        "Awish godkänner inte vår signering ännu. Skrivningar via API är pausade; webbpanelen används.",
+      message: result.value?.missing
+        ? `${SIGN_MISSING_MESSAGE} Skrivningar via API är pausade; webbpanelen används.`
+        : "Awish godkänner inte vår signering ännu. Skrivningar via API är pausade; webbpanelen används.",
     };
   }
-  return { ok: true, mode, message: "Signeringen fungerar." };
+  const fields = result.value?.fields ?? null;
+  const fieldsText =
+    fields === "proto"
+      ? " Awish läser proto-filens fältnummer."
+      : fields === "doc"
+        ? " Awish läser dokumentationens fältnummer (10 och 11)."
+        : "";
+  return { ok: true, mode, message: `Signeringen fungerar.${fieldsText}` };
 }
 
 /** Datakällor: läget för kortet "Awish API". Ägare och admin. */

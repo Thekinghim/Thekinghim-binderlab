@@ -359,6 +359,7 @@ export async function syncRefills(
     try {
       const pushed = await pushRefillToAwish(viewer.organization.id, result.savedMachineIds, {
         withPending: true,
+        actorId: viewer.user.userId,
       });
       // Beskedet gäller automaterna som just fylldes på, inte de som väntade sedan förut.
       awish = summariseAwishPush(pushed, result.savedMachineIds);

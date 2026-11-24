@@ -27,7 +27,7 @@ import {
   applyMachineConfigFor,
   previewMachineConfigFor,
 } from "@/server/machine-control/machine-config";
-import { controlPowerFor } from "@/server/machine-control/power";
+import { controlPowerFor, previewPowerFor } from "@/server/machine-control/power";
 import {
   applyPowerScheduleFor,
   clearPowerScheduleFor,
@@ -95,6 +95,9 @@ async function write(
 
 type Confirm = { fingerprint: string; idempotencyKey: string };
 
+export async function previewPowerAction(raw: unknown) {
+  return read<ControlPreview>(async () => previewPowerFor(await operator(), raw));
+}
 export async function controlPowerAction(raw: unknown) {
   return write(async () => controlPowerFor(await operator(), raw));
 }
@@ -102,7 +105,7 @@ export async function controlPowerAction(raw: unknown) {
 export async function previewPowerScheduleAction(raw: unknown) {
   return read<ControlPreview>(async () => previewPowerScheduleFor(await operator(), raw));
 }
-export async function applyPowerScheduleAction(raw: unknown, c: Confirm) {
+export async function applyPowerScheduleAction(raw: unknown, c: Confirm & { typed?: string }) {
   return write(async () => applyPowerScheduleFor(await operator(), raw, c));
 }
 export async function clearPowerScheduleAction(machineId: string, idempotencyKey: string) {

@@ -198,7 +198,38 @@ mata ut ett pack (ExecuteShipment), fack (UpdateProduct, BatchUpdateProducts,
 ReplenishProductInventory), varor och kategorier, skärm och reklam (UpdateMachineConfig),
 medlemmar, tidszon (UpdateMerchant), DeleteBanner, Currencies och Version. Koden ligger i
 `src/server/awish/control/` (klient, skydd, Version, plan B för påfyllning) och
-`src/server/awish/sign.ts` (signering). Proto-filens fältnummer gäller, inte PDF:ens.
+`src/server/awish/sign.ts` (signering). Proto-filens fältnummer gäller för allt utom
+timestamp/sign i sju skrivningar (se Fältnummer nedan).
+
+### Fältnummer: dokumentationen och proto-filen skiljer sig
+
+I sju skrivningar har dokumentationen (AW-DOC-110) `timestamp = 10` och `sign = 11`, medan
+proto-filen har lägre nummer. Övriga fält har samma nummer i båda.
+
+| Anrop                     | Meddelande                       | Proto | PDF   |
+| ------------------------- | -------------------------------- | ----- | ----- |
+| UpdateMerchant            | UpdateMerchantRequest            | 6/7   | 10/11 |
+| ControlPower              | PowerControlRequest              | 3/4   | 10/11 |
+| SetPowerSchedule          | PowerScheduleRequest             | 5/6   | 10/11 |
+| ExecuteShipment           | ShipmentRequest                  | 8/9   | 10/11 |
+| UpdateProduct             | UpdateProductRequest             | 6/7   | 10/11 |
+| BatchUpdateProducts       | BatchUpdateProductRequest        | 6/7   | 10/11 |
+| ReplenishProductInventory | ReplenishProductInventoryRequest | 3/4   | 10/11 |
+
+Vi vet inte vilken numrering Awishs server följer. Därför får de sju meddelandena två extra
+fält, `doc_timestamp = 10` och `doc_sign = 11` (`src/server/awish/proto-doc-fields.ts`), och
+samma timestamp och signatur skickas på båda ställena. En server som följer den ena
+numreringen ser det andra paret som okända fält. `AWISH_SIGN_FIELDS=proto` (bara proto-filens)
+eller `=doc` (bara dokumentationens) väljer ett av dem.
+
+**Testa signering** provar efter ett lyckat försök en gång till med bara proto-filens par och
+säger vilken numrering Awish läser ("Awish läser proto-filens fältnummer" eller
+"dokumentationens fältnummer (10 och 11)"). Saknar Awish signaturen helt visas "Awish fick
+ingen signatur" (inte "fel signatur"), och skrivningarna pausas.
+
+CreateBanner och UpdateBanner skiljer också (PDF 11/12, proto 10/11), men där krockar
+numren (11 är `sign` i proto och `timestamp` i PDF), så där skickas bara proto-filens.
+Fråga Awish vilken numrering som gäller.
 
 ### Signering
 
@@ -227,14 +258,22 @@ och sparar det första som Awish godtar. Godtas inget, eller nekar Awish en sign
 pausas alla skrivningar via API:t (påfyllning och varor går då via webbpanelen) tills
 signeringen fungerar igen. `AWISH_SIGN_MODE` i miljön går före det sparade.
 
-CreateBanner, UpdateBanner och CreatePickupCode ska också signeras (P3 i samma arbete).
+CreateBanner, UpdateBanner och CreatePickupCode signeras också, i samma läge som sparats.
+
+Ett nej från Awish kan komma som gRPC-fel eller i svaret (SuccessResponse med en kod). Båda
+tolkas med samma regler (signatur, klocka, offline, stöds inte); Awishs egen text visas
+aldrig utan sparas bara i loggen. "invalid signature" (utan "verify failed") är Awishs
+inloggningsfel för fel AppSecret/AppKey och visas som det.
 
 ### Version
 
 Varje timme (pg_cron `binderlab-awish-version`, minut 41 → `/api/cron/awish-version`)
-läses Version. Byts den skapas ett systemlarm ("Awish bytte API-version") och Mata ut och
-Stäng av pausas tills ägaren eller admin trycker **Jag har kontrollerat** under Datakällor.
-Bakgrund: en oannonserad omnumrering av fälten fick facken att läsas fel.
+läses Version. Byts den (även bara ett tillägg som "1.2.41-r2") skapas ett systemlarm ("Awish
+bytte API-version") och allt som skriver till fack eller automat via API:t pausas tills
+ägaren eller admin trycker **Jag har kontrollerat** under Datakällor: Byt pack, Fyll fullt,
+kategori per fack, påfyllning via API (går via webbpanelen så länge), strömschema, Mata ut
+och Stäng av. Starta om pausas inte (den behövs ibland just när något är fel). Bakgrund: en
+oannonserad omnumrering av fälten fick facken att läsas fel.
 
 ### TLS (runbook)
 
@@ -250,19 +289,64 @@ använder fortfarande `AWISH_GRPC_ADDRESS`/`AWISH_GRPC_TLS`. När Datakällor vi
 
 Har Awish-kontot en IP-lista (`whitelist_ip`) kan Vercels utgående adresser nekas.
 
+När TLS har fungerat byter styrningen aldrig till okrypterad av sig själv (någon på vägen kan
+blockera TLS för att tvinga fram okrypterat, och appid är också signeringsnyckeln). Slutar
+TLS svara visar Datakällor "TLS svarar inte" och knappen **Använd okrypterad** (ägare och
+admin, med en fråga först). Cron provar TLS igen varje timme och byter tillbaka när den
+fungerar. Sätt `AWISH_CONTROL_ENDPOINT=tls` i produktion när TLS fungerar.
+
 ### Skydd för varje skrivning
 
 `runControlAction` (control/guard.ts): bara ägare och admin; en demo anropar aldrig Awish;
 `AWISH_CONTROL_DISABLED=true` stänger av allt; samma bekräftelse (idempotensnyckel från
 förhandsvisningen) skickas en gång; gränser (mata ut 1 per automat per 2 min, 5 i timmen,
 10 per dygn; stäng av 1 per 30 min; starta om 1 per 10 min); mata ut kräver skäl och att
-automaten är online. Varje skrivning loggas i `awish_actions` (vem, vad, när, Awishs svar)
-utan sign, timestamp, hemligheter eller personuppgifter. Skrivningar provas aldrig igen
+automaten är online. Gränserna räknas en gång till under ett lås per organisation i samma
+transaktion som loggraden sparas, så två bekräftelser samtidigt (två flikar) kan inte båda
+komma förbi. Varje skrivning loggas i `awish_actions` (vem, vad, när, Awishs svar) utan
+sign, timestamp, hemligheter eller personuppgifter. Skrivningar provas aldrig igen
 automatiskt; uteblir svaret blir utfallet "okänt" och användaren ombeds titta på automaten.
+
+Starta om och Stäng av kräver en förhandsvisning på servern: den ger ett bevis (HMAC med
+`CONTROL_CONFIRM_SECRET`, annars `CRON_SECRET`) som bara gäller den användaren, automaten,
+kommandot och nyckeln i 10 minuter. Stäng av kräver också att koden skrivs. Ett strömschema
+som stänger av automaten nu eller inom 15 minuter kräver också att koden skrivs.
 
 ### Påfyllning och varor: webbpanelen eller API:t
 
 Datakällor → Awish API → **Påfyllning till Awish**: Webbpanelen (som nu, standard), API,
 eller API med webbpanelen som reserv (`awish_api_state.slot_writes_via`). API används bara
 när signeringen fungerar. Plan B (`control/api-push.ts`) använder samma plan som
-webbvägen (höjer bara, sänker aldrig) och skriver med UpdateProduct.
+webbvägen (höjer bara, sänker aldrig) och skriver med UpdateProduct: bara antalet (och status
+när den ändras), aldrig `good_id`, under samma Awish-lås per organisation som webbvägen. Är
+API-vägen av just nu (ingen adress svarar, obekräftat versionsbyte) går påfyllningen via
+webbpanelen även i läget API, så att den alltid loggas. Loggraden visar vem som fyllde på.
+
+## Var finns vad (för ägaren)
+
+| Funktion                                                                    | Var                                                               | Vem          |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------ |
+| Starta om, Stäng av (bakom Mer)                                             | Automater → automaten → Styr automaten → Starta om                | Ägare, admin |
+| Strömschema (dagar, på/av, förifyllt från butikens tider)                   | Styr automaten → Strömschema                                      | Ägare, admin |
+| Byt pack i fack, Fyll fullt                                                 | Styr automaten → Byt pack i fack                                  | Ägare, admin |
+| Skärm och reklam (volym och ljusstyrka visas, går inte att ändra via API:t) | Styr automaten → Skärm och reklam                                 | Ägare, admin |
+| Mata ut ett pack (skäl, skriven kod, gränser)                               | Styr automaten → Mata ut ett pack                                 | Ägare, admin |
+| Loggen över skrivningar                                                     | Styr automaten, längst ner                                        | Ägare, admin |
+| Kategorier på skärmen, kategori per fack                                    | Inköpspriser → Ny produkt → Kategorier (/inkopspriser/kategorier) | Ägare, admin |
+| Varor via API (ny, ändra, ta bort)                                          | Inköpspriser → Ny produkt / Redigera vara                         | Ägare, admin |
+| Medlemmar (lista, ny, ändra, ta bort; telefon och e-post maskerade)         | Inställningar → Medlemmar                                         | Ägare, admin |
+| Awish-kontot: tidszon, valutor, giltig till                                 | Inställningar → Awish                                             | Ägare, admin |
+| Ta bort kampanjbild från skärmen                                            | Kampanjer → avslutad kampanj                                      | Ägare, admin |
+| Version, anslutning (TLS), signering, webb/API                              | Datakällor → Awish API                                            | Ägare, admin |
+
+Påfyllare, butiker, läsare och demo ser inga av sidorna och kan inte anropa dem.
+
+### Att kontrollera mot riktiga Awish efter driftsättning
+
+1. Datakällor → Awish API → **Testa anslutning**: står det "Krypterad (TLS)"?
+2. **Testa signering**: fungerar det, och vilken numrering läser Awish? Svara Awish om
+   numreringen i dokumentationen.
+3. Starta om en automat som står still (kvällstid) och se att den startar om.
+4. Strömschema på en automat: se i Awishs panel att tiderna kom fram rätt.
+5. Byt pack via API på ett tomt fack och se i Awish att varan och antalet stämmer.
+6. Mata ut: bara i underhållsläge, med någon vid automaten.

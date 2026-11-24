@@ -9,7 +9,7 @@
 
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { AuthorizationError } from "@/server/access";
 import { runControlAction } from "@/server/awish/control/guard";
@@ -100,17 +100,13 @@ export function webGoodToApiInput(
   return out;
 }
 
-function keyFor(kind: string, parts: unknown): string {
-  return `${kind}:${createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 48)}`;
-}
-
 // ---------------------------------------------------------------------------
 // Skrivaren (webbpanelen eller API:t)
 // ---------------------------------------------------------------------------
 
 export interface GoodsWriter {
   readonly via: WritesVia;
-  /** `fingerprint` = förhandsvisningens (samma bekräftelse skickas aldrig två gånger). */
+  /** `fingerprint` = förhandsvisningens (sparas i loggen). */
   createGood(input: GoodInput, fingerprint: string): Promise<void>;
   updateGood(id: number, input: GoodInput, fingerprint: string): Promise<void>;
 }
@@ -155,8 +151,16 @@ export async function goodsWriterFor(
       {
         kind,
         targetId,
-        idempotencyKey: keyFor(kind, { targetId, fingerprint }),
-        auditRequest: { name: input.name, prices: input.prices.length },
+        // En ny nyckel per försök (en uuid, som spärren kräver). En nyckel ur fingeravtrycket
+        // skulle bli densamma för två likadana ändringar vid olika tillfällen (A→B, B→A,
+        // A→B igen) och den tredje skulle tyst inte skickas. Dubbeltryck stoppas av
+        // Awish-låset per organisation runt Ny produkt och Redigera vara.
+        idempotencyKey: randomUUID(),
+        auditRequest: {
+          name: input.name,
+          prices: input.prices.length,
+          preview: fingerprint.slice(0, 16),
+        },
       },
       async (api) => call(api, webGoodToApiInput(input, await api.currencies())),
       deps,

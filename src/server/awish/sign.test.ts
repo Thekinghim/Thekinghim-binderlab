@@ -231,3 +231,60 @@ describe("withoutSignature", () => {
     expect(withoutSignature({ id: "1", sign: "x", timestamp: 2 })).toEqual({ id: "1" });
   });
 });
+
+describe("dokumentationens fältnummer (10/11) i sju skrivningar", () => {
+  it("timestamp och sign skickas på båda ställena; request_body räknar inte med något av dem", () => {
+    const req = signRequest("UpdateProductRequest", { id: "1", current_inventory: 5 }, "app-test", {
+      nowSeconds: TS,
+      fields: "both",
+    }) as Record<string, unknown>;
+    expect(req.doc_sign).toBe(req.sign);
+    expect(req.doc_timestamp).toBe(TS);
+    expect(canonicalBody("UpdateProductRequest", req)).toBe('{"current_inventory":5,"id":1}');
+    const proto = signRequest("UpdateProductRequest", { id: "1" }, "app-test", {
+      nowSeconds: TS,
+      fields: "proto",
+    }) as Record<string, unknown>;
+    expect("doc_sign" in proto).toBe(false);
+    const doc = signRequest("UpdateProductRequest", { id: "1" }, "app-test", {
+      nowSeconds: TS,
+      fields: "doc",
+    }) as Record<string, unknown>;
+    expect("sign" in doc).toBe(false);
+    expect(
+      verifyAwishSignature({
+        appId: "app-test",
+        messageType: "UpdateProductRequest",
+        request: doc,
+        mode: "present_sorted",
+        nowSeconds: TS,
+        fields: "doc",
+      }),
+    ).toBe("ok");
+    expect(
+      verifyAwishSignature({
+        appId: "app-test",
+        messageType: "UpdateProductRequest",
+        request: doc,
+        mode: "present_sorted",
+        nowSeconds: TS,
+      }),
+    ).toBe("missing");
+  });
+
+  it("övriga meddelanden får inga extra fält", () => {
+    const req = signRequest("DeleteCategoryRequest", { id: "42" }, "app-test", {
+      nowSeconds: TS,
+      fields: "both",
+    }) as Record<string, unknown>;
+    expect(Object.keys(req).sort()).toEqual(["id", "sign", "timestamp"]);
+  });
+
+  it("withoutSignature tar bort även doc-fälten", () => {
+    expect(
+      withoutSignature({ id: "1", sign: "x", timestamp: 2, doc_sign: "x", doc_timestamp: 2 }),
+    ).toEqual({
+      id: "1",
+    });
+  });
+});

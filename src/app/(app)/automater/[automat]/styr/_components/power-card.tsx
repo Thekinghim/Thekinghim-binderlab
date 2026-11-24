@@ -5,29 +5,28 @@ import { useState } from "react";
 import { Button } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
 
-import { controlPowerAction } from "../actions";
+import { REBOOT_TEXT, SHUTDOWN_TEXT } from "@/server/machine-control/texts";
+
+import { controlPowerAction, previewPowerAction } from "../actions";
 import { ConfirmSheet } from "./confirm";
 import { useFlow, type FlowPreview } from "./use-flow";
 
-const REBOOT_TEXT =
-  "Den startar om när ingen har rört skärmen på en minut. Försäljningen stannar ett par minuter.";
-const SHUTDOWN_TEXT = "Den går inte att starta på distans. Någon måste slå på den i butiken.";
+type PowerPreview = FlowPreview & { fingerprint: string; idempotencyKey: string };
 
 export function PowerCard({
   machineId,
   code,
   online,
   versionBlocked,
-  keys,
 }: {
   machineId: string;
   code: string;
   online: boolean | null;
   versionBlocked: boolean;
-  keys: { reboot: string; shutdown: string };
 }) {
-  const reboot = useFlow<FlowPreview>();
-  const shutdown = useFlow<FlowPreview>();
+  // Förhandsvisningen läses från servern: den ger beviset som bekräftelsen kräver.
+  const reboot = useFlow<PowerPreview>();
+  const shutdown = useFlow<PowerPreview>();
   const [more, setMore] = useState(false);
   const offline = online === false;
 
@@ -39,15 +38,7 @@ export function PowerCard({
           <Button
             touch
             disabled={offline}
-            onClick={() =>
-              reboot.start({
-                lines: [`${code} startar om.`],
-                warnings: [],
-                blocking: null,
-                confirm: null,
-                typed: null,
-              })
-            }
+            onClick={() => reboot.start(() => previewPowerAction({ machineId, method: "REBOOT" }))}
           >
             Starta om automaten
           </Button>
@@ -55,6 +46,7 @@ export function PowerCard({
           <Button
             variant="quiet"
             size="sm"
+            touch
             aria-expanded={more}
             aria-controls="styr-mer"
             className="ml-auto"
@@ -73,13 +65,7 @@ export function PowerCard({
               className="styr-danger-outline"
               disabled={offline || versionBlocked}
               onClick={() =>
-                shutdown.start({
-                  lines: [`${code} stängs av och säljer inget förrän någon slår på den.`],
-                  warnings: [],
-                  blocking: null,
-                  confirm: null,
-                  typed: code,
-                })
+                shutdown.start(() => previewPowerAction({ machineId, method: "SHUTDOWN" }))
               }
             >
               Stäng av…
@@ -104,8 +90,13 @@ export function PowerCard({
         pending={reboot.pending}
         confirmLabel="Starta om"
         onConfirm={() =>
-          reboot.apply(() =>
-            controlPowerAction({ machineId, method: "REBOOT", idempotencyKey: keys.reboot }),
+          reboot.apply((p) =>
+            controlPowerAction({
+              machineId,
+              method: "REBOOT",
+              idempotencyKey: p.idempotencyKey,
+              fingerprint: p.fingerprint,
+            }),
           )
         }
       />
@@ -122,12 +113,13 @@ export function PowerCard({
         typedVerb="stänga av"
         danger
         onConfirm={({ typed }) =>
-          shutdown.apply(() =>
+          shutdown.apply((p) =>
             controlPowerAction({
               machineId,
               method: "SHUTDOWN",
               typed,
-              idempotencyKey: keys.shutdown,
+              idempotencyKey: p.idempotencyKey,
+              fingerprint: p.fingerprint,
             }),
           )
         }

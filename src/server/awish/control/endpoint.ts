@@ -14,6 +14,7 @@
  */
 
 import { AwishApiError, DEFAULT_AWISH_GRPC_ADDRESS, type AwishCredentials } from "../grpc-client";
+import type { AwishSignFields } from "../proto-doc-fields";
 import type { AwishSignMode } from "../sign";
 import { controlErrorMessage } from "./errors";
 import type { AwishControlApi } from "./types";
@@ -64,7 +65,7 @@ export function chosenEndpoint(
 
 export type ControlConnect = (
   creds: AwishCredentials,
-  cfg: { address: string; tls: boolean; signMode: AwishSignMode },
+  cfg: { address: string; tls: boolean; signMode: AwishSignMode; signFields?: AwishSignFields },
 ) => AwishControlApi;
 
 export interface EndpointProbe {
@@ -81,19 +82,38 @@ function unreachable(error: unknown): boolean {
   );
 }
 
+/** Awish svarade men skickade ingen version vi känner igen: adressen fungerar ändå. */
+function answeredWithoutVersion(error: unknown): boolean {
+  return error instanceof AwishApiError && error.kind === "changed" && error.grpcCode === null;
+}
+
+export const TLS_LOST_MESSAGE =
+  "TLS har fungerat förut men svarar inte nu. Vi byter inte till okrypterad av oss själva.";
+
 /**
  * Provar adresserna med Version (en osignerad läsning). I auto: TLS först, sedan den
  * okrypterade om TLS inte går att nå. Ett inloggningsfel på TLS betyder att TLS fungerar
- * (Awish svarade) men uppgifterna är fel; då provas inte den okrypterade.
+ * (Awish svarade) men uppgifterna är fel; då provas inte den okrypterade. Ett svar utan
+ * igenkänd version räknas som att adressen fungerar (version null).
+ *
+ * `noDowngrade`: TLS har fungerat för organisationen. Då provas den okrypterade inte när
+ * TLS slutar svara (någon på vägen kan blockera TLS för att tvinga fram okrypterat, och
+ * appid, som också är signeringsnyckeln, går då i klartext). En ägare eller admin får välja
+ * okrypterad själv under Datakällor.
  */
 export async function probeEndpoint(
   creds: AwishCredentials,
   cfg: ControlEndpointConfig,
   connect: ControlConnect,
   signMode: AwishSignMode,
+  opts: { noDowngrade?: boolean } = {},
 ): Promise<EndpointProbe> {
   const order: ControlEndpointKind[] =
-    cfg.mode === "auto" ? ["tls", "plain"] : [cfg.mode as ControlEndpointKind];
+    cfg.mode === "auto"
+      ? opts.noDowngrade
+        ? ["tls"]
+        : ["tls", "plain"]
+      : [cfg.mode as ControlEndpointKind];
   let firstError: string | null = null;
   for (const kind of order) {
     const api = connect(creds, { ...endpointAddress(kind, cfg), signMode });
@@ -101,12 +121,17 @@ export async function probeEndpoint(
       const version = await api.version();
       return { endpoint: kind, version, error: firstError };
     } catch (error) {
+      if (answeredWithoutVersion(error))
+        return { endpoint: kind, version: null, error: firstError };
       const message = controlErrorMessage(error);
       firstError ??= kind === "tls" ? `TLS: ${message}` : message;
       if (!unreachable(error)) return { endpoint: null, version: null, error: message };
     } finally {
       api.close();
     }
+  }
+  if (cfg.mode === "auto" && opts.noDowngrade) {
+    return { endpoint: null, version: null, error: TLS_LOST_MESSAGE };
   }
   return { endpoint: null, version: null, error: firstError };
 }

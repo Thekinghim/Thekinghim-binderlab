@@ -3,15 +3,16 @@
  * (planSlotChange: ett fack med pack byter aldrig vara och sänks aldrig utan bekräftelse).
  *
  * Skrivvägen väljs av organisationens flagga (slotWriterFor): webbpanelen som i dag, eller
- * API:t (UpdateProduct, signerat, genom spärren med loggrad). Efter skrivningen läses facket
- * igen och kontrolleras.
+ * API:t (UpdateProduct, signerat, genom spärren med loggrad). API-vägen körs under samma
+ * Awish-lås per organisation som webbvägen, så att en påfyllning inte skriver över bytet.
+ * Efter skrivningen läses facket igen; visar Awish inte ändringen än är skrivningen ändå
+ * gjord (loggen säger ok) och användaren ombeds titta i Awish.
  */
 
 import "server-only";
 
 import type { Db } from "@/db/client";
 import { slotWriterFor, type SlotWriter } from "@/server/awish/control/slot-writer";
-import { AwishControlInputError } from "@/server/awish/control/errors";
 import { runControlAction } from "@/server/awish/control/guard";
 import {
   planFingerprint,
@@ -26,6 +27,7 @@ import {
   loggedInClient,
   previewSlotChangeFor,
   slotChoicesFor as webSlotChoicesFor,
+  withAwishWriteLock,
 } from "@/server/awish/new-product";
 import type { AwishWebProduct } from "@/server/awish/web-client";
 import type { Viewer } from "@/server/data/core/loaders";
@@ -199,51 +201,62 @@ export async function applySlotSwapFor(
       const r = await applySlotChangeFor(viewer, raw, confirm.fingerprint, confirm.confirmed);
       return { ok: true, message: r.message, replayed: false };
     }
-    const { machine, plan, fingerprint } = await apiPlan(viewer, db, writer, raw, deps);
-    if (plan.blocking) throw new MachineControlError(plan.blocking);
-    if (fingerprint !== confirm.fingerprint) throw new MachineControlError(STALE_MESSAGE);
-    if (plan.unchanged)
-      return {
-        ok: true,
-        message: `${plan.slotName} har redan ${plan.to.goodName} ${plan.to.count} st.`,
-        replayed: false,
-      };
-    if (plan.confirm && !confirm.confirmed)
-      throw new MachineControlError(`Bekräfta först: ${plan.confirm}`);
+    return await withAwishWriteLock(db, viewer.organization.id, async () => {
+      const { machine, plan, fingerprint } = await apiPlan(viewer, db, writer, raw, deps);
+      if (plan.blocking) throw new MachineControlError(plan.blocking);
+      if (fingerprint !== confirm.fingerprint) throw new MachineControlError(STALE_MESSAGE);
+      if (plan.unchanged)
+        return {
+          ok: true as const,
+          message: `${plan.slotName} har redan ${plan.to.goodName} ${plan.to.count} st.`,
+          replayed: false,
+        };
+      if (plan.confirm && !confirm.confirmed)
+        throw new MachineControlError(`Bekräfta först: ${plan.confirm}`);
 
-    const run = deps.run ?? runControlAction;
-    const r = await run(
-      viewer,
-      {
-        kind: "slot_update",
-        machineId: machine.id,
-        targetId: String(plan.productId),
-        idempotencyKey,
-        auditRequest: {
-          productId: plan.productId,
-          from: plan.from,
-          to: { goodId: plan.to.goodId, count: plan.to.count },
+      const run = deps.run ?? runControlAction;
+      const r = await run(
+        viewer,
+        {
+          kind: "slot_update",
+          machineId: machine.id,
+          targetId: String(plan.productId),
+          idempotencyKey,
+          auditRequest: {
+            productId: plan.productId,
+            from: plan.from,
+            to: { goodId: plan.to.goodId, count: plan.to.count },
+          },
         },
-      },
-      async () => {
-        await writer.setSlot(plan.productId, {
-          goodId: plan.to.goodId,
-          status: plan.status,
-          currentInventory: plan.to.count,
-        });
-        const after = (await writer.slots(machine.awishMachineId)).find(
-          (s) => s.id === plan.productId,
-        );
-        if (!after || after.goodId !== plan.to.goodId || after.currentInventory !== plan.to.count) {
-          throw new AwishControlInputError(
-            `Awish sparade inte ändringen i ${plan.slotName}. Titta i Awish och försök igen.`,
-          );
-        }
-        return after;
-      },
-      deps,
-    );
-    return outcome(r, () => `Klart! ${plan.slotName}: ${plan.to.goodName} ${plan.to.count} st.`);
+        async () => {
+          await writer.setSlot(plan.productId, {
+            goodId: plan.to.goodId,
+            status: plan.status,
+            currentInventory: plan.to.count,
+          });
+          // Skrivningen är gjord. En läsning som släpar efter gör den inte misslyckad.
+          let shows = false;
+          try {
+            const after = (await writer.slots(machine.awishMachineId)).find(
+              (s) => s.id === plan.productId,
+            );
+            shows =
+              !!after &&
+              after.goodId === plan.to.goodId &&
+              after.currentInventory === plan.to.count;
+          } catch {
+            shows = false;
+          }
+          return { shows };
+        },
+        deps,
+      );
+      return outcome(r, (v) =>
+        v.shows
+          ? `Klart! ${plan.slotName}: ${plan.to.goodName} ${plan.to.count} st.`
+          : `Skickat. Awish visar inte ändringen i ${plan.slotName} än. Titta i Awish om en stund.`,
+      );
+    });
   } finally {
     writer.close();
   }

@@ -524,7 +524,10 @@ describe("varor", () => {
       prices: [{ id: "0", price: "79.00", currencyId: "1" }],
     });
     expect(specs[0]!.kind).toBe("good_create");
-    expect(specs[0]!.idempotencyKey).toMatch(/^good_create:[0-9a-f]{48}$/);
+    // En uuid per försök (spärren godtar bara uuid).
+    expect(specs[0]!.idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
   });
 
   it("API, webbpanelen som reserv: bara när API:t sa nej, aldrig vid okänt utfall", async () => {
@@ -559,7 +562,7 @@ describe("varor", () => {
 // ---------------------------------------------------------------------------
 
 describe("Awish-kontot", () => {
-  it("tidszonen skickas ensam", async () => {
+  it("tidszonen skickas ensam, och ordrarnas tidszon byts samtidigt", async () => {
     fresh();
     const v = await viewerFor(owner, orgId);
     const page = await loadAwishAccountFor(v, deps());
@@ -568,8 +571,20 @@ describe("Awish-kontot", () => {
       timezoneMatches: false,
       wantedTimezone: "Europe/Stockholm",
     });
+    const sourceTz = async () =>
+      (
+        Array.from(
+          await db().execute(
+            sql`select source_timezone from public.data_sources where id = ${sourceId}::uuid`,
+          ),
+        ) as { source_timezone: string }[]
+      )[0]!.source_timezone;
+    expect(await sourceTz()).toBe("Asia/Shanghai");
     const p = await previewTimezoneFor(v, deps());
-    expect(p.lines).toEqual(["Tidszon: Asia/Shanghai → Europe/Stockholm."]);
+    expect(p.lines).toEqual([
+      "Tidszon: Asia/Shanghai → Europe/Stockholm.",
+      "Nya ordrar från Awish läses i Europe/Stockholm från och med nu.",
+    ]);
     const r = await applyTimezoneFor(
       v,
       { fingerprint: p.fingerprint, idempotencyKey: p.idempotencyKey },
@@ -582,9 +597,20 @@ describe("Awish-kontot", () => {
       auditRequest: { timezone: "Europe/Stockholm" },
     });
     expect(JSON.stringify(specs[0])).not.toMatch(/config|app_secret|appKey/);
+    expect(await sourceTz()).toBe("Europe/Stockholm");
 
     st.timezone = "Europe/Stockholm";
     expect((await previewTimezoneFor(v, deps())).blocking).toMatch(/redan/);
+
+    // Ordrarna läses i en tredje tidszon: spärras.
+    st.timezone = "Asia/Shanghai";
+    await db().execute(
+      sql`update public.data_sources set source_timezone = 'America/New_York' where id = ${sourceId}::uuid`,
+    );
+    expect((await previewTimezoneFor(v, deps())).blocking).toMatch(/America\/New_York/);
+    await db().execute(
+      sql`update public.data_sources set source_timezone = 'Asia/Shanghai' where id = ${sourceId}::uuid`,
+    );
   });
 });
 
@@ -632,7 +658,9 @@ describe("kampanjer: ta bort från skärmen", () => {
     expect(r).toMatchObject({ removed: 1, failed: 0 });
     expect(st.writes).toEqual([{ method: "deleteBanner", args: [{ machineId: "123", id: "77" }] }]);
     expect(specs[0]).toMatchObject({ kind: "banner_delete", targetId: "77" });
-    expect(specs[0]!.idempotencyKey).toMatch(/^banner_delete:[0-9a-f-]{36}$/);
+    expect(specs[0]!.idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
 
     // Loggen säger att bilden är borta (raden skrivs av spärren i appen).
     await db().execute(

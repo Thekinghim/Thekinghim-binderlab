@@ -1,3 +1,4 @@
+import { TLS_LOST_MESSAGE } from "@/server/awish/control/endpoint";
 import { awishApiCardFor } from "@/server/awish/control/version";
 import type { Viewer } from "@/server/data/core/loaders";
 
@@ -23,6 +24,7 @@ export async function AwishApiSection({ viewer, timeZone }: { viewer: Viewer; ti
         versionNeedsAck: card.versionNeedsAck,
         endpoint: s.endpoint,
         endpointError: s.endpointError,
+        tlsLost: s.endpoint === "tls" && s.endpointError === TLS_LOST_MESSAGE,
         signStatus: s.signStatus,
         signError: s.signError,
         slotWritesVia: s.slotWritesVia,

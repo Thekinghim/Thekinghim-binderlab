@@ -70,7 +70,7 @@ export default async function StyrPage({ params }: { params: Params }) {
             }
             action={
               data.kind === "not_linked" ? (
-                <ButtonLink href="/datakallor" size="sm">
+                <ButtonLink href="/datakallor" size="sm" touch>
                   Datakällor
                 </ButtonLink>
               ) : undefined
@@ -103,9 +103,9 @@ export default async function StyrPage({ params }: { params: Params }) {
         {data.versionBlocked ? (
           <Notice
             tone="warning"
-            title="Awish bytte version. Mata ut och Stäng av är pausade."
+            title="Awish bytte version. Ändringar via API är pausade."
             action={
-              <ButtonLink href="/datakallor" size="sm">
+              <ButtonLink href="/datakallor" size="sm" touch>
                 Datakällor
               </ButtonLink>
             }
@@ -125,7 +125,6 @@ export default async function StyrPage({ params }: { params: Params }) {
           code={machine.code}
           online={data.online}
           versionBlocked={data.versionBlocked}
-          keys={data.keys}
         />
         <ScheduleCard
           machineId={machine.id}

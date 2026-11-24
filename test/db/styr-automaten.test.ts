@@ -5,7 +5,7 @@
  * - behörighet: påfyllaren och läsaren kommer inte åt (sidan ger null, tjänsterna kastar);
  * - demo: inget anrop till Awish alls (inte ens klienten skapas);
  * - Starta om / Stäng av: rätt spec (fysiskt, online, versionskrav bara för Stäng av),
- *   skriven kod för Stäng av;
+ *   skriven kod för Stäng av, och bara med beviset från förhandsvisningen på servern;
  * - Mata ut: parametrar ur kanalen, anledning + skriven kod + fingeravtryck krävs, spärrens
  *   nej (takt, version) når användaren;
  * - strömschema: förifyllt från butiken, tidszonsspärr, HH:MM:00 och veckodagarna;
@@ -36,7 +36,7 @@ import { asUser, createMember, createOrg, createUser, db, type TestUser } from "
 vi.mock("server-only", () => ({}));
 
 const { loadStyrPage } = await import("../../src/server/machine-control/load");
-const { controlPowerFor } = await import("../../src/server/machine-control/power");
+const { controlPowerFor, previewPowerFor } = await import("../../src/server/machine-control/power");
 const { executeShipmentFor, previewShipmentFor } =
   await import("../../src/server/machine-control/shipment");
 const { applyPowerScheduleFor, previewPowerScheduleFor, storeHoursFor } =
@@ -216,6 +216,7 @@ function deps(extra: Partial<MachineControlDeps> = {}): MachineControlDeps {
 }
 
 let owner: TestUser;
+let admin: TestUser;
 let refiller: TestUser;
 let viewerUser: TestUser;
 let orgId: string;
@@ -227,6 +228,7 @@ let demoMachine: string;
 beforeAll(async () => {
   owner = await createUser();
   orgId = await createOrg(owner);
+  admin = await createMember(orgId, "admin");
   refiller = await createMember(orgId, "refiller");
   viewerUser = await createMember(orgId, "viewer");
   const machines = await asUser(owner, (tx) =>
@@ -287,9 +289,12 @@ describe("behörighet och demo", () => {
       await expect(
         controlPowerFor(
           v,
-          { machineId: m1, method: "REBOOT", idempotencyKey: randomUUID() },
+          { machineId: m1, method: "REBOOT", idempotencyKey: randomUUID(), fingerprint: "x" },
           deps(),
         ),
+      ).rejects.toBeInstanceOf(AuthorizationError);
+      await expect(
+        previewPowerFor(v, { machineId: m1, method: "REBOOT" }, deps()),
       ).rejects.toBeInstanceOf(AuthorizationError);
       await expect(
         previewShipmentFor(v, { machineId: m1, productId: "71" }, deps()),
@@ -334,12 +339,35 @@ describe("behörighet och demo", () => {
 });
 
 describe("starta om och stäng av", () => {
+  async function confirmed(v: Viewer, method: "REBOOT" | "SHUTDOWN", typed?: string) {
+    const p = await previewPowerFor(v, { machineId: m1, method }, deps());
+    return controlPowerFor(
+      v,
+      {
+        machineId: m1,
+        method,
+        typed,
+        idempotencyKey: p.idempotencyKey,
+        fingerprint: p.fingerprint,
+      },
+      deps(),
+    );
+  }
+
   it("starta om: fysiskt, online, ingen versionsspärr", async () => {
     fresh();
     const v = await viewerFor(owner, orgId);
+    const p = await previewPowerFor(v, { machineId: m1, method: "REBOOT" }, deps());
+    expect(p).toMatchObject({ lines: ["BL-003 startar om."], typed: null, blocking: null });
+    expect(st.clients).toBe(0);
     const r = await controlPowerFor(
       v,
-      { machineId: m1, method: "REBOOT", idempotencyKey: randomUUID() },
+      {
+        machineId: m1,
+        method: "REBOOT",
+        idempotencyKey: p.idempotencyKey,
+        fingerprint: p.fingerprint,
+      },
       deps(),
     );
     expect(r).toEqual({
@@ -353,28 +381,98 @@ describe("starta om och stäng av", () => {
       requireOnline: true,
       requireAckedVersion: false,
       machineId: m1,
+      idempotencyKey: p.idempotencyKey,
     });
     expect(st.writes).toEqual([
       { method: "controlPower", args: { machineId: "123", method: "REBOOT" } },
     ]);
   });
 
-  it("stäng av kräver koden och bekräftad version", async () => {
+  it("utan förhandsvisning på servern skickas inget (eget anrop, annan användare, för gammal)", async () => {
     fresh();
     const v = await viewerFor(owner, orgId);
+    const key = randomUUID();
     await expect(
       controlPowerFor(
         v,
-        { machineId: m1, method: "SHUTDOWN", typed: "BL-004", idempotencyKey: randomUUID() },
+        {
+          machineId: m1,
+          method: "REBOOT",
+          idempotencyKey: key,
+          fingerprint: `1.${"a".repeat(64)}`,
+        },
+        deps(),
+      ),
+    ).rejects.toThrow(/förhandsvisningen/);
+    // Beviset gäller bara den som förhandsvisade, det kommandot och den nyckeln.
+    const p = await previewPowerFor(
+      await viewerFor(admin, orgId),
+      { machineId: m1, method: "REBOOT" },
+      deps(),
+    );
+    await expect(
+      controlPowerFor(
+        v,
+        {
+          machineId: m1,
+          method: "REBOOT",
+          idempotencyKey: p.idempotencyKey,
+          fingerprint: p.fingerprint,
+        },
+        deps(),
+      ),
+    ).rejects.toThrow(/förhandsvisningen/);
+    const own = await previewPowerFor(v, { machineId: m1, method: "REBOOT" }, deps());
+    await expect(
+      controlPowerFor(
+        v,
+        {
+          machineId: m1,
+          method: "SHUTDOWN",
+          typed: "BL-003",
+          idempotencyKey: own.idempotencyKey,
+          fingerprint: own.fingerprint,
+        },
+        deps(),
+      ),
+    ).rejects.toThrow(/förhandsvisningen/);
+    const later = { ...deps(), now: () => new Date(Date.now() + 11 * 60_000) };
+    await expect(
+      controlPowerFor(
+        v,
+        {
+          machineId: m1,
+          method: "REBOOT",
+          idempotencyKey: own.idempotencyKey,
+          fingerprint: own.fingerprint,
+        },
+        later,
+      ),
+    ).rejects.toThrow(/förhandsvisningen/);
+    expect(specs).toHaveLength(0);
+    expect(st.writes).toEqual([]);
+  });
+
+  it("stäng av kräver koden och bekräftad version", async () => {
+    fresh();
+    const v = await viewerFor(owner, orgId);
+    const p = await previewPowerFor(v, { machineId: m1, method: "SHUTDOWN" }, deps());
+    expect(p.typed).toBe("BL-003");
+    await expect(
+      controlPowerFor(
+        v,
+        {
+          machineId: m1,
+          method: "SHUTDOWN",
+          typed: "BL-004",
+          idempotencyKey: p.idempotencyKey,
+          fingerprint: p.fingerprint,
+        },
         deps(),
       ),
     ).rejects.toThrow("Skriv BL-003 för att stänga av.");
     expect(specs).toHaveLength(0);
-    await controlPowerFor(
-      v,
-      { machineId: m1, method: "SHUTDOWN", typed: "bl-003", idempotencyKey: randomUUID() },
-      deps(),
-    );
+    await confirmed(v, "SHUTDOWN", "bl-003");
     expect(specs[0]).toMatchObject({ kind: "shutdown", requireAckedVersion: true, physical: true });
   });
 
@@ -382,7 +480,11 @@ describe("starta om och stäng av", () => {
     fresh();
     const v = await viewerFor(owner, orgId);
     await expect(
-      controlPowerFor(v, { machineId: m1, method: "REBOOT", idempotencyKey: "x" }, deps()),
+      controlPowerFor(
+        v,
+        { machineId: m1, method: "REBOOT", idempotencyKey: "x", fingerprint: "x" },
+        deps(),
+      ),
     ).rejects.toThrow(/förhandsvisningen/);
     expect(st.writes).toEqual([]);
   });
@@ -423,7 +525,8 @@ describe("mata ut ett pack", () => {
     expect(st.writes).toEqual([
       {
         method: "executeShipment",
-        args: { machineId: "123", addr: "1", motorIds: ["14"], floorType: 2, code: "12" },
+        // code ("channel no") skickas inte: addr och motor_ids pekar ut motorn.
+        args: { machineId: "123", addr: "1", motorIds: ["14"], floorType: 2 },
       },
     ]);
     // Lagret ändras inte av Binderlab.
@@ -536,6 +639,36 @@ describe("strömschema", () => {
     }
   });
 
+  it("stängs av inom 15 minuter: koden ska skrivas, och versionen ska vara kvitterad", async () => {
+    fresh();
+    const v = await viewerFor(owner, orgId);
+    // Nu är det tisdag 13:00 i Stockholm: Av 13:05 stänger av automaten om fem minuter.
+    const raw = { machineId: m1, days: "1111111", on: "10:00", off: "13:05" };
+    const p = await previewPowerScheduleFor(v, raw, deps());
+    expect(p.typed).toBe("BL-003");
+    expect(p.warnings[0]).toMatch(/stängs automaten av nu eller inom 15 minuter/);
+    const c = { fingerprint: p.fingerprint, idempotencyKey: p.idempotencyKey };
+    await expect(applyPowerScheduleFor(v, raw, c, deps())).rejects.toThrow(
+      "Skriv BL-003 för att skicka schemat.",
+    );
+    expect(specs).toHaveLength(0);
+    const r = await applyPowerScheduleFor(v, raw, { ...c, typed: "bl-003" }, deps());
+    expect(r.ok).toBe(true);
+    expect(specs[0]).toMatchObject({
+      kind: "power_schedule_set",
+      requireAckedVersion: true,
+      auditRequest: { offSoon: true },
+    });
+
+    // Mitt på dagen med butikens tider: ingen kod.
+    const calm = await previewPowerScheduleFor(
+      v,
+      { machineId: m1, days: "1111111", on: "10:00", off: "21:00" },
+      deps(),
+    );
+    expect(calm.typed).toBeNull();
+  });
+
   it("annan tidszon i Awish spärrar", async () => {
     fresh();
     st.timezone = "Asia/Shanghai";
@@ -614,6 +747,41 @@ describe("fack", () => {
     expect(st.writes).toEqual([
       { method: "setSlot", args: { productId: 71, goodId: 11, status: true, currentInventory: 6 } },
     ]);
+  });
+
+  it("byt pack via API: en läsning som släpar efter gör inte skrivningen misslyckad", async () => {
+    fresh();
+    const v = await viewerFor(owner, orgId);
+    const lagging = (): SlotWriter => {
+      const w = writer();
+      const before = st.products.map((p) => ({ ...p }));
+      return {
+        ...w,
+        slots: async () =>
+          (st.writes.length > 0 ? before : st.products).map((p) => ({
+            id: Number(p.id),
+            goodId: p.goodId ? Number(p.goodId) : null,
+            goodName: p.goodName,
+            status: p.status,
+            currentInventory: p.currentInventory,
+            capacity: p.capacity,
+            channelName: p.channel?.name ?? null,
+          })),
+      };
+    };
+    const sd = { ...deps({ slotWriter: async () => lagging() }), listGoods: goods };
+    const raw = { machineId: m1, productId: 72, goodId: 11, count: 3 };
+    const p = await previewSlotSwapFor(v, raw, sd);
+    const r = await applySlotSwapFor(
+      v,
+      raw,
+      { fingerprint: p.fingerprint, idempotencyKey: p.idempotencyKey, confirmed: true },
+      sd,
+    );
+    expect(r).toMatchObject({
+      ok: true,
+      message: "Skickat. Awish visar inte ändringen i Fack 12 än. Titta i Awish om en stund.",
+    });
   });
 
   it("fyll fullt", async () => {

@@ -5,15 +5,19 @@
  *  2. En demo anropar aldrig Awish (raden sparas som 'blocked', ingen anslutning görs).
  *  3. AWISH_CONTROL_DISABLED=true stänger av all styrning.
  *  4. Samma bekräftelse (idempotency_key) skickas aldrig två gånger: det sparade utfallet ges.
- *  5. Gränser per automat och organisation (räknas ur awish_actions, utom 'blocked').
+ *  5. Gränser per automat och organisation (räknas ur awish_actions, utom 'blocked'). De
+ *     räknas en gång till under ett lås per organisation, i samma transaktion som raden
+ *     'pending' sparas, så att två bekräftelser samtidigt inte båda kommer förbi.
  *  6. Fungerar inte signeringen (sign_status 'failed') pausas alla skrivningar.
- *  7. Mata ut och Stäng av kräver att ett byte av Awishs version har kvitterats.
+ *  7. Skrivningar som rör fack, påfyllning, strömschema, Mata ut och Stäng av kräver att ett
+ *     byte av Awishs version har kvitterats (VERSION_GATED_KINDS). Omstart gör det inte: den
+ *     behövs ibland just när något är fel, och den rör inga fack.
  *  8. Kräver åtgärden att automaten är online kontrolleras det först (Machine).
  *  9. En rad 'pending' sparas före anropet, 10. anropet görs, 11. utfallet sparas
  *     (ok, failed eller unknown), 12. ett svenskt meddelande ges.
  *
  * Mata ut (shipment) kräver alltid ett skäl (minst 5 tecken), en kvitterad version och att
- * automaten är online, oavsett vad anroparen anger. Stäng av kräver alltid kvitterad version.
+ * automaten är online, oavsett vad anroparen anger.
  * Begäran som sparas rensas från sign, timestamp, hemligheter och personuppgifter.
  */
 
@@ -23,7 +27,7 @@ import { randomUUID } from "node:crypto";
 
 import { sql } from "drizzle-orm";
 
-import { getServiceDb, type Db } from "@/db/client";
+import { getServiceDb, type Db, type Tx } from "@/db/client";
 import type { MemberRole, MembershipRole } from "@/db/schema";
 import { AuthorizationError, requireRoleFor } from "@/server/access";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
@@ -127,6 +131,33 @@ export interface AuditRow {
 }
 
 export const PHYSICAL_KINDS: readonly AwishActionKind[] = ["reboot", "shutdown", "shipment"];
+
+/**
+ * Kräver kvitterad version: ett oannonserat byte av fältnumren kan göra att fack-id och
+ * antal betyder något annat, och då ska inget skrivas till facken eller automaten.
+ */
+export const VERSION_GATED_KINDS: readonly AwishActionKind[] = [
+  "shipment",
+  "shutdown",
+  "slot_update",
+  "replenish",
+  "products_batch",
+  "refill_push_api",
+  "power_schedule_set",
+];
+
+export const VERSION_UNACKNOWLEDGED_MESSAGE =
+  "Awish bytte version. Kontrollera under Datakällor och tryck Jag har kontrollerat först.";
+
+/** Har Awish bytt version utan att någon kvitterat? */
+export function versionNeedsAck(state: {
+  versionChangedAt: Date | null;
+  versionAcknowledgedAt: Date | null;
+}): boolean {
+  const changed = state.versionChangedAt;
+  const acked = state.versionAcknowledgedAt;
+  return changed !== null && (acked === null || acked.getTime() < changed.getTime());
+}
 
 const CATALOG_KINDS: readonly AwishActionKind[] = [
   "good_create",
@@ -339,7 +370,7 @@ function clip(text: string | null | undefined, max = 300): string | null {
 
 type Row = Record<string, unknown>;
 
-async function query<T extends Row>(db: Db, q: ReturnType<typeof sql>): Promise<T[]> {
+async function query<T extends Row>(db: Db | Tx, q: ReturnType<typeof sql>): Promise<T[]> {
   return Array.from(await db.execute(q)) as T[];
 }
 
@@ -348,7 +379,7 @@ function memberRolesOf(roles: readonly MembershipRole[]): MemberRole[] {
 }
 
 interface Ctx {
-  db: Db;
+  db: Db | Tx;
   orgId: string;
   actorId: string;
   actorRole: string | null;
@@ -443,7 +474,7 @@ export async function runControlAction<T>(
   const env = deps.env ?? process.env;
   const physical = spec.physical === true || PHYSICAL_KINDS.includes(spec.kind);
   const requireAckedVersion =
-    spec.requireAckedVersion === true || spec.kind === "shipment" || spec.kind === "shutdown";
+    spec.requireAckedVersion === true || VERSION_GATED_KINDS.includes(spec.kind);
   const requireOnline = spec.requireOnline === true || spec.kind === "shipment";
   const ctx: Ctx = {
     db,
@@ -526,11 +557,8 @@ export async function runControlAction<T>(
     return failure("sign_failed", message, await recordBlocked(ctx, "sign_failed", message));
   }
   if (requireAckedVersion) {
-    const changed = context.state.versionChangedAt;
-    const acked = context.state.versionAcknowledgedAt;
-    if (changed && (!acked || acked.getTime() < changed.getTime())) {
-      const message =
-        "Awish bytte version. Kontrollera under Datakällor och tryck Jag har kontrollerat först.";
+    if (versionNeedsAck(context.state)) {
+      const message = VERSION_UNACKNOWLEDGED_MESSAGE;
       return failure(
         "version_unacknowledged",
         message,
@@ -568,19 +596,37 @@ export async function runControlAction<T>(
       }
     }
 
-    // 9. Raden före anropet.
-    const [pending] = await query<{ id: string }>(
-      db,
-      sql`insert into public.awish_actions
-            (organization_id, actor_id, actor_role, kind, machine_id, awish_machine_id, target_id,
-             request, reason, idempotency_key, status)
-          values (${orgId}::uuid, ${viewer.user.userId}::uuid, ${actorRole}, ${spec.kind},
-                  ${spec.machineId ?? null}::uuid, ${awishMachineId}, ${clip(spec.targetId, 100)},
-                  ${JSON.stringify(ctx.request)}::jsonb, ${clip(spec.reason, 500)},
-                  ${spec.idempotencyKey}, 'pending')
-          on conflict (organization_id, idempotency_key) do nothing
-          returning id`,
-    );
+    // 9. Raden före anropet. Gränserna räknas en gång till under ett lås per organisation i
+    // samma transaktion som raden sparas: två bekräftelser samtidigt (två flikar) kan annars
+    // båda räkna 0 och båda skickas (t.ex. två utmatningar trots "1 per 2 minuter").
+    const reserved = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`binderlab:awish-ctl:${orgId}`}, 0))`,
+      );
+      const again = await rateLimited({ ...ctx, db: tx });
+      if (again) return { limited: again, pending: null };
+      const [row] = await query<{ id: string }>(
+        tx,
+        sql`insert into public.awish_actions
+              (organization_id, actor_id, actor_role, kind, machine_id, awish_machine_id,
+               target_id, request, reason, idempotency_key, status)
+            values (${orgId}::uuid, ${viewer.user.userId}::uuid, ${actorRole}, ${spec.kind},
+                    ${spec.machineId ?? null}::uuid, ${awishMachineId},
+                    ${clip(spec.targetId, 100)}, ${JSON.stringify(ctx.request)}::jsonb,
+                    ${clip(spec.reason, 500)}, ${spec.idempotencyKey}, 'pending')
+            on conflict (organization_id, idempotency_key) do nothing
+            returning id`,
+      );
+      return { limited: null, pending: row ?? null };
+    });
+    if (reserved.limited !== null) {
+      return failure(
+        "rate_limited",
+        reserved.limited,
+        await recordBlocked(ctx, "rate_limited", reserved.limited),
+      );
+    }
+    const pending = reserved.pending;
     if (!pending) {
       return failure(
         "unknown_outcome",
@@ -638,12 +684,14 @@ export async function runControlAction<T>(
       });
       if (isSignError(error)) {
         // Signeringen nekades: pausa API-skrivningarna tills någon testar under Datakällor.
+        // "Fel signatur" eller "ingen signatur" (fältnumren): texten säger vilket.
+        const message = error instanceof AwishApiError ? error.message : SIGN_FAILED_MESSAGE;
         await updateApiState(db, orgId, context.sourceId, {
           signStatus: "failed",
           signCheckedAt: now,
-          signError: SIGN_FAILED_MESSAGE,
+          signError: message,
         }).catch(() => undefined);
-        return failure("sign_failed", SIGN_FAILED_MESSAGE, pending.id);
+        return failure("sign_failed", message, pending.id);
       }
       if (error instanceof AwishApiError) return failure("awish", error.message, pending.id);
       console.error("[awish] styrning", error instanceof Error ? error.name : "fel");

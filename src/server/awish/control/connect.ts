@@ -15,6 +15,7 @@ import type { Db } from "@/db/client";
 
 import type { AwishCredentials } from "../grpc-client";
 import { AwishNotConnectedError, awishSourceOf, linkedMachines } from "../marketing";
+import { signFieldsFromEnv, type AwishSignFields } from "../proto-doc-fields";
 import { DEFAULT_AWISH_SIGN_MODE, isAwishSignMode, type AwishSignMode } from "../sign";
 import { readCredentials } from "../sync";
 import type { AwishWebApi, AwishWebClientOptions } from "../web-client";
@@ -52,10 +53,7 @@ export interface AwishApiState {
 
 export interface ControlDeps {
   db?: Db;
-  connect?: (
-    creds: AwishCredentials,
-    cfg: { address: string; tls: boolean; signMode: AwishSignMode },
-  ) => AwishControlApi;
+  connect?: ControlConnect;
   now?: () => Date;
   env?: Record<string, string | undefined>;
   /** Webbpanelens klient (fackskrivaren och reserven för påfyllning). */
@@ -85,6 +83,8 @@ export interface ControlContext {
   endpointConfig: ControlEndpointConfig;
   connect: ControlConnect;
   signMode: AwishSignMode;
+  /** Var timestamp/sign skickas (AWISH_SIGN_FIELDS, standard båda). */
+  signFields: AwishSignFields;
   /** Adressen nu (null = ingen fungerar). */
   endpoint: ControlEndpointKind | null;
   env: Record<string, string | undefined>;
@@ -131,19 +131,29 @@ export async function controlContextFor(
     endpointConfig,
     connect,
     signMode,
+    signFields: signFieldsFromEnv(env),
     endpoint,
     env,
   };
 }
 
-/** En klient i kontextens läge (eller ett annat signeringsläge, för "Testa signering"). */
+/**
+ * En klient i kontextens läge (eller ett annat signeringsläge och andra fältnummer, för
+ * "Testa signering").
+ */
 export function apiFor(
   ctx: ControlContext,
   signMode: AwishSignMode = ctx.signMode,
+  signFields?: AwishSignFields,
 ): AwishControlApi {
   // Nås ingen adress används den okrypterade: anropet ger då ett tydligt fel.
   const { address, tls } = endpointAddress(ctx.endpoint ?? "plain", ctx.endpointConfig);
-  return ctx.connect(ctx.creds, { address, tls, signMode });
+  return ctx.connect(ctx.creds, {
+    address,
+    tls,
+    signMode,
+    signFields: signFields ?? ctx.signFields,
+  });
 }
 
 export async function controlClientFor(

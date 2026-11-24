@@ -5,7 +5,9 @@
  * kod skriven, och takten begränsad (spärren). Lagret ändras inte automatiskt.
  *
  * Parametrarna kommer ur fackets kanal i Awish: addr, motor_id och floor_type. `code`
- * skickas bara när kanalens namn är ett tal (oklart i dokumentationen vad det betyder).
+ * ("channel no" i dokumentationen) skickas inte: vad det betyder är oklart, och ett
+ * kanalnummer som inte stämmer med addr/motor_ids kunde få Awish att mata ut ur fel fack.
+ * addr och motor_ids räcker för att peka ut motorn.
  */
 
 import "server-only";
@@ -64,7 +66,6 @@ export function shipmentParams(
     addr: ch.addr,
     motorIds: [ch.motorId],
     floorType: ch.floorType,
-    ...(/^\d+$/.test(ch.name) ? { code: ch.name } : {}),
   };
 }
 

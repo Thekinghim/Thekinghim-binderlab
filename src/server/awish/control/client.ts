@@ -23,8 +23,9 @@ import {
   type AwishCredentials,
   type AwishPage,
 } from "../grpc-client";
+import { signFieldsFromEnv, type AwishSignFields } from "../proto-doc-fields";
 import { DEFAULT_AWISH_SIGN_MODE, signRequest, type AwishSignMode } from "../sign";
-import { AwishControlInputError, mapControlError } from "./errors";
+import { AwishControlInputError, classifyAwishText, mapControlError } from "./errors";
 import type {
   AwishCategory,
   AwishChannelInfo,
@@ -49,6 +50,8 @@ export interface ControlClientOptions {
   address: string;
   tls: boolean;
   signMode?: AwishSignMode;
+  /** Var timestamp/sign skickas där proto och dokumentation skiljer (standard AWISH_SIGN_FIELDS). */
+  signFields?: AwishSignFields;
   deadlineMs?: number;
   writeDeadlineMs?: number;
   /** Klockan i ms (signeringens timestamp). */
@@ -129,18 +132,26 @@ function valueToPlain(value: unknown): unknown {
   return null;
 }
 
-/** SuccessResponse: code 0 eller 2xx är lyckat, annars AwishApiError med Awishs text. */
+/**
+ * SuccessResponse: code 0 eller 2xx är lyckat. Ett nej i svaret tolkas med samma regler som
+ * gRPC-felen (signatur, klocka, offline, stöds inte), så att ett signaturfel i svaret också
+ * pausar skrivningarna. Awishs egen text visas aldrig; den sparas bara som `technical`.
+ */
 export function toControlWriteResult(raw: unknown): AwishControlWriteResult {
   const r = obj(raw);
   const code = Number(r.code ?? 0);
   const message = str(r.message).replace(/\s+/g, " ").trim().slice(0, 300);
   const ok = Number.isFinite(code) && (code === 0 || (code >= 200 && code < 300));
   if (!ok) {
-    throw new AwishApiError(
-      "server",
-      `Awish sa nej${Number.isFinite(code) ? ` (kod ${code})` : ""}${message ? `: ${message}` : ""}.`,
-      null,
-      message || null,
+    const technical = `${Number.isFinite(code) ? `kod ${code}` : "kod ?"}${message ? `: ${message}` : ""}`;
+    throw (
+      classifyAwishText(message, null, technical) ??
+      new AwishApiError(
+        "server",
+        `Awish sa nej${Number.isFinite(code) ? ` (kod ${code})` : ""}. Försök igen eller titta i Awish.`,
+        null,
+        technical,
+      )
     );
   }
   return {
@@ -225,13 +236,34 @@ export function toMerchantDetail(raw: unknown): AwishMerchantDetail {
   };
 }
 
+/** Telefon: de 3 första och 2 sista siffrorna syns ("070****23"). Kortare: bara stjärnor. */
+export function maskTel(raw: string): string {
+  const t = raw.trim();
+  if (t === "") return "";
+  if (t.includes("*")) return t; // Redan maskerad av Awish.
+  if (t.length <= 5) return "*".repeat(t.length);
+  return `${t.slice(0, 3)}****${t.slice(-2)}`;
+}
+
+/** E-post: första bokstaven och domänen ("a***@exempel.se"). */
+export function maskEmail(raw: string): string {
+  const e = raw.trim();
+  if (e === "") return "";
+  const at = e.lastIndexOf("@");
+  if (at <= 0) return e.includes("*") ? e : `${e.slice(0, 1)}***`;
+  const user = e.slice(0, at);
+  if (/^.\*+$/.test(user)) return e; // Redan maskerad av Awish.
+  return `${user.slice(0, 1)}***${e.slice(at)}`;
+}
+
 export function toMember(raw: unknown): AwishMember {
   const m = obj(raw);
+  // Maskeras här, oavsett vad Awish skickar: hela numret eller adressen lämnar aldrig klienten.
   return {
     id: str(m.id),
     name: str(m.name),
-    telMasked: str(m.tel),
-    emailMasked: str(m.email),
+    telMasked: maskTel(str(m.tel)),
+    emailMasked: maskEmail(str(m.email)),
     memberNo: str(m.member_no),
     machineId: optStr(m.machine_id),
     principalBalance: str(m.principal_balance),
@@ -254,10 +286,11 @@ export function versionOf(raw: unknown): string {
   }
   const data = structToPlain(r.data);
   const candidates = [data?.version, data?.Version, data?.value, r.message];
+  // Tålig: "1.2.41", "v1.2.41", "V1.2.41 build 7" och "1.2.41-r2" godtas. Hela texten sparas
+  // (utan inledande v, högst 40 tecken) så att även ett byte av tillägget larmar.
   for (const c of candidates) {
-    if (typeof c === "string" && /^v?\d+(\.\d+){1,3}$/.test(c.trim())) {
-      return c.trim().replace(/^v/, "");
-    }
+    const text = typeof c === "string" ? c.replace(/\s+/g, " ").trim() : "";
+    if (/\d+(\.\d+){1,3}/.test(text)) return text.replace(/^v(?=\d)/i, "").slice(0, 40);
   }
   throw new AwishApiError("changed", "Awish skickade ingen version.");
 }
@@ -353,6 +386,7 @@ export function createAwishControlClient(
   const readDeadline = opts.deadlineMs ?? AWISH_DEADLINE_MS;
   const writeDeadline = opts.writeDeadlineMs ?? CONTROL_WRITE_DEADLINE_MS;
   const signMode = opts.signMode ?? DEFAULT_AWISH_SIGN_MODE;
+  const signFields = opts.signFields ?? signFieldsFromEnv();
   const clock = opts.clock ?? Date.now;
   const sleep = opts.sleep ?? defaultSleep;
 
@@ -394,6 +428,7 @@ export function createAwishControlClient(
       signed = signRequest(messageType, request, creds.appId, {
         mode: signMode,
         nowSeconds: Math.floor(clock() / 1000),
+        fields: signFields,
       });
     } catch (error) {
       if (error instanceof AwishControlInputError) throw error;

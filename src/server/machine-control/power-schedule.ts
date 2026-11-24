@@ -3,6 +3,10 @@
  * butikens tider (stores.power_on_time / power_off_time). Tiderna skickas som HH:MM:00 med
  * veckodagarna mån..sön som 1/0. Awish räknar tiden i kontots tidszon, så schemat spärras
  * när den inte är organisationens. Resultatet sparas i machine_power_schedules.
+ *
+ * Ett schema kan stänga av automaten. Ligger avstängningen inom 15 minuter (eller är
+ * automaten avstängd enligt schemat just nu) krävs samma sak som för Stäng av: automatens
+ * kod skrivs. Ett obekräftat versionsbyte hos Awish stoppar schemat (spärren).
  */
 
 import "server-only";
@@ -25,11 +29,13 @@ import {
   preview,
   requireOperator,
   STALE_MESSAGE,
+  typedMatches,
   withReadClient,
   type ControlOutcome,
   type ControlPreview,
   type MachineControlDeps,
 } from "./common";
+import { CLEAR_SCHEDULE_TEXT } from "./texts";
 
 export const DAY_LABELS = ["mån", "tis", "ons", "tor", "fre", "lör", "sön"] as const;
 export const ALL_DAYS = "1111111";
@@ -105,6 +111,59 @@ export interface PowerSchedulePlan {
   readonly blocking: string | null;
   readonly request: { weekdays: Weekdays; powerOn: string; powerOff: string };
   readonly source: "store" | "custom";
+  /** Automaten är av enligt schemat nu, eller stängs av inom 15 minuter: koden ska skrivas. */
+  readonly offSoon: boolean;
+}
+
+/** Minuter efter midnatt för "HH:MM". */
+function minutesOf(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+/**
+ * Är automaten på enligt schemat (dag 0 = måndag, minuter efter midnatt)? På mellan På och
+ * Av de valda dagarna; Av efter midnatt räknas till dagen före. Övriga tider: av.
+ */
+export function scheduleIsOn(days: string, on: string, off: string, day: number, minute: number) {
+  const onM = minutesOf(on);
+  const offM = minutesOf(off);
+  const selected = (d: number) => days[((d % 7) + 7) % 7] === "1";
+  if (onM < offM) return selected(day) && minute >= onM && minute < offM;
+  // Av efter midnatt: på från På den valda dagen till Av nästa morgon.
+  return (selected(day) && minute >= onM) || (selected(day - 1) && minute < offM);
+}
+
+/** Klockan nu i tidszonen som (dag 0 = måndag, minuter efter midnatt). */
+export function localDayMinute(now: Date, timeZone: string): { day: number; minute: number } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const day = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(get("weekday"));
+  return { day: day < 0 ? 0 : day, minute: Number(get("hour")) * 60 + Number(get("minute")) };
+}
+
+export const OFF_SOON_MINUTES = 15;
+
+/** Av nu eller inom 15 minuter med det nya schemat? */
+export function schedulePowersOffSoon(
+  input: Pick<PowerScheduleInput, "days" | "on" | "off">,
+  now: Date,
+  timeZone: string,
+): boolean {
+  const { day, minute } = localDayMinute(now, timeZone);
+  for (let m = 0; m <= OFF_SOON_MINUTES; m += 1) {
+    const t = minute + m;
+    if (!scheduleIsOn(input.days, input.on, input.off, day + Math.floor(t / 1440), t % 1440)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function planPowerSchedule(args: {
@@ -112,11 +171,19 @@ export function planPowerSchedule(args: {
   merchantTimezone: string | null;
   orgTimezone: string;
   store: { on: string; off: string } | null;
+  /** Nu (för varningen om avstängning inom 15 minuter). Utan: ingen sådan kontroll. */
+  now?: Date;
 }): PowerSchedulePlan {
   const { input } = args;
   const tz = args.merchantTimezone ?? args.orgTimezone;
   const lines = [`Awish slår på ${input.on} och av ${input.off}, ${daysText(input.days)} (${tz}).`];
   const warnings: string[] = [];
+  const offSoon = args.now ? schedulePowersOffSoon(input, args.now, tz) : false;
+  if (offSoon) {
+    warnings.push(
+      `Med det här schemat stängs automaten av nu eller inom ${OFF_SOON_MINUTES} minuter och säljer inget förrän ${input.on}.`,
+    );
+  }
   if (input.off < input.on) warnings.push("Av efter midnatt: stängs av natten efter.");
   if (!args.merchantTimezone)
     warnings.push(`Awish uppger ingen tidszon. Vi räknar med ${args.orgTimezone}.`);
@@ -135,6 +202,7 @@ export function planPowerSchedule(args: {
       powerOff: toAwishTime(input.off),
     },
     source: fromStore ? "store" : "custom",
+    offSoon,
   };
 }
 
@@ -172,7 +240,12 @@ async function computePlan(
   viewer: Viewer,
   raw: unknown,
   deps: MachineControlDeps,
-): Promise<{ input: PowerScheduleInput; plan: PowerSchedulePlan; preview: ControlPreview }> {
+): Promise<{
+  input: PowerScheduleInput;
+  plan: PowerSchedulePlan;
+  code: string;
+  preview: ControlPreview;
+}> {
   const input = powerScheduleInputSchema.parse(raw);
   return withReadClient(viewer, input.machineId, deps, async ({ api, machine, db }) => {
     const [merchant, store] = await Promise.all([
@@ -184,8 +257,18 @@ async function computePlan(
       merchantTimezone: merchant.timezone,
       orgTimezone: viewer.organization.timezone,
       store,
+      now: deps.now?.() ?? new Date(),
     });
-    return { input, plan, preview: preview(plan, { machineId: machine.id, req: plan.request }) };
+    return {
+      input,
+      plan,
+      code: machine.code,
+      preview: preview(
+        plan,
+        { machineId: machine.id, req: plan.request },
+        plan.offSoon ? machine.code : null,
+      ),
+    };
   });
 }
 
@@ -256,13 +339,16 @@ async function write(db: Db, a: Parameters<typeof record>[1]): Promise<void> {
 export async function applyPowerScheduleFor(
   viewer: Viewer,
   raw: unknown,
-  confirm: { fingerprint: string; idempotencyKey: unknown },
+  confirm: { fingerprint: string; idempotencyKey: unknown; typed?: unknown },
   deps: MachineControlDeps = {},
 ): Promise<ControlOutcome> {
   const idempotencyKey = idempotencyKeyOf(confirm.idempotencyKey);
-  const { input, plan, preview: now } = await computePlan(viewer, raw, deps);
+  const { input, plan, code, preview: now } = await computePlan(viewer, raw, deps);
   if (plan.blocking) throw new MachineControlError(plan.blocking);
   if (now.fingerprint !== confirm.fingerprint) throw new MachineControlError(STALE_MESSAGE);
+  if (plan.offSoon && !typedMatches(confirm.typed, code)) {
+    throw new MachineControlError(`Skriv ${code} för att skicka schemat.`);
+  }
   const run = deps.run ?? runControlAction;
   const r = await run(
     viewer,
@@ -270,7 +356,14 @@ export async function applyPowerScheduleFor(
       kind: "power_schedule_set",
       machineId: input.machineId,
       idempotencyKey,
-      auditRequest: { days: input.days, on: input.on, off: input.off, source: plan.source },
+      requireAckedVersion: true,
+      auditRequest: {
+        days: input.days,
+        on: input.on,
+        off: input.off,
+        source: plan.source,
+        offSoon: plan.offSoon,
+      },
     },
     (api, ctx) => api.setPowerSchedule({ machineId: ctx.awishMachineId ?? "", ...plan.request }),
     deps,
@@ -320,7 +413,7 @@ export async function clearPowerScheduleFor(
       actionId: r.actionId,
     });
   }
-  return outcome(r, () => "Schemat är borttaget. Automaten står på hela tiden.");
+  return outcome(r, () => `Klart. ${CLEAR_SCHEDULE_TEXT}`);
 }
 
 /** Senast sparade schemat för automaten, eller null (även om tabellen saknas). */

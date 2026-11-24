@@ -20,6 +20,8 @@ export const UNSUPPORTED_MESSAGE = "Automaten stöder inte det här.";
 export const UNKNOWN_OUTCOME_MESSAGE =
   "Vi vet inte om Awish fick det. Titta på automaten innan du försöker igen.";
 export const UNAVAILABLE_MESSAGE = "Awish svarar inte just nu. Försök igen om en stund.";
+export const SIGN_MISSING_MESSAGE =
+  "Awish fick ingen signatur. Fältnumren i Awishs API kan ha ändrats. Kontakta Awish.";
 
 /** Indata som inte går att skicka (fel id, fel tid). Inget anrop gjordes. */
 export class AwishControlInputError extends Error {
@@ -37,12 +39,50 @@ export class AwishUnknownOutcomeError extends AwishApiError {
   }
 }
 
-/** Signeringen nekades (fel nyckel, fel request_body eller fel format). */
+/** Signeringen nekades (fel nyckel, fel request_body, fel format eller saknas helt). */
 export function isSignError(error: unknown): boolean {
-  return error instanceof AwishApiError && error.message === SIGN_FAILED_MESSAGE;
+  return (
+    error instanceof AwishApiError &&
+    (error.message === SIGN_FAILED_MESSAGE || error.message === SIGN_MISSING_MESSAGE)
+  );
 }
 
-const SIGN = /sign(ature)?( verify)? failed|invalid sign|expected hexadecimal|hmac/i;
+/** Awish fick ingen signatur (inte samma sak som fel signatur). */
+export function isSignMissingError(error: unknown): boolean {
+  return error instanceof AwishApiError && error.message === SIGN_MISSING_MESSAGE;
+}
+
+/**
+ * Awishs feltext (gRPC-fel eller ett nej i svaret) som klar svenska, eller null när texten
+ * inte känns igen. Samma regler för båda vägarna så att ett signaturfel i svaret också pausar.
+ */
+export function classifyAwishText(
+  details: string,
+  code: number | null,
+  technical: string | null,
+): AwishApiError | null {
+  // Tidsfönstret först: Awishs text är "signature verify failed, timestamp is out of time window".
+  if (WINDOW.test(details) && /window|expired|out of/i.test(details)) {
+    return new AwishApiError("server", CLOCK_MESSAGE, code, technical);
+  }
+  if (MISSING_SIGN.test(details)) {
+    return new AwishApiError("changed", SIGN_MISSING_MESSAGE, code, technical);
+  }
+  if (SIGN.test(details)) return new AwishApiError("changed", SIGN_FAILED_MESSAGE, code, technical);
+  if (WINDOW.test(details)) return new AwishApiError("server", CLOCK_MESSAGE, code, technical);
+  if (OFFLINE.test(details)) return new AwishApiError("server", OFFLINE_MESSAGE, code, technical);
+  if (UNSUPPORTED.test(details)) {
+    return new AwishApiError("server", UNSUPPORTED_MESSAGE, code, technical);
+  }
+  return null;
+}
+
+// "invalid sign" men inte "invalid signature" (det senare är Awishs inloggningsfel för fel
+// AppSecret/AppKey, som mapGrpcError ger rätt text för).
+const SIGN = /sign(ature)?( verify)? failed|\binvalid sign\b(?!ature)|expected hexadecimal|hmac/i;
+/** Awish fick ingen signatur alls (t.ex. om fältnumren för sign/timestamp skiljer sig). */
+const MISSING_SIGN =
+  /(sign|timestamp)( field)?( is)? (required|missing|empty)|missing (sign|timestamp)|(sign|timestamp) not (found|provided)/i;
 const WINDOW = /time window|timestamp/i;
 const OFFLINE = /offline|not online/i;
 const UNSUPPORTED = /not support/i;
@@ -78,16 +118,8 @@ export function mapControlError(
     if (opts.write && !NOT_SENT.test(details)) return new AwishUnknownOutcomeError(code, technical);
     return new AwishApiError("unavailable", UNAVAILABLE_MESSAGE, code, technical);
   }
-  // Tidsfönstret först: Awishs text är "signature verify failed, timestamp is out of time window".
-  if (WINDOW.test(details) && /window|expired|out of/i.test(details)) {
-    return new AwishApiError("server", CLOCK_MESSAGE, code, technical);
-  }
-  if (SIGN.test(details)) return new AwishApiError("changed", SIGN_FAILED_MESSAGE, code, technical);
-  if (WINDOW.test(details)) return new AwishApiError("server", CLOCK_MESSAGE, code, technical);
-  if (OFFLINE.test(details)) return new AwishApiError("server", OFFLINE_MESSAGE, code, technical);
-  if (UNSUPPORTED.test(details)) {
-    return new AwishApiError("server", UNSUPPORTED_MESSAGE, code, technical);
-  }
+  const known = classifyAwishText(details, code, technical);
+  if (known) return known;
   const mapped = mapGrpcError(error, address);
   return new AwishApiError(mapped.kind, mapped.message, mapped.grpcCode, technical);
 }

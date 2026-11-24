@@ -147,7 +147,10 @@ function toProtoOrder(o: AwishGrpcOrder): Record<string, unknown> {
 type Call = grpc.ServerUnaryCall<Record<string, unknown>, unknown>;
 type Callback = grpc.sendUnaryData<unknown>;
 
-export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Promise<FakeAwish> {
+export async function startFakeAwish(
+  initial: Partial<FakeAwishState> = {},
+  opts: { port?: number } = {},
+): Promise<FakeAwish> {
   const state: FakeAwishState = {
     appId: "app-test",
     appSecret: "hemlig-secret",
@@ -463,8 +466,10 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     ),
   });
   const port = await new Promise<number>((resolve, reject) =>
-    server.bindAsync("127.0.0.1:0", grpc.ServerCredentials.createInsecure(), (error, p) =>
-      error ? reject(error) : resolve(p),
+    server.bindAsync(
+      `127.0.0.1:${opts.port ?? 0}`,
+      grpc.ServerCredentials.createInsecure(),
+      (error, p) => (error ? reject(error) : resolve(p)),
     ),
   );
   return {

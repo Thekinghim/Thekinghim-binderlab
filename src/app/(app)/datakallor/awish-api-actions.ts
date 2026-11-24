@@ -16,6 +16,7 @@ import {
   probeEndpointFor,
   probeSigning,
   setAwishWritesVia,
+  chooseInsecureEndpointFor,
   type SimpleResult,
 } from "@/server/awish/control/version";
 import { safeErrorForLog } from "@/server/errors";
@@ -56,4 +57,8 @@ export async function setAwishWritesViaAction(input: {
   goods?: Via;
 }): Promise<SimpleResult> {
   return guarded(async () => setAwishWritesVia(await currentViewer(), input));
+}
+
+export async function chooseInsecureEndpointAction(): Promise<SimpleResult> {
+  return guarded(async () => chooseInsecureEndpointFor(await currentViewer()));
 }

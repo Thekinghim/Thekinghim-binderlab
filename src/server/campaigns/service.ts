@@ -24,6 +24,7 @@ import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { recordJobOutcome } from "@/server/monitoring/failures";
+import type { ControlDeps } from "@/server/awish/control/connect";
 import { runControlAction } from "@/server/awish/control/guard";
 
 import { AwishApiError, type AwishMarketingApi } from "../awish/grpc-client";
@@ -802,6 +803,8 @@ async function removedBannerIds(db: Db, orgId: string): Promise<Set<string>> {
 
 export interface RemoveFromScreenDeps extends CampaignDeps {
   readonly run?: typeof runControlAction;
+  /** Spärrens beroenden (testerna: låtsas-Awishs adress). */
+  readonly control?: Omit<ControlDeps, "db">;
 }
 
 /**
@@ -852,11 +855,14 @@ export async function removeCampaignFromScreenFor(
       {
         kind: "banner_delete",
         targetId: bannerId,
-        idempotencyKey: `banner_delete:${r.id}`,
+        // En ny nyckel per försök (spärren kräver en uuid). Att en bild inte tas bort två
+        // gånger sköts av removedBannerIds (loggens rader med status ok); ett misslyckat
+        // försök får då provas igen.
+        idempotencyKey: randomUUID(),
         auditRequest: { machine_id: r.awish_machine_id, id: bannerId },
       },
       (api) => api.deleteBanner({ machineId: r.awish_machine_id, id: bannerId }),
-      deps.db ? { db: deps.db } : {},
+      { ...deps.control, ...(deps.db ? { db: deps.db } : {}) },
     );
     if (result.ok) ok += 1;
     else {

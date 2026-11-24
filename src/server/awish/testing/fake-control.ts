@@ -102,6 +102,15 @@ export interface FakeControlState {
   nextWriteError: { code: number; details: string } | null;
   /** Begäran som togs emot i UpdateMerchant (för att se att config aldrig skickas). */
   merchantUpdates: Array<Record<string, unknown>>;
+  /**
+   * Vilka fältnummer för timestamp/sign servern läser i de sju meddelandena där
+   * dokumentationen och proto-filen skiljer sig: proto-filens eller dokumentationens (10/11).
+   */
+  signFields: "proto" | "doc";
+  /** Nästa skrivning nekas i svaret (SuccessResponse med code och message), inte som gRPC-fel. */
+  nextBodyRefusal: { code: number; message: string } | null;
+  /** Members skickar hela telefonnumret och e-postadressen (Awish maskerar inte). */
+  unmaskedMembers: boolean;
 }
 
 export function defaultControlState(): FakeControlState {
@@ -129,6 +138,9 @@ export function defaultControlState(): FakeControlState {
     requireSignOnLegacyWrites: false,
     nextWriteError: null,
     merchantUpdates: [],
+    signFields: "proto",
+    nextBodyRefusal: null,
+    unmaskedMembers: false,
   };
 }
 
@@ -189,6 +201,7 @@ export function checkSignature(
     mode: state.signMode,
     nowSeconds: Math.floor(Date.now() / 1000) + state.clockOffsetS,
     toleranceS: state.signToleranceS,
+    fields: state.signFields,
   });
   if (verdict === "ok") return true;
   callback({
@@ -196,7 +209,9 @@ export function checkSignature(
     details:
       verdict === "out_of_window"
         ? "signature verify failed, timestamp is out of time window"
-        : "signature verify failed",
+        : verdict === "missing"
+          ? "sign is required"
+          : "signature verify failed",
   });
   return false;
 }
@@ -229,6 +244,12 @@ export function controlHandlers(
     }
     if (state.writeCode !== 0) {
       ok(callback);
+      return false;
+    }
+    if (state.nextBodyRefusal) {
+      const refusal = state.nextBodyRefusal;
+      state.nextBodyRefusal = null;
+      callback(null, { code: String(refusal.code), message: refusal.message, request_id: "fake" });
       return false;
     }
     return true;
@@ -325,8 +346,8 @@ export function controlHandlers(
         data: items.map((m) => ({
           id: m.id,
           name: m.name,
-          tel: mask(m.tel, 3, 2),
-          email: maskEmail(m.email),
+          tel: state.unmaskedMembers ? m.tel : mask(m.tel, 3, 2),
+          email: state.unmaskedMembers ? m.email : maskEmail(m.email),
           member_no: m.member_no,
           ...(m.machine_id ? { machine_id: m.machine_id } : {}),
           principal_balance: m.principal_balance,

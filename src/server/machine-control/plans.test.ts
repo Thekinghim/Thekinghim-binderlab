@@ -118,7 +118,7 @@ describe("strömschema", () => {
 });
 
 describe("mata ut", () => {
-  it("parametrar ur kanalen; code bara när namnet är ett tal", () => {
+  it("parametrar ur kanalen; code skickas aldrig (oklart i dokumentationen)", () => {
     expect(sh.shipmentParams(product())).toEqual({ addr: "1", motorIds: ["13"], floorType: 2 });
     const numeric = product({
       channel: { id: "5", name: "12", addr: "2", motorId: "7", floorType: 1, total: 10 },
@@ -127,8 +127,8 @@ describe("mata ut", () => {
       addr: "2",
       motorIds: ["7"],
       floorType: 1,
-      code: "12",
     });
+    expect("code" in sh.shipmentParams(numeric)).toBe(false);
     expect("isLp" in sh.shipmentParams(numeric)).toBe(false);
   });
 
@@ -238,5 +238,43 @@ describe("fyll fullt", () => {
       "Facken är redan fulla.",
     );
     expect(() => rp.planReplenish([product()], ["99"])).toThrow(/finns inte/);
+  });
+});
+
+describe("strömschema: stängs av snart?", () => {
+  // Tisdag 24 nov. 2026 13:00 i Stockholm (12:00 UTC).
+  const NOW = new Date("2026-11-24T12:00:00Z");
+
+  it("på mellan På och Av de valda dagarna; Av efter midnatt räknas till dagen före", () => {
+    expect(ps.scheduleIsOn("1111111", "10:00", "21:00", 1, 13 * 60)).toBe(true);
+    expect(ps.scheduleIsOn("1111111", "10:00", "21:00", 1, 21 * 60)).toBe(false);
+    expect(ps.scheduleIsOn("1011111", "10:00", "21:00", 1, 13 * 60)).toBe(false);
+    expect(ps.scheduleIsOn("1111111", "10:00", "01:00", 2, 30)).toBe(true);
+    expect(ps.scheduleIsOn("1000000", "10:00", "01:00", 1, 30)).toBe(true);
+    expect(ps.scheduleIsOn("0100000", "10:00", "01:00", 1, 30)).toBe(false);
+  });
+
+  it("klockan i tidszonen", () => {
+    expect(ps.localDayMinute(NOW, "Europe/Stockholm")).toEqual({ day: 1, minute: 13 * 60 });
+    expect(ps.localDayMinute(NOW, "Asia/Shanghai")).toEqual({ day: 1, minute: 20 * 60 });
+  });
+
+  it("av nu eller inom 15 minuter kräver koden", () => {
+    const soon = (on: string, off: string, days = "1111111") =>
+      ps.schedulePowersOffSoon({ days, on, off }, NOW, "Europe/Stockholm");
+    expect(soon("10:00", "21:00")).toBe(false);
+    expect(soon("10:00", "13:10")).toBe(true);
+    expect(soon("10:00", "13:20")).toBe(false);
+    expect(soon("14:00", "21:00")).toBe(true);
+    expect(soon("10:00", "21:00", "1011111")).toBe(true);
+    const plan = ps.planPowerSchedule({
+      input: { days: "1111111", on: "10:00", off: "13:10" },
+      merchantTimezone: "Europe/Stockholm",
+      orgTimezone: "Europe/Stockholm",
+      store: null,
+      now: NOW,
+    });
+    expect(plan.offSoon).toBe(true);
+    expect(plan.warnings[0]).toMatch(/inom 15 minuter/);
   });
 });

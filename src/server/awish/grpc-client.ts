@@ -29,6 +29,7 @@ import protobuf from "protobufjs";
 import type { AwishGrpcOrder } from "@/import/adapters/awish-grpc";
 
 import { AWISH_PROVIDER_PROTO } from "./provider-proto";
+import { withDocSignFields } from "./proto-doc-fields";
 import { signRequest, type AwishSignMode } from "./sign";
 
 /** Leverantörens server enligt dokumentationen (ingen TLS i exemplet). */
@@ -118,7 +119,8 @@ export function awishPackage(): grpc.GrpcObject {
     if (!common) throw new Error(`protobufjs saknar ${file}.`);
     root.addJSON(common.nested ?? {});
   }
-  protobuf.parse(AWISH_PROVIDER_PROTO, root, { keepCase: true });
+  // doc_timestamp/doc_sign (fält 10/11) i sju skrivningar: se proto-doc-fields.ts.
+  protobuf.parse(withDocSignFields(AWISH_PROVIDER_PROTO), root, { keepCase: true });
   root.resolveAll();
   const definition = fromJSON(root.toJSON(), LOADER_OPTIONS);
   cachedDefinition = grpc.loadPackageDefinition(definition);
@@ -483,14 +485,15 @@ const KNOWN_MESSAGES: Array<{ match: RegExp; kind: AwishErrorKind; text: string 
     text: "Awish-kontot har gått ut. Förläng det hos Awish (Merchant → Merchant Detail).",
   },
   {
-    // Signerade skrivningar (v1.2.40+): före inloggningsfelen, "invalid signature" gäller
-    // signeringen och inte AppSecret/AppKey.
+    // Signerade skrivningar (v1.2.40+): tidsfönstret och signaturfelen före inloggningsfelen.
+    // "invalid signature" (utan "verify failed") är Awishs inloggningsfel för fel
+    // AppSecret/AppKey och räknas därför inte som signaturfel.
     match: /time window/i,
     kind: "server",
     text: "Awish tyckte att klockan var fel. Försök igen om en minut.",
   },
   {
-    match: /sign(ature)?( verify)? failed|invalid sign|expected hexadecimal|hmac/i,
+    match: /sign(ature)?( verify)? failed|\binvalid sign\b|expected hexadecimal|hmac/i,
     kind: "changed",
     text: "Awish godkände inte signaturen. Testa under Datakällor → Awish API.",
   },
@@ -692,7 +695,7 @@ export function createAwishClient(
               is_link: false,
             },
             creds.appId,
-            { mode: options.signMode },
+            { mode: options.signMode, nowSeconds: Math.floor(clock() / 1000) },
           ),
           false,
         ),
@@ -713,7 +716,7 @@ export function createAwishClient(
               media_type: AWISH_MEDIA_IMAGE,
             },
             creds.appId,
-            { mode: options.signMode },
+            { mode: options.signMode, nowSeconds: Math.floor(clock() / 1000) },
           ),
           false,
         ),
@@ -737,7 +740,7 @@ export function createAwishClient(
               status: true,
             },
             creds.appId,
-            { mode: options.signMode },
+            { mode: options.signMode, nowSeconds: Math.floor(clock() / 1000) },
           ),
           false,
         ),

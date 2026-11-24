@@ -26,7 +26,7 @@
 create table public.awish_api_state (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations (id) on delete restrict,
-  data_source_id uuid not null unique,
+  data_source_id uuid not null,
   version text check (version is null or char_length(version) between 1 and 40),
   version_seen_at timestamptz,
   previous_version text check (previous_version is null or char_length(previous_version) between 1 and 40),
@@ -51,6 +51,9 @@ create table public.awish_api_state (
   created_by uuid references auth.users (id) on delete set null,
   updated_at timestamptz not null default now(),
   unique (organization_id, id),
+  -- En rad per källa. Källan hör alltid till organisationen (FK:n nedan), så paret är
+  -- lika unikt som källan ensam, och FK:n prövas före unikheten vid ett korsbyte.
+  unique (organization_id, data_source_id),
   foreign key (organization_id, data_source_id)
     references public.data_sources (organization_id, id) on delete restrict
 );

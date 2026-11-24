@@ -50,7 +50,16 @@ const {
 const { pushMachinesViaApi } = await import("../../src/server/awish/control/api-push");
 const { refillPushVia } = await import("../../src/server/awish/control/refill-push");
 const { slotWriterFor } = await import("../../src/server/awish/control/slot-writer");
-const { updateApiState } = await import("../../src/server/awish/control/state");
+const { ensureApiState, updateApiState: rawUpdateApiState } =
+  await import("../../src/server/awish/control/state");
+/** Som updateApiState, men skapar raden först (den finns inte förrän något läst läget). */
+const updateApiState: typeof rawUpdateApiState = async (d, org, source, patch) => {
+  await ensureApiState(d, org, source);
+  await rawUpdateApiState(d, org, source, patch);
+};
+const { goodsWriterFor } = await import("../../src/server/awish-catalog/goods-api");
+const { removeCampaignFromScreenFor } = await import("../../src/server/campaigns/service");
+const { encodeGoodInput } = await import("../../src/server/awish/goods");
 
 type Fake = Awaited<ReturnType<typeof startFakeAwish>>;
 let fake: Fake;
@@ -504,5 +513,219 @@ describe("påfyllning via API:t (plan B)", () => {
     await writer.setSlot(72, { goodId: null, status: true, currentInventory: 10 });
     expect(fake.state.products["7"]![1]!.current).toBe(10);
     writer.close();
+  });
+});
+
+describe("granskningens rättelser (riktiga spärren mot låtsas-Awish)", () => {
+  let o: Org;
+  beforeAll(async () => {
+    o = await freshOrg();
+  });
+
+  it("två utmatningar samtidigt: bara en kommer förbi gränsen", async () => {
+    const other = await freshOrg();
+    const before = fake.state.shipments.length;
+    const shipment = () =>
+      runControlAction(
+        other.viewer,
+        {
+          kind: "shipment",
+          machineId: other.machineId,
+          idempotencyKey: newIdempotencyKey(),
+          reason: "Test av motorn",
+          auditRequest: {},
+        },
+        (api, ctx) =>
+          api.executeShipment({ machineId: ctx.awishMachineId!, addr: "1", motorIds: ["1"] }),
+        deps(),
+      );
+    const results = await Promise.all([shipment(), shipment(), shipment()]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok && r.kind === "rate_limited")).toHaveLength(2);
+    expect(fake.state.shipments.length).toBe(before + 1);
+  });
+
+  it("Ta bort från skärmen och varor via API går igenom spärren (uuid-nycklar)", async () => {
+    await updateApiState(db(), o.orgId, o.sourceId, { signStatus: "ok", endpoint: "plain" });
+    // DeleteBanner
+    fake.state.banners["7"] = [
+      {
+        id: "77",
+        machine_id: "7",
+        title: "Jul",
+        cover_image: "https://x/jul.png",
+        expired_at: "2026-12-31 00:00:00",
+      } as never,
+    ];
+    const [c] = Array.from(
+      await db().execute(
+        sql`insert into public.campaigns
+              (organization_id, title, image_path, image_url, image_type, image_bytes, starts_at, ends_at, stopped_at)
+            values (${o.orgId}::uuid, 'Jul', 'x/jul.png', 'https://x/jul.png', 'image/png', 10,
+                    '2026-11-01T00:00:00Z', '2026-11-20T00:00:00Z', '2026-11-10T00:00:00Z')
+            returning id::text as id`,
+      ),
+    ) as { id: string }[];
+    await db().execute(
+      sql`insert into public.campaign_machines
+            (organization_id, campaign_id, machine_id, awish_machine_id, awish_banner_id, status)
+          values (${o.orgId}::uuid, ${c!.id}::uuid, ${o.machineId}::uuid, '7', '77', 'stopped')`,
+    );
+    const removed = await removeCampaignFromScreenFor(o.viewer, c!.id, {
+      now: () => new Date("2026-11-24T12:00:00Z"),
+      control: deps(),
+    });
+    expect(removed).toMatchObject({ removed: 1, failed: 0 });
+    expect(fake.state.banners["7"]).toEqual([]);
+
+    // CreateGood via API (goods_writes_via = api)
+    await updateApiState(db(), o.orgId, o.sourceId, { goodsWritesVia: "api" });
+    const web = new Proxy({} as never, {
+      get() {
+        throw new Error("webbpanelen ska inte användas");
+      },
+    });
+    const writer = await goodsWriterFor(o.viewer, web, o.sourceId, deps());
+    expect(writer.via).toBe("api");
+    const good = encodeGoodInput({
+      name: "Mystery XL",
+      salePriceOre: 7900,
+      currencyId: 1,
+      imageUrl: null,
+    });
+    const goodsBefore = fake.state.goods.length;
+    await writer.createGood(good, "fp");
+    // Samma ändring igen (samma fingeravtryck) skickas igen: ny nyckel per försök.
+    await writer.createGood(good, "fp");
+    expect(fake.state.goods.length).toBe(goodsBefore + 2);
+    await updateApiState(db(), o.orgId, o.sourceId, { goodsWritesVia: "web" });
+  });
+
+  it("ett nej i svaret (signatur) pausar skrivningarna och visas på svenska", async () => {
+    const other = await freshOrg();
+    await updateApiState(db(), other.orgId, other.sourceId, {
+      signStatus: "ok",
+      endpoint: "plain",
+    });
+    fake.state.nextBodyRefusal = { code: 401, message: "signature verify failed" };
+    const r = await runControlAction(
+      other.viewer,
+      { kind: "category_create", idempotencyKey: newIdempotencyKey(), auditRequest: {} },
+      (api) => api.createCategory({ title: "X" }),
+      deps(),
+    );
+    expect(!r.ok && r.kind).toBe("sign_failed");
+    expect(r.message).not.toMatch(/verify failed/);
+    expect((await awishApiCardFor(other.viewer)).state?.signStatus).toBe("failed");
+
+    const third = await freshOrg();
+    fake.state.nextBodyRefusal = { code: 500, message: "服务器内部错误" };
+    const refused = await runControlAction(
+      third.viewer,
+      { kind: "category_create", idempotencyKey: newIdempotencyKey(), auditRequest: {} },
+      (api) => api.createCategory({ title: "Y" }),
+      deps(),
+    );
+    expect(!refused.ok && refused.kind).toBe("awish");
+    expect(refused.message).toBe("Awish sa nej (kod 500). Försök igen eller titta i Awish.");
+    const row = await one<{ awish_message: string }>(
+      db(),
+      sql`select awish_message from public.awish_actions
+          where organization_id = ${third.orgId}::uuid and kind = 'category_create'`,
+    );
+    expect(row.awish_message).toContain("服务器内部错误");
+  });
+
+  it("servern läser dokumentationens fältnummer (10/11): båda paren skickas och godtas", async () => {
+    const other = await freshOrg();
+    fake.state.signFields = "doc";
+    try {
+      const before = fake.state.powerCommands.length;
+      const r = await reboot(other);
+      expect(r.ok, r.message).toBe(true);
+      expect(fake.state.powerCommands.length).toBe(before + 1);
+      // Bara proto-filens nummer: servern ser ingen signatur.
+      const proto = await runControlAction(
+        other.viewer,
+        {
+          kind: "replenish",
+          machineId: other.machineId,
+          idempotencyKey: newIdempotencyKey(),
+          auditRequest: {},
+        },
+        (api, ctx) =>
+          api.replenishProductInventory({ machineId: ctx.awishMachineId!, ids: ["71"] }),
+        { env: { ...deps().env, AWISH_SIGN_FIELDS: "proto" } },
+      );
+      expect(!proto.ok && proto.kind).toBe("sign_failed");
+      expect(proto.message).toMatch(/ingen signatur/);
+    } finally {
+      fake.state.signFields = "proto";
+    }
+  });
+
+  it("obekräftat versionsbyte: fack och påfyllning via API stoppas", async () => {
+    const other = await freshOrg();
+    await updateApiState(db(), other.orgId, other.sourceId, {
+      signStatus: "ok",
+      endpoint: "plain",
+      slotWritesVia: "api",
+      versionChangedAt: new Date(),
+      versionAcknowledgedAt: null,
+    });
+    const slot = await runControlAction(
+      other.viewer,
+      {
+        kind: "slot_update",
+        machineId: other.machineId,
+        idempotencyKey: newIdempotencyKey(),
+        auditRequest: {},
+      },
+      (api) => api.updateProduct({ id: "71", currentInventory: 3 }),
+      deps(),
+    );
+    expect(!slot.ok && slot.kind).toBe("version_unacknowledged");
+    const push = await pushMachinesViaApi(other.orgId, [other.machineId], deps());
+    expect(push).toMatchObject({ status: "off", reason: "disabled" });
+  });
+
+  it("påfyllning via API: bara antalet skickas och den som startade står i loggen", async () => {
+    const other = await freshOrg();
+    await updateApiState(db(), other.orgId, other.sourceId, {
+      signStatus: "ok",
+      endpoint: "plain",
+    });
+    const locationId = (
+      await one<{ id: string }>(
+        db(),
+        sql`select id from public.stock_locations where machine_id = ${other.machineId}::uuid`,
+      )
+    ).id;
+    await asPostgres(async (tx) => {
+      const [t] = Array.from(
+        await tx.execute(
+          sql`insert into public.titles (organization_id, name) values (${other.orgId}::uuid, 'Surging Sparks') returning id`,
+        ),
+      ) as Array<{ id: string }>;
+      await tx.execute(sql`
+        insert into public.stock_events (organization_id, location_id, title_id, kind, quantity, occurred_at, note)
+        values (${other.orgId}::uuid, ${locationId}::uuid, ${t!.id}::uuid, 'count', 10, now(), 'test')`);
+    });
+    fake.state.products["7"]![1]!.current = 3;
+    const callsBefore = fake.state.calls.length;
+    const r = await pushMachinesViaApi(other.orgId, [other.machineId], {
+      ...deps(),
+      actorId: other.owner.id,
+    });
+    expect(r.machines[0]).toMatchObject({ status: "pushed", slotsUpdated: 1 });
+    const update = fake.state.calls.slice(callsBefore).find((c) => c.method === "UpdateProduct");
+    expect(update?.request.current_inventory).toBe("10");
+    expect(update?.request.good_id ?? null).toBeNull();
+    const row = await one<{ actor_id: string; actor_role: string }>(
+      db(),
+      sql`select actor_id, actor_role from public.awish_actions
+          where organization_id = ${other.orgId}::uuid and kind = 'refill_push_api'`,
+    );
+    expect(row).toEqual({ actor_id: other.owner.id, actor_role: "owner" });
   });
 });

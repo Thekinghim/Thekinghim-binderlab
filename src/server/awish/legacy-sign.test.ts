@@ -118,9 +118,11 @@ describe("signaturfel blir svenska", () => {
     mapGrpcError({ code: grpc.status.UNAUTHENTICATED, details }, "x:1");
 
   it("signaturfel klassas som ändrat, inte som fel AppSecret/AppKey", () => {
+    // "invalid signature" ensamt är Awishs inloggningsfel (fel AppSecret/AppKey), se nedan.
+    expect(err("invalid signature").kind).toBe("auth");
     for (const d of [
       "signature verify failed",
-      "invalid signature",
+      "invalid sign",
       "invalid signature format: expected hexadecimal",
       "hmac mismatch",
     ]) {

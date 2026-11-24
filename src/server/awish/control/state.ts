@@ -74,7 +74,7 @@ export async function ensureApiState(
   await db.execute(
     sql`insert into public.awish_api_state (organization_id, data_source_id)
         values (${orgId}::uuid, ${dataSourceId}::uuid)
-        on conflict (data_source_id) do nothing`,
+        on conflict (organization_id, data_source_id) do nothing`,
   );
   const created = await loadApiState(db, orgId, dataSourceId);
   if (!created) throw new Error("Awish API-läget kunde inte sparas.");
@@ -136,7 +136,7 @@ export async function updateApiState(
       let value = patch[k] as unknown;
       if (k === "endpointError" || k === "signError") value = clip(value as string | null);
       if (value instanceof Date) value = value.toISOString();
-      return sql`${sql.raw(COLUMNS[k])} = ${value}`;
+      return sql`${sql.identifier(COLUMNS[k])} = ${value}`;
     });
   if (sets.length === 0) return;
   await db.execute(

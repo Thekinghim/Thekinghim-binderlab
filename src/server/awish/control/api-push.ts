@@ -4,8 +4,14 @@
  *
  * Samma regler: planen kommer från den rena planAwishPush (vi höjer bara, aldrig ner),
  * samma resultat (WebPushResult) och samma loggar (automation_log och väntande automater).
- * Varje automat får en rad i awish_actions (refill_push_api) med utfallet. Ingen
- * användare väntar på svaret här, så det är systemet som står som utförare.
+ * Varje automat får en rad i awish_actions (refill_push_api) med utfallet och vem som
+ * startade påfyllningen (actorId; annars systemet, t.ex. synken).
+ *
+ * Bara antalet (current_inventory, och status när den ändras) skickas, aldrig good_id: ett
+ * "Byt pack i fack" mellan läsningen och skrivningen skulle annars skrivas över med den
+ * gamla varan. Läsning och skrivning per automat görs under organisationens Awish-lås
+ * (samma som webbvägen). Ett obekräftat versionsbyte stänger av API-vägen (webbpanelen
+ * används i stället).
  *
  * Används bara när organisationen har valt API under Datakällor (slot_writes_via) OCH
  * signeringen är testad (sign_status 'ok'); annars används webbpanelen (refill-push.ts).
@@ -28,13 +34,17 @@ import type { MachinePushResult, WebPushResult } from "../web-service";
 import { planAwishPush, type MachineTitleQuantity } from "../web-push";
 import { apiFor, awishMachineIdFor, controlContextFor, type ControlDeps } from "./connect";
 import { AwishUnknownOutcomeError, controlErrorMessage, isSignError } from "./errors";
+import { versionNeedsAck } from "./guard";
 import { updateApiState } from "./state";
+import { withAwishWriteLockWait } from "./write-lock";
 import type { AwishProductDetail } from "./types";
 
 export interface ApiPushDeps extends ControlDeps {
   serviceDb?: Db;
   withPending?: boolean;
   dryRun?: boolean;
+  /** Användaren som startade påfyllningen (Fyll på, Drift), annars systemet. */
+  actorId?: string | null;
 }
 
 /** WebPushResult plus automaterna där utfallet är okänt (ska inte provas via webben). */
@@ -113,14 +123,20 @@ async function startAction(
   machineId: string,
   awishMachineId: string,
   slots: number,
+  actorId: string | null,
 ): Promise<string | null> {
   try {
     const [row] = await query<{ id: string }>(
       db,
       sql`insert into public.awish_actions
-            (organization_id, actor_role, kind, machine_id, awish_machine_id, request,
+            (organization_id, actor_id, actor_role, kind, machine_id, awish_machine_id, request,
              idempotency_key, status)
-          values (${orgId}::uuid, 'system', 'refill_push_api', ${machineId}::uuid,
+          values (${orgId}::uuid, ${actorId}::uuid,
+                  (select coalesce((select m.role::text from public.memberships m
+                                    where m.organization_id = ${orgId}::uuid
+                                      and m.user_id = ${actorId}::uuid
+                                    limit 1), ${actorId ? "user" : "system"})),
+                  'refill_push_api', ${machineId}::uuid,
                   ${awishMachineId}, ${JSON.stringify({ slots })}::jsonb, ${randomUUID()},
                   'pending')
           returning id`,
@@ -193,7 +209,11 @@ export async function pushMachinesViaApi(
     if (error instanceof AwishNotConnectedError) return off("no_credentials");
     throw error;
   }
-  if (ctx.state.signStatus !== "ok" || ctx.endpoint === null) return off("disabled");
+  // Signering inte testad, ingen adress svarar eller ett obekräftat versionsbyte: API-vägen
+  // är av, och påfyllningen går via webbpanelen (refill-push.ts).
+  if (ctx.state.signStatus !== "ok" || ctx.endpoint === null || versionNeedsAck(ctx.state)) {
+    return off("disabled");
+  }
 
   const codes = await machineCodes(db, organizationId, ids);
   const machines: MachinePushResult[] = [];
@@ -216,8 +236,36 @@ export async function pushMachinesViaApi(
       let actionId: string | null = null;
       try {
         const want = await machineTitleStock(db, organizationId, machineId);
-        const products = (await api.productDetails(awishId)).map(productToWebProduct);
-        const plan = planAwishPush(want, products);
+        const pushed = await withAwishWriteLockWait(db, organizationId, async () => {
+          const read = await api.productDetails(awishId);
+          const products = read.map(productToWebProduct);
+          const plan = planAwishPush(want, products);
+          if (deps.dryRun) return { plan, products, done: 0 };
+          if (plan.updates.length > 0) {
+            actionId = await startAction(
+              db,
+              organizationId,
+              machineId,
+              awishId,
+              plan.updates.length,
+              deps.actorId ?? null,
+            );
+          }
+          const statusNow = new Map(read.map((p) => [Number(p.id), p.status]));
+          let done = 0;
+          for (const u of plan.updates) {
+            // Planen höjer bara: currentInventory är aldrig lägre än fackets antal nu. Bara
+            // antalet (och status när den ändras) skickas, aldrig good_id.
+            await api.updateProduct({
+              id: String(u.productId),
+              ...(statusNow.get(u.productId) !== u.status ? { status: u.status } : {}),
+              currentInventory: u.currentInventory,
+            });
+            done += 1;
+          }
+          return { plan, products, done };
+        });
+        const { plan, products, done } = pushed;
         if (deps.dryRun) {
           machines.push({
             machineId,
@@ -234,20 +282,6 @@ export async function pushMachinesViaApi(
             })),
           });
           continue;
-        }
-        if (plan.updates.length > 0) {
-          actionId = await startAction(db, organizationId, machineId, awishId, plan.updates.length);
-        }
-        let done = 0;
-        for (const u of plan.updates) {
-          // Planen höjer bara: currentInventory är aldrig lägre än fackets antal nu.
-          await api.updateProduct({
-            id: String(u.productId),
-            ...(u.goodId !== null ? { goodId: String(u.goodId) } : {}),
-            status: u.status,
-            currentInventory: u.currentInventory,
-          });
-          done += 1;
         }
         await finishAction(db, organizationId, actionId, "ok", `${done} fack`, null);
         machines.push({

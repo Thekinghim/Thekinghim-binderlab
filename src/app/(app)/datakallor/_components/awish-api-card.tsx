@@ -13,6 +13,7 @@ import {
   setAwishWritesViaAction,
   testAwishEndpoint,
   testAwishSigning,
+  chooseInsecureEndpointAction,
 } from "../awish-api-actions";
 
 type Via = "web" | "api" | "api_then_web";
@@ -27,6 +28,8 @@ export type AwishApiCardView =
       versionNeedsAck: boolean;
       endpoint: "tls" | "plain" | null;
       endpointError: string | null;
+      /** TLS har fungerat men svarar inte nu (vi byter inte själva). */
+      tlsLost: boolean;
       signStatus: "unverified" | "ok" | "failed";
       signError: string | null;
       slotWritesVia: Via;
@@ -137,6 +140,11 @@ export function AwishApiCard({ view }: { view: AwishApiCardView }) {
         >
           Signering: {SIGN_LABEL[view.signStatus]}
         </Row>
+        {view.endpoint === "tls" && view.tlsLost ? (
+          <p className="text-sm text-v2-crit-text">
+            TLS svarar inte. Styrningen väntar hellre än går okrypterat.
+          </p>
+        ) : null}
         {view.signStatus === "failed" ? (
           <p className="text-sm text-v2-crit-text">
             Skrivningar via API är pausade; webbpanelen används.
@@ -149,7 +157,8 @@ export function AwishApiCard({ view }: { view: AwishApiCardView }) {
           <p>
             Awish bytte version
             {view.previousVersion ? ` (${view.previousVersion} → ${view.version})` : ""}.
-            Kontrollera att facken och antalen ser rätt ut. Mata ut och Stäng av är pausade.
+            Kontrollera att facken och antalen ser rätt ut. Ändringar via API (fack, påfyllning,
+            schema, mata ut och stäng av) är pausade.
           </p>
           <div>
             <Button
@@ -184,6 +193,25 @@ export function AwishApiCard({ view }: { view: AwishApiCardView }) {
         >
           Testa signering
         </Button>
+        {view.endpoint === "tls" && view.tlsLost ? (
+          <Button
+            type="button"
+            variant="secondary"
+            loading={busy === "plain"}
+            disabled={pending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Använda okrypterad anslutning? Inloggningen och signaturen går då i klartext.",
+                )
+              ) {
+                run("plain", chooseInsecureEndpointAction);
+              }
+            }}
+          >
+            Använd okrypterad
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">

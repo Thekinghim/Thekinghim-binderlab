@@ -6,7 +6,10 @@
  *   api           pushMachinesViaApi (gRPC, signerat)
  *   api_then_web  API:t; automater som misslyckades (inte med okänt utfall) går via webbpanelen
  *
- * API:t används bara när signeringen är testad (sign_status 'ok'); annars webbpanelen.
+ * API:t används bara när signeringen är testad (sign_status 'ok'); annars webbpanelen. Är
+ * API-vägen av just nu (ingen adress svarar, obekräftat versionsbyte, styrningen avstängd)
+ * går hela påfyllningen via webbpanelen i båda API-lägena, så att den alltid loggas som
+ * skickad eller väntande och nästa synk inte sänker antalen igen.
  * Samma signatur som pushMachinesToAwish, så att anroparna bara byter import.
  */
 
@@ -20,7 +23,11 @@ import { pushMachinesViaApi } from "./api-push";
 import type { ControlDeps } from "./connect";
 import { loadApiState } from "./state";
 
-export type RefillPushDeps = WebPushDeps & { control?: ControlDeps };
+export type RefillPushDeps = WebPushDeps & {
+  control?: ControlDeps;
+  /** Användaren som startade påfyllningen (för loggen). */
+  actorId?: string | null;
+};
 
 /** Vägen för påfyllningen just nu. */
 export async function refillPushVia(
@@ -56,7 +63,12 @@ export async function pushRefillToAwish(
     serviceDb: deps.serviceDb,
     withPending: deps.withPending,
     dryRun: deps.dryRun,
+    actorId: deps.actorId ?? null,
   });
+  // API-vägen av (inte bara "inga automater"): webbpanelen tar allt, i båda API-lägena.
+  if (api.status === "off" && api.reason !== "no_source") {
+    return pushMachinesToAwish(organizationId, machineIds, deps);
+  }
   if (via === "api") {
     return {
       status: api.status,
@@ -64,7 +76,7 @@ export async function pushRefillToAwish(
       machines: api.machines,
     };
   }
-  // api_then_web: API:t avstängt → hela via webben; annars bara de som misslyckades.
+  // api_then_web: bara de som misslyckades (inte med okänt utfall) går via webben.
   if (api.status === "off") return pushMachinesToAwish(organizationId, machineIds, deps);
   const unknown = new Set(api.unknownMachineIds);
   const retry = api.machines

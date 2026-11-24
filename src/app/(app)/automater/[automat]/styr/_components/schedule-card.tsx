@@ -6,6 +6,7 @@ import { Button, ButtonLink } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
 import { Field, Input } from "@/components/v2/field";
 import { Notice } from "@/components/v2/notice";
+import { CLEAR_SCHEDULE_TEXT } from "@/server/machine-control/texts";
 
 import {
   applyPowerScheduleAction,
@@ -53,7 +54,7 @@ export function ScheduleCard({
             tone="warning"
             title={timezoneBlock}
             action={
-              <ButtonLink href="/installningar/awish" size="sm">
+              <ButtonLink href="/installningar/awish" size="sm" touch>
                 Inställningar → Awish
               </ButtonLink>
             }
@@ -67,6 +68,7 @@ export function ScheduleCard({
             {usesStore ? null : (
               <Button
                 size="sm"
+                touch
                 variant="plain"
                 onClick={() => {
                   setDays("1111111");
@@ -83,7 +85,7 @@ export function ScheduleCard({
           <span className="text-v2-sm font-[650]" id="styr-dagar">
             Dagar
           </span>
-          <div role="group" aria-labelledby="styr-dagar" className="v2-chips">
+          <div role="group" aria-labelledby="styr-dagar" className="v2-chips styr-days">
             {DAYS.map((d, i) => (
               <button
                 key={d}
@@ -129,23 +131,25 @@ export function ScheduleCard({
           >
             Skicka schema
           </Button>
-          {saved && saved.status !== "cleared" ? (
-            <Button
-              touch
-              variant="quiet"
-              onClick={() =>
-                clear.start({
-                  lines: ["Awish tar bort schemat. Automaten står på hela tiden."],
-                  warnings: [],
-                  blocking: null,
-                  confirm: null,
-                  typed: null,
-                })
-              }
-            >
-              Ta bort schema
-            </Button>
-          ) : null}
+          {/* Alltid synlig: ett schema kan vara satt i Awishs egen panel. */}
+          <Button
+            touch
+            variant="quiet"
+            onClick={() =>
+              clear.start({
+                lines: [CLEAR_SCHEDULE_TEXT],
+                warnings:
+                  saved && saved.status !== "cleared"
+                    ? []
+                    : ["Binderlab har inget sparat schema. Ett schema satt i Awish tas bort."],
+                blocking: null,
+                confirm: null,
+                typed: null,
+              })
+            }
+          >
+            Ta bort schema
+          </Button>
         </div>
         {saved?.status === "failed" ? (
           <p className="text-v2-sm text-v2-crit-text">Senaste schemat gick inte fram.</p>
@@ -162,11 +166,14 @@ export function ScheduleCard({
         error={send.error}
         pending={send.pending}
         confirmLabel="Skicka schema"
-        onConfirm={() =>
+        typedVerb="skicka schemat"
+        danger={Boolean(send.preview?.typed)}
+        onConfirm={({ typed }) =>
           send.apply((p) =>
             applyPowerScheduleAction(input, {
               fingerprint: p.fingerprint,
               idempotencyKey: p.idempotencyKey,
+              ...(p.typed ? { typed } : {}),
             }),
           )
         }
