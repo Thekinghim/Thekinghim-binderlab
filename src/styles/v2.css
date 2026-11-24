@@ -367,6 +367,8 @@
       left: 0;
       right: 0;
       bottom: 0;
+      /* iPhone: tab-bar.tsx flyttar raden hit om Safari ritar den för högt (viewport-pin.ts). */
+      transform: translateY(var(--v2-tabs-shift, 0px));
       background: rgb(255 255 255 / 0.97);
       border-top: 1px solid var(--v2-line);
       justify-content: space-around;
