@@ -7,8 +7,12 @@ import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
-/** awish_push: fack satta i Awish. awish_push_failed / awish_push_cleared: se 20261201000000. */
-export type AutomationLogKind = "awish_push" | "awish_push_failed" | "awish_push_cleared";
+/**
+ * awish_push: fack satta i Awish. awish_push_failed / awish_push_cleared: se 20261201000000.
+ * awish_push_retry: automatiskt nytt försök per organisation (20261229100000_awish_push_ko.sql).
+ */
+export type AutomationLogKind =
+  "awish_push" | "awish_push_failed" | "awish_push_cleared" | "awish_push_retry";
 
 /** Arbete som Binderlab gjort automatiskt (append-only). */
 export const automationLog = pgTable("automation_log", {

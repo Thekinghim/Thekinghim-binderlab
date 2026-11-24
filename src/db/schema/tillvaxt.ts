@@ -64,6 +64,9 @@ export const campaignMachines = pgTable("campaign_machines", {
   error: text("error"),
   sentAt: ts("sent_at"),
   stoppedAt: ts("stopped_at"),
+  /** Automatiska nya försök efter failed (20261229100000_awish_push_ko.sql). */
+  retryCount: integer("retry_count").notNull().default(0),
+  nextRetryAt: ts("next_retry_at"),
   ...stamps(),
 });
 

@@ -26,8 +26,10 @@ import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { recordJobOutcome } from "@/server/monitoring/failures";
 
 import { AwishApiError, type AwishMarketingApi } from "../awish/grpc-client";
+import { recordPathResult } from "../awish/health";
 import {
   AwishNotConnectedError,
+  awishSourceOf,
   linkedMachines,
   marketingClient,
   type LinkedMachine,
@@ -414,7 +416,8 @@ export async function publishDue(
     const message = shortError(error);
     for (const r of due) {
       await db.execute(
-        sql`update public.campaign_machines set status = 'failed', error = ${message}
+        sql`update public.campaign_machines
+            set status = 'failed', error = ${message}, ${nextRetrySql(opts.now)}
             where organization_id = ${orgId}::uuid and id = ${r.id}::uuid and status = 'scheduled'`,
       );
     }
@@ -422,6 +425,7 @@ export async function publishDue(
   }
   let shown = 0;
   let failed = 0;
+  let firstError: unknown = null;
   try {
     for (const r of due) {
       const claimed = await query<{ id: string }>(
@@ -432,8 +436,11 @@ export async function publishDue(
       );
       if (claimed.length === 0) continue;
       const wanted = { coverImage: r.image_url, title: r.title };
-      const before = await api.banners(r.awish_machine_id).catch(() => []);
       try {
+        // Listan före skapandet är skyddet mot dubbla kampanjer: utan den går det inte att
+        // se om ett avbrutet CreateBanner ändå skapade kampanjen. Går den inte att läsa
+        // skickas ingenting (raden blir failed och försöks igen automatiskt).
+        const before = await api.banners(r.awish_machine_id);
         try {
           await api.createBanner({
             machineId: r.awish_machine_id,
@@ -456,8 +463,10 @@ export async function publishDue(
         );
         shown += 1;
       } catch (error) {
+        firstError ??= error;
         await db.execute(
-          sql`update public.campaign_machines set status = 'failed', error = ${shortError(error)}
+          sql`update public.campaign_machines
+              set status = 'failed', error = ${shortError(error)}, ${nextRetrySql(opts.now)}
               where organization_id = ${orgId}::uuid and id = ${r.id}::uuid`,
         );
         failed += 1;
@@ -466,7 +475,77 @@ export async function publishDue(
   } finally {
     api.close();
   }
+  await recordCampaignHealth(db, orgId, shown + failed > 0, failed === 0, firstError, opts.now);
   return { shown, failed };
+}
+
+/**
+ * Väntan (minuter) före automatiskt försök 1, 2 och 3 med en automat där kampanjen inte kom
+ * fram. Därefter inga fler automatiska försök ("Försök igen" finns kvar).
+ */
+export const CAMPAIGN_RETRY_MIN: readonly number[] = [5, 15, 60];
+
+/** `next_retry_at` efter ett misslyckande, räknat på radens retry_count. */
+function nextRetrySql(now: Date) {
+  const steps = CAMPAIGN_RETRY_MIN.map(
+    (m, i) => sql`when ${i} then ${tsParam(new Date(now.getTime() + m * 60_000))}`,
+  );
+  return sql`next_retry_at = case retry_count ${sql.join(steps, sql` `)} else null::timestamptz end`;
+}
+
+/** Hälsan för vägen "campaigns" (Datakällor, vakten). Kastar aldrig. */
+async function recordCampaignHealth(
+  db: Db,
+  orgId: string,
+  contacted: boolean,
+  ok: boolean,
+  error: unknown,
+  now: Date,
+): Promise<void> {
+  if (!contacted) return;
+  try {
+    const source = await awishSourceOf(db, orgId);
+    if (!source) return;
+    await recordPathResult(db, {
+      organizationId: orgId,
+      dataSourceId: source.id,
+      path: "campaigns",
+      route: ok ? "open_api" : "ingen",
+      ok,
+      ...(ok ? {} : { error }),
+      now,
+    });
+  } catch (e) {
+    console.error("[kampanjer] hälsan kunde inte sparas", e instanceof Error ? e.name : "fel");
+  }
+}
+
+/**
+ * Automater där kampanjen inte kom fram och väntetiden har gått (CAMPAIGN_RETRY_MIN): de
+ * läggs tillbaka som planerade, så att körningen nedan skickar dem igen med samma skydd mot
+ * dubbla kampanjer. Högst 3 automatiska försök per automat. Kastar inte.
+ */
+export async function requeueFailedCampaigns(db: Db, now: Date): Promise<number> {
+  try {
+    const rows = await query<{ id: string }>(
+      db,
+      sql`update public.campaign_machines cm
+          set status = 'scheduled', error = null, retry_count = cm.retry_count + 1,
+              next_retry_at = null
+          from public.campaigns c, public.organizations o
+          where c.organization_id = cm.organization_id and c.id = cm.campaign_id
+            and o.id = cm.organization_id and o.archived_at is null and not o.is_demo
+            and cm.status = 'failed' and cm.next_retry_at is not null
+            and cm.next_retry_at <= ${tsParam(now)}
+            and cm.retry_count < ${CAMPAIGN_RETRY_MIN.length}
+            and c.stopped_at is null and c.ends_at > ${tsParam(now)}
+          returning cm.id`,
+    );
+    return rows.length;
+  } catch (error) {
+    console.error("[kampanjer] nya försök kunde inte planeras", shortError(error));
+    return 0;
+  }
 }
 
 /** Den schemalagda körningen: alla organisationers kampanjer vars start har passerat. */
@@ -476,6 +555,8 @@ export async function publishAllDueCampaigns(deps: {
   now?: Date;
 }): Promise<{ organizations: number; shown: number; failed: number }> {
   const now = deps.now ?? new Date();
+  // Automater där kampanjen inte kom fram tidigare och vars väntetid har gått.
+  await requeueFailedCampaigns(deps.db, now);
   const orgs = await query<{ organization_id: string }>(
     deps.db,
     sql`select distinct cm.organization_id
@@ -675,7 +756,8 @@ export async function retryCampaignFor(
   const now = nowOf(deps);
   const reset = await query<{ id: string }>(
     db,
-    sql`update public.campaign_machines cm set status = 'scheduled', error = null
+    sql`update public.campaign_machines cm
+        set status = 'scheduled', error = null, retry_count = 0, next_retry_at = null
         from public.campaigns c
         where cm.organization_id = ${orgId}::uuid and cm.campaign_id = ${campaignId}::uuid
           and c.organization_id = cm.organization_id and c.id = cm.campaign_id

@@ -18,6 +18,7 @@ import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runOfflineAlerts } from "@/server/awish/offline-alerts";
 import { resolveAppBaseUrl } from "@/server/request-info";
 import { syncAllAwishSources } from "@/server/awish/sync";
+import { retryPendingAwishPushesForAll } from "@/server/awish/web-service";
 import { publishAllDueCampaigns } from "@/server/campaigns/service";
 import { runSaleNotifications, SALE_PUSH_BUDGET_MS } from "@/server/sales-push/job";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
@@ -29,6 +30,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 /** Försäljningsnotiserna slutar ta om hand nya köp så här långt in i körningen (av 60 s). */
 const SALE_PUSH_STOP_MS = 50_000;
+/** Nya försök med väntande sändningar till Awish: högst så här länge … */
+const AWISH_PUSH_RETRY_BUDGET_MS = 20_000;
+/** … och aldrig efter så här långt in i körningen (av 60 s). */
+const AWISH_PUSH_RETRY_STOP_MS = 45_000;
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
@@ -58,6 +63,26 @@ async function runSaleNotificationsAfterSync(startedAt: number) {
     };
   } catch (error) {
     console.error("[awish] försäljningsnotiser", error instanceof Error ? error.message : "fel");
+    return null;
+  }
+}
+
+/**
+ * Påfyllningar som inte nådde Awish (web-service.ts retryPendingAwishPushesForAll): ett nytt
+ * försök per organisation med väntetid 5, 10, 20, 40 och 60 min. Påfyllningen är redan sparad
+ * i Binderlab. Kastar aldrig; ett fel loggas och svaret blir null.
+ */
+async function retryAwishPushesAfterSync(startedAt: number) {
+  const deadline = Math.min(
+    Date.now() + AWISH_PUSH_RETRY_BUDGET_MS,
+    startedAt + AWISH_PUSH_RETRY_STOP_MS,
+  );
+  if (deadline <= Date.now()) return null;
+  try {
+    const r = await retryPendingAwishPushesForAll(getServiceDb(), { deadline });
+    return { organizations: r.organizations, tried: r.tried, cleared: r.cleared };
+  } catch (error) {
+    console.error("[awish] nya försök till Awish", error instanceof Error ? error.name : "fel");
     return null;
   }
 }
@@ -127,6 +152,9 @@ export async function GET(request: Request): Promise<Response> {
     console.error("[kampanjer] schemalagda kampanjer", error instanceof Error ? error.name : "fel");
     return null;
   });
+  // Påfyllningar som inte nådde Awish: nytt försök med väntetid per organisation, efter
+  // kampanjerna och före notiserna, med en egen tidsgräns. Ett fel här stoppar inte synken.
+  const pushRetry = await retryAwishPushesAfterSync(startedAt);
   // Notis vid varje försäljning till dem som har slagit på den: nya köp i den här synken (och
   // i en Synka nu sedan förra körningen). Sist, med en egen tidsgräns, så att en långsam
   // push-tjänst inte håller upp kampanjerna. Ett fel här stoppar inte synken.
@@ -146,6 +174,7 @@ export async function GET(request: Request): Promise<Response> {
         historyDone: s.historyDone,
       })),
       campaigns: campaigns ? { shown: campaigns.shown, failed: campaigns.failed } : null,
+      pushRetry,
       watch,
       salePush,
       offlineAlerts: offline
