@@ -5,6 +5,14 @@
  * nyckeln för det engångsfirande när månadens mål nås.
  */
 
+/**
+ * Klassen som stoppar intro-rörelsen när Hem visas igen (HeroIntro). Ett eget namn med
+ * hh-prefix: hem.css har redan `.hem2 .calm` (raden "Allt rullar" i Kräver åtgärd, en flexrad
+ * med align-items: center och padding). Med samma namn fick hjälten den regeln när man kom
+ * tillbaka till Hem, och korten krympte till innehållets bredd mitt på skärmen.
+ */
+export const HERO_CALM_CLASS = "hh-calm";
+
 /** De kompakta nyckeltalen under hjältekortet, i mockens ordning (vinsten står i kortet). */
 export const COMPACT_ORDER = [
   "revenue",

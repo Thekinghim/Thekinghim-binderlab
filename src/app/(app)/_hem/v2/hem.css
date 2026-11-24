@@ -1868,7 +1868,7 @@
    Hjältekortet (mockarna i "visuellt/02", hero-card.tsx): vinst + sparklinje, pallen
    med periodens tre mest sålda pack och månadens mål som ring; resten av nyckeltalen
    kompakt under. Telefon (≤ 900 px): målet blir ett eget kort och nyckeltalen visar fyra
-   åt gången. Rörelse: trappad fade-up bara vid första visningen (.hh utan .calm), bara
+   åt gången. Rörelse: trappad fade-up bara vid första visningen (.hh utan .hh-calm), bara
    transform/opacity; med prefers-reduced-motion en ren toning.
    ========================================================================== */
 .hem2 .hh {
@@ -1890,9 +1890,9 @@
 .hem2 .hh-sec + .hh-sec {
   border-left: 1px solid var(--v2-line2);
 }
-.hem2 .hh.calm .hh-sec,
-.hem2 .hh.calm .v2-pod-i,
-.hem2 .hh.calm .v2-ring-res {
+.hem2 .hh.hh-calm .hh-sec,
+.hem2 .hh.hh-calm .v2-pod-i,
+.hem2 .hh.hh-calm .v2-ring-res {
   animation: none;
 }
 .hem2 .hh-hd {
@@ -2332,7 +2332,7 @@
     animation: v2-rise 420ms var(--v2-ease) both;
     animation-delay: 120ms;
   }
-  .hem2 .hh.calm .hh-goalcard {
+  .hem2 .hh.hh-calm .hh-goalcard {
     animation: none;
   }
   .hem2 .hh-goalcard-b {
