@@ -161,6 +161,8 @@ export interface AwishStockSummary {
   readonly failed: number;
   /** Automater som inte hanns med (tidsgränsen). */
   readonly deferred: number;
+  /** Första felet i körningen (art och Awishs kod), för felsökning. Inga hemligheter. */
+  readonly error?: string;
   readonly at: string;
 }
 
@@ -843,6 +845,7 @@ export async function syncSourceStock(
   let titlesCreated = 0;
   let failed = 0;
   let deferred = 0;
+  let firstError: string | undefined;
   for (const [index, m] of machines.entries()) {
     if (opts.deadlineAt - opts.now().getTime() < STOCK_MIN_LEFT_MS) {
       deferred = machines.length - index;
@@ -867,8 +870,15 @@ export async function syncSourceStock(
         break;
       }
       failed += 1;
-      if (!(error instanceof AwishApiError))
+      if (error instanceof AwishApiError) {
+        const detail =
+          `${error.kind} ${error.grpcCode ?? "-"} ${(error.technical ?? "").slice(0, 160)}`.trim();
+        firstError ??= `awish: ${detail}`;
+        console.warn(`[awish] saldot kunde inte läsas för automat ${m.external_id}: ${detail}`);
+      } else {
+        firstError ??= `spara: ${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`;
         console.error("[awish] saldot kunde inte sparas", error);
+      }
     }
   }
   return {
@@ -879,6 +889,7 @@ export async function syncSourceStock(
     titlesCreated,
     failed,
     deferred,
+    ...(firstError ? { error: firstError } : {}),
     at: opts.now().toISOString(),
   };
 }

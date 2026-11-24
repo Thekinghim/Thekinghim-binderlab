@@ -163,7 +163,7 @@ export interface AwishLastRun {
   /** Saldot från Awish i den här körningen, om det lästes. */
   stock?: Pick<
     AwishStockSummary,
-    "machines" | "read" | "counts" | "warehouseOut" | "failed" | "deferred"
+    "machines" | "read" | "counts" | "warehouseOut" | "failed" | "deferred" | "error"
   >;
 }
 
@@ -577,6 +577,7 @@ export async function syncAwishSource(
               warehouseOut: extra.stock.warehouseOut ?? 0,
               failed: extra.stock.failed,
               deferred: extra.stock.deferred,
+              ...(extra.stock.error ? { error: extra.stock.error } : {}),
             },
           }
         : {}),
