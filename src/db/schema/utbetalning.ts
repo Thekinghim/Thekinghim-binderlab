@@ -43,6 +43,16 @@ export const payoutImportMappings = pgTable("payout_import_mappings", {
   ...stamps(),
 });
 
+/** Sammanfattningen per utbetalning (bara ägare och admin: partnerns och ägarens belopp). */
+export const payoutSummaries = pgTable("payout_summaries", {
+  id: id(),
+  organizationId: orgId(),
+  payoutId: uuid("payout_id").notNull(),
+  summary: text("summary").notNull(),
+  writtenAt: ts("written_at").notNull().defaultNow(),
+  ...stamps(),
+});
+
 export type PayoutDraftSource = "csv" | "xlsx" | "pdf" | "image" | "manual";
 export type PayoutDraftStatus = "open" | "confirmed" | "discarded";
 

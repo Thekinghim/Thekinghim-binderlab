@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { acceptSummary, summaryFacts, templateSummary } from "./summary";
+import { acceptSummary, anonymize, restoreNames, summaryFacts, templateSummary } from "./summary";
 
 const facts = summaryFacts({
   amountOre: 4_821_000,
@@ -24,9 +24,20 @@ describe("sammanfattningen", () => {
   it("mallen säger belopp, period, största butiken och resten", () => {
     const t = templateSummary(facts);
     expect(t).toContain("Nayax betalade 48 210 kr för 3–9 nov.");
-    expect(t).toContain("Butik A (6 500 kr)");
+    expect(t).toContain("Mest får Butik A (6 500 kr).");
     expect(t).toContain("Partner X får 29 655 kr");
-    expect(t).toContain("90 kr mindre");
+    // Skillnaden mot försäljningen står i en egen ruta, inte här.
+    expect(t).not.toContain("mindre");
+  });
+  it("skickar inga namn till modellen och sätter tillbaka dem", () => {
+    const a = anonymize(facts);
+    const sent = JSON.stringify(a.facts);
+    expect(sent).not.toContain("Butik A");
+    expect(sent).not.toContain("Partner X");
+    expect(sent).not.toContain("Bolag B AB");
+    expect(
+      restoreNames("Mest får Butik 1. Partnern får 29 655 kr. Butik 2 får 3 200 kr.", a.names),
+    ).toBe("Mest får Butik A. Partner X får 29 655 kr. Bolag B AB får 3 200 kr.");
   });
   it("godtar en AI-text med samma tal och nekar påhittade tal", () => {
     expect(

@@ -247,6 +247,7 @@ describe("tabeller", () => {
         "payout_import_mappings",
         "payout_imports",
         "payout_lines",
+        "payout_summaries",
         "payouts",
         "period_closes",
         "profiles",

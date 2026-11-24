@@ -260,6 +260,30 @@ describe("Utbetalningar (dator) och portalen", () => {
     await sheet.locator('[data-testid="payout-save"]').click();
     await page.waitForURL(/\/pengar\/utbetalningar\/[0-9a-f-]{36}$/);
     expect(text(await page.locator('[data-testid="payout-sum"]').innerText())).toBe("1 250 kr ✓");
+    // En sammanställning med två utbetalningar: en i taget, "1 av 2 – Stämmer, nästa".
+    await page.goto("/pengar/utbetalningar");
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const today = new Date();
+    const yesterday = new Date(today.getTime() - 86_400_000);
+    const two = path.join(dir, "sammanstallning.csv");
+    writeFileSync(
+      two,
+      `Settlement Date;Net Amount;Total Fees\n${iso(yesterday)};300,00;5,00\n${iso(today)};320,00;5,00\nTotalt;620,00;10,00\n`,
+    );
+    await page.getByRole("button", { name: "Lägg in utbetalning från Nayax", exact: true }).click();
+    sheet = page.getByRole("dialog");
+    await sheet.locator('[data-testid="payout-file"]').setInputFiles(two);
+    await sheet.locator('[data-testid="payout-step"]').waitFor();
+    expect(text(await sheet.locator('[data-testid="payout-step"]').innerText())).toContain(
+      "1 av 2",
+    );
+    expect(await sheet.locator('[data-testid="payout-amount"]').inputValue()).toBe("300");
+    await sheet.getByRole("button", { name: "Stämmer, nästa", exact: true }).click();
+    await sheet.getByText("2 av 2").waitFor();
+    expect(await sheet.locator('[data-testid="payout-amount"]').inputValue()).toBe("320");
+    await sheet.getByRole("button", { name: "Stämmer, spara", exact: true }).click();
+    await page.waitForURL(/\/pengar\/utbetalningar\/[0-9a-f-]{36}$/);
+    expect(text(await page.locator('[data-testid="payout-sum"]').innerText())).toBe("320 kr ✓");
     await page.goto("/pengar/utbetalningar");
     await page.locator('[data-testid="pay-partner"]').waitFor();
     await shot(page, "utbetalningar-att-betala-1440");

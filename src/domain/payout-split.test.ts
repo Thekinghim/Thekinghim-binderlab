@@ -374,3 +374,84 @@ describe("splitPayout", () => {
     expect(shareTruncated(1, 5000)).toBe(0);
   });
 });
+
+describe("splitPayout: rättelser, återbetalningar och VMB på prissatta order", () => {
+  it("lägger rättelsen från låsta utbetalningar på partnern och momsen, summan exakt", () => {
+    const base = splitPayout(example());
+    const r = splitPayout(
+      example({
+        vat: { mode: "vmb", carryInOre: 0, vatRateBp: 0, adjustOre: kr(-400) },
+        partner: {
+          segments: [segment({ costOre: kr(26_000), packs: 520 })],
+          carryInOre: 0,
+          adjustOre: kr(1_200),
+        },
+      }),
+    );
+    expect(line(r, "vat_reserve").amountOre).toBe(line(base, "vat_reserve").amountOre - kr(400));
+    expect(r.totals.vatAdjustOre).toBe(kr(-400));
+    expect(r.totals.partnerAdjustOre).toBe(kr(1_200));
+    // Vinsten blir 400 kr större (mindre moms); partnern får hälften av den + rättelsen.
+    expect(line(r, "partner").amountOre).toBe(line(base, "partner").amountOre + kr(200 + 1_200));
+    expect(r.warnings.map((w) => w.code)).toContain("LOCKED_ADJUST");
+    expect(sumLines(r)).toBe(kr(48_210));
+  });
+
+  it("momsraden blir aldrig negativ: det som inte ryms väntar", () => {
+    const r = splitPayout(
+      example({ vat: { mode: "vmb", carryInOre: 0, vatRateBp: 0, adjustOre: kr(-999_999) } }),
+    );
+    expect(line(r, "vat_reserve").amountOre).toBe(0);
+    expect(r.totals.vatAdjustOre).toBe(-kr(5_200));
+    expect(sumLines(r)).toBe(kr(48_210));
+  });
+
+  it("återbetalningar ägaren gjort själv dras från vinsten före delningen", () => {
+    const base = splitPayout(example());
+    const r = splitPayout(example({ refundsOutsideOre: kr(1_000) }));
+    expect(r.totals.profitOre).toBe(base.totals.profitOre - kr(1_000));
+    expect(line(r, "partner").amountOre).toBe(line(base, "partner").amountOre - kr(500));
+    expect(line(r, "owner").amountOre).toBe(line(base, "owner").amountOre + kr(500));
+    expect(sumLines(r)).toBe(kr(48_210));
+  });
+
+  it("VMB räknas på order med inköpspris, som liggaren", () => {
+    const r = splitPayout(
+      example({
+        slices: [
+          slice({
+            storeId: "A",
+            grossOre: kr(32_000),
+            pricedGrossOre: kr(22_000),
+            costOre: kr(16_000),
+            storeShareOre: kr(6_500),
+          }),
+          slice({
+            storeId: "B",
+            grossOre: kr(20_000),
+            costOre: kr(10_000),
+            storeShareOre: kr(3_200),
+          }),
+        ],
+      }),
+    );
+    // (22 000 + 20 000 − 26 000) × 20 % = 3 200 kr i stället för 5 200 kr.
+    expect(r.totals.vatOre).toBe(kr(3_200));
+    expect(sumLines(r)).toBe(kr(48_210));
+  });
+
+  it("utan partneravtal förs partnerns skuld vidare i stället för att försvinna", () => {
+    const r = splitPayout(
+      example({
+        partner: {
+          segments: [segment({ agreementId: null, costOre: kr(26_000) })],
+          carryInOre: kr(-300),
+          adjustOre: kr(50),
+        },
+      }),
+    );
+    expect(r.totals.partnerCarryOutOre).toBe(kr(-300));
+    expect(r.totals.partnerAdjustOre).toBe(0);
+    expect(sumLines(r)).toBe(kr(48_210));
+  });
+});

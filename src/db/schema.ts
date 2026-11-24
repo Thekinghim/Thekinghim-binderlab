@@ -749,6 +749,13 @@ export const organizationSettings = pgTable("organization_settings", {
     .notNull()
     .default("auto"),
   payoutReminderDays: integer("payout_reminder_days").notNull().default(7),
+  /** Utbetalningar räknas från och med den dagen (pengarna kom); null = alla. */
+  payoutsFrom: date("payouts_from", { mode: "string" }),
+  /** Återbetalningar till kunder: i Nayax (dras från utbetalningen) eller av ägaren själv. */
+  refundsPaidVia: text("refunds_paid_via")
+    .$type<"nayax" | "outside">()
+    .notNull()
+    .default("outside"),
   ...stamps(),
 });
 

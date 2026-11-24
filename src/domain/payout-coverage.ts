@@ -15,7 +15,7 @@
  * överlappar aldrig (samma regel som databasen har för payouts).
  */
 
-import { addDays, daysBetween } from "./dates";
+import { addDays } from "./dates";
 import type { IsoDate } from "./types";
 
 export const MAX_COVERAGE_DAYS = 366;
@@ -91,7 +91,7 @@ export function inferCoverage(input: CoverageInput): CoverageResult {
     to: best,
     expectedNetOre: bestCum,
     diffOre,
-    note: coverageNote(start, best, diffOre),
+    note: coverageNote(start, best),
   };
 }
 
@@ -132,9 +132,7 @@ export function wholeKrText(ore: number): string {
   return `${ore < 0 && kr !== 0 ? "−" : ""}${out}`;
 }
 
-function coverageNote(from: IsoDate, to: IsoDate, diffOre: number): string {
-  const days = daysBetween(from, to) + 1;
-  const base = `Vi antog att pengarna gäller ${coverageRangeText(from, to)} (${days === 1 ? "1 dag" : `${days} dagar`}, äldsta obetalda försäljningen först).`;
-  if (Math.abs(diffOre) < 100) return `${base} Stämmer med vår försäljning.`;
-  return `${base} Skiljer ${wholeKrText(Math.abs(diffOre))} kr mot vår försäljning.`;
+/** "Vi gissade att pengarna gäller 4–13 nov." (skillnaden visas för sig på sidan). */
+function coverageNote(from: IsoDate, to: IsoDate): string {
+  return `Vi gissade att pengarna gäller ${coverageRangeText(from, to).replace(/\.$/, "")}.`;
 }

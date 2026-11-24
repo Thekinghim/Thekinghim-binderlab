@@ -8,13 +8,21 @@
  *   inköpspris (purchase_prices, samma uppslag som Lönsamhet och liggaren) i appen. Order
  *   utan titel eller pris räknas i försäljningen men saknar inköp (UNPRICED).
  *   Återbetalningar till kunder dras på återbetalningsdagen i butiken automaten stod i.
+ *   Betalar ägaren dem själv (organization_settings.refunds_paid_via = 'outside', standard)
+ *   ingår de inte i det vi väntar från Nayax och dras från vinsten före delningen.
  * - Butikens andel per butik och månad: hela månaden med en avräkning →
- *   avräkningens belopp; annars avräkningens uträkning för just dagarna
- *   (computeSettlementsTx med period, en laddning per månad för alla butiker).
+ *   avräkningens grundbelopp; annars avräkningens uträkning för just dagarna
+ *   (computeSettlementsTx med period, en laddning per månad för alla butiker). Går
+ *   uträkningen inte (t.ex. saknat inköpspris under vinstdelning) blir andelen 0 med
+ *   varningen SHARE_UNKNOWN, och raderna kan inte markeras som betalda förrän det är rättat.
+ * - Avräkningens grundbelopp = beloppet − rättelser som lagts på den från tidigare månader
+ *   ("Lägg på nästa avräkning" under Butiker). Rättelserna är skillnader mellan det butiken
+ *   fick och det den skulle ha för en tidigare månad, och de är redan med i den månadens
+ *   justering här; med dem två gånger skulle butiken dras eller få dubbelt.
  * - Justering: för en månad som har en avräkning och vars alla dagar täcks av
- *   utbetalningar (den här och tidigare) = avräkningen − det som redan fördelats för
+ *   utbetalningar (den här och tidigare) = grundbeloppet − det som redan fördelats för
  *   butiken och månaden − den här utbetalningens del. Summan för månaden blir då exakt
- *   avräkningen.
+ *   avräkningens grundbelopp.
  * - Partneravtalen delar dagarna i avsnitt; momsläget (vat-reserve.ts) och underskotten
  *   från förra utbetalningen.
  */
@@ -47,6 +55,8 @@ import {
   type Payee,
   type SplitInput,
   type SplitSlice,
+  type SplitTotals,
+  type StoreComponent,
   type SplitTrueUp,
   type SplitWarning,
   type VatReserveMode,
@@ -62,7 +72,7 @@ import type { OrgSettings, PlacementRecord } from "@/server/data/core/types";
 import { storesPlacedIn } from "@/server/reports/sources";
 import { monthSlices, isWholeMonth } from "@/server/settlements/advance";
 import { computeSettlementsTx } from "@/server/settlements/live";
-import { parseStatement } from "@/server/settlements/model";
+import { parseCorrections, parseStatement } from "@/server/settlements/model";
 
 /** En utbetalning som ska delas. */
 export interface PayoutRef {
@@ -89,9 +99,11 @@ export interface OrgPayoutContext {
   readonly agreements: AgreementIndex;
   readonly settings: OrgSettings;
   readonly vatMode: VatReserveMode;
+  /** Återbetalningar till kunder görs i Nayax (dras från beloppet) eller av ägaren själv. */
+  readonly refundsVia: "nayax" | "outside";
   readonly partners: readonly PartnerAgreementRecord[];
   readonly storeOwner: ReadonlyMap<string, string | null>;
-  /** Avräkningarna per "butik|ÅÅÅÅ-MM". */
+  /** Avräkningarna per "butik|ÅÅÅÅ-MM" (amountOre = grundbeloppet, se filhuvudet). */
   readonly settlements: ReadonlyMap<
     string,
     { readonly amountOre: number; readonly salesOre: number | null }
@@ -106,6 +118,9 @@ export interface PriorState {
   readonly covered: readonly { readonly from: IsoDate; readonly to: IsoDate }[];
   readonly vatCarryOutOre: number;
   readonly partnerCarryOutOre: number;
+  /** Rättelser från låsta utbetalningar som ska läggas på den här (allocate.ts). */
+  readonly partnerAdjustOre: number;
+  readonly vatAdjustOre: number;
 }
 
 export interface AllocationInputs {
@@ -129,6 +144,8 @@ export async function loadOrgPayoutContextTx(tx: Tx, orgId: string): Promise<Org
       tx.execute(sql`
         select coalesce((select vat_reserve_mode from public.organization_settings
                           where organization_id = ${orgId}::uuid), 'auto') as mode,
+               coalesce((select refunds_paid_via from public.organization_settings
+                          where organization_id = ${orgId}::uuid), 'outside') as refunds_via,
                coalesce((select report_vmb from public.organization_settings
                           where organization_id = ${orgId}::uuid), false) as report_vmb,
                coalesce((select vmb_enabled from public.bookkeeping_settings
@@ -158,12 +175,14 @@ export async function loadOrgPayoutContextTx(tx: Tx, orgId: string): Promise<Org
           month: s.storeSettlements.month,
           amountOre: s.storeSettlements.amountOre,
           statement: s.storeSettlements.statement,
+          corrections: s.storeSettlements.corrections,
         })
         .from(s.storeSettlements)
         .where(eq(s.storeSettlements.organizationId, orgId)),
     ]);
   const flags = Array.from(extra)[0] as
-    { mode: string; report_vmb: boolean; bookkeeping_vmb: boolean } | undefined;
+    | { mode: string; refunds_via: string; report_vmb: boolean; bookkeeping_vmb: boolean }
+    | undefined;
   return {
     organizationId: orgId,
     prices: new PriceIndex(prices),
@@ -182,13 +201,15 @@ export async function loadOrgPayoutContextTx(tx: Tx, orgId: string): Promise<Org
       bookkeepingVmb: flags?.bookkeeping_vmb === true,
       reportVmb: flags?.report_vmb === true,
     }),
+    refundsVia: flags?.refunds_via === "nayax" ? "nayax" : "outside",
     partners: partners.sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1)),
     storeOwner: new Map(stores.map((r) => [r.id, r.ownerId])),
     settlements: new Map(
       settlements.map((r) => [
         smKey(r.storeId, r.month),
         {
-          amountOre: r.amountOre,
+          amountOre:
+            r.amountOre - parseCorrections(r.corrections).reduce((a, c) => a + c.amountOre, 0),
           salesOre: parseStatement(r.statement)?.salesInclVatOre ?? null,
         },
       ]),
@@ -201,11 +222,13 @@ export function payeeOf(ctx: OrgPayoutContext, storeId: string): Payee {
   return owner ? { kind: "store_owner", id: owner } : { kind: "store", id: storeId };
 }
 
-interface DayGroup {
+export interface DayGroup {
   storeId: string | null;
   date: IsoDate;
   orders: number;
   grossOre: number;
+  /** Försäljningen för order med inköpspris (VMB-marginalen, som liggaren). */
+  pricedGrossOre: number;
   refundsOre: number;
   costOre: number;
   unpriced: number;
@@ -242,6 +265,7 @@ export async function loadDayTotalsTx(
         date,
         orders: 0,
         grossOre: 0,
+        pricedGrossOre: 0,
         refundsOre: 0,
         costOre: 0,
         unpriced: 0,
@@ -270,6 +294,7 @@ export async function loadDayTotalsTx(
     if (price) {
       g.costOre += price.unitCostOre * r.n;
       g.priced += r.n;
+      g.pricedGrossOre += gross;
     } else {
       g.unpriced += r.n;
     }
@@ -281,11 +306,18 @@ export async function loadDayTotalsTx(
   return [...groups.values()];
 }
 
-/** Väntat netto från Nayax per dag (försäljning − återbetalningar − beräknad avgift). */
-export function expectedByDay(groups: readonly DayGroup[]): Map<IsoDate, number> {
+/**
+ * Väntat netto från Nayax per dag: försäljning − beräknad avgift, och − återbetalningar när
+ * de görs i Nayax (`refundsVia`, se filhuvudet).
+ */
+export function expectedByDay(
+  groups: readonly DayGroup[],
+  refundsVia: "nayax" | "outside" = "nayax",
+): Map<IsoDate, number> {
   const out = new Map<IsoDate, number>();
   for (const g of groups) {
-    out.set(g.date, (out.get(g.date) ?? 0) + g.grossOre - g.refundsOre - g.feeOre);
+    const refunds = refundsVia === "nayax" ? g.refundsOre : 0;
+    out.set(g.date, (out.get(g.date) ?? 0) + g.grossOre - refunds - g.feeOre);
   }
   return out;
 }
@@ -354,6 +386,7 @@ export async function loadAllocationInputsTx(
   const to = payout.periodEnd;
   const groups = await loadDayTotalsTx(tx, ctx, from, to);
   const slices: SplitSlice[] = [];
+  const shareUnknown: SplitWarning[] = [];
   const own = new Map<string, number>();
   const shareHistory: {
     storeId: string;
@@ -395,6 +428,8 @@ export async function loadAllocationInputsTx(
           if (l?.ok) {
             share = l.computed.amountOre;
             source = "live";
+          } else if (l && !l.ok) {
+            shareUnknown.push({ code: "SHARE_UNKNOWN", storeId, message: l.message.slice(0, 300) });
           }
         }
       }
@@ -415,6 +450,7 @@ export async function loadAllocationInputsTx(
         to: minDate(m.end, to),
         orders: sum((g) => g.orders),
         grossOre: gross,
+        pricedGrossOre: sum((g) => g.pricedGrossOre),
         refundsOre: sum((g) => g.refundsOre),
         costOre: sum((g) => g.costOre),
         unpricedOrders: sum((g) => g.unpriced),
@@ -451,7 +487,7 @@ export async function loadAllocationInputsTx(
       trueUps.push({ storeId, payee: payeeOf(ctx, storeId), month, deltaOre: delta });
   }
 
-  const expected = expectedByDay(groups);
+  const expected = expectedByDay(groups, ctx.refundsVia);
   const expectedNetOre = [...expected.values()].reduce((a, v) => a + v, 0);
   const segments = partnerSegments(ctx, from, to, groups);
   const split: SplitInput = {
@@ -462,9 +498,14 @@ export async function loadAllocationInputsTx(
       mode: ctx.vatMode,
       carryInOre: ctx.vatMode === "vmb" ? prior.vatCarryOutOre : 0,
       vatRateBp: ctx.settings.vatRateBp,
+      adjustOre: prior.vatAdjustOre,
     },
-    partner: segments ? { segments, carryInOre: prior.partnerCarryOutOre } : null,
+    partner: segments
+      ? { segments, carryInOre: prior.partnerCarryOutOre, adjustOre: prior.partnerAdjustOre }
+      : null,
     expectedNetOre,
+    refundsOutsideOre:
+      ctx.refundsVia === "outside" ? groups.reduce((a, g) => a + g.refundsOre, 0) : 0,
   };
   const salesDays = [...new Set(groups.filter((g) => g.orders > 0).map((g) => g.date))].sort();
   const hash = createHash("sha256")
@@ -472,8 +513,100 @@ export async function loadAllocationInputsTx(
     .digest("hex");
   return {
     split,
-    extraWarnings: shareJumpWarnings(shareHistory),
+    extraWarnings: [...shareUnknown, ...shareJumpWarnings(shareHistory)],
     salesDays,
     hash,
+  };
+}
+
+/** Ett avsnitt med partnerns avtal som det sparades i en uträkning. */
+export interface StoredPartnerSegment {
+  readonly agreementId: string | null;
+  readonly bp: number;
+  readonly reimburse: boolean;
+  readonly from: IsoDate;
+  readonly to: IsoDate;
+}
+
+/**
+ * Underlaget för att räkna en LÅST utbetalning igen med dagens inköpspriser (rättelserna,
+ * allocate.ts). Butikernas delar är de låsta (som justeringar, så att raden blir exakt
+ * densamma), avtalen med partnern är de låsta (andel och om inköpet betalas tillbaka), och
+ * underskotten och rättelserna in är de låsta: bara inköpet, vinstdelen och momsen kan
+ * skilja. `groups` = försäljningen per butik och dag (bara utbetalningens dagar används).
+ */
+export function lockedRecheckInput(
+  ctx: OrgPayoutContext,
+  payout: PayoutRef,
+  groups: readonly DayGroup[],
+  locked: {
+    readonly stores: readonly StoreComponent[];
+    readonly partnerSegments: readonly StoredPartnerSegment[] | null;
+    readonly totals: Partial<SplitTotals>;
+    readonly vatMode: VatReserveMode;
+  },
+): SplitInput {
+  const mine = groups.filter((g) => g.date >= payout.periodStart && g.date <= payout.periodEnd);
+  const byKey = new Map<string, SplitSlice>();
+  for (const g of mine) {
+    const month = g.date.slice(0, 7) as IsoMonth;
+    const key = `${g.storeId ?? ""}|${month}`;
+    const prev = byKey.get(key);
+    byKey.set(key, {
+      storeId: g.storeId,
+      payee: null,
+      month,
+      from: prev ? minDate(prev.from, g.date) : g.date,
+      to: prev ? maxDate(prev.to, g.date) : g.date,
+      orders: (prev?.orders ?? 0) + g.orders,
+      grossOre: (prev?.grossOre ?? 0) + g.grossOre,
+      pricedGrossOre: (prev?.pricedGrossOre ?? 0) + g.pricedGrossOre,
+      refundsOre: (prev?.refundsOre ?? 0) + g.refundsOre,
+      costOre: (prev?.costOre ?? 0) + g.costOre,
+      unpricedOrders: (prev?.unpricedOrders ?? 0) + g.unpriced,
+      storeShareOre: 0,
+      shareSource: "none",
+      hasAgreement: true,
+    });
+  }
+  const num = (v: unknown) => (typeof v === "number" && Number.isSafeInteger(v) ? v : 0);
+  const segments: PartnerSegment[] | null = locked.partnerSegments
+    ? locked.partnerSegments.map((seg) => {
+        let cost = 0;
+        let packs = 0;
+        let weight = 0;
+        for (const g of mine) {
+          if (g.date < seg.from || g.date > seg.to) continue;
+          cost += g.costOre;
+          packs += g.priced;
+          weight += g.grossOre - g.refundsOre - g.costOre;
+        }
+        return { ...seg, costOre: cost, packs, weightOre: weight };
+      })
+    : null;
+  return {
+    amountOre: payout.amountOre,
+    slices: [...byKey.values()],
+    trueUps: locked.stores.map((c) => ({
+      storeId: c.storeId,
+      payee: payeeOf(ctx, c.storeId),
+      month: c.month,
+      deltaOre: c.shareOre,
+    })),
+    vat: {
+      mode: locked.vatMode,
+      carryInOre: num(locked.totals.vatCarryInOre),
+      vatRateBp: ctx.settings.vatRateBp,
+      adjustOre: num(locked.totals.vatAdjustOre),
+    },
+    partner: segments
+      ? {
+          segments,
+          carryInOre: num(locked.totals.partnerCarryInOre),
+          adjustOre: num(locked.totals.partnerAdjustOre),
+        }
+      : null,
+    expectedNetOre: 0,
+    refundsOutsideOre: num(locked.totals.refundsOutsideOre),
   };
 }

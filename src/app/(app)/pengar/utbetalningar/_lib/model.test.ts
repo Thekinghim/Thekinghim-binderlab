@@ -62,7 +62,9 @@ describe("utbetalningarnas texter", () => {
   });
 
   it("badge och fälten", () => {
-    expect(payoutBadge(0, true).text).toBe("Betald");
+    expect(payoutBadge(0, true).text).toBe("Allt utbetalt");
+    expect(payoutBadge(0, true, 16_100).text).toMatch(/^Allt utbetalt · 161\s?kr kvar till dig$/);
+    expect(payoutBadge(0, false).text).toBe("Räknas inte");
     expect(payoutBadge(2, true).text).toBe("2 kvar");
     expect(parseKr("48 210,50")).toBe(4_821_050);
     expect(parseKr("0")).toBeNull();

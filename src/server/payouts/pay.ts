@@ -15,7 +15,7 @@
 
 import "server-only";
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -154,6 +154,18 @@ export async function markPaidFor(
         );
       }
       const items = chosen.map((c) => c!);
+      // En butiks andel som inte gick att räkna (SHARE_UNKNOWN) skulle låsa fel belopp.
+      const unknown = items
+        .flatMap((i) => i.p.allocation?.warnings ?? [])
+        .find((w) => w.code === "SHARE_UNKNOWN");
+      if (unknown && unknown.code === "SHARE_UNKNOWN") {
+        throw new PayoutError(
+          `En butiks andel går inte att räkna än (${unknown.message}). Rätta det först, sedan kan du markera som betalt.`.slice(
+            0,
+            400,
+          ),
+        );
+      }
       if (items.some((i) => i.l.kind === "owner" && i.l.leftOre <= 0)) {
         throw new PayoutError("Det finns inget kvar att ta ut.");
       }
@@ -220,7 +232,11 @@ export async function undoPaidFor(
             .select({ id: s.storePayments.id })
             .from(s.storePayments)
             .where(
-              and(eq(s.storePayments.organizationId, orgId), inArray(s.storePayments.id, store)),
+              and(
+                eq(s.storePayments.organizationId, orgId),
+                inArray(s.storePayments.id, store),
+                isNotNull(s.storePayments.payoutAllocationLineId),
+              ),
             )
         : [];
       if (linked.length !== store.length) throw new PayoutError("Betalningen finns inte.");

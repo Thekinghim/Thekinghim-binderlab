@@ -62,6 +62,8 @@ import {
   confirmDraftFor,
 } from "@/server/payouts/service";
 import { createMonthlySettlements } from "@/server/settlements/service";
+import { registerPaymentFor } from "@/server/settlements/payments";
+import { archivePayoutFor } from "@/server/accounting/service";
 
 import {
   addMember,
@@ -335,6 +337,162 @@ describe("utbetalningarna", () => {
   });
 });
 
+describe("rättelserna efter granskningen", () => {
+  let g: MoneyFixture;
+  let sept: string;
+
+  beforeAll(async () => {
+    g = await seedMoneyFixture("Utbetalningar rättelser");
+    await savePartnerAgreementFor(
+      g.owner,
+      {
+        partnerName: "Partner Y",
+        reimburseCost: true,
+        profitSharePercent: 50,
+        validFrom: "2026-01-01",
+      },
+      NOW,
+    );
+    await savePayoutOptionsFor(g.owner, { vatReserveMode: "vmb", reminderDays: 7 }, NOW);
+  });
+
+  it("en butik som redan fått pengarna under Butiker får inget igen", async () => {
+    // Provision får 10 % av 100 kr = 10 kr för september, betalt den gamla vägen.
+    await registerPaymentFor(
+      g.owner,
+      {
+        storeId: g.stores.provision,
+        paidOn: "2026-10-01",
+        amountOre: 1000,
+        periodStart: "2026-09-01",
+        periodEnd: "2026-09-30",
+        note: null,
+      },
+      null,
+      NOW,
+    );
+    sept = (
+      await registerPayoutFor(
+        g.owner,
+        {
+          paidOn: "2026-10-02",
+          amountOre: 20_000,
+          period: { start: "2026-09-01", end: "2026-09-30" },
+        },
+        NOW,
+        noAi,
+      )
+    ).payoutId;
+    const page = await loadPayoutsPageFor(g.owner, NOW);
+    expect(page.recipients.find((r) => r.name === "Provision")).toBeUndefined();
+    const p = page.payouts.find((x) => x.id === sept)!;
+    const prov = p.lines.find((l) => l.name === "Provision")!;
+    expect(prov.amountOre).toBe(1000);
+    expect(prov.leftOre).toBe(0);
+    await expect(
+      markPaidFor(g.owner, { lineIds: [prov.id], paidOn: "2026-11-14" }, NOW),
+    ).rejects.toThrow(/redan betalt/);
+  });
+
+  it("en utbetalning med betalningar kan inte arkiveras förrän de ångrats", async () => {
+    const p = await loadPayoutsPageFor(g.owner, NOW, { payoutId: sept });
+    const vinsten = p.payouts[0]!.lines.find((l) => l.name === "Vinsten")!;
+    const paid = await markPaidFor(g.owner, { lineIds: [vinsten.id], paidOn: "2026-11-14" }, NOW);
+    await expect(archivePayoutFor(g.owner, { id: sept, note: "Fel fil" })).rejects.toThrow(
+      /redan betalt/,
+    );
+    const raw = await settle(
+      asPostgres((tx) =>
+        tx.execute(sql`update public.payouts set archived_at = now() where id = ${sept}`),
+      ),
+    );
+    expect(raw.ok).toBe(false);
+    expect(raw.message).toMatch(/redan betalt/);
+    await undoPaidFor(g.owner, paid.refs, NOW);
+    await markPaidFor(g.owner, { lineIds: [vinsten.id], paidOn: "2026-11-14" }, NOW);
+  });
+
+  it("en utbetalning före en betald går inte att lägga in", async () => {
+    await expect(
+      registerPayoutFor(
+        g.owner,
+        {
+          paidOn: "2026-09-02",
+          amountOre: 5000,
+          period: { start: "2026-08-01", end: "2026-08-31" },
+        },
+        NOW,
+        noAi,
+      ),
+    ).rejects.toThrow(/betald utbetalning efter/);
+  });
+
+  it("ett nytt inköpspris efter betalningen rättas för partnern och momsen på nästa", async () => {
+    // September: 2 sålda pack. Priset 40 → 50 kr: inköpet +20 kr, momsen på vinsten −4 kr,
+    // vinsten −16 kr och partnerns halva −8 kr. Partnern ska ha +12 kr, momsen −4 kr.
+    await asPostgres((tx) =>
+      tx.execute(sql`insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from)
+        values (${g.orgId}, ${g.titleId}, 5000, '2026-09-01')`),
+    );
+    const oct = await registerPayoutFor(
+      g.owner,
+      {
+        paidOn: "2026-11-02",
+        amountOre: 40_000,
+        period: { start: "2026-10-01", end: "2026-10-31" },
+      },
+      NOW,
+      noAi,
+    );
+    const p = (await loadPayoutsPageFor(g.owner, NOW, { payoutId: oct.payoutId })).payouts[0]!;
+    expect(p.allocation!.totals.partnerAdjustOre).toBe(1200);
+    expect(p.allocation!.totals.vatAdjustOre).toBe(-400);
+    expect(p.allocation!.warnings.some((w) => w.code === "LOCKED_ADJUST")).toBe(true);
+    expect(p.lines.reduce((a, l) => a + l.amountOre, 0)).toBe(40_000);
+    // Samma igen: ingen dubbel rättelse.
+    const again = (await loadPayoutsPageFor(g.owner, NOW, { payoutId: oct.payoutId })).payouts[0]!;
+    expect(again.allocation!.totals.partnerAdjustOre).toBe(1200);
+    // Låst: nästa utbetalning får ingen rättelse till.
+    const partner = again.lines.find((l) => l.kind === "partner")!;
+    await markPaidFor(g.owner, { lineIds: [partner.id], paidOn: "2026-11-14" }, NOW);
+    const nov = await registerPayoutFor(
+      g.owner,
+      { paidOn: "2026-11-14", amountOre: 1000, period: { start: "2026-11-01", end: "2026-11-13" } },
+      NOW,
+      noAi,
+    );
+    const n = (await loadPayoutsPageFor(g.owner, NOW, { payoutId: nov.payoutId })).payouts[0]!;
+    expect(n.allocation!.totals.partnerAdjustOre ?? 0).toBe(0);
+    expect(n.allocation!.totals.vatAdjustOre ?? 0).toBe(0);
+  });
+
+  it("en butiks andel som inte går att räkna stoppar Markera som betald", async () => {
+    const h = await seedMoneyFixture("Utbetalningar okänd andel");
+    await asPostgres(async (tx) => {
+      const [t2] = await rows<{ id: string }>(
+        tx,
+        sql`insert into public.titles (organization_id, name) values (${h.orgId}, 'Utan pris') returning id`,
+      );
+      await tx.execute(sql`insert into public.orders (organization_id, data_source_id, external_id,
+          raw_title, title_id, ordered_at, amount_ore, machine_id, source_hash)
+        values (${h.orgId}, ${h.sourceId}, 'u-1', 'Utan pris', ${t2!.id}, '2026-11-03T10:00:00Z',
+          10000, ${h.machines.m1}, 'uh-1')`);
+    });
+    const r = await registerPayoutFor(
+      h.owner,
+      { paidOn: "2026-11-12", amountOre: 9000, period: { start: "2026-11-01", end: "2026-11-10" } },
+      NOW,
+      noAi,
+    );
+    const p = (await loadPayoutsPageFor(h.owner, NOW, { payoutId: r.payoutId })).payouts[0]!;
+    expect(p.allocation!.warnings.some((w) => w.code === "SHARE_UNKNOWN")).toBe(true);
+    const vat = p.lines.find((l) => l.kind === "vat_reserve")!;
+    await expect(
+      markPaidFor(h.owner, { lineIds: [vat.id], paidOn: "2026-11-14" }, NOW),
+    ).rejects.toThrow(/går inte att räkna/);
+  });
+});
+
 describe("filer från Nayax", () => {
   it("okända kolumner: kolumnsteget, sedan samma layout utan steget", async () => {
     const g = await seedMoneyFixture("Utbetalningar fil");
@@ -412,6 +570,7 @@ describe("vem ser vad", () => {
         "recipient_payments",
         "payout_drafts",
         "payout_import_mappings",
+        "payout_summaries",
       ]) {
         const n = await asUser(u, (tx) =>
           rows<{ n: number }>(tx, sql`select count(*)::int as n from ${sql.identifier(table)}`),
@@ -419,6 +578,13 @@ describe("vem ser vad", () => {
         expect(n[0]!.n, `${table} för ${u.email}`).toBe(0);
       }
     }
+    // Sammanfattningen (partnerns och ägarens belopp) ligger inte på payouts, som läsaren ser.
+    const cols = await rows<{ column_name: string }>(
+      db(),
+      sql`select column_name from information_schema.columns
+          where table_schema = 'public' and table_name = 'payouts'`,
+    );
+    expect(cols.map((c) => c.column_name)).not.toContain("ai_summary");
     // Butiken ser sin betalning (från utbetalningen) i portalen, utan något om fördelningen.
     const portal = await asUser(storeUser, (tx) =>
       rows<Record<string, unknown>>(

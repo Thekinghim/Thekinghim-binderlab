@@ -5,8 +5,10 @@
  * ett tal som inte finns där ger mallens text i stället. Sammanfattningen blockerar aldrig
  * sidan: den görs efter att utbetalningen sparats och annars av det dagliga jobbet.
  *
- * Bara fakta skickas till modellen (belopp, period, butiksnamn, partnerns andel totalt),
- * aldrig inköpspriser per titel.
+ * Bara fakta skickas till modellen (belopp, period, partnerns andel totalt), aldrig
+ * inköpspriser per titel och aldrig namn: partnern heter "Partnern" och butikerna "Butik 1",
+ * "Butik 2" … i det som skickas, och namnen sätts tillbaka här (anonymize/restoreNames).
+ * Skillnaden mot vår försäljning står i en egen ruta på sidan och upprepas inte här.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -26,7 +28,6 @@ export interface SummaryFacts {
   } | null;
   readonly momsKr: number;
   readonly kvarKr: number;
-  readonly skillnadKr: number;
 }
 
 const kr = (ore: number) => Math.round(ore / 100);
@@ -39,7 +40,7 @@ export function templateSummary(f: SummaryFacts): string {
   if (top && top.kr > 0) {
     parts.push(
       f.butiker.length > 1
-        ? `Mest till butikerna gick till ${top.namn} (${t(top.kr)}).`
+        ? `Mest får ${top.namn} (${t(top.kr)}).`
         : `${top.namn} får ${t(top.kr)}.`,
     );
   }
@@ -49,13 +50,6 @@ export function templateSummary(f: SummaryFacts): string {
     f.kvarKr >= 0 ? `${t(f.kvarKr)} blir kvar till dig` : `du behöver lägga till ${t(-f.kvarKr)}`,
   ].filter(Boolean);
   parts.push(`${capital(joinSv(rest as string[]))}.`);
-  if (Math.abs(f.skillnadKr) >= 5) {
-    parts.push(
-      f.skillnadKr < 0
-        ? `Det är ${t(-f.skillnadKr)} mindre än vår försäljning säger.`
-        : `Det är ${t(f.skillnadKr)} mer än vår försäljning säger.`,
-    );
-  }
   return parts.join(" ");
 }
 
@@ -97,8 +91,40 @@ export function summaryFacts(input: {
       : null,
     momsKr: kr(input.lines.find((l) => l.kind === "vat_reserve")?.amountOre ?? 0),
     kvarKr: kr(input.lines.find((l) => l.kind === "owner")?.amountOre ?? 0),
-    skillnadKr: kr(input.diffOre),
   };
+}
+
+/** Fakta utan namn (det som skickas till modellen) och hur namnen sätts tillbaka. */
+export function anonymize(facts: SummaryFacts): {
+  facts: SummaryFacts;
+  names: readonly { readonly placeholder: string; readonly name: string }[];
+} {
+  const names: { placeholder: string; name: string }[] = [];
+  const butiker = facts.butiker.map((b, i) => {
+    names.push({ placeholder: `Butik ${i + 1}`, name: b.namn });
+    return { ...b, namn: `Butik ${i + 1}` };
+  });
+  if (facts.partner) names.push({ placeholder: "Partnern", name: facts.partner.namn });
+  return {
+    facts: {
+      ...facts,
+      butiker,
+      partner: facts.partner ? { ...facts.partner, namn: "Partnern" } : null,
+    },
+    names,
+  };
+}
+
+/** Sätter tillbaka namnen (längsta platshållaren först: "Butik 12" före "Butik 1"). */
+export function restoreNames(
+  text: string,
+  names: readonly { readonly placeholder: string; readonly name: string }[],
+): string {
+  let out = text;
+  for (const n of [...names].sort((a, b) => b.placeholder.length - a.placeholder.length)) {
+    out = out.replace(new RegExp(`${n.placeholder}(?!\\d)`, "g"), () => n.name);
+  }
+  return out;
 }
 
 /** Godkänd AI-text: högst 400 tecken, högst tre meningar och alla tal finns i fakta. */
@@ -142,7 +168,8 @@ export function createAnthropicSummaryWriter(options: {
     options.client ?? new Anthropic({ apiKey: options.apiKey, maxRetries: 1, timeout: 30_000 });
   return {
     model: options.model,
-    async write(facts) {
+    async write(original) {
+      const { facts, names } = anonymize(original);
       const message = await client.beta.messages.create({
         model: options.model,
         max_tokens: 400,
@@ -150,7 +177,7 @@ export function createAnthropicSummaryWriter(options: {
         system: [
           {
             type: "text",
-            text: "Du skriver 2–3 korta meningar på enkel svenska om en utbetalning från Nayax till ägaren av varuautomater. Använd bara talen i fakta, skrivna som i fakta (hela kronor, t.ex. 48 210 kr). Inga facktermer. Anropa verktyget spara_sammanfattning.",
+            text: "Du skriver 2–3 korta meningar på enkel svenska om en utbetalning från Nayax till ägaren av varuautomater. Använd bara talen i fakta, skrivna som i fakta (hela kronor, t.ex. 48 210 kr), och namnen exakt som i fakta (t.ex. Butik 1, Partnern). Inga facktermer. Anropa verktyget spara_sammanfattning.",
           },
         ],
         tools: [TOOL],
@@ -162,7 +189,7 @@ export function createAnthropicSummaryWriter(options: {
       );
       const text = (call?.input as { text?: unknown } | undefined)?.text;
       return {
-        text: typeof text === "string" ? text : null,
+        text: typeof text === "string" ? restoreNames(text, names) : null,
         model: message.model || options.model,
         usage: {
           inputTokens: message.usage.input_tokens,

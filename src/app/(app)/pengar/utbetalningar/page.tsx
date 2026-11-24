@@ -74,7 +74,7 @@ export default async function PayoutsPage({
         <Card className="ut-full">
           <div className="ut-hero">
             <div>
-              <div className="lbl">{allPaid ? "Att betala" : "Att betala just nu"}</div>
+              <div className="lbl">Att betala just nu</div>
               <div className="big" data-testid="to-pay">
                 {krExact(page.toPayOre)}
               </div>
@@ -123,7 +123,11 @@ export default async function PayoutsPage({
           ) : (
             <div className="ut-list">
               {page.payouts.slice(0, 50).map((p) => {
-                const badge = payoutBadge(p.unpaidLines, p.allocation !== null);
+                const badge = payoutBadge(
+                  p.unpaidLines,
+                  p.allocation !== null,
+                  p.lines.find((l) => l.kind === "owner")?.leftOre ?? 0,
+                );
                 return (
                   <Link
                     key={p.id}
@@ -135,7 +139,7 @@ export default async function PayoutsPage({
                       <div className="t">Pengar in {krExact(p.amountOre)}</div>
                       <div className="d">
                         {p.paidOn ? `${dayMonth(p.paidOn)} · ` : ""}gäller {p.periodText}
-                        {p.basis === "inferred" ? " (uträknat)" : ""}
+                        {p.basis === "inferred" ? " (gissat)" : ""}
                       </div>
                     </div>
                     <Badge tone={badge.tone}>{badge.text}</Badge>

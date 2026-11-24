@@ -1265,6 +1265,10 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
     await tx.execute(sql`
       insert into public.payout_drafts (organization_id, source, file_name)
       values (${orgId}, 'csv', 'nayax.csv')`);
+    await tx.execute(sql`
+      insert into public.payout_summaries (organization_id, payout_id, summary)
+      select ${orgId}::uuid, p.id, 'Nayax betalade 168 kr.'
+      from public.payouts p where p.organization_id = ${orgId} and p.reference = 'U-2025-03'`);
     // Notis vid varje försäljning (20261227000000_saljnotis.sql), skrivs bara av servern.
     await tx.execute(
       sql`insert into public.sale_notifications (organization_id, order_id)

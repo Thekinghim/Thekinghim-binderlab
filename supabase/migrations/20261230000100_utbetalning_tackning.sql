@@ -8,9 +8,8 @@
 --    inferred_note), 'manual' = ägaren skrev in den. period_start/period_end är som förut
 --    alltid satta: en räknad period börjar dagen efter den senast täckta dagen, så den
 --    överlappar aldrig en annan utbetalning.
---    ai_summary/ai_summary_at: två–tre meningar om utbetalningen (mall eller AI, talen
---    kontrollerade mot uträkningen). De och anteckningen är det enda som får ändras på en
---    utbetalning (payouts_guard).
+--    Sammanfattningen (två–tre meningar med partnerns och ägarens belopp) ligger INTE på
+--    payouts, som läsaren kan läsa, utan i payout_summaries (5) som bara ägare och admin ser.
 -- 2. payout_import_mappings: "kom ihåg filen". Rubrikernas fingeravtryck → vilken kolumn
 --    som är vad. Nästa fil med samma rubriker läses utan kolumnsteget och utan AI.
 -- 3. payout_drafts: en uppladdad rapport eller inskrivning som väntar på att ägaren
@@ -19,6 +18,9 @@
 -- 4. ai_runs.purpose: 'advisor' (som förut), 'payout_read' (läsa en rapport) eller
 --    'payout_summary' (sammanfattningen). trigger får också 'upload'. Kostnaden räknas
 --    in i samma månadstak som förut.
+--
+-- 5. payout_summaries: sammanfattningen per utbetalning (mall eller AI, talen kontrollerade
+--    mot uträkningen). Innehåller partnerns och ägarens belopp, så bara ägare och admin.
 --
 -- Rättigheter: ägare och admin. Läsaren, påfyllaren och butiksportalen ser inget.
 -- =============================================================================
@@ -29,9 +31,7 @@
 alter table public.payouts
   add column period_basis text not null default 'manual'
     check (period_basis in ('report', 'lines', 'inferred', 'manual')),
-  add column inferred_note text check (inferred_note is null or char_length(inferred_note) <= 500),
-  add column ai_summary text check (ai_summary is null or char_length(ai_summary) <= 1000),
-  add column ai_summary_at timestamptz;
+  add column inferred_note text check (inferred_note is null or char_length(inferred_note) <= 500);
 
 -- Befintliga rader: rapporten (Nayax-PDF eller fil) när de inte är inskrivna.
 update public.payouts set period_basis = 'report' where not manual;
@@ -39,24 +39,6 @@ update public.payouts set period_basis = 'report' where not manual;
 create index payouts_period_end_idx on public.payouts (organization_id, period_end)
   where archived_at is null;
 
-create or replace function private.payouts_guard() returns trigger
-language plpgsql
-set search_path = ''
-as $$
-begin
-  if (to_jsonb(old) - array['archived_at', 'note', 'updated_at', 'created_by',
-                            'ai_summary', 'ai_summary_at'])
-     is distinct from (to_jsonb(new) - array['archived_at', 'note', 'updated_at', 'created_by',
-                                             'ai_summary', 'ai_summary_at']) then
-    raise exception using
-      errcode = 'BL002',
-      message = 'En importerad utbetalning ändras inte. Arkivera den och importera en rättad rad.';
-  end if;
-  return new;
-end
-$$;
-
-grant update (ai_summary, ai_summary_at) on table public.payouts to authenticated;
 
 -- -----------------------------------------------------------------------------
 -- 2. payout_import_mappings
@@ -79,6 +61,8 @@ create trigger t20_stamp_insert before insert on public.payout_import_mappings
   for each row execute function private.stamp_insert();
 create trigger t20_stamp_update before update on public.payout_import_mappings
   for each row execute function private.stamp_update();
+create trigger t90_audit after insert or update or delete on public.payout_import_mappings
+  for each row execute function private.audit();
 
 alter table public.payout_import_mappings enable row level security;
 alter table public.payout_import_mappings alter column organization_id set statistics 0;
@@ -160,3 +144,46 @@ alter table public.ai_runs
 alter table public.ai_runs drop constraint ai_runs_trigger_check;
 alter table public.ai_runs
   add constraint ai_runs_trigger_check check (trigger in ('cron', 'manual', 'upload'));
+
+-- -----------------------------------------------------------------------------
+-- 5. payout_summaries
+-- -----------------------------------------------------------------------------
+create table public.payout_summaries (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations (id) on delete restrict,
+  payout_id uuid not null,
+  summary text not null check (char_length(summary) between 1 and 1000),
+  written_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  created_by uuid references auth.users (id) on delete set null,
+  updated_at timestamptz not null default now(),
+  unique (organization_id, id),
+  unique (organization_id, payout_id),
+  foreign key (organization_id, payout_id) references public.payouts (organization_id, id)
+    on delete restrict
+);
+
+create trigger t00_forbid_org_change before update on public.payout_summaries
+  for each row execute function private.forbid_org_change();
+create trigger t20_stamp_insert before insert on public.payout_summaries
+  for each row execute function private.stamp_insert();
+create trigger t20_stamp_update before update on public.payout_summaries
+  for each row execute function private.stamp_update();
+
+alter table public.payout_summaries enable row level security;
+alter table public.payout_summaries alter column organization_id set statistics 0;
+revoke all on table public.payout_summaries from anon, authenticated, service_role;
+grant select, insert on table public.payout_summaries to authenticated;
+grant update (summary, written_at) on table public.payout_summaries to authenticated;
+grant select, insert, update on table public.payout_summaries to service_role;
+
+create policy payout_summaries_select on public.payout_summaries
+  for select to authenticated
+  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))));
+create policy payout_summaries_insert on public.payout_summaries
+  for insert to authenticated
+  with check (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))));
+create policy payout_summaries_update on public.payout_summaries
+  for update to authenticated
+  using (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))))
+  with check (organization_id = any (array(select private.orgs_with_role('owner', 'admin'))));

@@ -5,6 +5,7 @@ import {
   detectColumns,
   extractFromRows,
   headerSignature,
+  isTotalRow,
   mappingFromColumns,
   parseLooseDate,
   parseLooseOre,
@@ -108,5 +109,40 @@ describe("extractFromRows", () => {
   it("räknar beloppet från brutto − avgift när netto saknas", () => {
     const cols = detectColumns(["Gross", "Fee"]);
     expect(extractFromRows([["100,00", "5,00"]], cols).extracted.amountOre).toBe(9500);
+  });
+});
+
+describe("flera utbetalningar och summarader", () => {
+  it("räknar aldrig en Totalt-rad och lägger de andra utbetalningarna i ordning", () => {
+    const cols = detectColumns(["Settlement Date", "Net Amount", "Total Fees"]);
+    const { extracted, warnings } = extractFromRows(
+      [
+        ["2026-11-14", "320,00", "5,00"],
+        ["2026-11-13", "300,00", "5,00"],
+        ["Totalt", "620,00", "10,00"],
+      ],
+      cols,
+    );
+    expect(extracted.paidOn).toBe("2026-11-13");
+    expect(extracted.amountOre).toBe(30_000);
+    expect(extracted.others?.map((o) => o.amountOre)).toEqual([32_000]);
+    expect(warnings.map((w) => w.code)).toContain("MANY_PAYOUTS");
+    expect(isTotalRow(["Summa", "620"])).toBe(true);
+    expect(isTotalRow(["", "Total", "1"])).toBe(true);
+    expect(isTotalRow(["Totalsumma:", "1"])).toBe(true);
+    expect(isTotalRow(["Butik Total AB", "1"])).toBe(false);
+  });
+
+  it("en transaktionsfil med en summarad sist summeras inte dubbelt", () => {
+    const cols = detectColumns(["Transaction ID", "Date", "Amount"]);
+    const { extracted } = extractFromRows(
+      [
+        ["t1", "2026-11-01", "10,00"],
+        ["t2", "2026-11-02", "20,00"],
+        ["Total", "", "30,00"],
+      ],
+      cols,
+    );
+    expect(extracted.amountOre).toBe(3000);
   });
 });

@@ -247,6 +247,8 @@ export default async function SettingsPage() {
                       agreements={payoutSettings.agreements}
                       vatReserveMode={payoutSettings.vatReserveMode}
                       reminderDays={payoutSettings.reminderDays}
+                      payoutsFrom={payoutSettings.payoutsFrom}
+                      refundsPaidVia={payoutSettings.refundsPaidVia}
                       today={ctx.today}
                     />
                   </MobileFold>

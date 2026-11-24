@@ -352,3 +352,48 @@ create trigger t30_payout_lock after insert on public.recipient_payments
   for each row execute function private.payout_lock_on_payment();
 create trigger t30_payout_lock after insert on public.store_payments
   for each row execute function private.payout_lock_on_payment();
+
+-- -----------------------------------------------------------------------------
+-- Arkivera en utbetalning: inte när något är betalt från den, och inte när en senare
+-- utbetalning redan är låst (dess underskott och justeringar bygger på den här). Annars
+-- skulle betalningarna försvinna ur saldona och samma pengar kunna betalas igen.
+-- -----------------------------------------------------------------------------
+create function private.payouts_archive_guard() returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if old.archived_at is not null or new.archived_at is null then
+    return new;
+  end if;
+  if exists (
+       select 1 from public.payout_allocation_lines l
+       where l.organization_id = old.organization_id and l.payout_id = old.id
+         and (exists (select 1 from public.store_payments sp
+                      where sp.organization_id = l.organization_id
+                        and sp.payout_allocation_line_id = l.id)
+              or exists (select 1 from public.recipient_payments r
+                         where r.organization_id = l.organization_id and r.line_id = l.id
+                           and r.archived_at is null))) then
+    raise exception using
+      errcode = 'BL092',
+      message = 'Något är redan betalt från utbetalningen. Ångra betalningarna under Pengar → Utbetalningar först.';
+  end if;
+  if exists (
+       select 1 from public.payout_allocations a
+       join public.payouts p on p.organization_id = a.organization_id and p.id = a.payout_id
+       where a.organization_id = old.organization_id and a.status = 'locked'
+         and a.superseded_at is null and p.archived_at is null and p.id <> old.id
+         and p.period_start > old.period_start) then
+    raise exception using
+      errcode = 'BL092',
+      message = 'En senare utbetalning är redan betald och bygger på den här. Ångra betalningarna på den först.';
+  end if;
+  return new;
+end
+$$;
+
+revoke all on function private.payouts_archive_guard() from public, anon, authenticated;
+
+create trigger t15_archive_guard before update of archived_at on public.payouts
+  for each row execute function private.payouts_archive_guard();

@@ -7,7 +7,8 @@
  * roll, samma normalisering som orderimporten). Två former:
  *
  *   Sammanfattning  en rad per utbetalning: Utbetald · Belopp · Avgift · Brutto ·
- *                   Period från · Period till. Första raden med ett belopp används.
+ *                   Period från · Period till. Den äldsta raden med ett belopp läses
+ *                   först; de andra (`others`) läggs in en i taget efter den.
  *   Transaktioner   en rad per köp (Transaktions-id eller Transaktionsdatum finns):
  *                   beloppen summeras, perioden är första till sista köpdagen, och
  *                   automaterna (serienummer) räknas för kontrollen mot våra automater.
@@ -15,6 +16,7 @@
  * Belopp: "1 234,56 kr", "1,234.56", "−373,00" (heltal i öre, inga flyttal). Datum:
  * ÅÅÅÅ-MM-DD, DD.MM.ÅÅÅÅ, DD/MM/ÅÅÅÅ, ÅÅÅÅMMDD (och en tid efter datumet ignoreras).
  * Kontrollen: brutto − avgift − återbetalningar ska vara beloppet inom 1 kr.
+ * En summarad ("Totalt", "Summa", "Total …") räknas aldrig (isTotalRow).
  */
 
 import { createHash } from "node:crypto";
@@ -284,6 +286,11 @@ export interface ExtractedPayout {
   readonly periodTo: string | null;
   readonly transactions: readonly ExtractedTransaction[];
   readonly devices: readonly { readonly serial: string; readonly amountOre: number }[];
+  /**
+   * Fler utbetalningar i samma fil (en sammanställning med en rad per utbetalning): de
+   * läggs in en i taget efter den här ("1 av 3 – Stämmer, nästa").
+   */
+  readonly others?: readonly ExtractedPayout[];
   /** Fält som AI:n läste ("Läst av AI, kontrollera"). */
   readonly aiFields?: readonly string[];
   readonly confidence?: "high" | "medium" | "low";
@@ -298,13 +305,21 @@ export type ExtractWarning =
   | { readonly code: "MANY_PAYOUTS"; readonly rows: number }
   | { readonly code: "TRUNCATED"; readonly rows: number };
 
+const TOTAL_ROW = /^(tot(al|alt)?|summa|sum|totalsumma|grand total)\b/i;
+
+/** En summarad ("Totalt", "Summa", "Total") räknas inte: den är summan av raderna ovanför. */
+export function isTotalRow(r: readonly string[]): boolean {
+  const first = r.find((c) => c.trim() !== "" && !/^[-+\d\s.,:%kr]+$/i.test(c.trim()));
+  return first !== undefined && TOTAL_ROW.test(first.trim());
+}
+
 /** Läser raderna med kolumnerna (se filhuvudet). */
 export function extractFromRows(
   rows: readonly (readonly string[])[],
   cols: ColumnMap,
 ): { extracted: ExtractedPayout; warnings: ExtractWarning[] } {
   const warnings: ExtractWarning[] = [];
-  const data = rows.filter((r) => r.some((c) => c.trim() !== ""));
+  const data = rows.filter((r) => r.some((c) => c.trim() !== "") && !isTotalRow(r));
   // "Datum" i en fil med en eller ett par rader är dagen pengarna kom, inte en köpdag.
   const transactional =
     cols.transaction_id !== undefined || (cols.transaction_date !== undefined && data.length > 3);
@@ -319,24 +334,44 @@ export function extractFromRows(
       (r) => parseLooseOre(cell(r, "amount") ?? cell(r, "gross")) !== null,
     );
     if (withAmount.length > 1) warnings.push({ code: "MANY_PAYOUTS", rows: withAmount.length });
-    const r = withAmount[0];
-    if (!r) {
+    if (withAmount.length === 0) {
       warnings.push({ code: "NO_AMOUNT" });
       return { extracted: empty(), warnings };
     }
-    const fees = parseLooseOre(cell(r, "fees"));
-    const extracted: ExtractedPayout = {
-      paidOn: parseLooseDate(cell(r, "paid_on")),
-      amountOre: parseLooseOre(cell(r, "amount")),
-      feesOre: fees === null ? null : Math.abs(fees),
-      grossOre: parseLooseOre(cell(r, "gross")),
-      refundsOre: abs(parseLooseOre(cell(r, "refunds"))),
-      periodFrom: parseLooseDate(cell(r, "period_from")),
-      periodTo: parseLooseDate(cell(r, "period_to")),
-      transactions: [],
-      devices: [],
+    const one = (r: readonly string[], w: ExtractWarning[]): ExtractedPayout => {
+      const fees = parseLooseOre(cell(r, "fees"));
+      return withDerived(
+        {
+          paidOn: parseLooseDate(cell(r, "paid_on")),
+          amountOre: parseLooseOre(cell(r, "amount")),
+          feesOre: fees === null ? null : Math.abs(fees),
+          grossOre: parseLooseOre(cell(r, "gross")),
+          refundsOre: abs(parseLooseOre(cell(r, "refunds"))),
+          periodFrom: parseLooseDate(cell(r, "period_from")),
+          periodTo: parseLooseDate(cell(r, "period_to")),
+          transactions: [],
+          devices: [],
+        },
+        w,
+      );
     };
-    return { extracted: withDerived(extracted, warnings), warnings };
+    // Äldsta först, så att de läggs in i ordning.
+    const all = withAmount
+      .map((r) => {
+        const w: ExtractWarning[] = [];
+        return { payout: one(r, w), w };
+      })
+      .sort((a, b) =>
+        (a.payout.periodFrom ?? a.payout.paidOn ?? "") <
+        (b.payout.periodFrom ?? b.payout.paidOn ?? "")
+          ? -1
+          : 1,
+      );
+    warnings.push(...all[0]!.w);
+    return {
+      extracted: { ...all[0]!.payout, others: all.slice(1, 51).map((x) => x.payout) },
+      warnings,
+    };
   }
   let bad = 0;
   const tx: ExtractedTransaction[] = [];
@@ -440,4 +475,18 @@ export function sampleRows(rows: readonly (readonly string[])[], n = 5): string[
     .filter((r) => r.some((c) => c.trim() !== ""))
     .slice(0, n)
     .map((r) => r.map((c) => c.slice(0, 80)));
+}
+
+/** Bara de valda kolumnerna (det som sparas i utkastet efter kolumnsteget). */
+export function trimTable(
+  table: { readonly headers: readonly string[]; readonly rows: readonly (readonly string[])[] },
+  cols: ColumnMap,
+): { headers: string[]; rows: string[][] } {
+  const idx = [...new Set(Object.values(cols).filter((v): v is number => v !== undefined))].sort(
+    (a, b) => a - b,
+  );
+  return {
+    headers: idx.map((i) => table.headers[i] ?? ""),
+    rows: table.rows.map((r) => idx.map((i) => r[i] ?? "")),
+  };
 }

@@ -235,6 +235,11 @@ export async function savePayoutOptions(raw: unknown): Promise<PayoutActionResul
       .object({
         vatReserveMode: z.enum(["auto", "vmb", "standard", "none"]),
         reminderDays: z.number().int().min(0).max(90),
+        payoutsFrom: z
+          .union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)])
+          .nullable()
+          .optional(),
+        refundsPaidVia: z.enum(["nayax", "outside"]).optional(),
       })
       .parse(raw);
     await savePayoutOptionsFor(viewer, input);

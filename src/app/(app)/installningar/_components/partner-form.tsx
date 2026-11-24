@@ -30,11 +30,15 @@ export function PartnerForm({
   agreements,
   vatReserveMode,
   reminderDays,
+  payoutsFrom,
+  refundsPaidVia,
   today,
 }: {
   agreements: readonly PartnerAgreementRow[];
   vatReserveMode: string;
   reminderDays: number;
+  payoutsFrom: string | null;
+  refundsPaidVia: "nayax" | "outside";
   today: string;
 }) {
   const router = useRouter();
@@ -47,6 +51,8 @@ export function PartnerForm({
   const [from, setFrom] = useState(current?.validFrom ?? today.slice(0, 8) + "01");
   const [mode, setMode] = useState(vatReserveMode);
   const [days, setDays] = useState(String(reminderDays));
+  const [startFrom, setStartFrom] = useState(payoutsFrom ?? "");
+  const [refunds, setRefunds] = useState<"nayax" | "outside">(refundsPaidVia);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -67,6 +73,8 @@ export function PartnerForm({
       const opt = await savePayoutOptions({
         vatReserveMode: mode,
         reminderDays: Number(days) || 0,
+        payoutsFrom: startFrom,
+        refundsPaidVia: refunds,
       });
       if (!opt.ok) {
         setError(opt.error);
@@ -123,6 +131,35 @@ export function PartnerForm({
               <option value="standard">Moms på försäljningen</option>
               <option value="none">Ingen</option>
             </Select>
+          )}
+        </Field>
+        <Field
+          label="Återbetalningar till kunder"
+          hint="Betalar du själv dras de från vinsten innan den delas."
+        >
+          {(p) => (
+            <Select
+              {...p}
+              value={refunds}
+              onChange={(e) => setRefunds(e.target.value === "nayax" ? "nayax" : "outside")}
+            >
+              <option value="outside">Jag betalar själv (Swish, kontant)</option>
+              <option value="nayax">Görs i Nayax</option>
+            </Select>
+          )}
+        </Field>
+        <Field
+          label="Utbetalningar från och med"
+          hint="Äldre utbetalningar från Nayax är redan betalda och visas inte. Tomt = alla."
+        >
+          {(p) => (
+            <Input
+              {...p}
+              type="date"
+              max={today}
+              value={startFrom}
+              onChange={(e) => setStartFrom(e.target.value)}
+            />
           )}
         </Field>
         <Field label="Påminn mig efter" hint="0 = ingen påminnelse.">

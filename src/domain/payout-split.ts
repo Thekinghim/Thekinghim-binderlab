@@ -32,7 +32,18 @@
  *    allocateToOwners (owners.ts). Ägaren får öret som blir över.
  * 7. Vid förlust bär partnern sin andel av förlusten. Partnerns rad blir aldrig negativ: det
  *    som saknas förs som skuld till nästa utbetalning (partnerCarryOutOre). En negativ rad för
- *    ägaren betyder "du behöver lägga till X kr" (NEGATIVE_OWNER).
+ *    ägaren betyder "du behöver lägga till X kr" (NEGATIVE_OWNER). Utan partneravtal för
+ *    perioden förs skulden vidare oförändrad (den försvinner aldrig).
+ * 8. Rättelser från låsta utbetalningar (src/server/payouts/allocate.ts): ändrades
+ *    underlaget efter att något betalats (t.ex. ett inköpspris lades till) räknas skillnaden
+ *    för partnern (inköp + vinstdel) och momsen ut där och läggs här: `partner.adjustOre`
+ *    läggs på partnerns rad (en minskning blir skuld enligt 7), `vat.adjustOre` på momsen
+ *    (momsraden blir aldrig negativ; det som inte ryms väntar, vatAdjustOre = det som
+ *    användes). Ägaren får resten som vanligt, så raderna summerar fortfarande exakt.
+ * 9. Återbetalningar till kunder som ägaren betalar själv (Swish/kontant, inte i Nayax,
+ *    `refundsOutsideOre`) dras från vinsten före delningen: ägaren får tillbaka dem på sin
+ *    rad. Görs återbetalningarna i Nayax är de redan dragna från beloppet (0 här).
+ * VMB-momsen räknas som i liggaren (ledger.ts) på order MED inköpspris (`pricedGrossOre`).
  */
 
 import {
@@ -66,6 +77,8 @@ export interface SplitSlice {
   readonly orders: number;
   readonly grossOre: number;
   readonly refundsOre: number;
+  /** Försäljningen för order MED inköpspris (VMB-marginalen, som liggaren). Saknas = grossOre. */
+  readonly pricedGrossOre?: number;
   /** Vårt inköp för de sålda packen (order med pris). */
   readonly costOre: number;
   readonly unpricedOrders: number;
@@ -104,13 +117,19 @@ export interface SplitInput {
     readonly mode: VatReserveMode;
     readonly carryInOre: number;
     readonly vatRateBp: number;
+    /** Rättelse från låsta utbetalningar (8), kan vara negativ. */
+    readonly adjustOre?: number;
   };
   /** Avsnitten med partnerns avtal, eller null när organisationen inte har något avtal. */
   readonly partner: {
     readonly segments: readonly PartnerSegment[];
     /** Partnerns skuld från förra utbetalningen (≤ 0). */
     readonly carryInOre: number;
+    /** Rättelse från låsta utbetalningar (8), kan vara negativ. */
+    readonly adjustOre?: number;
   } | null;
+  /** Återbetalningar som ägaren betalat utanför Nayax (9). */
+  readonly refundsOutsideOre?: number;
   /** Väntat från Nayax för dagarna (försäljning − återbetalningar − beräknad avgift). */
   readonly expectedNetOre: number;
 }
@@ -135,7 +154,18 @@ export type SplitWarning =
       readonly ratioBp: number;
       readonly medianBp: number;
     }
-  | { readonly code: "UNMAPPED_DEVICE"; readonly serial: string };
+  | { readonly code: "UNMAPPED_DEVICE"; readonly serial: string }
+  /** Butikens andel gick inte att räkna (t.ex. saknat inköpspris i vinstdelning). */
+  | { readonly code: "SHARE_UNKNOWN"; readonly storeId: string; readonly message: string }
+  /** Butiken har fått mer än avräkningen för en månad (rättas under Butiker). */
+  | {
+      readonly code: "STORE_OVERPAID";
+      readonly storeId: string;
+      readonly month: IsoMonth;
+      readonly ore: number;
+    }
+  /** Rättelser från låsta utbetalningar som ligger på den här. */
+  | { readonly code: "LOCKED_ADJUST"; readonly partnerOre: number; readonly vatOre: number };
 
 export type SplitWarningCode = SplitWarning["code"];
 
@@ -160,6 +190,8 @@ export interface PartnerComponents {
   readonly profitShareOre: number;
   readonly carryInOre: number;
   readonly carryOutOre: number;
+  /** Rättelse från låsta utbetalningar (8). */
+  readonly adjustOre?: number;
   readonly packs: number;
   readonly segments: readonly {
     readonly agreementId: string | null;
@@ -169,6 +201,8 @@ export interface PartnerComponents {
     readonly profitOre: number;
     readonly shareOre: number;
     readonly reimbOre: number;
+    /** Om avtalet betalar tillbaka inköpet (för att räkna en låst uträkning igen). */
+    readonly reimburse?: boolean;
   }[];
 }
 
@@ -176,6 +210,8 @@ export interface VatComponents {
   readonly mode: VatReserveMode;
   readonly carryInOre: number;
   readonly carryOutOre: number;
+  /** Rättelse från låsta utbetalningar som användes (8). */
+  readonly adjustOre?: number;
   readonly months: readonly {
     readonly month: string;
     readonly marginOre: number;
@@ -217,6 +253,13 @@ export interface SplitTotals {
   readonly vatCarryOutOre: number;
   readonly ownerOre: number;
   readonly profitOre: number;
+  /** Rättelser från låsta utbetalningar (8): det som lades på partnern och momsen. */
+  readonly partnerAdjustOre?: number;
+  readonly vatAdjustOre?: number;
+  /** Återbetalningar ägaren betalat själv (9). */
+  readonly refundsOutsideOre?: number;
+  /** Momsläget uträkningen gjordes med. */
+  readonly vatMode?: VatReserveMode;
   readonly grossOre: number;
   readonly refundsOre: number;
   readonly costOre: number;
@@ -271,6 +314,7 @@ export function splitPayout(input: SplitInput): SplitResult {
   let costOre = 0;
   let orders = 0;
   let unpriced = 0;
+  const vmbMode = input.vat.mode === "vmb";
   const liveMonths = new Set<IsoMonth>();
   const vatMonths = new Map<string, { grossOre: number; refundsOre: number; costOre: number }>();
   for (const s of input.slices) {
@@ -288,8 +332,10 @@ export function splitPayout(input: SplitInput): SplitResult {
     orders += s.orders;
     unpriced += s.unpricedOrders;
     const vm = vatMonths.get(s.month) ?? { grossOre: 0, refundsOre: 0, costOre: 0 };
+    const vatGross = vmbMode ? (s.pricedGrossOre ?? s.grossOre) : s.grossOre;
+    check(vatGross, "Försäljningen");
     vatMonths.set(s.month, {
-      grossOre: vm.grossOre + s.grossOre,
+      grossOre: vm.grossOre + vatGross,
       refundsOre: vm.refundsOre + s.refundsOre,
       costOre: vm.costOre + s.costOre,
     });
@@ -355,13 +401,19 @@ export function splitPayout(input: SplitInput): SplitResult {
   );
   const storesOre = storeLines.reduce((a, l) => a + l.amountOre, 0);
 
-  // 3. Momsen att spara.
-  const vat = vatReserve(
+  // 3. Momsen att spara, med rättelsen från låsta utbetalningar (8).
+  const vatBase = vatReserve(
     input.vat.mode,
     [...vatMonths.entries()].map(([month, v]) => ({ month, ...v })),
     input.vat.carryInOre,
     input.vat.vatRateBp,
   );
+  const vatAdjustIn = input.vat.adjustOre ?? 0;
+  check(vatAdjustIn, "Rättelsen av momsen");
+  const vatAdjustOre = Math.max(-vatBase.reserveOre, vatAdjustIn);
+  const vat = { ...vatBase, reserveOre: vatBase.reserveOre + vatAdjustOre };
+  const refundsOutsideOre = input.refundsOutsideOre ?? 0;
+  check(refundsOutsideOre, "Återbetalningarna");
 
   // 2. Inköpet tillbaka till partnern, och 4–5 vinsten och partnerns del.
   const segments = input.partner?.segments ?? [];
@@ -375,7 +427,7 @@ export function splitPayout(input: SplitInput): SplitResult {
       packs += seg.packs;
     }
   }
-  const profitOre = input.amountOre - storesOre - reimbOre - vat.reserveOre;
+  const profitOre = input.amountOre - storesOre - reimbOre - vat.reserveOre - refundsOutsideOre;
   const weights = segments.map((s) => Math.max(0, s.weightOre));
   const parts =
     segments.length === 0
@@ -397,15 +449,23 @@ export function splitPayout(input: SplitInput): SplitResult {
       profitOre: part,
       shareOre: share,
       reimbOre: seg.reimburse && seg.agreementId !== null ? seg.costOre : 0,
+      reimburse: seg.reimburse,
     };
   });
   const hasPartner = segments.some((s) => s.agreementId !== null);
-  const carryIn = hasPartner ? Math.min(0, input.partner?.carryInOre ?? 0) : 0;
-  const partnerRaw = reimbOre + profitShareOre + carryIn;
+  const adjustIn = input.partner?.adjustOre ?? 0;
+  check(adjustIn, "Rättelsen för partnern");
+  // Utan avtal för perioden används ingen rättelse (den väntar) och skulden förs vidare.
+  const partnerAdjustOre = hasPartner ? adjustIn : 0;
+  const carryIn = Math.min(0, input.partner?.carryInOre ?? 0);
+  const partnerRaw = hasPartner ? reimbOre + profitShareOre + carryIn + partnerAdjustOre : carryIn;
   const partnerOre = hasPartner ? Math.max(0, partnerRaw) : 0;
-  const partnerCarryOut = hasPartner && partnerRaw < 0 ? partnerRaw : 0;
+  const partnerCarryOut = partnerRaw < 0 ? partnerRaw : 0;
   if (partnerCarryOut < 0) warnings.push({ code: "PARTNER_CARRY", ore: partnerCarryOut });
   if (!hasPartner) warnings.push({ code: "NO_PARTNER_AGREEMENT" });
+  if (partnerAdjustOre !== 0 || vatAdjustOre !== 0) {
+    warnings.push({ code: "LOCKED_ADJUST", partnerOre: partnerAdjustOre, vatOre: vatAdjustOre });
+  }
 
   // 6. Ägaren får resten.
   const ownerOre = input.amountOre - storesOre - partnerOre - vat.reserveOre;
@@ -430,6 +490,7 @@ export function splitPayout(input: SplitInput): SplitResult {
         profitShareOre,
         carryInOre: carryIn,
         carryOutOre: partnerCarryOut,
+        adjustOre: partnerAdjustOre,
         packs,
         segments: segOut,
       },
@@ -442,6 +503,7 @@ export function splitPayout(input: SplitInput): SplitResult {
       mode: input.vat.mode,
       carryInOre: input.vat.mode === "vmb" ? Math.max(0, input.vat.carryInOre) : 0,
       carryOutOre: vat.carryOutOre,
+      adjustOre: vatAdjustOre,
       months: vat.months,
     },
   });
@@ -466,13 +528,17 @@ export function splitPayout(input: SplitInput): SplitResult {
       partnerReimbOre: hasPartner ? reimbOre : 0,
       partnerProfitOre: hasPartner ? profitShareOre : 0,
       partnerOre,
-      partnerCarryInOre: carryIn,
+      partnerCarryInOre: hasPartner ? carryIn : 0,
       partnerCarryOutOre: partnerCarryOut,
       vatOre: vat.reserveOre,
       vatCarryInOre: input.vat.mode === "vmb" ? Math.max(0, input.vat.carryInOre) : 0,
       vatCarryOutOre: vat.carryOutOre,
       ownerOre,
       profitOre,
+      partnerAdjustOre,
+      vatAdjustOre,
+      refundsOutsideOre,
+      vatMode: input.vat.mode,
       grossOre,
       refundsOre,
       costOre,

@@ -103,6 +103,7 @@ const VIEWER_OWN_ROWS_ONLY = [
   "payout_allocations",
   "payout_drafts",
   "payout_import_mappings",
+  "payout_summaries",
   "recipient_payments",
   // Veckosammanfattning: läsaren ser bara sina egna rader (hon får ingen).
   "weekly_summaries",

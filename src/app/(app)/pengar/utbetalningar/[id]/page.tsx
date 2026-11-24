@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "@/components/v2/badge";
@@ -38,7 +39,12 @@ export default async function PayoutPage({ params }: { params: Promise<{ id: str
     (s) => names.get(s) ?? "En butik",
     null,
   );
-  const badge = payoutBadge(p.unpaidLines, p.allocation !== null);
+  const badge = payoutBadge(
+    p.unpaidLines,
+    p.allocation !== null,
+    p.lines.find((l) => l.kind === "owner")?.leftOre ?? 0,
+  );
+  const error = page.recompute?.errors.find((e) => e.payoutId === p.id)?.message ?? null;
   const t = p.allocation?.totals;
 
   return (
@@ -57,7 +63,7 @@ export default async function PayoutPage({ params }: { params: Promise<{ id: str
             <div>
               <div className="lbl">
                 Pengar in{p.paidOn ? ` ${dayMonth(p.paidOn)}` : ""} · gäller {p.periodText}
-                {p.basis === "inferred" ? " (uträknat)" : ""}
+                {p.basis === "inferred" ? " (gissat)" : ""}
               </div>
               <div className="big" data-testid="amount-in">
                 {krExact(p.amountOre)}
@@ -67,7 +73,12 @@ export default async function PayoutPage({ params }: { params: Promise<{ id: str
           </div>
           {p.summary ? <p className="ut-summary">{p.summary}</p> : null}
           {p.basis === "inferred" && p.inferredNote ? (
-            <p className="ut-summary">{p.inferredNote}</p>
+            <p className="ut-summary">
+              {p.inferredNote}{" "}
+              <Link href="/ekonomi" className="ut-link">
+                Fel dagar? Arkivera och lägg in igen.
+              </Link>
+            </p>
           ) : null}
         </Card>
 
@@ -80,7 +91,7 @@ export default async function PayoutPage({ params }: { params: Promise<{ id: str
             <PayoutLines payout={p} today={page.today} />
           ) : (
             <div className="ut-empty">
-              Uträkningen kunde inte göras än. Försök igen om en stund.
+              {error ?? "Uträkningen kunde inte göras än. Försök igen om en stund."}
             </div>
           )}
         </Card>
@@ -96,11 +107,17 @@ export default async function PayoutPage({ params }: { params: Promise<{ id: str
                 ["Till butikerna", -t.storesOre],
                 ["Inköpet tillbaka till partnern", -t.partnerReimbOre],
                 ["Moms att spara", -t.vatOre],
+                ...(t.refundsOutsideOre
+                  ? [["Återbetalningar du gjort själv", -t.refundsOutsideOre] as const]
+                  : []),
                 ["Vinst att dela", t.profitOre],
+                ...(t.partnerAdjustOre
+                  ? [["Rättelse till partnern från tidigare", -t.partnerAdjustOre] as const]
+                  : []),
               ].map(([label, ore]) => (
                 <div key={label as string} className="ut-row">
                   <div className="nm">{label}</div>
-                  <div className={(ore as number) < 0 ? "am" : "am"}>{krExact(ore as number)}</div>
+                  <div className="am">{krExact(ore as number)}</div>
                 </div>
               ))}
             </div>

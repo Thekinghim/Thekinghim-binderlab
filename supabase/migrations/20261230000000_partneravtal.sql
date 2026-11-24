@@ -12,7 +12,9 @@
 --    utbetalning delas dagarna (src/domain/payout-split.ts). Arkiveras, raderas aldrig.
 -- 2. organization_settings.vat_reserve_mode: momsen att spara (auto, vmb, standard,
 --    none; regeln står i src/domain/vat-reserve.ts). payout_reminder_days: påminn om
---    obetalda belopp efter så många dagar (0 = av).
+--    obetalda belopp efter så många dagar (0 = av). payouts_from: utbetalningar räknas
+--    från och med den dagen (organisationer med utbetalningar sedan tidigare får i dag).
+--    refunds_paid_via: var återbetalningarna till kunder görs (standard: av ägaren själv).
 --
 -- Rättigheter: bara ägare och admin läser och skriver (partnerns andel är känslig).
 -- Läsaren, påfyllaren och butiksportalen ser inget; ingen portal_*-funktion läser
@@ -75,12 +77,30 @@ alter table public.organization_settings
   add column vat_reserve_mode text not null default 'auto'
     check (vat_reserve_mode in ('auto', 'vmb', 'standard', 'none')),
   add column payout_reminder_days integer not null default 7
-    check (payout_reminder_days between 0 and 90);
+    check (payout_reminder_days between 0 and 90),
+  add column payouts_from date,
+  add column refunds_paid_via text not null default 'outside'
+    check (refunds_paid_via in ('nayax', 'outside'));
 
 comment on column public.organization_settings.vat_reserve_mode is
   'Momsen att spara från Nayax-utbetalningarna (src/domain/vat-reserve.ts).';
 comment on column public.organization_settings.payout_reminder_days is
   'Påminn om obetalda belopp från utbetalningarna efter så många dagar (0 = av).';
 
-grant update (vat_reserve_mode, payout_reminder_days)
+comment on column public.organization_settings.payouts_from is
+  'Utbetalningar från Nayax räknas och delas från och med den dagen (dagen pengarna kom). '
+  'Äldre utbetalningar (t.ex. importerade på Ekonomi och redan betalade på annat sätt) får '
+  'ingen uträkning. null = alla.';
+comment on column public.organization_settings.refunds_paid_via is
+  'Återbetalningar till kunder: nayax = görs i Nayax (dras från utbetalningen), outside = '
+  'ägaren betalar själv (Swish/kontant) och de dras från vinsten före delningen.';
+
+-- Organisationer som redan har utbetalningar (Ekonomi) börjar i dag: det gamla är betalt
+-- på annat sätt och ska inte synas som "att betala". Ändras under Inställningar.
+update public.organization_settings os
+  set payouts_from = (now() at time zone 'Europe/Stockholm')::date
+where exists (select 1 from public.payouts p
+              where p.organization_id = os.organization_id and p.archived_at is null);
+
+grant update (vat_reserve_mode, payout_reminder_days, payouts_from, refunds_paid_via)
   on table public.organization_settings to authenticated;

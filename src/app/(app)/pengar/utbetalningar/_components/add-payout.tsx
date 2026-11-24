@@ -32,6 +32,7 @@ type Extracted = {
   periodTo: string | null;
   aiFields?: readonly string[];
   confidence?: string;
+  others?: readonly unknown[];
 };
 type Upload =
   | {
@@ -51,9 +52,12 @@ type Upload =
   | { kind: "imported"; message: string }
   | { kind: "manual"; message: string };
 
-const FIELDS: readonly { key: string; label: string; need?: true }[] = [
+/** De två som behövs syns direkt; resten under "Fler kolumner (valfritt)". */
+const MAIN_FIELDS: readonly { key: string; label: string; need?: true }[] = [
   { key: "amount", label: "Belopp in", need: true },
   { key: "paid_on", label: "Dagen pengarna kom" },
+];
+const MORE_FIELDS: readonly { key: string; label: string }[] = [
   { key: "fees", label: "Avgift" },
   { key: "gross", label: "Försäljning före avgift" },
   { key: "period_from", label: "Period från" },
@@ -72,9 +76,9 @@ function warningText(w: { code: string; [k: string]: unknown }): string | null {
     case "NO_AMOUNT":
       return "Vi hittade inget belopp. Skriv det själv.";
     case "MANY_PAYOUTS":
-      return `Filen har ${String(w.rows)} utbetalningar. Vi tog den första; lägg in de andra för sig.`;
+      return null;
     case "TRUNCATED":
-      return `Filen har ${String(w.rows)} köp; de första 2 000 sparas.`;
+      return `Filen har ${String(w.rows)} köp. Summan gäller alla, men bara de första 2 000 sparas som rader.`;
     case "UNMAPPED_DEVICE":
       return `Automaten ${String(w.serial)} i rapporten finns inte hos oss.`;
     default:
@@ -113,6 +117,8 @@ export function AddPayout({
   const [note, setNote] = useState("");
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [remember, setRemember] = useState(true);
+  /** Flera utbetalningar i samma fil: vilken av hur många. */
+  const [step, setStep] = useState<{ at: number; total: number } | null>(null);
   const [expected, setExpected] = useState<{
     key: string;
     grossOre: number;
@@ -131,6 +137,7 @@ export function AddPayout({
     setTo("");
     setNote("");
     setExpected(null);
+    setStep(null);
   };
 
   const fill = (e: Extracted) => {
@@ -186,6 +193,8 @@ export function AddPayout({
         );
       } else {
         fill(data.extracted);
+        const n = data.extracted.others?.length ?? 0;
+        setStep(n > 0 ? { at: 1, total: n + 1 } : null);
       }
       setUpload(data);
     });
@@ -205,7 +214,11 @@ export function AddPayout({
         return;
       }
       const data = res.data as Upload;
-      if (data.kind === "draft") fill(data.extracted);
+      if (data.kind === "draft") {
+        fill(data.extracted);
+        const n = data.extracted.others?.length ?? 0;
+        setStep(n > 0 ? { at: 1, total: n + 1 } : null);
+      }
       setUpload(data);
     });
   };
@@ -240,6 +253,26 @@ export function AddPayout({
           : await registerPayout(input);
       if (!res.ok) {
         setError(res.error);
+        return;
+      }
+      const next = res.data.next;
+      if (next) {
+        // Nästa utbetalning i samma fil: samma ark, nya siffror.
+        const at = (step?.at ?? 1) + 1;
+        const total = step?.total ?? next.left + 1;
+        toastV2(`${at - 1} av ${total} sparad`, { detail: "Kontrollera nästa." });
+        setUpload({
+          kind: "draft",
+          draftId: next.draftId,
+          extracted: next.extracted,
+          warnings: next.warnings,
+          extractor: "deterministic",
+        });
+        fill(next.extracted);
+        setNote("");
+        setExpected(null);
+        setStep({ at, total });
+        router.refresh();
         return;
       }
       setOpen(false);
@@ -290,6 +323,7 @@ export function AddPayout({
               size="lg"
               variant="act"
               pending={pending}
+              disabled={!mapping.amount}
               onClick={applyMapping}
               data-testid="mapping-next"
             >
@@ -303,7 +337,11 @@ export function AddPayout({
               onClick={save}
               data-testid="payout-save"
             >
-              {draft ? "Stämmer, spara" : "Spara"}
+              {draft
+                ? step && step.at < step.total
+                  ? "Stämmer, nästa"
+                  : "Stämmer, spara"
+                : "Spara"}
             </Button>
           ) : null}
         </>
@@ -346,33 +384,53 @@ export function AddPayout({
 
         {upload?.kind === "mapping" ? (
           <div className="ut-map">
-            {FIELDS.map((f) => (
-              <Field key={f.key} label={f.label + (f.need ? "" : " (valfri)")}>
-                {(p) => (
-                  <Select
-                    {...p}
-                    value={mapping[f.key] ?? ""}
-                    data-testid={`map-${f.key}`}
-                    onChange={(e) =>
-                      setMapping((m) => {
-                        const next = { ...m };
-                        if (e.target.value) next[f.key] = e.target.value;
-                        else delete next[f.key];
-                        return next;
-                      })
-                    }
-                  >
-                    <option value="">Finns inte</option>
-                    {upload.headers.map((h, i) => (
-                      <option key={`${h}-${i}`} value={h}>
-                        {h}
-                        {upload.samples[0]?.[i] ? ` (t.ex. ${upload.samples[0][i]})` : ""}
-                      </option>
+            {upload.samples.length > 0 ? (
+              <div className="ut-preview" role="region" aria-label="De första raderna i filen">
+                <table>
+                  <thead>
+                    <tr>
+                      {upload.headers.map((h, i) => (
+                        <th key={`${h}-${i}`}>{h || "–"}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {upload.samples.slice(0, 3).map((r, n) => (
+                      <tr key={n}>
+                        {upload.headers.map((_, i) => (
+                          <td key={i}>{r[i] ?? ""}</td>
+                        ))}
+                      </tr>
                     ))}
-                  </Select>
-                )}
-              </Field>
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            {MAIN_FIELDS.map((f) => (
+              <ColumnSelect
+                key={f.key}
+                field={f.key}
+                label={f.label + (f.need ? "" : " (valfri)")}
+                headers={upload.headers}
+                samples={upload.samples}
+                mapping={mapping}
+                setMapping={setMapping}
+              />
             ))}
+            <details className="ut-more">
+              <summary>Fler kolumner (valfritt)</summary>
+              {MORE_FIELDS.map((f) => (
+                <ColumnSelect
+                  key={f.key}
+                  field={f.key}
+                  label={f.label}
+                  headers={upload.headers}
+                  samples={upload.samples}
+                  mapping={mapping}
+                  setMapping={setMapping}
+                />
+              ))}
+            </details>
             <label className="ut-check">
               <input
                 type="checkbox"
@@ -386,6 +444,11 @@ export function AddPayout({
 
         {showForm ? (
           <>
+            {step ? (
+              <p className="ut-hint" data-testid="payout-step">
+                Filen har {step.total} utbetalningar. Det här är {step.at} av {step.total}.
+              </p>
+            ) : null}
             {draft?.extractor === "ai" ? (
               <p className="ut-hint">
                 AI har läst rapporten. Kontrollera fälten som är märkta innan du sparar.
@@ -502,5 +565,49 @@ export function AddPayout({
         ) : null}
       </div>
     </Sheet>
+  );
+}
+
+function ColumnSelect({
+  field,
+  label,
+  headers,
+  samples,
+  mapping,
+  setMapping,
+}: {
+  field: string;
+  label: string;
+  headers: readonly string[];
+  samples: readonly (readonly string[])[];
+  mapping: Record<string, string>;
+  setMapping: (fn: (m: Record<string, string>) => Record<string, string>) => void;
+}) {
+  return (
+    <Field label={label}>
+      {(p) => (
+        <Select
+          {...p}
+          value={mapping[field] ?? ""}
+          data-testid={`map-${field}`}
+          onChange={(e) =>
+            setMapping((m) => {
+              const next = { ...m };
+              if (e.target.value) next[field] = e.target.value;
+              else delete next[field];
+              return next;
+            })
+          }
+        >
+          <option value="">Finns inte</option>
+          {headers.map((h, i) => (
+            <option key={`${h}-${i}`} value={h}>
+              {h}
+              {samples[0]?.[i] ? ` (t.ex. ${samples[0][i]})` : ""}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
   );
 }

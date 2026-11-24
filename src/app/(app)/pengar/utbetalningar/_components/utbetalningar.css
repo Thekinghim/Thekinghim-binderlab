@@ -8,6 +8,13 @@
     gap: 16px;
     grid-template-columns: minmax(0, 1fr);
     max-width: 1100px;
+    /* Sista raden ("Kvar till dig") ska inte hamna bakom menyn längst ner på telefonen. */
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  .ut-link {
+    color: var(--v2-act-text, inherit);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
   @media (min-width: 1024px) {
     .ut {
@@ -82,14 +89,16 @@
     color: var(--v2-crit-text);
   }
   .ut-row > div:first-child {
-    grid-row: span 2;
     align-self: center;
   }
+  /* Telefonen: namn och belopp på en rad, knappen i full bredd under, sedan Varför?. */
   .ut-row .go {
-    grid-column: 2;
+    grid-column: 1 / -1;
     display: flex;
-    justify-content: flex-end;
     gap: 8px;
+  }
+  .ut-row .go > * {
+    flex: 1;
   }
   .ut-row .go:empty {
     display: none;
@@ -103,6 +112,10 @@
     }
     .ut-row .go {
       grid-column: auto;
+      justify-content: flex-end;
+    }
+    .ut-row .go > * {
+      flex: none;
     }
   }
   .ut-row.sum {
@@ -246,6 +259,50 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+  .ut-preview {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    border: 1px solid var(--v2-line2);
+    border-radius: var(--v2-r-md);
+    font-size: var(--v2-t-xs);
+  }
+  .ut-preview table {
+    border-collapse: collapse;
+    min-width: 100%;
+  }
+  .ut-preview th,
+  .ut-preview td {
+    padding: 6px 8px;
+    text-align: left;
+    white-space: nowrap;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid var(--v2-line2);
+  }
+  .ut-preview th {
+    color: var(--v2-mute);
+    font-weight: 600;
+  }
+  .ut-more {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ut-more summary {
+    cursor: pointer;
+    color: var(--v2-mute);
+    font-size: var(--v2-t-sm);
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .ut-more[open] > :not(summary) + :not(summary) {
+    margin-top: 10px;
   }
   .ut-check {
     display: flex;

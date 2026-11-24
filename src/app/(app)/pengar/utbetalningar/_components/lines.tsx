@@ -45,7 +45,7 @@ export function RecipientList({
               verb={r.kind === "vat_reserve" ? "sparad" : "betald"}
               trigger={
                 <Button size="md" variant="act" touch data-testid={`pay-${r.kind}`}>
-                  {r.kind === "vat_reserve" ? "Spara" : "Betala"}
+                  {r.kind === "vat_reserve" ? "Lagt undan" : "Betala"}
                 </Button>
               }
             />
@@ -118,6 +118,13 @@ function Why({ line, payout }: { line: LineView; payout: PayoutView }) {
     if (p.carryInOre < 0) {
       items.push({ label: "Förlust från förra gången", amount: krExact(p.carryInOre) });
     }
+    if (p.adjustOre) {
+      items.push({
+        label: "Rättelse från tidigare utbetalningar",
+        detail: "Ett inköpspris ändrades efter att de betalats",
+        amount: `${p.adjustOre > 0 ? "+" : "−"}${krExact(Math.abs(p.adjustOre))}`,
+      });
+    }
   }
   if (line.vat) {
     for (const m of line.vat.months) {
@@ -137,12 +144,20 @@ function Why({ line, payout }: { line: LineView; payout: PayoutView }) {
         amount: krExact(-line.vat.carryInOre),
       });
     }
-    if (line.vat.months.length === 0) items.push({ label: "Ingen moms att spara", amount: "0 kr" });
+    if (line.vat.adjustOre) {
+      items.push({
+        label: "Rättelse från tidigare utbetalningar",
+        amount: `${line.vat.adjustOre > 0 ? "+" : "−"}${krExact(Math.abs(line.vat.adjustOre))}`,
+      });
+    }
+    if (line.vat.months.length === 0 && !line.vat.adjustOre) {
+      items.push({ label: "Ingen moms att spara", amount: "0 kr" });
+    }
   }
   if (line.owner) {
     items.push({
       label: "Vinsten",
-      detail: "Pengar in − butikerna − inköpet − momsen",
+      detail: "Pengar in − butikerna − inköpet − momsen − det du betalat tillbaka till kunder",
       amount: krExact(line.owner.profitOre),
     });
     if (line.owner.partnerShareOre !== 0) {

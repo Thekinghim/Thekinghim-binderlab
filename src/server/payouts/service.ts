@@ -31,6 +31,7 @@ import {
 } from "@/domain";
 import { sha256Hex } from "@/import/hash";
 import { parseCsvTable } from "@/import/csv-table";
+import { ImportValidationError } from "@/import/errors";
 import type { FileStore } from "@/import/file-store";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { payoutFileStore } from "@/server/accounting/contract-files";
@@ -67,9 +68,11 @@ import {
   detectColumns,
   extractFromRows,
   headerSignature,
+  checkSums,
   mappingFromColumns,
   payoutMappingSchema,
   sampleRows,
+  trimTable,
   type ExtractedPayout,
   type ExtractWarning,
   type PayoutMapping,
@@ -83,14 +86,15 @@ import {
   templateSummary,
   type SummaryWriter,
 } from "./summary";
-import { readXlsxTable, isXlsx } from "./xlsx";
+import { readXlsxTable, isXlsx, XlsxTooLargeError } from "./xlsx";
 
 export { PayoutError };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PAYOUT_ORE = 10_000_000_000;
-const MAX_TABLE_ROWS = 5000;
+/** Fler rader än så läses inte (en hel månads köp i 30 automater ryms). */
+const MAX_TABLE_ROWS = 20_000;
 
 async function asOperator<T>(viewer: Viewer, fn: (tx: Tx) => Promise<T>): Promise<T> {
   await requireRoleFor(viewer.user, viewer.organization.id, OPERATOR_ROLES);
@@ -177,7 +181,7 @@ export async function expectedForPeriodFor(
     const ctx = await loadOrgPayoutContextTx(tx, viewer.organization.id);
     const groups = await loadDayTotalsTx(tx, ctx, period.start, period.end);
     const sum = (f: (g: (typeof groups)[number]) => number) => groups.reduce((a, g) => a + f(g), 0);
-    const netOre = [...expectedByDay(groups).values()].reduce((a, v) => a + v, 0);
+    const netOre = [...expectedByDay(groups, ctx.refundsVia).values()].reduce((a, v) => a + v, 0);
     return {
       grossOre: sum((g) => g.grossOre),
       feeOre: sum((g) => g.feeOre),
@@ -208,6 +212,13 @@ export interface RegisterPayoutResult {
   readonly period: Period;
   readonly inferred: boolean;
   readonly note: string | null;
+  /** Nästa utbetalning i samma fil (en sammanställning med flera), som ett nytt utkast. */
+  readonly next?: {
+    readonly draftId: string;
+    readonly extracted: ExtractedPayout;
+    readonly warnings: readonly ExtractWarning[];
+    readonly left: number;
+  } | null;
 }
 
 async function inferPeriodTx(
@@ -231,7 +242,7 @@ async function inferPeriodTx(
   }
   const groups = await loadDayTotalsTx(tx, ctx, from, to);
   const r = inferCoverage({
-    days: [...expectedByDay(groups).entries()].map(([date, expectedNetOre]) => ({
+    days: [...expectedByDay(groups, ctx.refundsVia).entries()].map(([date, expectedNetOre]) => ({
       date,
       expectedNetOre,
     })),
@@ -290,6 +301,22 @@ export async function registerPayoutTx(
     const inferred = await inferPeriodTx(tx, orgId, input.paidOn, input.amountOre);
     period = inferred.period;
     inferredNote = inferred.note;
+  }
+  // Före en betald (låst) utbetalning går inte: dess underskott och justeringar bygger på
+  // allt före den (allocate.ts).
+  const [later] = Array.from(
+    await tx.execute(sql`
+      select p.reference from public.payout_allocations a
+      join public.payouts p on p.organization_id = a.organization_id and p.id = a.payout_id
+      where a.organization_id = ${orgId}::uuid and a.status = 'locked'
+        and a.superseded_at is null and p.archived_at is null
+        and p.period_start > ${period.start}::date
+      limit 1`),
+  ) as { reference: string }[];
+  if (later) {
+    throw new PayoutError(
+      `Det finns redan en betald utbetalning efter de dagarna (${later.reference}). Ångra betalningarna på den först, eller välj dagar efter den.`,
+    );
   }
   const active = await queryPayouts(tx, orgId, null);
   const clash = overlappingPayout(active, period);
@@ -387,6 +414,8 @@ export type UploadResult =
 interface StoredTable {
   readonly headers: string[];
   readonly rows: string[][];
+  /** Excel-filen hade fler rader än vi läser (xlsx.ts). */
+  readonly truncated?: boolean;
 }
 
 type FileKind = "csv" | "xlsx" | "pdf" | "image";
@@ -403,11 +432,10 @@ function fileKind(name: string, bytes: Uint8Array, type: string): FileKind | nul
     return "pdf";
   }
   if (isXlsx(bytes)) return "xlsx";
-  if (/^image\/(png|jpeg|webp|gif)$/.test(type) || /\.(png|jpe?g|webp|gif|heic)$/.test(lower)) {
+  if (/^image\/(png|jpeg|webp|gif)$/.test(type) || /\.(png|jpe?g|webp|gif)$/.test(lower)) {
     return "image";
   }
-  if (lower.endsWith(".csv") || lower.endsWith(".txt") || type.startsWith("text/") || type === "")
-    return "csv";
+  if (lower.endsWith(".csv") || lower.endsWith(".txt") || type.startsWith("text/")) return "csv";
   return null;
 }
 
@@ -487,7 +515,7 @@ async function tableDraftTx(
     ? columnsFromMapping(table.headers, parsedSaved.data)
     : detectColumns(table.headers);
   const known = parsedSaved?.success === true;
-  const stored = { table: { headers: table.headers, rows: table.rows.slice(0, MAX_TABLE_ROWS) } };
+  const stored = { table: { headers: table.headers, rows: table.rows } };
   // Gissningen behöver bekräftas i kolumnsteget, utom när den hittar allt i en sammanfattning.
   const confident =
     known ||
@@ -518,7 +546,12 @@ async function tableDraftTx(
     source: kind,
     fileName,
     storagePath: null,
-    extracted: { ...stored, payout: extracted, mapping: mappingFromColumns(table.headers, cols) },
+    // Bara de använda kolumnerna sparas (filen kan ha kunduppgifter).
+    extracted: {
+      table: trimTable(table, cols),
+      payout: extracted,
+      mapping: mappingFromColumns(table.headers, cols),
+    },
     extractor: "deterministic",
     warnings: all,
   });
@@ -547,8 +580,13 @@ export async function uploadPayoutFileFor(
     throw new PayoutError("Filen är för stor (högst 10 MB).");
   const name = file.name.trim().slice(0, 255) || "rapport";
   const kind = fileKind(name, file.bytes, file.type ?? "");
-  if (!kind)
-    throw new PayoutError("Filtypen går inte att läsa. Ladda upp CSV, Excel, PDF eller en bild.");
+  if (!kind) {
+    throw new PayoutError(
+      /\.hei[cf]$/i.test(name)
+        ? "iPhone-bilder (HEIC) går inte att läsa. Ta en skärmbild av rapporten och ladda upp den."
+        : "Filtypen går inte att läsa. Spara som Excel (.xlsx) eller CSV, eller ladda upp en PDF eller bild.",
+    );
+  }
 
   const ai = async (input: ReaderInput, source: FileKind): Promise<UploadResult> => {
     const result = await readPayoutWithAi({
@@ -651,7 +689,17 @@ export async function uploadPayoutFileFor(
       if (error instanceof AccountingError) throw new PayoutError(error.message);
       // Okända rubriker: kolumnsteget nedan.
     }
-    const csv = parseCsvTable(file.bytes);
+    let csv: ReturnType<typeof parseCsvTable>;
+    try {
+      csv = parseCsvTable(file.bytes);
+    } catch (error) {
+      if (error instanceof ImportValidationError) {
+        throw new PayoutError(
+          "Filen går inte att läsa. Spara den som CSV (UTF-8) eller Excel och försök igen.",
+        );
+      }
+      throw error;
+    }
     const [header, ...records] = csv.records;
     if (!header) throw new PayoutError("Filen saknar rader.");
     table = {
@@ -659,10 +707,20 @@ export async function uploadPayoutFileFor(
       rows: records.filter((r) => !r.error).map((r) => r.cells),
     };
   } else {
-    table = await readXlsxTable(file.bytes);
+    try {
+      table = await readXlsxTable(file.bytes);
+    } catch (error) {
+      if (error instanceof XlsxTooLargeError) throw new PayoutError(error.message);
+      throw new PayoutError("Excel-filen går inte att läsa. Spara den som CSV och försök igen.");
+    }
     if (table.headers.length === 0) throw new PayoutError("Excel-filen saknar rader.");
   }
   if (table.rows.length === 0) throw new PayoutError("Filen saknar rader under rubrikerna.");
+  if (table.rows.length > MAX_TABLE_ROWS || table.truncated) {
+    throw new PayoutError(
+      "Filen har fler än 20 000 rader. Ladda upp Nayax sammanställning för utbetalningen i stället, eller dela upp filen.",
+    );
+  }
   return asOperator(viewer, (tx) => tableDraftTx(tx, orgId, kind, name, table));
 }
 
@@ -701,7 +759,8 @@ export async function applyMappingFor(
     await tx
       .update(s.payoutDrafts)
       .set({
-        extracted: { table, payout: extracted, mapping: parsed.data },
+        // Bara de valda kolumnerna sparas (filen kan ha kunduppgifter).
+        extracted: { table: trimTable(table, cols), payout: extracted, mapping: parsed.data },
         warnings: all as unknown[],
       })
       .where(and(eq(s.payoutDrafts.organizationId, orgId), eq(s.payoutDrafts.id, draftId)));
@@ -804,14 +863,44 @@ export async function confirmDraftFor(
       today,
       now,
     );
+    // Filens rader behövs inte längre (de kan ha kunduppgifter).
     await tx
       .update(s.payoutDrafts)
-      .set({ status: "confirmed", payoutId: r.payoutId })
+      .set({
+        status: "confirmed",
+        payoutId: r.payoutId,
+        extracted: payout ? { payout: { ...payout, others: [] } } : {},
+      })
       .where(and(eq(s.payoutDrafts.organizationId, orgId), eq(s.payoutDrafts.id, draftId)));
-    return r;
+    return { ...r, next: await nextDraftTx(tx, orgId, draft, payout) };
   });
   await summarizeQuietly(viewer, result.payoutId, now, deps.summaryWriter);
   return result;
+}
+
+/** Nästa utbetalning i samma fil (ExtractedPayout.others) som ett eget utkast. */
+async function nextDraftTx(
+  tx: Tx,
+  orgId: string,
+  draft: { source: string; fileName: string | null; extractor: "deterministic" | "ai" },
+  payout: ExtractedPayout | null,
+): Promise<RegisterPayoutResult["next"]> {
+  const others = payout?.others ?? [];
+  if (others.length === 0) return null;
+  const [first, ...rest] = others;
+  const warnings: ExtractWarning[] = [];
+  if (first!.amountOre === null) warnings.push({ code: "NO_AMOUNT" });
+  checkSums(first!, warnings);
+  const extracted: ExtractedPayout = { ...first!, others: rest };
+  const draftId = await insertDraft(tx, orgId, {
+    source: draft.source as FileKind,
+    fileName: draft.fileName,
+    storagePath: null,
+    extracted: { payout: extracted },
+    extractor: draft.extractor,
+    warnings,
+  });
+  return { draftId, extracted, warnings, left: others.length };
 }
 
 export async function discardDraftFor(viewer: Viewer, draftId: string): Promise<void> {
@@ -820,7 +909,7 @@ export async function discardDraftFor(viewer: Viewer, draftId: string): Promise<
   await asOperator(viewer, async (tx) => {
     await tx
       .update(s.payoutDrafts)
-      .set({ status: "discarded" })
+      .set({ status: "discarded", extracted: {} })
       .where(
         and(
           eq(s.payoutDrafts.organizationId, orgId),
@@ -917,9 +1006,17 @@ export async function summarizePayoutTx(
     }
   }
   await tx
-    .update(s.payouts)
-    .set({ aiSummary: text.slice(0, 1000), aiSummaryAt: options.now })
-    .where(and(eq(s.payouts.organizationId, orgId), eq(s.payouts.id, payoutId)));
+    .insert(s.payoutSummaries)
+    .values({
+      organizationId: orgId,
+      payoutId,
+      summary: text.slice(0, 1000),
+      writtenAt: options.now,
+    })
+    .onConflictDoUpdate({
+      target: [s.payoutSummaries.organizationId, s.payoutSummaries.payoutId],
+      set: { summary: text.slice(0, 1000), writtenAt: options.now },
+    });
   return text;
 }
 
@@ -972,6 +1069,9 @@ export interface PayoutSettings {
   }[];
   readonly vatReserveMode: "auto" | "vmb" | "standard" | "none";
   readonly reminderDays: number;
+  /** Utbetalningar räknas från och med den dagen (null = alla). */
+  readonly payoutsFrom: IsoDate | null;
+  readonly refundsPaidVia: "nayax" | "outside";
 }
 
 export async function loadPayoutSettingsFor(viewer: Viewer): Promise<PayoutSettings> {
@@ -994,6 +1094,8 @@ export async function loadPayoutSettingsFor(viewer: Viewer): Promise<PayoutSetti
       .select({
         mode: s.organizationSettings.vatReserveMode,
         days: s.organizationSettings.payoutReminderDays,
+        from: s.organizationSettings.payoutsFrom,
+        refunds: s.organizationSettings.refundsPaidVia,
       })
       .from(s.organizationSettings)
       .where(eq(s.organizationSettings.organizationId, orgId));
@@ -1001,6 +1103,8 @@ export async function loadPayoutSettingsFor(viewer: Viewer): Promise<PayoutSetti
       agreements,
       vatReserveMode: settings?.mode ?? "auto",
       reminderDays: settings?.days ?? 7,
+      payoutsFrom: (settings?.from as IsoDate | null | undefined) ?? null,
+      refundsPaidVia: settings?.refunds ?? "outside",
     };
   });
 }
@@ -1067,9 +1171,23 @@ export async function removePartnerAgreementFor(
 
 export async function savePayoutOptionsFor(
   viewer: Viewer,
-  input: { readonly vatReserveMode: string; readonly reminderDays: number },
+  input: {
+    readonly vatReserveMode: string;
+    readonly reminderDays: number;
+    /** Utelämnat = oförändrat; "" = alla utbetalningar. */
+    readonly payoutsFrom?: string | null;
+    readonly refundsPaidVia?: string;
+  },
   now: Date = new Date(),
 ): Promise<void> {
+  const refunds = input.refundsPaidVia;
+  if (refunds !== undefined && refunds !== "nayax" && refunds !== "outside") {
+    throw new PayoutError("Välj var återbetalningarna görs.");
+  }
+  const from = input.payoutsFrom === undefined ? undefined : input.payoutsFrom || null;
+  if (from !== undefined && from !== null && !validDate(from)) {
+    throw new PayoutError("Välj dagen utbetalningarna räknas från.");
+  }
   const mode = input.vatReserveMode;
   if (mode !== "auto" && mode !== "vmb" && mode !== "standard" && mode !== "none") {
     throw new PayoutError("Välj hur momsen ska sparas.");
@@ -1079,9 +1197,31 @@ export async function savePayoutOptionsFor(
   }
   const orgId = viewer.organization.id;
   await asOperator(viewer, async (tx) => {
+    if (from) {
+      // En betald utbetalning får inte hamna utanför (då försvinner betalningarna).
+      const [paid] = Array.from(
+        await tx.execute(sql`
+          select p.reference from public.payout_allocations a
+          join public.payouts p on p.organization_id = a.organization_id and p.id = a.payout_id
+          where a.organization_id = ${orgId}::uuid and a.status = 'locked'
+            and a.superseded_at is null and p.archived_at is null
+            and coalesce(p.paid_on, (p.created_at at time zone 'UTC')::date) < ${from}::date
+          limit 1`),
+      ) as { reference: string }[];
+      if (paid) {
+        throw new PayoutError(
+          `Utbetalningen ${paid.reference} är redan betald och kom före den dagen. Välj en tidigare dag.`,
+        );
+      }
+    }
     const updated = await tx
       .update(s.organizationSettings)
-      .set({ vatReserveMode: mode, payoutReminderDays: input.reminderDays })
+      .set({
+        vatReserveMode: mode,
+        payoutReminderDays: input.reminderDays,
+        ...(from !== undefined ? { payoutsFrom: from } : {}),
+        ...(refunds !== undefined ? { refundsPaidVia: refunds } : {}),
+      })
       .where(eq(s.organizationSettings.organizationId, orgId))
       .returning({ id: s.organizationSettings.id });
     if (updated.length === 0) throw new PayoutError("Inställningarna finns inte.");
@@ -1131,17 +1271,19 @@ export async function runPayoutJob(
       const r = await db.transaction((tx) => recomputeAllocationsTx(tx, org.id, now));
       recomputed += r.computed;
       errors += r.errors.length;
-      const missing = await db
-        .select({ id: s.payouts.id })
-        .from(s.payouts)
-        .where(
-          and(
-            eq(s.payouts.organizationId, org.id),
-            isNull(s.payouts.archivedAt),
-            isNull(s.payouts.aiSummary),
-          ),
-        )
-        .limit(10);
+      // Bara utbetalningar med en uträkning (äldre än "från och med" har ingen).
+      const missing = Array.from(
+        await db.execute(sql`
+          select p.id from public.payouts p
+          join public.payout_allocations a
+            on a.organization_id = p.organization_id and a.payout_id = p.id
+           and a.superseded_at is null
+          where p.organization_id = ${org.id}::uuid and p.archived_at is null
+            and not exists (select 1 from public.payout_summaries m
+                            where m.organization_id = p.organization_id and m.payout_id = p.id)
+          order by p.period_end desc
+          limit 10`),
+      ) as { id: string }[];
       const writer =
         options.writer !== undefined
           ? options.writer
@@ -1165,7 +1307,7 @@ export async function runPayoutJob(
   }
   const expired = Array.from(
     await db.execute(sql`
-      update public.payout_drafts set status = 'discarded'
+      update public.payout_drafts set status = 'discarded', extracted = '{}'::jsonb
       where status = 'open' and created_at < ${new Date(now.getTime() - DRAFT_DAYS * 86_400_000).toISOString()}::timestamptz
       returning id`),
   ).length;

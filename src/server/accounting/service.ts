@@ -1047,7 +1047,40 @@ export async function archivePayoutFor(
   const orgId = viewer.organization.id;
   const note = input.note.trim();
   if (!note) throw new AccountingError("Skriv varför utbetalningen arkiveras.");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.id)) {
+    throw new AccountingError("Utbetalningen finns inte eller är redan arkiverad.");
+  }
   return asRole(viewer, OPERATOR_ROLES, async (tx) => {
+    // Databasen stoppar också (payouts_archive_guard); här med ett tydligt fel.
+    const blocked = Array.from(
+      await tx.execute(sql`
+        select exists (
+          select 1 from public.payout_allocation_lines l
+          where l.organization_id = ${orgId}::uuid and l.payout_id = ${input.id}::uuid
+            and (exists (select 1 from public.store_payments sp
+                         where sp.organization_id = l.organization_id
+                           and sp.payout_allocation_line_id = l.id)
+                 or exists (select 1 from public.recipient_payments r
+                            where r.organization_id = l.organization_id and r.line_id = l.id
+                              and r.archived_at is null))) as paid,
+        exists (
+          select 1 from public.payout_allocations a
+          join public.payouts p on p.organization_id = a.organization_id and p.id = a.payout_id
+          join public.payouts me on me.organization_id = a.organization_id and me.id = ${input.id}::uuid
+          where a.organization_id = ${orgId}::uuid and a.status = 'locked'
+            and a.superseded_at is null and p.archived_at is null and p.id <> me.id
+            and p.period_start > me.period_start) as later`),
+    )[0] as { paid: boolean; later: boolean } | undefined;
+    if (blocked?.paid) {
+      throw new AccountingError(
+        "Något är redan betalt från utbetalningen. Ångra betalningarna under Pengar → Utbetalningar först.",
+      );
+    }
+    if (blocked?.later) {
+      throw new AccountingError(
+        "En senare utbetalning är redan betald och bygger på den här. Ångra betalningarna på den först.",
+      );
+    }
     const rows = await tx
       .update(s.payouts)
       .set({ archivedAt: new Date(), note: note.slice(0, 2000) })

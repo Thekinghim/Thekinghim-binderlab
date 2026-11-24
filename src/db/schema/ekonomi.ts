@@ -71,8 +71,6 @@ export const payouts = pgTable("payouts", {
     .notNull()
     .default("manual"),
   inferredNote: text("inferred_note"),
-  aiSummary: text("ai_summary"),
-  aiSummaryAt: ts("ai_summary_at"),
   ...stamps(),
 });
 

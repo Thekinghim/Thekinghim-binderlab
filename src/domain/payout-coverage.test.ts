@@ -44,7 +44,7 @@ describe("inferCoverage", () => {
     });
     // 5 nov är betaldagen: bara 1–4 nov får vara med.
     expect(r).toMatchObject({ ok: true, from: "2026-11-01", to: "2026-11-01", diffOre: 5000 });
-    expect(r.ok && r.note).toContain("Skiljer 50 kr");
+    expect(r.ok && r.note).toBe("Vi gissade att pengarna gäller 1 nov.");
   });
 
   it("säger till när allt redan är täckt eller inget sålts", () => {

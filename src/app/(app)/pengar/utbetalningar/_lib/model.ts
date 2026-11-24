@@ -92,6 +92,34 @@ export function warningView(
         text: `${storeName(w.storeId)} får ${pctText(w.ratioBp)} av försäljningen, mot vanligtvis ${pctText(w.medianBp)}.`,
         action: { label: "Visa avtalet", href: "/butiker" },
       };
+    case "SHARE_UNKNOWN":
+      return {
+        key: `unknown:${w.storeId}`,
+        tone: "critical",
+        text: `${storeName(w.storeId)}s andel går inte att räkna än (${w.message.replace(/\.$/, "")}). Rätta det först, sedan kan du betala.`,
+        action: { label: "Lägg in pris", href: "/inkopspriser" },
+      };
+    case "STORE_OVERPAID":
+      return {
+        key: `over:${w.storeId}:${w.month}`,
+        tone: "warning",
+        text: `${storeName(w.storeId)} fick ${krExact(w.ore)} för mycket för ${monthName(w.month)}. Lägg skillnaden på nästa avräkning så dras den av.`,
+        action: { label: "Öppna Butiker", href: "/butiker" },
+      };
+    case "LOCKED_ADJUST": {
+      const parts = [
+        w.partnerOre !== 0
+          ? `partnern ${w.partnerOre > 0 ? "+" : "−"}${krExact(Math.abs(w.partnerOre))}`
+          : null,
+        w.vatOre !== 0 ? `momsen ${w.vatOre > 0 ? "+" : "−"}${krExact(Math.abs(w.vatOre))}` : null,
+      ].filter(Boolean);
+      return {
+        key: "lockedadj",
+        tone: "info",
+        text: `Ett inköpspris eller momsen ändrades efter en tidigare betalning. Rättat här: ${parts.join(", ")}.`,
+        action: null,
+      };
+    }
     case "UNMAPPED_DEVICE":
       return {
         key: `dev:${w.serial}`,
@@ -156,16 +184,23 @@ export function storeComponentText(c: {
   };
 }
 
-/** Badge på kortet: "Betald" eller "2 kvar". */
+/** Badge på kortet: "Allt utbetalt", "Allt utbetalt · 161 kr kvar till dig" eller "2 kvar". */
 export function payoutBadge(
   unpaidLines: number,
   hasAllocation: boolean,
+  ownerLeftOre = 0,
 ): {
   readonly text: string;
   readonly tone: "success" | "warning" | "neutral";
 } {
-  if (!hasAllocation) return { text: "Räknas", tone: "neutral" };
-  if (unpaidLines === 0) return { text: "Betald", tone: "success" };
+  if (!hasAllocation) return { text: "Räknas inte", tone: "neutral" };
+  if (unpaidLines === 0) {
+    return {
+      text:
+        ownerLeftOre > 0 ? `Allt utbetalt · ${kr(ownerLeftOre)} kvar till dig` : "Allt utbetalt",
+      tone: "success",
+    };
+  }
   return { text: `${unpaidLines} kvar`, tone: "warning" };
 }
 
