@@ -12,7 +12,8 @@ import { getServiceDb } from "@/db/client";
 import { checkOwnPin, setOwnPin, skipPinChange } from "@/server/auth/phone-login";
 import { validateNewPin } from "@/server/auth/phone";
 import { summariseAwishPush } from "@/server/awish/push-status";
-import { pushMachinesToAwish, recordAwishPushFailure } from "@/server/awish/web-service";
+import { pushRefillToAwish } from "@/server/awish/control/refill-push";
+import { recordAwishPushFailure } from "@/server/awish/web-service";
 import { saveRefillItems, undoRefillItems } from "@/server/data/field-refills";
 import { requireStaff } from "@/server/staff/session";
 
@@ -39,9 +40,12 @@ export type StaffSubmitResult =
   | { ok: false; error: string };
 
 /** Skickar automatens antal till Awish (bara den här automaten). */
-async function pushToAwish(orgId: string, machineId: string): Promise<StaffAwish> {
+async function pushToAwish(orgId: string, machineId: string, actorId: string): Promise<StaffAwish> {
   try {
-    const pushed = await pushMachinesToAwish(orgId, [machineId], { withPending: false });
+    const pushed = await pushRefillToAwish(orgId, [machineId], {
+      withPending: false,
+      actorId,
+    });
     const summary = summariseAwishPush(pushed, [machineId]);
     return summary === undefined || summary.state === "off"
       ? "off"
@@ -84,7 +88,9 @@ export async function staffSubmitRefill(raw: unknown): Promise<StaffSubmitResult
     .reduce((n, it) => n + it.quantity, 0);
 
   const awish: StaffAwish =
-    result.savedMachineIds.length > 0 ? await pushToAwish(orgId, machineId) : "off";
+    result.savedMachineIds.length > 0
+      ? await pushToAwish(orgId, machineId, staff.user.userId)
+      : "off";
   return {
     ok: true,
     packs,
@@ -108,7 +114,7 @@ export async function staffUndo(
     return { ok: false, error: "Inget att ångra." };
   }
   const result = await undoRefillItems(staff.user, orgId, clientIds);
-  if (result.ok && result.packs > 0) await pushToAwish(orgId, machineId);
+  if (result.ok && result.packs > 0) await pushToAwish(orgId, machineId, staff.user.userId);
   return result;
 }
 

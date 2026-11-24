@@ -12,6 +12,7 @@ import { requireRoute } from "@/server/data/core";
 import { FoldCard } from "@/app/(app)/installningar/_components/fold-card";
 import "@/app/(app)/installningar/_components/settings.css";
 
+import { AwishApiSection } from "../_components/awish-api-section";
 import { AwishCard } from "../_components/awish-card";
 import { AwishHealthPanel } from "../_components/awish-health-panel";
 import { ImportLog } from "../_components/import-log";
@@ -120,6 +121,7 @@ export default async function DatakallorPage() {
             <AwishExpiry notice={awishExpiry} link={false} className="mb-0 max-md:mb-0" />
             <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
             {awishHealth ? <AwishHealthPanel data={awishHealth} /> : null}
+            <AwishApiSection viewer={viewer} timeZone={data.timeZone} />
             <CsvLink />
           </section>
         )}

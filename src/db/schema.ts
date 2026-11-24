@@ -952,3 +952,5 @@ export * from "./schema/saljnotis";
 export * from "./schema/awish-halsa";
 // Utbetalningar från Nayax: partneravtal, uträkningar och betalningar (20261230*).
 export * from "./schema/utbetalning";
+// Awish styrning: API-läge, granskningslogg och strömschema (20261231000000_awish_styrning.sql).
+export * from "./schema/awish-styrning";

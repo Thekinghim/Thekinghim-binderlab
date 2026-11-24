@@ -155,6 +155,16 @@ export interface WebPushDeps {
   nowMs?: () => number;
   /** Väntan mellan försöken; injiceras i tester. */
   sleep?: Sleep;
+  /**
+   * Sändningen för "Försök igen" och de automatiska försöken. Standard pushMachinesToAwish
+   * (webbpanelen); anroparna skickar pushRefillToAwish (control/refill-push.ts), som går via
+   * API:t när organisationen har valt det under Datakällor och annars är exakt webbvägen.
+   */
+  push?: (
+    organizationId: string,
+    machineIds: readonly string[],
+    deps: WebPushDeps,
+  ) => Promise<WebPushResult>;
 }
 
 interface WebSource {
@@ -566,7 +576,8 @@ export async function retryPendingAwishPushes(
   const waiting = [...(await pendingAwishPushes(db, organizationId)).keys()];
   const ids = machineIds ? waiting.filter((id) => machineIds.includes(id)) : waiting;
   if (ids.length === 0) return { push: null, pending: waiting };
-  const push = await pushMachinesToAwish(organizationId, ids, { ...deps, withPending: false });
+  const send = deps.push ?? pushMachinesToAwish;
+  const push = await send(organizationId, ids, { ...deps, withPending: false });
   if (push.status === "off") {
     await logAwishPushOutcomes(
       db,
@@ -600,7 +611,7 @@ export function nextPushRetryAt(
 
 export interface PushRetryAllOptions extends Pick<
   WebPushDeps,
-  "makeClient" | "clientOptions" | "sleep" | "nowMs"
+  "makeClient" | "clientOptions" | "sleep" | "nowMs" | "push"
 > {
   /** Ingen ny organisation påbörjas efter den här tiden (ms sedan 1970). */
   readonly deadline: number;
@@ -736,6 +747,7 @@ export async function retryPendingAwishPushesForAll(
         ...(opts.clientOptions ? { clientOptions: opts.clientOptions } : {}),
         ...(opts.sleep ? { sleep: opts.sleep } : {}),
         ...(opts.nowMs ? { nowMs: opts.nowMs } : {}),
+        ...(opts.push ? { push: opts.push } : {}),
         deadlineAt: opts.deadline,
       });
       if (r.pending.length === 0) out.cleared += 1;

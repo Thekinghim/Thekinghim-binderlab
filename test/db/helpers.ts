@@ -1280,6 +1280,28 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`insert into public.awish_path_health (organization_id, data_source_id, path, active_route)
           values (${orgId}, ${source!.id}, 'stock', 'open_api')`,
     );
+    // Awish styrning (20261231000000_awish_styrning.sql), skrivs bara av servern.
+    await tx.execute(
+      sql`insert into public.awish_api_state (organization_id, data_source_id, version, version_seen_at)
+          values (${orgId}, ${source!.id}, '1.2.41', now())`,
+    );
+    const [awishAction] = Array.from(
+      await tx.execute<{ id: string }>(
+        sql`insert into public.awish_actions
+              (organization_id, kind, machine_id, awish_machine_id, request, idempotency_key,
+               status, awish_code, finished_at)
+            values (${orgId}, 'power_schedule_set', ${machine!.id}, '1',
+                    '{"machine_id":"1"}'::jsonb, ${randomUUID()}, 'ok', 0, now())
+            returning id`,
+      ),
+    );
+    await tx.execute(
+      sql`insert into public.machine_power_schedules
+            (organization_id, machine_id, weekdays, power_on, power_off, source, status, sent_at,
+             awish_action_id)
+          values (${orgId}, ${machine!.id}, '1111111', '10:00', '21:00', 'store', 'sent', now(),
+                  ${awishAction!.id})`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {

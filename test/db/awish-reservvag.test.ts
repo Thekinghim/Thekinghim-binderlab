@@ -533,7 +533,13 @@ describe("(i) Gratis-pack via webbpanelen", () => {
   it("spärrat utan id-kontroll, tillåtet när synken har visat att id:na stämmer", async () => {
     const org = await setupOrg();
     const viewer = await viewerFor(org.owner, org.orgId);
-    const deps = { db: db(), connect, now: org.now, makeWebClient };
+    // Gratis-pack använder marknadsklienten (bara signeringsläget som val).
+    const deps = {
+      db: db(),
+      connect: (c: AwishCredentials) => connect(c),
+      now: org.now,
+      makeWebClient,
+    };
     // Ingen id-kontroll än (Open API har inte läst några kopplade automater).
     await db().execute(
       sql`delete from public.awish_path_health where data_source_id = ${org.sourceId}::uuid`,

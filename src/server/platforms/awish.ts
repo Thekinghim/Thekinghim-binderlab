@@ -8,7 +8,8 @@
  *     listMachines → fetchMachines (src/server/awish/sync.ts)
  *     readOrders   → AwishApi.orders + mapAwishOrders (src/import/adapters/awish-grpc.ts)
  *     readSlots    → AwishApi.products
- *   refill        → pushMachinesToAwish (webbpanelens API, src/server/awish/web-service.ts)
+ *   refill        → pushRefillToAwish (webbpanelen som standard, eller gRPC-API:t om det valts
+ *                   under Datakällor; src/server/awish/control/refill-push.ts)
  *
  * Det schemalagda jobbet (src/server/awish/sync.ts) använder klienten direkt, eftersom
  * det också sköter sidläge, tidsbudget och saldo; gränssnittet beskriver samma förmågor.
@@ -28,7 +29,7 @@ import {
   type AwishCredentials,
 } from "../awish/grpc-client";
 import { fetchMachines } from "../awish/sync";
-import { pushMachinesToAwish } from "../awish/web-service";
+import { pushRefillToAwish } from "../awish/control/refill-push";
 
 import { PLATFORM_INFO } from "./catalog";
 import type { MachinePlatform, PlatformConnection, PlatformRefillWriter } from "./types";
@@ -42,7 +43,7 @@ export interface AwishPlatformCredentials {
 export interface AwishPlatformDeps {
   /** Klienten mot Awish (tester skickar en mot låtsas-Awish eller en fejk). */
   createClient?: (credentials: AwishCredentials, options: AwishClientOptions) => AwishApi;
-  pushRefill?: typeof pushMachinesToAwish;
+  pushRefill?: typeof pushRefillToAwish;
 }
 
 /** En anslutning till Awish gRPC-API som PlatformConnection. */
@@ -103,7 +104,7 @@ export function createAwishPlatform(
   deps: AwishPlatformDeps = {},
 ): MachinePlatform<AwishPlatformCredentials> {
   const create = deps.createClient ?? createAwishClient;
-  const push = deps.pushRefill ?? pushMachinesToAwish;
+  const push = deps.pushRefill ?? pushRefillToAwish;
   const refill: PlatformRefillWriter = {
     async pushRefill(organizationId, machineIds) {
       const result = await push(organizationId, machineIds);

@@ -61,6 +61,7 @@ import { marketingClient, type MarketingConnect } from "./marketing";
 import {
   interactiveRetry,
   loggedInClient,
+  recordApiHealth,
   recordWebHealth,
   requireOperator,
   rows,
@@ -73,6 +74,7 @@ import {
 import { awishImageSrc } from "./image-proxy";
 import type { AwishWebApi } from "./web-client";
 import { withWriteRetry } from "./web-service";
+import { goodsWriterFor } from "../awish-catalog/goods-api";
 
 export interface EditGoodDeps extends NewProductDeps {
   /** "Med VMB" (vyknappen); standard av, som Inköpspriser. */
@@ -731,6 +733,27 @@ export async function saveEditGoodFor(
       permissions,
     );
 
+    // Webbpanelen (som förut: nya försök och hälsan) eller API:t, enligt Datakällor →
+    // Awish API → Varor till Awish.
+    const writer = await goodsWriterFor(
+      viewer,
+      client,
+      sourceId,
+      { db },
+      {
+        // Hela varan skickas: samma anrop två gånger ger samma vara (tål två nya försök).
+        webUpdate: async (id, good) => {
+          await withWebHealth(db, orgId, sourceId, "goods", () =>
+            withWriteRetry(() => client.updateGood(id, good), {
+              idempotent: true,
+              waits: [500, 1_500],
+              ...retry,
+            }),
+          );
+        },
+        onApiOk: () => recordApiHealth(db, orgId, sourceId, "goods"),
+      },
+    );
     const outcome = await withUserDbFor(
       viewer.user,
       async (tx): Promise<{ after: AwishGoodFull | null; readFailed: boolean }> => {
@@ -738,15 +761,9 @@ export async function saveEditGoodFor(
         const readBack = async () =>
           (await client.allGoodsFull()).find((g) => g.id === plan.goodId) ?? null;
         try {
-          // Hela varan skickas: samma anrop två gånger ger samma vara (tål två nya försök).
-          await withWriteRetry(() => client.updateGood(plan.goodId, input), {
-            idempotent: true,
-            waits: [500, 1_500],
-            ...retry,
-          });
-          await recordWebHealth(db, orgId, sourceId, "goods", null);
+          await writer.updateGood(plan.goodId, input, fingerprint);
         } catch (error) {
-          await recordWebHealth(db, orgId, sourceId, "goods", error);
+          // Hälsan för webbvägen är redan sparad (webUpdate ovan).
           // Nekar Awish rullas Binderlab tillbaka. Men ett tappat svar (tidsgräns, 503) kan
           // betyda att Awish ändå sparade: då måste aliaset sparas, annars kopplas inte
           // försäljningen under det nya namnet. Läs varan och avgör.
