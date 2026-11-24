@@ -157,7 +157,8 @@ describe("Utbetalningar (telefon)", () => {
     // En rapport med en layout appen inte känner igen.
     const dir = mkdtempSync(path.join(tmpdir(), "utb-"));
     const file = path.join(dir, "nayax-rapport.csv");
-    const [{ paid }] = await sql<{ paid: string }[]>`select (current_date - 1)::text as paid`;
+    const [day] = await sql<{ paid: string }[]>`select (current_date - 1)::text as paid`;
+    const paid = day!.paid;
     // 40 köp à 79 kr de senaste 10 dagarna ≈ 3 160 kr; Nayax tar en avgift.
     writeFileSync(file, `Kolumn 1;Kolumn 2\n${paid};3 050,00\n${paid};0\n`);
 
