@@ -934,3 +934,6 @@ export * from "./schema/v2";
 
 // Notis vid varje försäljning: order som notisjobbet har tagit om hand (20261227000000_saljnotis.sql).
 export * from "./schema/saljnotis";
+
+// Awish styrning: API-läge, granskningslogg och strömschema (20261229200000_awish_styrning.sql).
+export * from "./schema/awish-styrning";
