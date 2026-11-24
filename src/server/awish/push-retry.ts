@@ -15,6 +15,7 @@ import type { Viewer } from "@/server/data/core/loaders";
 import { FIELD_REFILL_ROLES } from "@/server/data/field-refills";
 import { isDemoFor } from "@/server/demo/guard";
 
+import { pushRefillToAwish } from "./control/refill-push";
 import { summariseAwishPush, type AwishPushStatus } from "./push-status";
 import { retryPendingAwishPushes, type WebPushDeps } from "./web-service";
 
@@ -40,7 +41,11 @@ export async function retryAwishPushFor(
   const machineId = parsed.success ? (parsed.data?.machineId ?? null) : null;
   // Demo för kunder: inga anrop till Awish.
   if (await isDemoFor(viewer.user, orgId)) return { pending: [], cleared: true };
-  const out = await retryPendingAwishPushes(orgId, machineId ? [machineId] : null, deps);
+  // Samma väg som påfyllningen (webbpanelen, eller API:t om det valts under Datakällor).
+  const out = await retryPendingAwishPushes(orgId, machineId ? [machineId] : null, {
+    push: (org, ids, d) => pushRefillToAwish(org, ids, { ...d, actorId: viewer.user.userId }),
+    ...deps,
+  });
   const awish = out.push ? summariseAwishPush(out.push) : undefined;
   return {
     ...(awish ? { awish } : {}),

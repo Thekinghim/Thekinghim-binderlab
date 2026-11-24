@@ -376,6 +376,12 @@ export default async function SettingsPage() {
                     label: "Kontroll",
                     sub: "Stämmer siffrorna?",
                   },
+                  { href: "/installningar/awish", label: "Awish", sub: "Kontot, tidszon, valutor" },
+                  {
+                    href: "/installningar/medlemmar",
+                    label: "Medlemmar",
+                    sub: "Medlemmarna i Awish",
+                  },
                 ].map((l) => (
                   <Link key={l.href} href={l.href} className="st-link">
                     <span className="min-w-0">

@@ -189,3 +189,189 @@ databasen (migreringar ändras aldrig) men används inte; alla token är återka
 
 Inställning hos beställaren: Developer Center → Advanced Settings: Debug Mode på, Time Zone Settings på med
 Europe/Stockholm (och samma tidszon på automaterna). Datakällans tidszon i Binderlab ska då vara Europe/Stockholm.
+
+## Styrning via API:t (v1.2.41)
+
+Awishs gRPC-API v1.2.41 (AW-DOC-110) har skrivande anrop för att styra automaterna:
+starta om och stäng av (ControlPower), strömschema (SetPowerSchedule/ClearPowerSchedule),
+mata ut ett pack (ExecuteShipment), fack (UpdateProduct, BatchUpdateProducts,
+ReplenishProductInventory), varor och kategorier, skärm och reklam (UpdateMachineConfig),
+medlemmar, tidszon (UpdateMerchant), DeleteBanner, Currencies och Version. Koden ligger i
+`src/server/awish/control/` (klient, skydd, Version, plan B för påfyllning) och
+`src/server/awish/sign.ts` (signering). Proto-filens fältnummer gäller för allt utom
+timestamp/sign i sju skrivningar (se Fältnummer nedan).
+
+### Fältnummer: dokumentationen och proto-filen skiljer sig
+
+I sju skrivningar har dokumentationen (AW-DOC-110) `timestamp = 10` och `sign = 11`, medan
+proto-filen har lägre nummer. Övriga fält har samma nummer i båda.
+
+| Anrop                     | Meddelande                       | Proto | PDF   |
+| ------------------------- | -------------------------------- | ----- | ----- |
+| UpdateMerchant            | UpdateMerchantRequest            | 6/7   | 10/11 |
+| ControlPower              | PowerControlRequest              | 3/4   | 10/11 |
+| SetPowerSchedule          | PowerScheduleRequest             | 5/6   | 10/11 |
+| ExecuteShipment           | ShipmentRequest                  | 8/9   | 10/11 |
+| UpdateProduct             | UpdateProductRequest             | 6/7   | 10/11 |
+| BatchUpdateProducts       | BatchUpdateProductRequest        | 6/7   | 10/11 |
+| ReplenishProductInventory | ReplenishProductInventoryRequest | 3/4   | 10/11 |
+
+Vi vet inte vilken numrering Awishs server följer. Därför får de sju meddelandena två extra
+fält, `doc_timestamp = 10` och `doc_sign = 11` (`src/server/awish/proto-doc-fields.ts`), och
+samma timestamp och signatur skickas på båda ställena. En server som följer den ena
+numreringen ser det andra paret som okända fält. `AWISH_SIGN_FIELDS=proto` (bara proto-filens)
+eller `=doc` (bara dokumentationens) väljer ett av dem.
+
+**Testa signering** provar efter ett lyckat försök en gång till med bara proto-filens par och
+säger vilken numrering Awish läser ("Awish läser proto-filens fältnummer" eller
+"dokumentationens fältnummer (10 och 11)"). Saknar Awish signaturen helt visas "Awish fick
+ingen signatur" (inte "fel signatur"), och skrivningarna pausas.
+
+CreateBanner och UpdateBanner skiljer också (PDF 11/12, proto 10/11), men där krockar
+numren (11 är `sign` i proto och `timestamp` i PDF), så där skickas bara proto-filens.
+Fråga Awish vilken numrering som gäller.
+
+### Signering
+
+Sedan v1.2.40 kräver "riskabla" skrivningar `timestamp` (Unix-sekunder) och `sign`:
+
+```
+sign = hex_gemener(HMAC-SHA256(nyckel = appid, `${timestamp}.${request_body}`))
+```
+
+Servern godtar ±300 s. Dokumentationen säger inte vad `request_body` är. Awishs
+referensbibliotek (@cakioe/hmac-signer) serialiserar ett JSON-objekt med serde_json och
+sorterade nycklar och räknar inte med `sign` och `timestamp`. Vi bygger därför begäran som
+kompakt JSON, utan sign och timestamp, med sorterade nycklar, uint64 som tal och
+uppräkningar som tal. Tre lägen finns, eftersom det är osäkert hur Awish bygger om JSON ur
+protobuf:
+
+| Läge                      | request_body                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| present_sorted (standard) | Fälten som går över tråden (optional-fält som är satta, vanliga fält som inte har standardvärdet), sorterade |
+| full_sorted               | Alla fält: null för ej satta optional-fält och meddelanden, standardvärden annars, sorterade                 |
+| present_proto_order       | Som present_sorted men i fältnummerordning                                                                   |
+
+**Datakällor → Awish API → Testa signering** gör en ofarlig signerad skrivning
+(UpdateMerchant med samma tidszon igen, annars UpdateCategory med samma titel) i varje läge
+och sparar det första som Awish godtar. Godtas inget, eller nekar Awish en signatur senare,
+pausas alla skrivningar via API:t (påfyllning och varor går då via webbpanelen) tills
+signeringen fungerar igen. `AWISH_SIGN_MODE` i miljön går före det sparade.
+
+CreateBanner, UpdateBanner och CreatePickupCode signeras också, i samma läge som sparats.
+
+Ett nej från Awish kan komma som gRPC-fel eller i svaret (SuccessResponse med en kod). Båda
+tolkas med samma regler (signatur, klocka, offline, stöds inte); Awishs egen text visas
+aldrig utan sparas bara i loggen. "invalid signature" (utan "verify failed") är Awishs
+inloggningsfel för fel AppSecret/AppKey och visas som det.
+
+### Version
+
+Varje timme (pg_cron `binderlab-awish-version`, minut 41 → `/api/cron/awish-version`)
+läses Version. Byts den (även bara ett tillägg som "1.2.41-r2") skapas ett systemlarm ("Awish
+bytte API-version") och allt som skriver till fack eller automat via API:t pausas tills
+ägaren eller admin trycker **Jag har kontrollerat** under Datakällor: Byt pack, Fyll fullt,
+kategori per fack, påfyllning via API (går via webbpanelen så länge), strömschema, Mata ut
+och Stäng av, och tidszonen (UpdateMerchant). Starta om pausas inte (den behövs ibland just
+när något är fel). Bakgrund: en oannonserad omnumrering av fälten fick facken att läsas fel.
+
+Cron räcker inte ensam (upp till en timme gammal). Före varje sådan skrivning läses Version
+dessutom live: skiljer den sig från den sparade (eller, första gången, från den inbäddade
+1.2.41) sparas bytet, larmet skapas och skrivningen stoppas tills någon kvitterat. Svarar
+Version inte skickas inget.
+
+### TLS (runbook)
+
+appid är både inloggningen och signeringsnyckeln. Därför väljer styrningen aldrig den
+okrypterade adressen av sig själv (`AWISH_CONTROL_ENDPOINT=auto`, standard): bara
+`grpc.awish.vip:443` (TLS) provas. Svarar TLS inte visar Datakällor "TLS svarar inte" och
+knappen **Använd okrypterad** (ägare och admin, med en fråga först); först då används
+`49.51.72.74:50051`. Cron provar TLS igen varje timme och byter tillbaka när den svarar.
+`AWISH_CONTROL_ENDPOINT=plain` låser den okrypterade i miljön (bara lokalt och i tester),
+`tls` låser TLS.
+
+Synken och kampanjerna använder fortfarande `AWISH_GRPC_ADDRESS`/`AWISH_GRPC_TLS` (standard
+okrypterad). Så länge synken går okrypterat kan appid avlyssnas där. Innan skrivningar via
+API slås på (Påfyllning/Varor till Awish = API) ska synken också gå över TLS. När Datakällor
+visar "Anslutning: Krypterad (TLS)":
+
+1. Sätt `AWISH_GRPC_TLS=true` och `AWISH_GRPC_ADDRESS=grpc.awish.vip:443` i Vercel.
+2. Kör Hämta nu under Datakällor och kontrollera att order kommer.
+3. Går det inte: ta bort variablerna igen (den okrypterade adressen gäller då) och låt
+   skrivningarna gå via webbpanelen.
+4. Sätt `AWISH_CONTROL_ENDPOINT=tls` i produktion.
+
+Har Awish-kontot en IP-lista (`whitelist_ip`) kan Vercels utgående adresser nekas.
+
+### Kategori på en vara
+
+UpdateGood har `prices` och `media` som `repeated`: "inte skickat" och "tom lista" ser
+likadana ut för Awish. Ersätter Awish listorna när de saknas skulle ett kategoribyte tömma
+varans priser och bilder. Kategoribytet via API är därför avstängt tills
+`AWISH_GOOD_CATEGORY_API=true` (sätt först efter ett prov på en testvara: priser och bilder
+ska finnas kvar efteråt i Awishs panel). Till dess: byt kategori i Awishs egen panel.
+
+### Skydd för varje skrivning
+
+`runControlAction` (control/guard.ts): bara ägare och admin; en demo anropar aldrig Awish;
+`AWISH_CONTROL_DISABLED=true` stänger av allt; samma bekräftelse (idempotensnyckel från
+förhandsvisningen) skickas en gång; gränser (mata ut 1 per automat per 2 min, 5 i timmen,
+10 per dygn; stäng av 1 per 30 min; starta om 1 per 10 min); mata ut kräver skäl och att
+automaten är online. Gränserna räknas en gång till under ett lås per organisation i samma
+transaktion som loggraden sparas, så två bekräftelser samtidigt (två flikar) kan inte båda
+komma förbi. Varje skrivning loggas i `awish_actions` (vem, vad, när, Awishs svar) utan
+sign, timestamp, hemligheter eller personuppgifter. Skrivningar provas aldrig igen
+automatiskt; uteblir svaret blir utfallet "okänt" och användaren ombeds titta på automaten.
+
+Starta om och Stäng av kräver en förhandsvisning på servern: den ger ett bevis (HMAC med
+`CONTROL_CONFIRM_SECRET`, annars `CRON_SECRET`) som bara gäller den användaren, automaten,
+kommandot och nyckeln i 10 minuter. Stäng av kräver också att koden skrivs. Ett strömschema
+som stänger av automaten nu eller inom 15 minuter kräver också att koden skrivs.
+
+### Påfyllning och varor: webbpanelen eller API:t
+
+Datakällor → Awish API → **Påfyllning till Awish**: Webbpanelen (som nu, standard), API,
+eller API med webbpanelen som reserv (`awish_api_state.slot_writes_via`). API används bara
+när signeringen fungerar. Plan B (`control/api-push.ts`) använder samma plan som
+webbvägen (höjer bara, sänker aldrig) och skriver med UpdateProduct: bara antalet (och status
+när den ändras), aldrig `good_id`, under samma Awish-lås per organisation som webbvägen. Är
+API-vägen av just nu (ingen adress svarar, obekräftat versionsbyte) går påfyllningen via
+webbpanelen även i läget API, så att den alltid loggas. Loggraden visar vem som fyllde på.
+
+Med "Om Awish krånglar" (hälsan per väg, `awish_path_health`, och kön av väntande
+sändningar): en automat som inte kom fram via API:t blir väntande som via webben. "Försök
+igen" i Fyll på och de automatiska försöken (cron var femte minut) går samma väg som
+påfyllningen (`pushRefillToAwish`), alltså exakt webbvägen när läget är Webbpanelen. API-vägen
+sparar hälsan för `push` (och `goods` för Ny produkt/Redigera vara) med vägen `open_api`;
+webbvägen sparar `webbpanelen` med nya försök och brytare som förut. Varor via webbpanelen
+har kvar sina nya försök (CreateGood läser listan före ett nytt försök) även när läget är
+API med webbpanelen som reserv.
+
+## Var finns vad (för ägaren)
+
+| Funktion                                                                    | Var                                                               | Vem          |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------ |
+| Starta om, Stäng av (bakom Mer)                                             | Automater → automaten → Styr automaten → Starta om                | Ägare, admin |
+| Strömschema (dagar, på/av, förifyllt från butikens tider)                   | Styr automaten → Strömschema                                      | Ägare, admin |
+| Byt pack i fack, Fyll fullt                                                 | Styr automaten → Byt pack i fack                                  | Ägare, admin |
+| Skärm och reklam (volym och ljusstyrka visas, går inte att ändra via API:t) | Styr automaten → Skärm och reklam                                 | Ägare, admin |
+| Mata ut ett pack (skäl, skriven kod, gränser)                               | Styr automaten → Mata ut ett pack                                 | Ägare, admin |
+| Loggen över skrivningar                                                     | Styr automaten, längst ner                                        | Ägare, admin |
+| Kategorier på skärmen, kategori per fack                                    | Inköpspriser → Ny produkt → Kategorier (/inkopspriser/kategorier) | Ägare, admin |
+| Varor via API (ny, ändra, ta bort)                                          | Inköpspriser → Ny produkt / Redigera vara                         | Ägare, admin |
+| Medlemmar (lista, ny, ändra, ta bort; telefon och e-post maskerade)         | Inställningar → Medlemmar                                         | Ägare, admin |
+| Awish-kontot: tidszon, valutor, giltig till                                 | Inställningar → Awish                                             | Ägare, admin |
+| Ta bort kampanjbild från skärmen                                            | Kampanjer → avslutad kampanj                                      | Ägare, admin |
+| Version, anslutning (TLS), signering, webb/API                              | Datakällor → Awish API                                            | Ägare, admin |
+
+Påfyllare, butiker, läsare och demo ser inga av sidorna och kan inte anropa dem.
+
+### Att kontrollera mot riktiga Awish efter driftsättning
+
+1. Datakällor → Awish API → **Testa anslutning**: står det "Krypterad (TLS)"?
+2. **Testa signering**: fungerar det, och vilken numrering läser Awish? Svara Awish om
+   numreringen i dokumentationen.
+3. Starta om en automat som står still (kvällstid) och se att den startar om.
+4. Strömschema på en automat: se i Awishs panel att tiderna kom fram rätt.
+5. Byt pack via API på ett tomt fack och se i Awish att varan och antalet stämmer.
+6. Mata ut: bara i underhållsläge, med någon vid automaten.

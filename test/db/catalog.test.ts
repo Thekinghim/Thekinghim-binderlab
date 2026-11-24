@@ -185,6 +185,9 @@ describe("tabeller", () => {
         "assistant_logs",
         "assortment_changes",
         "audit_log",
+        // Awish styrning: API-läge och granskningslogg (20261231000000_awish_styrning.sql).
+        "awish_actions",
+        "awish_api_state",
         // Värde: logg över automatiskt arbete (20261111000000_varde.sql).
         "automation_log",
         // Om Awish krånglar: hälsan per Awish-väg (20261229000000_awish_halsa.sql).
@@ -227,6 +230,8 @@ describe("tabeller", () => {
         "ledger_accounts",
         "machine_investments",
         "machine_placements",
+        // Awish styrning: strömschema per automat (20261231000000_awish_styrning.sql).
+        "machine_power_schedules",
         // Fyllnadsgrad: kapacitet per automat och titel från Awish (20261104163000_fack_kapacitet.sql).
         "machine_slot_capacity",
         "machine_slots",

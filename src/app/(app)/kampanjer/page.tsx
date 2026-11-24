@@ -25,7 +25,7 @@ import { loadFreePackPageFor } from "@/server/free-packs/service";
 import { pickView } from "../rapporter/_components/view-tabs";
 
 import { BigNumber } from "./_components/big-number";
-import { CampaignActions, CampaignComposer } from "./_components/campaigns";
+import { CampaignActions, CampaignComposer, RemoveFromScreen } from "./_components/campaigns";
 import { FreePackGiver, ShowCodesButton } from "./_components/free-packs";
 import { addDaysIso, dayLabel } from "./_lib/display";
 
@@ -209,6 +209,7 @@ async function CampaignsView({
                 key={c.id}
                 c={c}
                 canEdit={false}
+                canRemove={canEdit && data.connected && c.onScreen > 0}
                 when={`${dayLabel(firstDay(c), today)} – ${dayLabel(lastDay(c), today)}`}
               />
             ))}
@@ -235,9 +236,12 @@ function CampaignCard({
   canEdit,
   when,
   stats,
+  canRemove = false,
 }: {
   c: CampaignView;
   canEdit: boolean;
+  /** "Ta bort från skärmen" (slut eller avstängd, bilden finns kvar i Awish). */
+  canRemove?: boolean;
   when: string;
   stats?: React.ReactNode;
 }) {
@@ -275,6 +279,7 @@ function CampaignCard({
           canRetry={failed.length > 0 && c.state !== "scheduled"}
         />
       ) : null}
+      {canRemove && !active ? <RemoveFromScreen id={c.id} title={c.title} /> : null}
     </li>
   );
 }

@@ -22,6 +22,7 @@ import {
 
 import { linkGoodToTitle, previewEditGood, saveEditGood } from "../actions";
 import { squareImage } from "../_lib/square-file";
+import { GoodApiExtras } from "./good-api-extras";
 import { PreviewBox, type Preview } from "./new-product-panels";
 
 const MAX_IMAGE = 4 * 1024 * 1024;
@@ -516,6 +517,7 @@ function EditPanel({
           ) : null}
         </PreviewBox>
       ) : null}
+      <GoodApiExtras goodId={row.id} goodName={row.name} onDeleted={onClose} />
     </Panel>
   );
 }

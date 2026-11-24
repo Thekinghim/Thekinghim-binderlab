@@ -18,6 +18,7 @@ import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runOfflineAlerts } from "@/server/awish/offline-alerts";
 import { resolveAppBaseUrl } from "@/server/request-info";
 import { syncAllAwishSources } from "@/server/awish/sync";
+import { pushRefillToAwish } from "@/server/awish/control/refill-push";
 import { retryPendingAwishPushesForAll } from "@/server/awish/web-service";
 import { publishAllDueCampaigns } from "@/server/campaigns/service";
 import { runSaleNotifications, SALE_PUSH_BUDGET_MS } from "@/server/sales-push/job";
@@ -85,7 +86,10 @@ async function retryAwishPushesAfterSync(startedAt: number) {
   );
   if (deadline <= Date.now()) return null;
   try {
-    const r = await retryPendingAwishPushesForAll(getServiceDb(), { deadline });
+    const r = await retryPendingAwishPushesForAll(getServiceDb(), {
+      deadline,
+      push: pushRefillToAwish,
+    });
     return { organizations: r.organizations, tried: r.tried, cleared: r.cleared };
   } catch (error) {
     console.error("[awish] nya försök till Awish", error instanceof Error ? error.name : "fel");

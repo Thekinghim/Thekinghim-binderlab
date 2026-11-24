@@ -29,6 +29,8 @@ import protobuf from "protobufjs";
 import type { AwishGrpcOrder } from "@/import/adapters/awish-grpc";
 
 import { AWISH_PROVIDER_PROTO } from "./provider-proto";
+import { withDocSignFields } from "./proto-doc-fields";
+import { signRequest, type AwishSignMode } from "./sign";
 
 /** Leverantörens server enligt dokumentationen (ingen TLS i exemplet). */
 export const DEFAULT_AWISH_GRPC_ADDRESS = "49.51.72.74:50051";
@@ -59,6 +61,8 @@ export interface AwishClientOptions {
    */
   deadlineAt?: number;
   clock?: () => number;
+  /** Signeringsläget för de signerade skrivningarna (standard present_sorted). */
+  signMode?: AwishSignMode;
 }
 
 /** Ett anrop påbörjas inte med mindre tid kvar än så här. */
@@ -115,7 +119,8 @@ export function awishPackage(): grpc.GrpcObject {
     if (!common) throw new Error(`protobufjs saknar ${file}.`);
     root.addJSON(common.nested ?? {});
   }
-  protobuf.parse(AWISH_PROVIDER_PROTO, root, { keepCase: true });
+  // doc_timestamp/doc_sign (fält 10/11) i sju skrivningar: se proto-doc-fields.ts.
+  protobuf.parse(withDocSignFields(AWISH_PROVIDER_PROTO), root, { keepCase: true });
   root.resolveAll();
   const definition = fromJSON(root.toJSON(), LOADER_OPTIONS);
   cachedDefinition = grpc.loadPackageDefinition(definition);
@@ -517,6 +522,19 @@ const KNOWN_MESSAGES: Array<{ match: RegExp; kind: AwishErrorKind; text: string 
     text: "Awish-kontot har gått ut. Förläng det hos Awish (Merchant → Merchant Detail).",
   },
   {
+    // Signerade skrivningar (v1.2.40+): tidsfönstret och signaturfelen före inloggningsfelen.
+    // "invalid signature" (utan "verify failed") är Awishs inloggningsfel för fel
+    // AppSecret/AppKey och räknas därför inte som signaturfel.
+    match: /time window/i,
+    kind: "server",
+    text: "Awish tyckte att klockan var fel. Försök igen om en minut.",
+  },
+  {
+    match: /sign(ature)?( verify)? failed|\binvalid sign\b|expected hexadecimal|hmac/i,
+    kind: "changed",
+    text: "Awish godkände inte signaturen. Testa under Datakällor → Awish API.",
+  },
+  {
     match: /permission denied|invalid token|token (is )?invalid|invalid signature|unauthori[sz]ed/i,
     kind: "auth",
     text: "Awish nekade anropet. AppSecret eller AppKey stämmer inte. Kontrollera dem under Merchant → Developer Center.",
@@ -754,14 +772,19 @@ export function createAwishClient(
       return toWriteResult(
         await call(
           "CreateBanner",
-          {
-            machine_id: input.machineId,
-            cover_image: input.coverImage,
-            title: input.title,
-            expired_at: input.expiredAt,
-            media_type: AWISH_MEDIA_IMAGE,
-            is_link: false,
-          },
+          signRequest(
+            "CreateBannerRequest",
+            {
+              machine_id: input.machineId,
+              cover_image: input.coverImage,
+              title: input.title,
+              expired_at: input.expiredAt,
+              media_type: AWISH_MEDIA_IMAGE,
+              is_link: false,
+            },
+            creds.appId,
+            { mode: options.signMode, nowSeconds: Math.floor(clock() / 1000) },
+          ),
           false,
         ),
       );
@@ -770,14 +793,19 @@ export function createAwishClient(
       return toWriteResult(
         await call(
           "UpdateBanner",
-          {
-            id: input.id,
-            machine_id: input.machineId,
-            cover_image: input.coverImage,
-            title: input.title,
-            expired_at: input.expiredAt,
-            media_type: AWISH_MEDIA_IMAGE,
-          },
+          signRequest(
+            "UpdateBannerRequest",
+            {
+              id: input.id,
+              machine_id: input.machineId,
+              cover_image: input.coverImage,
+              title: input.title,
+              expired_at: input.expiredAt,
+              media_type: AWISH_MEDIA_IMAGE,
+            },
+            creds.appId,
+            { mode: options.signMode, nowSeconds: Math.floor(clock() / 1000) },
+          ),
           false,
         ),
       );
@@ -790,13 +818,18 @@ export function createAwishClient(
       return toWriteResult(
         await call(
           "CreatePickupCode",
-          {
-            machine_id: input.machineId,
-            product_id: input.productId,
-            quantity: input.quantity,
-            expired_at: input.expiredAt,
-            status: true,
-          },
+          signRequest(
+            "CreatePickupCodesRequest",
+            {
+              machine_id: input.machineId,
+              product_id: input.productId,
+              quantity: input.quantity,
+              expired_at: input.expiredAt,
+              status: true,
+            },
+            creds.appId,
+            { mode: options.signMode, nowSeconds: Math.floor(clock() / 1000) },
+          ),
           false,
         ),
       );

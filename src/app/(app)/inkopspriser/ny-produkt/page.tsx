@@ -155,6 +155,7 @@ export default async function NewProductPage({
               {t.label}
             </Link>
           ))}
+          <Link href="/inkopspriser/kategorier">Kategorier</Link>
         </nav>
         {data.status.blocker ? (
           <Notice

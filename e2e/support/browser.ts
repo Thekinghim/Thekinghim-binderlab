@@ -48,6 +48,7 @@ export interface Locator {
   scrollIntoViewIfNeeded(): Promise<void>;
   screenshot(options?: { path?: string }): Promise<Buffer>;
   boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
+  evaluate<R>(fn: (el: HTMLElement) => R): Promise<R>;
 }
 
 export interface Page {

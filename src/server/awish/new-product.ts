@@ -55,6 +55,7 @@ import {
   withWriteRetry,
   type Sleep,
 } from "./web-service";
+import { goodsWriterFor } from "../awish-catalog/goods-api";
 
 export interface NewProductDeps {
   serviceDb?: Db;
@@ -106,6 +107,29 @@ export async function recordWebHealth(
     });
   } catch (e) {
     console.error("[awish-webb] hälsan kunde inte sparas", e instanceof Error ? e.name : "fel");
+  }
+}
+
+/**
+ * Hälsan när en vara skrevs via API:t (awish-catalog/goods-api.ts) i stället för
+ * webbpanelen. API:ts fel sparas i awish_actions och räknas inte här. Kastar aldrig.
+ */
+export async function recordApiHealth(
+  db: Db,
+  orgId: string,
+  sourceId: string,
+  path: Extract<AwishPath, "goods" | "slots">,
+): Promise<void> {
+  try {
+    await recordPathResult(db, {
+      organizationId: orgId,
+      dataSourceId: sourceId,
+      path,
+      route: "open_api",
+      ok: true,
+    });
+  } catch (e) {
+    console.error("[awish-api] hälsan kunde inte sparas", e instanceof Error ? e.name : "fel");
   }
 }
 
@@ -568,9 +592,22 @@ export async function createNewProductFor(
       });
       const createdNow = async () =>
         sameNameGoods(await client.allGoods(), plan.name).filter((g) => !before.has(g.id));
-      await withWebHealth(db, viewer.organization.id, sourceId, "goods", () =>
-        createGoodOnce(client, input, createdNow, retry.sleep),
+      // Webbpanelen (som förut: nya försök och hälsan) eller API:t, enligt Datakällor →
+      // Awish API → Varor till Awish.
+      const writer = await goodsWriterFor(
+        viewer,
+        client,
+        sourceId,
+        { db },
+        {
+          webCreate: (good) =>
+            withWebHealth(db, viewer.organization.id, sourceId, "goods", () =>
+              createGoodOnce(client, good, createdNow, retry.sleep),
+            ),
+          onApiOk: () => recordApiHealth(db, viewer.organization.id, sourceId, "goods"),
+        },
       );
+      await writer.createGood(input, fingerprint);
       const created = await createdNow();
       if (created.length !== 1) {
         throw new NewProductError(

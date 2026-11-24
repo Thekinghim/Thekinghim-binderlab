@@ -41,7 +41,8 @@ import {
   type RefillSyncResult,
 } from "@/server/data/field-refills";
 import { summariseAwishPush, type AwishPushStatus } from "@/server/awish/push-status";
-import { pushMachinesToAwish, recordAwishPushFailure } from "@/server/awish/web-service";
+import { pushRefillToAwish } from "@/server/awish/control/refill-push";
+import { recordAwishPushFailure } from "@/server/awish/web-service";
 import { withUserDb } from "@/server/session";
 
 import { currentViewer } from "../lager/_lib/session";
@@ -356,8 +357,9 @@ export async function syncRefills(
     // redan sparad i Binderlab, så ett fel här får aldrig fälla hela inskicket.
     // Automater som väntar sedan en tidigare sändning inte gick fram följer med (nytt försök).
     try {
-      const pushed = await pushMachinesToAwish(viewer.organization.id, result.savedMachineIds, {
+      const pushed = await pushRefillToAwish(viewer.organization.id, result.savedMachineIds, {
         withPending: true,
+        actorId: viewer.user.userId,
       });
       // Beskedet gäller automaterna som just fylldes på, inte de som väntade sedan förut.
       awish = summariseAwishPush(pushed, result.savedMachineIds);
