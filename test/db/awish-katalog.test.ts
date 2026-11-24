@@ -616,15 +616,19 @@ describe("kampanjer: ta bort från skärmen", () => {
     const now = () => new Date("2026-11-24T12:00:00Z");
     const running = await campaign("2026-12-31T00:00:00Z", false);
     const v = await viewerFor(owner, orgId);
-    await expect(removeCampaignFromScreenFor(v, running, { ...deps(), now })).rejects.toThrow(
-      "Stäng av kampanjen först.",
-    );
     await expect(
-      removeCampaignFromScreenFor(await viewerFor(refiller, orgId), running, { ...deps(), now }),
+      removeCampaignFromScreenFor(v, running, { db: db(), run: deps().run, now }),
+    ).rejects.toThrow("Stäng av kampanjen först.");
+    await expect(
+      removeCampaignFromScreenFor(await viewerFor(refiller, orgId), running, {
+        db: db(),
+        run: deps().run,
+        now,
+      }),
     ).rejects.toBeInstanceOf(AuthorizationError);
 
     const ended = await campaign("2026-11-20T00:00:00Z", true);
-    const r = await removeCampaignFromScreenFor(v, ended, { ...deps(), now });
+    const r = await removeCampaignFromScreenFor(v, ended, { db: db(), run: deps().run, now });
     expect(r).toMatchObject({ removed: 1, failed: 0 });
     expect(st.writes).toEqual([{ method: "deleteBanner", args: [{ machineId: "123", id: "77" }] }]);
     expect(specs[0]).toMatchObject({ kind: "banner_delete", targetId: "77" });
@@ -637,7 +641,7 @@ describe("kampanjer: ta bort från skärmen", () => {
     );
     const page = await loadCampaignPageFor(v, { db: db(), now });
     expect(page.past.find((c) => c.id === ended)?.onScreen).toBe(0);
-    const again = await removeCampaignFromScreenFor(v, ended, { ...deps(), now });
+    const again = await removeCampaignFromScreenFor(v, ended, { db: db(), run: deps().run, now });
     expect(again.removed).toBe(0);
     expect(again.message).toBe("Kampanjen finns inte kvar på någon skärm.");
   });
