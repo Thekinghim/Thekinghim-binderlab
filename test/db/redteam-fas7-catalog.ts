@@ -708,6 +708,86 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: id("fixed_costs"),
   },
+  // Pengar → Utbetalningar (bara ägare och admin)
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "registerPayout",
+    allowed: OP,
+    args: () => [{ paidOn: TODAY, amountOre: 10_000, period: null }],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "uploadPayoutReport",
+    allowed: OP,
+    args: (c) => {
+      const form = new FormData();
+      form.set("file", new File(["Belopp\n100,00\n"], "nayax.csv", { type: "text/csv" }));
+      void c;
+      return [form];
+    },
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "applyColumnMapping",
+    allowed: OP,
+    args: (c) => [c.idsA.payout_drafts, { amount: "Belopp" }, true],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "confirmDraft",
+    allowed: OP,
+    args: (c) => [c.idsA.payout_drafts, { paidOn: TODAY, amountOre: 10_000 }],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "discardDraft",
+    allowed: OP,
+    args: (c) => [c.idsA.payout_drafts],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "expectedForPeriod",
+    allowed: OP,
+    readOnly: true,
+    args: () => [{ start: "2025-03-01", end: "2025-03-31" }],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "markPaid",
+    allowed: OP,
+    args: (c) => [{ lineIds: [c.idsA.payout_allocation_lines], paidOn: TODAY }],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "undoPaid",
+    allowed: OP,
+    args: (c) => [[`r:${c.idsA.recipient_payments}`]],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "savePartnerAgreement",
+    allowed: OP,
+    args: () => [
+      {
+        partnerName: "Rödteam",
+        reimburseCost: true,
+        profitSharePercent: 10,
+        validFrom: "2099-01-01",
+      },
+    ],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "removePartnerAgreement",
+    allowed: OP,
+    args: (c) => [c.idsA.partner_agreements],
+  },
+  {
+    module: "@/app/(app)/pengar/utbetalningar/actions",
+    name: "savePayoutOptions",
+    allowed: OP,
+    args: () => [{ vatReserveMode: "none", reminderDays: 1 }],
+  },
   // Ekonomi → Bokföring (månadspaket, ingen automatisk bokföring)
   {
     module: "@/app/(app)/ekonomi/bokforing-actions",

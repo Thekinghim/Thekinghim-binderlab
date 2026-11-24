@@ -44,7 +44,7 @@ create table public.payout_allocations (
   created_by uuid references auth.users (id) on delete set null,
   updated_at timestamptz not null default now(),
   unique (organization_id, id),
-  unique (payout_id, version),
+  unique (organization_id, payout_id, version),
   foreign key (organization_id, payout_id) references public.payouts (organization_id, id)
     on delete restrict,
   check ((status = 'locked') = (locked_at is not null)),
@@ -52,7 +52,7 @@ create table public.payout_allocations (
 );
 
 create unique index payout_allocations_current_key
-  on public.payout_allocations (payout_id) where superseded_at is null;
+  on public.payout_allocations (organization_id, payout_id) where superseded_at is null;
 create index payout_allocations_org_idx
   on public.payout_allocations (organization_id) where superseded_at is null;
 
@@ -63,6 +63,11 @@ language plpgsql
 set search_path = ''
 as $$
 begin
+  -- Den som inte får skriva i organisationen nekas av RLS (42501) efter triggern.
+  if current_user = 'authenticated'
+     and not (new.organization_id = any (array(select private.orgs_with_role('owner', 'admin')))) then
+    return new;
+  end if;
   if tg_op = 'INSERT' then
     if new.status <> 'draft' or new.superseded_at is not null then
       raise exception using errcode = 'BL090', message = 'En ny uträkning är ett utkast.';
@@ -166,7 +171,7 @@ alter table public.payout_allocation_lines enable row level security;
 alter table public.payout_allocation_lines alter column organization_id set statistics 0;
 revoke all on table public.payout_allocation_lines from anon, authenticated, service_role;
 grant select, insert on table public.payout_allocation_lines to authenticated;
-grant select, insert on table public.payout_allocation_lines to service_role;
+grant select, insert, update, delete on table public.payout_allocation_lines to service_role;
 
 create policy payout_allocation_lines_select on public.payout_allocation_lines
   for select to authenticated
@@ -210,6 +215,11 @@ as $$
 declare
   v_line record;
 begin
+  -- Den som inte får skriva i organisationen nekas av RLS (42501) efter triggern.
+  if current_user = 'authenticated'
+     and not (new.organization_id = any (array(select private.orgs_with_role('owner', 'admin')))) then
+    return new;
+  end if;
   if tg_op = 'UPDATE' then
     if (to_jsonb(old) - array['archived_at', 'updated_at', 'created_by'])
           is distinct from (to_jsonb(new) - array['archived_at', 'updated_at', 'created_by'])
