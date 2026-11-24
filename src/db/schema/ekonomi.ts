@@ -65,6 +65,14 @@ export const payouts = pgTable("payouts", {
   manual: boolean("manual").notNull().default(false),
   /** Nayax månadsrapport (20261211000000_nayax_rapport.sql); null för övriga utbetalningar. */
   statement: jsonb("statement").$type<Record<string, unknown>>(),
+  /** Varifrån perioden kommer (20261230000100_utbetalning_tackning.sql). */
+  periodBasis: text("period_basis")
+    .$type<"report" | "lines" | "inferred" | "manual">()
+    .notNull()
+    .default("manual"),
+  inferredNote: text("inferred_note"),
+  aiSummary: text("ai_summary"),
+  aiSummaryAt: ts("ai_summary_at"),
   ...stamps(),
 });
 

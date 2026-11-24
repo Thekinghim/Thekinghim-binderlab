@@ -60,6 +60,8 @@ export const ALERT_GROUP: Record<AlertKind, AlertGroup> = {
   self_check: "system",
   // Skrivs av Awish-synken och stängs när ordern är hanterad (inte av larmjobbet).
   order_attention: "system",
+  // Påminnelse om obetalda belopp från Nayax-utbetalningar (src/server/payouts/reminders.ts).
+  payout_unpaid: "system",
 };
 
 /** Rang för allvar: högre är allvarligare. */
@@ -78,6 +80,7 @@ const KIND_RANK: Record<AlertKind, number> = {
   machine_discovered: 0,
   self_check: 0,
   order_attention: 0,
+  payout_unpaid: 0,
 };
 
 const MINUTE_MS = 60_000;

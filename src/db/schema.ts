@@ -743,6 +743,12 @@ export const organizationSettings = pgTable("organization_settings", {
   routeMaxPacks: integer("route_max_packs").notNull().default(350),
   /** V2: besöksdagar, 1 = måndag … 7 = söndag (standard mån–fre). */
   routeWeekdays: int2Array("route_weekdays").notNull().default([1, 2, 3, 4, 5]),
+  /** Utbetalningar (20261230000000_partneravtal.sql): momsen att spara och påminnelsen. */
+  vatReserveMode: text("vat_reserve_mode")
+    .$type<"auto" | "vmb" | "standard" | "none">()
+    .notNull()
+    .default("auto"),
+  payoutReminderDays: integer("payout_reminder_days").notNull().default(7),
   ...stamps(),
 });
 
@@ -934,3 +940,6 @@ export * from "./schema/v2";
 
 // Notis vid varje försäljning: order som notisjobbet har tagit om hand (20261227000000_saljnotis.sql).
 export * from "./schema/saljnotis";
+
+// Utbetalningar från Nayax: partneravtal, uträkningar och betalningar (20261230*).
+export * from "./schema/utbetalning";

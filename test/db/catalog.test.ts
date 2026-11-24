@@ -40,6 +40,8 @@ const APPEND_ONLY = [
   "mystery_recipes",
   "payout_imports",
   "payout_lines",
+  // Utbetalningar från Nayax: raderna i en uträkning (20261230000200_utbetalning_fordelning.sql).
+  "payout_allocation_lines",
   // V2: produktbyten i Awish-fack (20261223000100_v2_produktbyte.sql).
   "product_swaps",
   // Inköp: ett inskick skrivs aldrig två gånger (20261210000000_inkop_en_gang.sql).
@@ -236,6 +238,13 @@ describe("tabeller", () => {
         "organization_settings",
         "organizations",
         "owner_shares",
+        // Utbetalningar från Nayax (20261230000000–20261230000200): partneravtal,
+        // ihågkomna filformat, utkast, uträkningar och betalningar till andra än butiker.
+        "partner_agreements",
+        "payout_allocation_lines",
+        "payout_allocations",
+        "payout_drafts",
+        "payout_import_mappings",
         "payout_imports",
         "payout_lines",
         "payouts",
@@ -251,6 +260,7 @@ describe("tabeller", () => {
         // V2: produktbyten i Awish-fack (20261223000100_v2_produktbyte.sql).
         "product_swaps",
         "push_subscriptions",
+        "recipient_payments",
         "release_allocations",
         "releases",
         "report_approvals",

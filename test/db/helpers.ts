@@ -1208,6 +1208,33 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
                   'Förra veckan: 2 pack, 68 kr vinst', 'Veckan innan: inget sålt.',
                   '/veckan?v=2025-03-03')`,
     );
+    // Utbetalningar från Nayax (20261230000000–20261230000200): partneravtal, ihågkommen
+    // fil, utkast, uträkning med en rad och en betalning till partnern.
+    await tx.execute(sql`
+      with pa as (
+        insert into public.partner_agreements (organization_id, partner_name, valid_from)
+        values (${orgId}, 'Partner X', '2025-01-01') returning id
+      ), po as (
+        select id from public.payouts where organization_id = ${orgId} and reference = 'U-2025-03'
+      ), al as (
+        insert into public.payout_allocations
+          (organization_id, payout_id, version, rule_version, inputs_hash, amount_ore, totals)
+        select ${orgId}, po.id, 1, 1, ${"e".repeat(64)}, 16800, '{}'::jsonb from po returning id, payout_id
+      ), li as (
+        insert into public.payout_allocation_lines
+          (organization_id, allocation_id, payout_id, recipient_kind, partner_agreement_id, amount_ore)
+        select ${orgId}, al.id, al.payout_id, 'partner', pa.id, 16800 from al, pa
+        returning id, payout_id
+      )
+      insert into public.recipient_payments
+        (organization_id, payout_id, line_id, recipient_kind, paid_on, amount_ore)
+      select ${orgId}, li.payout_id, li.id, 'partner', '2025-04-10', 100 from li`);
+    await tx.execute(sql`
+      insert into public.payout_import_mappings (organization_id, header_signature, mapping)
+      values (${orgId}, ${"f".repeat(64)}, '{"amount":"Belopp"}'::jsonb)`);
+    await tx.execute(sql`
+      insert into public.payout_drafts (organization_id, source, file_name)
+      values (${orgId}, 'csv', 'nayax.csv')`);
     // Notis vid varje försäljning (20261227000000_saljnotis.sql), skrivs bara av servern.
     await tx.execute(
       sql`insert into public.sale_notifications (organization_id, order_id)

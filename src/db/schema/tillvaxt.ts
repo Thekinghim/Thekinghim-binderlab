@@ -194,5 +194,7 @@ export const storePayments = pgTable("store_payments", {
   periodEnd: day("period_end").notNull(),
   note: text("note"),
   parts: jsonb("parts").$type<unknown[]>().notNull(),
+  /** Raden i en Nayax-utbetalning betalningen gjordes från (20261230000200). */
+  payoutAllocationLineId: uuid("payout_allocation_line_id"),
   ...stamps(),
 });
