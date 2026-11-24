@@ -24,6 +24,7 @@ import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { recordJobOutcome } from "@/server/monitoring/failures";
+import { runControlAction } from "@/server/awish/control/guard";
 
 import { AwishApiError, type AwishMarketingApi } from "../awish/grpc-client";
 import {
@@ -102,6 +103,8 @@ export interface CampaignView {
   readonly state: CampaignState;
   readonly createdBy: string | null;
   readonly machines: CampaignMachineView[];
+  /** Automater där kampanjbilden fortfarande finns i Awish (inte borttagen med DeleteBanner). */
+  readonly onScreen: number;
 }
 
 export interface CampaignPageData {
@@ -169,9 +172,11 @@ export async function loadCampaignPageFor(
           name: string;
           status: MachineRunStatus;
           error: string | null;
+          awish_banner_id: string | null;
         }>(
           tx,
-          sql`select cm.campaign_id, cm.machine_id, m.code, m.name, cm.status, cm.error
+          sql`select cm.campaign_id, cm.machine_id, m.code, m.name, cm.status, cm.error,
+                     cm.awish_banner_id
               from public.campaign_machines cm
               join public.machines m on m.organization_id = cm.organization_id and m.id = cm.machine_id
               where cm.organization_id = ${orgId}::uuid
@@ -179,6 +184,13 @@ export async function loadCampaignPageFor(
               order by m.code`,
         )
       : [];
+    const removed = await removedBannerIds(db, orgId);
+    const onScreen = new Map<string, number>();
+    for (const r of machineRows) {
+      if (r.awish_banner_id && !removed.has(r.awish_banner_id)) {
+        onScreen.set(r.campaign_id, (onScreen.get(r.campaign_id) ?? 0) + 1);
+      }
+    }
     const byCampaign = new Map<string, CampaignMachineView[]>();
     for (const r of machineRows) {
       const list = byCampaign.get(r.campaign_id) ?? [];
@@ -206,6 +218,7 @@ export async function loadCampaignPageFor(
         state: campaignState({ startsAt, endsAt, stoppedAt }, machines, now),
         createdBy: c.created_by_name,
         machines,
+        onScreen: onScreen.get(c.id) ?? 0,
       };
     });
 
@@ -770,4 +783,90 @@ export async function stopCampaignFor(
     );
   }
   return { stopped, failed };
+}
+
+// ---------------------------------------------------------------------------
+// Ta bort från skärmen (DeleteBanner)
+// ---------------------------------------------------------------------------
+
+/** Kampanjbilder som tagits bort i Awish (loggen över skrivningar via API:t). */
+async function removedBannerIds(db: Db, orgId: string): Promise<Set<string>> {
+  const rows = await query<{ target_id: string }>(
+    db,
+    sql`select target_id from public.awish_actions
+        where organization_id = ${orgId}::uuid and kind = 'banner_delete' and status = 'ok'
+          and target_id is not null`,
+  );
+  return new Set(rows.map((r) => r.target_id));
+}
+
+export interface RemoveFromScreenDeps extends CampaignDeps {
+  readonly run?: typeof runControlAction;
+}
+
+/**
+ * "Ta bort från skärmen": tar bort kampanjbilden i Awish (DeleteBanner) på varje automat,
+ * för en kampanj som är slut eller avstängd. Varje borttagning går genom runControlAction
+ * (roll, demo, takt, logg); samma automat skickas aldrig två gånger (idempotensnyckel per
+ * automat i kampanjen).
+ */
+export async function removeCampaignFromScreenFor(
+  viewer: Viewer,
+  campaignId: string,
+  deps: RemoveFromScreenDeps = {},
+): Promise<{ removed: number; failed: number; message: string }> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
+  const db = dbOf(deps);
+  const now = nowOf(deps);
+  const [campaign] = await query<{ starts_at: Date; ends_at: Date; stopped_at: Date | null }>(
+    db,
+    sql`select starts_at, ends_at, stopped_at from public.campaigns
+        where organization_id = ${orgId}::uuid and id = ${campaignId}::uuid`,
+  );
+  if (!campaign) throw new CampaignError("Kampanjen finns inte.");
+  const ended = new Date(iso(campaign.ends_at)).getTime() <= now.getTime();
+  if (!campaign.stopped_at && !ended) {
+    throw new CampaignError("Stäng av kampanjen först.");
+  }
+  const removed = await removedBannerIds(db, orgId);
+  const rows = (
+    await query<{ id: string; awish_machine_id: string; awish_banner_id: string | null }>(
+      db,
+      sql`select id, awish_machine_id, awish_banner_id from public.campaign_machines
+          where organization_id = ${orgId}::uuid and campaign_id = ${campaignId}::uuid
+            and awish_banner_id is not null`,
+    )
+  ).filter((r) => r.awish_banner_id && !removed.has(r.awish_banner_id));
+  if (rows.length === 0) {
+    return { removed: 0, failed: 0, message: "Kampanjen finns inte kvar på någon skärm." };
+  }
+  const run = deps.run ?? runControlAction;
+  let ok = 0;
+  let failed = 0;
+  let lastError: string | null = null;
+  for (const r of rows) {
+    const bannerId = r.awish_banner_id!;
+    const result = await run(
+      viewer,
+      {
+        kind: "banner_delete",
+        targetId: bannerId,
+        idempotencyKey: `banner_delete:${r.id}`,
+        auditRequest: { machine_id: r.awish_machine_id, id: bannerId },
+      },
+      (api) => api.deleteBanner({ machineId: r.awish_machine_id, id: bannerId }),
+      deps.db ? { db: deps.db } : {},
+    );
+    if (result.ok) ok += 1;
+    else {
+      failed += 1;
+      lastError = result.message;
+    }
+  }
+  const message =
+    failed === 0
+      ? `Klart! Kampanjen är borttagen från ${ok === 1 ? "skärmen" : `${ok} skärmar`}.`
+      : `${ok} av ${rows.length} borttagna. ${lastError ?? "Försök igen."}`;
+  return { removed: ok, failed, message };
 }

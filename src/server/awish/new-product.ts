@@ -46,6 +46,7 @@ import {
 } from "./goods";
 import { createAwishWebClient, type AwishWebApi, type AwishWebClientOptions } from "./web-client";
 import { awishMachineId, loadWebSource, readWebCredentials } from "./web-service";
+import { goodsWriterFor } from "../awish-catalog/goods-api";
 
 export interface NewProductDeps {
   serviceDb?: Db;
@@ -403,7 +404,7 @@ export async function createNewProductFor(
   fingerprint: string,
   deps: NewProductDeps = {},
 ): Promise<NewProductResult> {
-  const { db, client } = await loggedInClient(viewer, deps);
+  const { db, client, sourceId } = await loggedInClient(viewer, deps);
   return withAwishWriteLock(db, viewer.organization.id, async () => {
     const {
       plan,
@@ -435,13 +436,16 @@ export async function createNewProductFor(
         );
       const imageUrl = image ? await client.uploadImage(image) : null;
       const before = new Set(goods.map((g) => g.id));
-      await client.createGood(
+      // Webbpanelen eller API:t (Datakällor → Awish API → Varor till Awish).
+      const writer = await goodsWriterFor(viewer, client, sourceId, { db });
+      await writer.createGood(
         encodeGoodInput({
           name: plan.name,
           salePriceOre: plan.awish.priceOre,
           currencyId: sek.id,
           imageUrl,
         }),
+        fingerprint,
       );
       const created = sameNameGoods(await client.allGoods(), plan.name).filter(
         (g) => !before.has(g.id),
