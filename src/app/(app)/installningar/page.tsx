@@ -17,6 +17,7 @@ import { requireRoute } from "@/server/data/core";
 import { fiscalYearAround } from "@/server/self-check/queries";
 import { listCustomerDemosFor } from "@/server/demo/customer-demos";
 import { listDataExportsFor } from "@/server/export/service";
+import { loadPayoutSettingsFor } from "@/server/payouts/service";
 import { requireUser } from "@/server/session";
 
 import { CompanyForm } from "./_components/company-form";
@@ -24,6 +25,7 @@ import { CustomerDemos, type CustomerDemoRow } from "./_components/customer-demo
 import { ExportDataButton } from "./_components/export-data";
 import { FoldCard } from "./_components/fold-card";
 import { OwnerSharesForm } from "./_components/owner-shares-form";
+import { PartnerForm } from "./_components/partner-form";
 import { SettingsForm } from "./_components/settings-form";
 import { SettingsNotices, VatAcknowledgedLine } from "./_components/settings-notices";
 import { SettingsLog } from "./_components/settings-log";
@@ -64,7 +66,8 @@ export default async function SettingsPage() {
   const ctx = await requireRoute("installningar");
   const user = await requireUser();
   const isOwnerRole = ctx.role === "owner";
-  const [data, issues, exports] = await Promise.all([
+  const payoutViewer = { user, organization: { ...ctx.organization, role: ctx.role } };
+  const [data, issues, exports, payoutSettings] = await Promise.all([
     loadSettingsPageFor(user, ctx.organization.id),
     // Varningarna får aldrig stoppa sidan: utan dem visas inställningarna som förut.
     loadSettingsIssuesFor(user, ctx.organization.id, ctx.today).catch(() => null),
@@ -73,6 +76,8 @@ export default async function SettingsPage() {
           () => [],
         )
       : Promise.resolve([]),
+    // Partneravtalet (Pengar → Utbetalningar). Fel stoppar inte sidan.
+    loadPayoutSettingsFor(payoutViewer).catch(() => null),
   ]);
 
   const tz = ctx.timeZone;
@@ -214,6 +219,42 @@ export default async function SettingsPage() {
                 </MobileFold>
               </CardBody>
             </Card>
+
+            {payoutSettings ? (
+              <Card
+                id="partneravtal"
+                className="scroll-mt-24"
+                title="Partneravtal"
+                actions={
+                  payoutSettings.agreements[0] ? (
+                    <span className="lk">
+                      {payoutSettings.agreements[0].partnerName} ·{" "}
+                      {payoutSettings.agreements[0].profitShareBp / 100} %
+                    </span>
+                  ) : undefined
+                }
+              >
+                <CardBody className="flex flex-col gap-4">
+                  <p className="st-p">
+                    Hur pengarna från Nayax delas under Pengar → Utbetalningar: partnern får
+                    tillbaka inköpet och en andel av vinsten, resten är ditt.
+                  </p>
+                  <MobileFold
+                    summary="Visa och ändra"
+                    meta={payoutSettings.agreements[0]?.partnerName ?? "Inget avtal"}
+                  >
+                    <PartnerForm
+                      agreements={payoutSettings.agreements}
+                      vatReserveMode={payoutSettings.vatReserveMode}
+                      reminderDays={payoutSettings.reminderDays}
+                      payoutsFrom={payoutSettings.payoutsFrom}
+                      refundsPaidVia={payoutSettings.refundsPaidVia}
+                      today={ctx.today}
+                    />
+                  </MobileFold>
+                </CardBody>
+              </Card>
+            ) : null}
 
             <Card
               id="agarandelar"

@@ -58,7 +58,7 @@ export interface PaymentInput {
   readonly note?: string | null;
 }
 
-interface CleanInput {
+export interface CleanInput {
   readonly storeId: string;
   readonly paidOn: IsoDate;
   readonly amountOre: number;
@@ -107,7 +107,7 @@ export function cleanPaymentInput(input: PaymentInput, today: IsoDate): CleanInp
   };
 }
 
-function paymentDbError(error: unknown): never {
+export function paymentDbError(error: unknown): never {
   const pg = pgErrorOf(error);
   if (pg && ["BL080", "BL081", "BL082", "22023"].includes(pg.code) && pg.message) {
     throw new SettlementError(pg.message);
@@ -311,65 +311,91 @@ export async function registerPaymentFor(
   const today = businessToday(now, viewer.organization.timezone);
   const input = cleanPaymentInput(raw, today);
   try {
-    return await withUserDbFor(viewer.user, async (tx) => {
-      // En registrering i taget per butik: delarna räknas på de andra betalningarna.
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${`store-payment:${orgId}:${input.storeId}`}))`,
-      );
-      const { name, parts } = await splitTx(tx, orgId, input, today, now, true);
-      if (
-        expectedParts !== null &&
-        (expectedParts.length !== parts.length ||
-          parts.some((p, i) => p.amountOre !== expectedParts[i]))
-      ) {
-        throw new SettlementError("Uppdelningen har ändrats. Kontrollera och försök igen.");
-      }
-      const [row] = await tx
-        .insert(s.storePayments)
-        .values({
-          organizationId: orgId,
-          storeId: input.storeId,
-          paidOn: input.paidOn,
-          amountOre: input.amountOre,
-          periodStart: input.periodStart,
-          periodEnd: input.periodEnd,
-          note: input.note,
-          parts: parts as unknown as unknown[],
-        })
-        .returning({ id: s.storePayments.id });
-      const settlements = await settlementsOfStore(tx, orgId, input.storeId, false);
-      const touched = settlements
-        .filter(
-          (x) => x.paidOn === null && parts.some((p) => p.month === x.month && p.amountOre > 0),
-        )
-        .map((x) => x.id);
-      const settled = await settleCoveredTx(tx, orgId, touched, now);
-      const closedMonths: IsoMonth[] = [];
-      for (const m of [...new Set(settled.map((x) => x.month))].sort()) {
-        if (
-          await closeMonthIfDoneTx(tx, {
-            organizationId: orgId,
-            month: m,
-            trigger: "settlement_paid",
-            today,
-          })
-        ) {
-          closedMonths.push(m);
-        }
-      }
-      const after = await settlementsOfStore(tx, orgId, input.storeId, false);
-      return {
-        id: row!.id,
-        storeName: name,
-        parts: partViews(parts, after),
-        settledMonths: settled.map((x) => x.month),
-        closedMonths,
-      };
-    });
+    return await withUserDbFor(viewer.user, (tx) =>
+      registerPaymentTx(tx, orgId, input, { today, now, expectedParts }),
+    );
   } catch (error) {
     if (error instanceof SettlementError) throw error;
     paymentDbError(error);
   }
+}
+
+/**
+ * Registreringen i en given transaktion (som användaren, RLS): samma regel och kontroll som
+ * registerPaymentFor. `payoutLineId` = raden i en Nayax-utbetalning betalningen görs från
+ * (Pengar → Utbetalningar); utelämnad för en vanlig betalning.
+ */
+export async function registerPaymentTx(
+  tx: Tx,
+  orgId: string,
+  input: CleanInput,
+  options: {
+    readonly today: IsoDate;
+    readonly now: Date;
+    readonly expectedParts?: readonly number[] | null;
+    readonly payoutLineId?: string | null;
+  },
+): Promise<{
+  id: string;
+  storeName: string;
+  parts: PaymentPartView[];
+  settledMonths: IsoMonth[];
+  closedMonths: IsoMonth[];
+}> {
+  const { today, now } = options;
+  const expectedParts = options.expectedParts ?? null;
+  // En registrering i taget per butik: delarna räknas på de andra betalningarna.
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${`store-payment:${orgId}:${input.storeId}`}))`,
+  );
+  const { name, parts } = await splitTx(tx, orgId, input, today, now, true);
+  if (
+    expectedParts !== null &&
+    (expectedParts.length !== parts.length ||
+      parts.some((p, i) => p.amountOre !== expectedParts[i]))
+  ) {
+    throw new SettlementError("Uppdelningen har ändrats. Kontrollera och försök igen.");
+  }
+  const [row] = await tx
+    .insert(s.storePayments)
+    .values({
+      organizationId: orgId,
+      storeId: input.storeId,
+      paidOn: input.paidOn,
+      amountOre: input.amountOre,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      note: input.note,
+      parts: parts as unknown as unknown[],
+      payoutAllocationLineId: options.payoutLineId ?? null,
+    })
+    .returning({ id: s.storePayments.id });
+  const settlements = await settlementsOfStore(tx, orgId, input.storeId, false);
+  const touched = settlements
+    .filter((x) => x.paidOn === null && parts.some((p) => p.month === x.month && p.amountOre > 0))
+    .map((x) => x.id);
+  const settled = await settleCoveredTx(tx, orgId, touched, now);
+  const closedMonths: IsoMonth[] = [];
+  for (const m of [...new Set(settled.map((x) => x.month))].sort()) {
+    if (
+      await closeMonthIfDoneTx(tx, {
+        organizationId: orgId,
+        month: m,
+        trigger: "settlement_paid",
+        today,
+      })
+    ) {
+      closedMonths.push(m);
+    }
+  }
+  const after = await settlementsOfStore(tx, orgId, input.storeId, false);
+  return {
+    id: row!.id,
+    storeName: name,
+    parts: partViews(parts, after),
+    settledMonths: settled.map((x) => x.month),
+    closedMonths,
+  };
 }
 
 /**
@@ -388,71 +414,77 @@ export async function deletePaymentFor(
   if (!UUID.test(id)) throw new SettlementError("Betalningen finns inte.");
   const paymentId = id.toLowerCase();
   try {
-    return await withUserDbFor(viewer.user, async (tx) => {
-      const [payment] = await tx
-        .select({
-          storeId: s.storePayments.storeId,
-          amountOre: s.storePayments.amountOre,
-          parts: s.storePayments.parts,
-        })
-        .from(s.storePayments)
-        .where(and(eq(s.storePayments.organizationId, orgId), eq(s.storePayments.id, paymentId)));
-      if (!payment) throw new SettlementError("Betalningen finns inte.");
-      // Samma lås som registreringen (tabellen har ingen uppdateringsrätt, så inget radlås).
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${`store-payment:${orgId}:${payment.storeId}`}))`,
-      );
-      // Togs den bort medan vi väntade på låset (två flikar)?
-      const still = await tx
-        .select({ id: s.storePayments.id })
-        .from(s.storePayments)
-        .where(and(eq(s.storePayments.organizationId, orgId), eq(s.storePayments.id, paymentId)));
-      if (still.length === 0) throw new SettlementError("Betalningen finns inte.");
-      const name = await storeName(tx, orgId, payment.storeId);
-      const settlements = await settlementsOfStore(tx, orgId, payment.storeId, true);
-      const months = new Set(
-        parseParts(payment.parts)
-          .filter((p) => p.amountOre > 0)
-          .map((p) => p.month),
-      );
-      const affected = settlements.filter((x) => months.has(x.month) && x.fromPayments);
-      const closed = new Set(await queryClosedMonthKeys(tx, orgId));
-      const closedHit = affected.find((x) => closed.has(x.month));
-      if (closedHit) {
-        const m = monthLong(closedHit.month);
-        throw new SettlementError(
-          `${m.charAt(0).toUpperCase()}${m.slice(1)} är stängd och avräkningen där är betald med den här betalningen. Ägaren öppnar månaden igen under Butiker → Utbetalning först.`,
-        );
-      }
-      for (const x of affected) {
-        await tx
-          .update(s.storeSettlements)
-          .set({ paidOn: null })
-          .where(
-            and(eq(s.storeSettlements.organizationId, orgId), eq(s.storeSettlements.id, x.id)),
-          );
-      }
-      await tx
-        .delete(s.storePayments)
-        .where(and(eq(s.storePayments.organizationId, orgId), eq(s.storePayments.id, paymentId)));
-      // Täcker andra betalningar fortfarande avräkningen blir den betald med dem.
-      const again = await settleCoveredTx(
-        tx,
-        orgId,
-        affected.map((x) => x.id),
-        now,
-      );
-      const stillPaid = new Set(again.map((x) => x.id));
-      return {
-        storeName: name,
-        amountOre: payment.amountOre,
-        reopened: affected.filter((x) => !stillPaid.has(x.id)).map((x) => x.month),
-      };
-    });
+    return await withUserDbFor(viewer.user, (tx) => deletePaymentTx(tx, orgId, paymentId, now));
   } catch (error) {
     if (error instanceof SettlementError) throw error;
     paymentDbError(error);
   }
+}
+
+/** Borttagningen i en given transaktion (som användaren, RLS), samma regler som deletePaymentFor. */
+export async function deletePaymentTx(
+  tx: Tx,
+  orgId: string,
+  paymentId: string,
+  now: Date,
+): Promise<{ storeName: string; amountOre: number; reopened: IsoMonth[] }> {
+  const [payment] = await tx
+    .select({
+      storeId: s.storePayments.storeId,
+      amountOre: s.storePayments.amountOre,
+      parts: s.storePayments.parts,
+    })
+    .from(s.storePayments)
+    .where(and(eq(s.storePayments.organizationId, orgId), eq(s.storePayments.id, paymentId)));
+  if (!payment) throw new SettlementError("Betalningen finns inte.");
+  // Samma lås som registreringen (tabellen har ingen uppdateringsrätt, så inget radlås).
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${`store-payment:${orgId}:${payment.storeId}`}))`,
+  );
+  // Togs den bort medan vi väntade på låset (två flikar)?
+  const still = await tx
+    .select({ id: s.storePayments.id })
+    .from(s.storePayments)
+    .where(and(eq(s.storePayments.organizationId, orgId), eq(s.storePayments.id, paymentId)));
+  if (still.length === 0) throw new SettlementError("Betalningen finns inte.");
+  const name = await storeName(tx, orgId, payment.storeId);
+  const settlements = await settlementsOfStore(tx, orgId, payment.storeId, true);
+  const months = new Set(
+    parseParts(payment.parts)
+      .filter((p) => p.amountOre > 0)
+      .map((p) => p.month),
+  );
+  const affected = settlements.filter((x) => months.has(x.month) && x.fromPayments);
+  const closed = new Set(await queryClosedMonthKeys(tx, orgId));
+  const closedHit = affected.find((x) => closed.has(x.month));
+  if (closedHit) {
+    const m = monthLong(closedHit.month);
+    throw new SettlementError(
+      `${m.charAt(0).toUpperCase()}${m.slice(1)} är stängd och avräkningen där är betald med den här betalningen. Ägaren öppnar månaden igen under Butiker → Utbetalning först.`,
+    );
+  }
+  for (const x of affected) {
+    await tx
+      .update(s.storeSettlements)
+      .set({ paidOn: null })
+      .where(and(eq(s.storeSettlements.organizationId, orgId), eq(s.storeSettlements.id, x.id)));
+  }
+  await tx
+    .delete(s.storePayments)
+    .where(and(eq(s.storePayments.organizationId, orgId), eq(s.storePayments.id, paymentId)));
+  // Täcker andra betalningar fortfarande avräkningen blir den betald med dem.
+  const again = await settleCoveredTx(
+    tx,
+    orgId,
+    affected.map((x) => x.id),
+    now,
+  );
+  const stillPaid = new Set(again.map((x) => x.id));
+  return {
+    storeName: name,
+    amountOre: payment.amountOre,
+    reopened: affected.filter((x) => !stillPaid.has(x.id)).map((x) => x.month),
+  };
 }
 
 /** En betalning i listan på Utbetalning. */

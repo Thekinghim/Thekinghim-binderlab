@@ -34,6 +34,8 @@ export const ACTION_ALERT_KINDS: ReadonlySet<string> = new Set([
   // En order att hantera (src/server/awish/order-attention.ts): återbetald i Awish efter
   // importen, eller betald men omöjlig att läsa. Står kvar tills den är hanterad.
   "order_attention",
+  // Obetalda belopp från Nayax-utbetalningar (src/server/payouts/reminders.ts).
+  "payout_unpaid",
 ]);
 
 const KIND_RULE: Record<string, string> = {
@@ -48,10 +50,16 @@ const KIND_RULE: Record<string, string> = {
   self_check: "Daglig kontroll: en av kontrollerna gick inte igenom.",
   order_attention:
     "Awish-synken såg en order som måste hanteras för hand: återbetald efter importen, eller betald men omöjlig att läsa.",
+  payout_unpaid:
+    "Belopp från en utbetalning från Nayax är inte markerade som betalda efter så många dagar som står under Inställningar.",
 };
 
 /** Larmtyper där larmets egen länk (alerts.link) leder till åtgärden. */
-const OWN_LINK_KINDS: ReadonlySet<string> = new Set(["job_failed", "order_attention"]);
+const OWN_LINK_KINDS: ReadonlySet<string> = new Set([
+  "job_failed",
+  "order_attention",
+  "payout_unpaid",
+]);
 
 function ownLink(a: Pick<AlertRef, "kind" | "link">): string | null {
   if (!OWN_LINK_KINDS.has(a.kind)) return null;
@@ -116,13 +124,15 @@ export function alertTodos(
             ? "Visa importerna"
             : a.kind === "order_attention"
               ? "Hantera ordern"
-              : a.kind === "self_check"
-                ? "Öppna kontrollen"
-                : a.kind === "report_failed"
-                  ? "Öppna rapporterna"
-                  : ownLink(a) || !a.machineId
-                    ? "Öppna"
-                    : "Öppna automaten",
+              : a.kind === "payout_unpaid"
+                ? "Visa att betala"
+                : a.kind === "self_check"
+                  ? "Öppna kontrollen"
+                  : a.kind === "report_failed"
+                    ? "Öppna rapporterna"
+                    : ownLink(a) || !a.machineId
+                      ? "Öppna"
+                      : "Öppna automaten",
         params: { alertId: a.id },
       },
     });

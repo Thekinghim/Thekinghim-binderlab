@@ -729,6 +729,49 @@ och flytta dit packen som skickas. Påfyllningarna dras då därifrån. Räcker 
 påfyllningen ändå, utan uttag, med noteringen "Butikens lager räckte inte – kontrollera
 lagret". Utan eget butikslager spåras butikens påfyllningar inte i något lager.
 
+## Utbetalningar från Nayax
+
+Pengar → Utbetalningar (`/pengar/utbetalningar`, ägare och admin) säger exakt vem som ska ha
+vad av varje klumpsumma från Nayax: butikerna (eller bolaget som äger dem), partnern
+(inköpet tillbaka + andelen av vinsten), momsen att spara och det som blir kvar till ägaren.
+
+- **Lägg in:** ladda upp rapporten (CSV, Excel, PDF eller foto) eller skriv in dag och
+  belopp. Okända kolumner får ett kolumnsteg som kommer ihåg filen. Ett foto eller en skannad
+  PDF läses av AI (`AI_PAYOUT_MODEL`, samma nyckel och månadstak som assistenten, högst 20
+  per dygn, aldrig i demon i produktion); inget sparas förrän ägaren trycker "Stämmer, spara".
+- **Period:** står den inte i rapporten räknar appen ut den: dagen efter den senast täckta
+  dagen och framåt, tills det vi väntar oss (försäljning − återbetalningar − beräknad
+  kortavgift) ligger närmast beloppet. Antagandet står på utbetalningen.
+- **Regeln** (`src/domain/payout-split.ts`): vinst = belopp − butikernas andel − vårt inköp −
+  momsen att spara − återbetalningar ägaren gjort själv (Inställningar: "Återbetalningar till
+  kunder", standard "Jag betalar själv"); partnern = inköpet + andelen av vinsten (avkortat till helt öre); ägaren
+  får resten. Raderna blir alltid exakt beloppet. Butikens andel räknas med samma uträkning
+  som månadsavräkningen. Partneravtalet och momsläget ställs in under Inställningar →
+  Partneravtal (standard: moms "Automatiskt", som bokföringen).
+- **Betala:** "Markera som betald" för en butik skapar en vanlig butiksbetalning kopplad till
+  raden, så att månadsavräkningen blir betald med betalningarna och butiken ser den i
+  portalen. Det butiken har kvar räknas mot ALLA dess betalningar och avräkningar, även de
+  som gjorts under Butiker → Utbetalning: inget betalas två gånger. Första betalningen låser
+  uträkningen, och allt före den. När månadens avräkning finns och alla
+  dagar i månaden är täckta läggs skillnaden som "Justering" på nästa utbetalning, så att
+  summan för månaden blir exakt avräkningen. "Ladda ner betallista" ger en CSV för banken.
+- **Varje natt** (`/api/cron/larm`): utkasten räknas om, saknade sammanfattningar skrivs, utkast
+  äldre än 30 dagar tas bort och obetalda belopp påminns om efter `payout_reminder_days`
+  dagar (larmet `payout_unpaid` i Att göra och som notis).
+- **Om något ser fel ut:** öppna utbetalningen och "Varför?" på raden. Ett nytt inköpspris
+  räknar om obetalda utbetalningar direkt; en betald utbetalning ändras aldrig, skillnaden
+  för partnern och momsen läggs som "Rättelse" på nästa utkast (butikerna rättas mot
+  månadsavräkningen). Fel utbetalning: ångra betalningarna (notisen eller raden) och arkivera
+  utbetalningen på Ekonomi. Databasen stoppar arkivering så länge något är betalt från den,
+  eller en senare utbetalning är betald; en ny utbetalning före en betald går inte heller.
+- **Start:** "Utbetalningar från och med" (Inställningar → Partneravtal). Organisationer som
+  hade utbetalningar när funktionen kom in börjar den dagen; äldre utbetalningar räknas inte
+  och syns inte som att betala.
+- **Filer:** högst 10 MB och 20 000 rader; Excel kontrolleras mot zip-bomber innan den läses.
+  Efter kolumnsteget sparas bara de valda kolumnerna, och filens rader tas bort när
+  utkastet sparas eller kastas. En sammanställning med flera utbetalningar läggs in en i
+  taget ("1 av 3 – Stämmer, nästa"); en rad "Totalt"/"Summa" räknas aldrig.
+
 ## E2E-tester
 
 Sex flöden plus felövervakningen går genom webbläsaren med Playwright-biblioteket (inte

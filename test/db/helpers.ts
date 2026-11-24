@@ -1208,6 +1208,67 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
                   'Förra veckan: 2 pack, 68 kr vinst', 'Veckan innan: inget sålt.',
                   '/veckan?v=2025-03-03')`,
     );
+    // Utbetalningar från Nayax (20261230000000–20261230000200): partneravtal, ihågkommen
+    // fil, utkast, uträkning med en rad och en betalning till partnern.
+    await tx.execute(sql`
+      with pa as (
+        insert into public.partner_agreements (organization_id, partner_name, valid_from)
+        values (${orgId}, 'Partner X', '2025-01-01') returning id
+      ), po as (
+        select id from public.payouts where organization_id = ${orgId} and reference = 'U-2025-03'
+      ), al as (
+        insert into public.payout_allocations
+          (organization_id, payout_id, version, rule_version, inputs_hash, amount_ore, totals)
+        select ${orgId}, po.id, 1, 1, ${"e".repeat(64)}, 16800, '{}'::jsonb from po returning id, payout_id
+      ), li as (
+        insert into public.payout_allocation_lines
+          (organization_id, allocation_id, payout_id, recipient_kind, partner_agreement_id, amount_ore)
+        select ${orgId}, al.id, al.payout_id, 'partner', pa.id, 16800 from al, pa
+        returning id, payout_id
+      )
+      insert into public.recipient_payments
+        (organization_id, payout_id, line_id, recipient_kind, paid_on, amount_ore)
+      select ${orgId}, li.payout_id, li.id, 'partner', '2025-04-10', 100 from li`);
+    await tx.execute(sql`
+      with so as (
+        insert into public.store_owners (organization_id, legal_name, org_number)
+        values (${orgId}, 'Bolag Test AB', '559911-0001') returning id
+      ), al as (
+        select id, payout_id from public.payout_allocations
+        where organization_id = ${orgId} and superseded_at is null limit 1
+      )
+      insert into public.payout_allocation_lines
+        (organization_id, allocation_id, payout_id, recipient_kind, store_owner_id, store_id, amount_ore)
+      select ${orgId}::uuid, al.id, al.payout_id, 'store_owner', so.id, null::uuid, 0 from al, so
+      union all
+      select ${orgId}::uuid, al.id, al.payout_id, 'store', null::uuid, ${store!.id}::uuid, 0 from al`);
+    await tx.execute(sql`
+      insert into public.store_payments
+        (organization_id, store_id, paid_on, amount_ore, period_start, period_end, parts,
+         payout_allocation_line_id)
+      select ${orgId}::uuid, ${store!.id}::uuid, '2025-04-16'::date, 100, '2025-03-01', '2025-03-31',
+             '[{"month":"2025-03","start":"2025-03-01","end":"2025-03-31","amountOre":100}]'::jsonb, l.id
+      from public.payout_allocation_lines l
+      where l.organization_id = ${orgId} and l.recipient_kind = 'store' limit 1`);
+    await tx.execute(sql`
+      with run as (
+        insert into public.ai_runs (organization_id, trigger, purpose, status, model)
+        values (${orgId}, 'upload', 'payout_read', 'ok', 'claude-sonnet-5-5') returning id
+      )
+      insert into public.payout_drafts
+        (organization_id, source, file_name, extractor, ai_run_id, status, payout_id)
+      select ${orgId}::uuid, 'image', 'foto.png', 'ai', run.id, 'confirmed', p.id
+      from run, public.payouts p where p.organization_id = ${orgId} and p.reference = 'U-2025-03'`);
+    await tx.execute(sql`
+      insert into public.payout_import_mappings (organization_id, header_signature, mapping)
+      values (${orgId}, ${"f".repeat(64)}, '{"amount":"Belopp"}'::jsonb)`);
+    await tx.execute(sql`
+      insert into public.payout_drafts (organization_id, source, file_name)
+      values (${orgId}, 'csv', 'nayax.csv')`);
+    await tx.execute(sql`
+      insert into public.payout_summaries (organization_id, payout_id, summary)
+      select ${orgId}::uuid, p.id, 'Nayax betalade 168 kr.'
+      from public.payouts p where p.organization_id = ${orgId} and p.reference = 'U-2025-03'`);
     // Notis vid varje försäljning (20261227000000_saljnotis.sql), skrivs bara av servern.
     await tx.execute(
       sql`insert into public.sale_notifications (organization_id, order_id)
