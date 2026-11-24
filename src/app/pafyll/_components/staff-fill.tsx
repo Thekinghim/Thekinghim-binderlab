@@ -34,9 +34,13 @@ function startValues(data: StaffFillData): Record<string, number> {
   );
 }
 
-/** Högst så många som får plats (kapacitet minus pack i automaten), annars 500. */
+/**
+ * Högst så många som får plats (kapacitet minus pack i automaten, annars 500) och aldrig
+ * fler än butiken har fått, när butikens lager spåras (databasen stoppar också fler).
+ */
 function maxOf(r: StaffFillData["rows"][number]): number {
-  return r.capacity !== null ? Math.max(r.capacity - r.units, 0) : 500;
+  const room = r.capacity !== null ? Math.max(r.capacity - r.units, 0) : 500;
+  return r.storeStock !== null ? Math.min(room, Math.max(r.storeStock, 0)) : room;
 }
 
 const OFFLINE = "Ingen kontakt. Kolla wifi eller mobildata och tryck igen. Inget har sparats.";

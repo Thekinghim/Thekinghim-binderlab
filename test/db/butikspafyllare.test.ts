@@ -400,7 +400,7 @@ describe("påfyllning", () => {
     expect((await refill(staff, otherOrg, otherMachine, title1, 1)).code).toBe("42501");
   });
 
-  it("butikens lager: dras därifrån; valt lager från klienten ignoreras; för lite sparas med varning", async () => {
+  it("butikens lager: dras därifrån; valt lager från klienten ignoreras; fler än butiken har stoppas", async () => {
     storeWarehouse = (
       await asUser(owner, (tx) =>
         one<{ id: string }>(
@@ -444,16 +444,18 @@ describe("påfyllning", () => {
       ).q;
     expect(await lvl(storeWarehouse)).toBe(2);
     expect(await lvl(central.id)).toBe(50);
-    // 4 > 2 kvar: sparas ändå, de 2 som finns tas ur butikens lager, med noteringen.
+    // 4 > 2 kvar: stoppas (låst till det butiken har fått), inget dras.
     const short = await refill(staff, orgId, m1, title1, 4);
-    expect(short.ok).toBe(true);
-    const ev = await one<{ note: string }>(
-      db(),
-      sql`select note from public.stock_events where id = ${short.value!.stock_event_id}`,
-    );
-    expect(ev.note).toContain("Butikens lager räckte inte");
-    expect(await lvl(storeWarehouse)).toBe(0);
+    expect(short.ok).toBe(false);
+    expect(short.message ?? "").toContain("Du har bara 2 pack");
+    expect(await lvl(storeWarehouse)).toBe(2);
     expect(await lvl(central.id)).toBe(50);
+    // Testerna nedan fyller på fritt: gott om pack i butikens lager.
+    await asPostgres((tx) =>
+      tx.execute(sql`insert into public.stock_events (organization_id, location_id, title_id, kind, quantity, occurred_at)
+        values (${orgId}, ${storeWarehouse}, ${title1}, 'count', 1000, now()),
+               (${orgId}, ${storeWarehouse}, ${title2}, 'count', 1000, now())`),
+    );
   });
 
   it("Ångra fungerar bara på egna påfyllningar", async () => {
