@@ -391,6 +391,13 @@ export async function PayCard() {
           </div>
         </>
       )}
+      {pay.canEdit ? (
+        <div className="psum">
+          <Link href="/pengar/utbetalningar" className="lk" data-testid="pay-all-link">
+            Se allt att betala från Nayax <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      ) : null}
     </Card>
   );
 }

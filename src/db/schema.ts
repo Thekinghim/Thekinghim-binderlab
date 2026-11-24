@@ -743,6 +743,19 @@ export const organizationSettings = pgTable("organization_settings", {
   routeMaxPacks: integer("route_max_packs").notNull().default(350),
   /** V2: besöksdagar, 1 = måndag … 7 = söndag (standard mån–fre). */
   routeWeekdays: int2Array("route_weekdays").notNull().default([1, 2, 3, 4, 5]),
+  /** Utbetalningar (20261230000000_partneravtal.sql): momsen att spara och påminnelsen. */
+  vatReserveMode: text("vat_reserve_mode")
+    .$type<"auto" | "vmb" | "standard" | "none">()
+    .notNull()
+    .default("auto"),
+  payoutReminderDays: integer("payout_reminder_days").notNull().default(7),
+  /** Utbetalningar räknas från och med den dagen (pengarna kom); null = alla. */
+  payoutsFrom: date("payouts_from", { mode: "string" }),
+  /** Återbetalningar till kunder: i Nayax (dras från utbetalningen) eller av ägaren själv. */
+  refundsPaidVia: text("refunds_paid_via")
+    .$type<"nayax" | "outside">()
+    .notNull()
+    .default("outside"),
   ...stamps(),
 });
 
@@ -937,3 +950,5 @@ export * from "./schema/saljnotis";
 
 // Om Awish krånglar: hälsan per Awish-väg (20261229000000_awish_halsa.sql).
 export * from "./schema/awish-halsa";
+// Utbetalningar från Nayax: partneravtal, uträkningar och betalningar (20261230*).
+export * from "./schema/utbetalning";

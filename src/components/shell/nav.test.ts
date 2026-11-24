@@ -57,7 +57,7 @@ describe("huvudflikar", () => {
       ],
       "vart-lager": ["Vårt lager", "Mystery packs", "Inköp", "Prognos", "Inköpspriser"],
       butiker: ["Butiker", "Butiksägare", "Kontrakt", "Expansion", "Utbetalning"],
-      pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter", "Värde"],
+      pengar: ["Lönsamhet", "Ekonomi", "Utbetalningar", "Bokföring", "Rapporter", "Värde"],
       mer: ["Inställningar", "Datakällor", "Assistent", "Marknad", "Effekt"],
     });
   });

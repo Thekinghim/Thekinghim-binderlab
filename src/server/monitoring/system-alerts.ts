@@ -32,7 +32,12 @@ import type { Db } from "@/db/client";
  */
 export type SystemAlertKind = Extract<
   AlertKind,
-  "report_failed" | "job_failed" | "import_failed" | "self_check" | "order_attention"
+  | "report_failed"
+  | "job_failed"
+  | "import_failed"
+  | "self_check"
+  | "order_attention"
+  | "payout_unpaid"
 >;
 
 export interface SystemAlertInput {

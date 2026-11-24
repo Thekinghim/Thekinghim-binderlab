@@ -23,7 +23,7 @@ export interface CsvRecord {
 
 export interface CsvTable {
   delimiter: Delimiter;
-  encoding: "utf-8" | "windows-1252";
+  encoding: "utf-8" | "windows-1252" | "utf-16le" | "utf-16be";
   records: CsvRecord[];
 }
 
@@ -98,8 +98,8 @@ function lineOfByte(bytes: Uint8Array, pos: number): number {
 }
 
 /**
- * Avkodar filens bytes till text: UTF-8, eller Windows-1252 om filen inte är
- * UTF-8 alls (Excel-export). En fil som har giltiga UTF-8-tecken (å, ä, ö, é
+ * Avkodar filens bytes till text: UTF-16 med BOM (Excels "Unicode-text"), UTF-8, eller
+ * Windows-1252 om filen inte är UTF-8 alls (Excel-export). En fil som har giltiga UTF-8-tecken (å, ä, ö, é
  * ...) och dessutom en ogiltig byte är en trasig UTF-8-fil, inte Windows-1252:
  * att avkoda den som Windows-1252 skulle göra "Pokémon" till "PokÃ©mon" i hela
  * filen och skapa falska titlar och konflikter. Den avvisas med radnumret.
@@ -113,6 +113,13 @@ export function decodeFile(content: string | Uint8Array): {
   }
   if (content.byteLength > MAX_FILE_BYTES) {
     throw new ImportValidationError("Filen är för stor (högst 50 MB).");
+  }
+  // Excels "Unicode-text" är UTF-16 med BOM (FF FE eller FE FF).
+  if (content.byteLength >= 2 && content[0] === 0xff && content[1] === 0xfe) {
+    return { text: new TextDecoder("utf-16le").decode(content.subarray(2)), encoding: "utf-16le" };
+  }
+  if (content.byteLength >= 2 && content[0] === 0xfe && content[1] === 0xff) {
+    return { text: new TextDecoder("utf-16be").decode(content.subarray(2)), encoding: "utf-16be" };
   }
   const scan = scanUtf8(content);
   if (scan.firstInvalid < 0) {

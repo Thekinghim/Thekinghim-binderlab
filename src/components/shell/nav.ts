@@ -51,6 +51,8 @@ export type RouteId =
   // V2 (docs/design/v2/byggplan.md, avsnitt 1.1): nya sidor.
   | "rutt"
   | "pengar"
+  // Utbetalningar från Nayax: vem som ska ha vad (/pengar/utbetalningar).
+  | "utbetalningar"
   | "mer";
 
 export type ShellRoute = {
@@ -385,6 +387,20 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     lead: "Resultat, vinst per automat och det som ska betalas.",
   },
   {
+    id: "utbetalningar",
+    group: "hidden",
+    href: "/pengar/utbetalningar",
+    label: "Utbetalningar",
+    icon: "margin",
+    section: "main",
+    // Partnerns andel och vårt inköp syns här: bara ägare och admin.
+    roles: OPERATORS,
+    phase: 16,
+    lead: "Pengarna från Nayax: vem som ska ha vad.",
+    context: false,
+    vmb: false,
+  },
+  {
     id: "mer",
     group: "hidden",
     href: "/mer",
@@ -610,6 +626,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     tabs: [
       tab("lonsamhet", "Lönsamhet"),
       tab("ekonomi", "Ekonomi"),
+      tab("utbetalningar", "Utbetalningar"),
       tab("ekonomi", "Bokföring", "bokforing", { context: false }),
       tab("rapporter", "Rapporter"),
       tab("varde", "Värde"),

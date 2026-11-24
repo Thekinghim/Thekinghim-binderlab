@@ -97,6 +97,14 @@ const VIEWER_OWN_ROWS_ONLY = [
   "self_check_runs",
   // Awish Chrome-tillägget: synk-tokens syns bara för ägare och admin.
   "sync_tokens",
+  // Utbetalningar från Nayax: partnerns andel och fördelningen syns bara för ägare och admin.
+  "partner_agreements",
+  "payout_allocation_lines",
+  "payout_allocations",
+  "payout_drafts",
+  "payout_import_mappings",
+  "payout_summaries",
+  "recipient_payments",
   // Veckosammanfattning: läsaren ser bara sina egna rader (hon får ingen).
   "weekly_summaries",
   // Notis vid varje försäljning: vilka order som har notifierats, bara ägare och admin.

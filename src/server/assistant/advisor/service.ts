@@ -274,7 +274,8 @@ export async function runAdvisor(args: RunArgs): Promise<RunOutcome> {
         sql`select count(*) filter (where trigger = 'manual')::int as manual,
                    count(*) filter (where trigger = 'cron' and status in ('ok', 'empty', 'running'))::int as cron,
                    max(created_at) filter (where status in ('ok', 'empty', 'running')) as last_at
-            from public.ai_runs where organization_id = ${orgId} and created_at >= ${today.toISOString()}::timestamptz`,
+            from public.ai_runs where organization_id = ${orgId} and purpose = 'advisor'
+              and created_at >= ${today.toISOString()}::timestamptz`,
       ),
     ) as Array<{ manual: number; cron: number; last_at: Date | string | null }>;
     // Har underlaget (inköpspriser, inställningar, avtal) ändrats efter dagens senaste
@@ -566,13 +567,15 @@ function readAdvisorState(
     const [last] = Array.from(
       await tx.execute(
         sql`select status, created_at from public.ai_runs where organization_id = ${orgId}
+              and purpose = 'advisor'
             order by created_at desc limit 1`,
       ),
     ) as Array<{ status: string; created_at: Date | string }>;
     const [manual] = Array.from(
       await tx.execute(
         sql`select count(*)::int as n from public.ai_runs
-            where organization_id = ${orgId} and trigger = 'manual' and created_at >= ${today.toISOString()}::timestamptz`,
+            where organization_id = ${orgId} and trigger = 'manual' and purpose = 'advisor'
+              and created_at >= ${today.toISOString()}::timestamptz`,
       ),
     ) as Array<{ n: number }>;
     const iso = (d: Date | string) =>

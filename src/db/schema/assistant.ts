@@ -61,7 +61,8 @@ export const assistantLogs = pgTable("assistant_logs", {
 // admin läser och ändrar status på förslagen.
 // ---------------------------------------------------------------------------
 
-export type AiRunTrigger = "cron" | "manual";
+export type AiRunTrigger = "cron" | "manual" | "upload";
+export type AiRunPurpose = "advisor" | "payout_read" | "payout_summary";
 export type AiRunStatus = "running" | "ok" | "empty" | "budget" | "error";
 export type AiSuggestionStatus = "new" | "done" | "dismissed";
 export type AiConfidence = "high" | "medium" | "low";
@@ -71,6 +72,8 @@ export const aiRuns = pgTable("ai_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull(),
   trigger: text("trigger").$type<AiRunTrigger>().notNull(),
+  /** Vad körningen gjorde (20261230000100_utbetalning_tackning.sql). */
+  purpose: text("purpose").$type<AiRunPurpose>().notNull().default("advisor"),
   status: text("status").$type<AiRunStatus>().notNull().default("running"),
   model: text("model").notNull(),
   inputTokens: integer("input_tokens").notNull().default(0),

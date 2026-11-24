@@ -153,7 +153,7 @@ export function playwright(): Playwright {
 }
 
 export async function launchBrowser(): Promise<Browser> {
-  return playwright().chromium.launch({ args: ["--no-proxy-server"] });
+  return playwright().chromium.launch({ args: ["--no-proxy-server", "--lang=sv-SE"] });
 }
 
 export const VIEWPORTS = {

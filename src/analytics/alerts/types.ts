@@ -40,7 +40,12 @@ export type AlertKind =
    * src/server/awish/order-attention.ts): återbetald i Awish efter importen, eller betald
    * men omöjlig att läsa. Står kvar tills den är hanterad.
    */
-  | "order_attention";
+  | "order_attention"
+  /**
+   * Belopp från en Nayax-utbetalning som inte är markerade som betalda efter
+   * organization_settings.payout_reminder_days dagar (skrivs av src/server/payouts/reminders.ts).
+   */
+  | "payout_unpaid";
 
 /**
  * Familj av larm. Typerna i en familj delar incident (t.ex. misstänkt fel som blir offline är
