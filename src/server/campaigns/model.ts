@@ -159,6 +159,24 @@ export function findCreatedBanner(
   return hits[0] ?? null;
 }
 
+/**
+ * Kampanjbilden finns redan i Awish (samma bild, text och slut): ett tidigare försök gick
+ * fram fast svaret försvann. Då skickas den inte igen (ingen dubblett). Nyaste id om flera.
+ */
+export function findExistingBanner(
+  banners: readonly AwishBanner[],
+  wanted: { coverImage: string; title: string; expiredAt: number },
+): AwishBanner | null {
+  const hits = banners.filter(
+    (b) =>
+      b.coverImage === wanted.coverImage &&
+      b.title === wanted.title &&
+      b.expiredAt === wanted.expiredAt,
+  );
+  hits.sort((a, b) => (BigInt(b.id) > BigInt(a.id) ? 1 : -1));
+  return hits[0] ?? null;
+}
+
 /** Förslag: "Nytt: <titel>" på automaterna där titeln kom in nyligen. */
 export interface CampaignSuggestion {
   readonly titleId: string;

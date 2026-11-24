@@ -26,10 +26,13 @@ import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { recordJobOutcome } from "@/server/monitoring/failures";
 
 import { AwishApiError, type AwishMarketingApi } from "../awish/grpc-client";
+import { recordPathResult } from "../awish/health";
 import {
   AwishNotConnectedError,
+  awishSourceOf,
   linkedMachines,
   marketingClient,
+  marketingConnectUntil,
   type LinkedMachine,
   type MarketingConnect,
 } from "../awish/marketing";
@@ -40,6 +43,7 @@ import {
   campaignState,
   campaignWindow,
   findCreatedBanner,
+  findExistingBanner,
   sniffCampaignImage,
   suggestCampaigns,
   unixSeconds,
@@ -394,7 +398,13 @@ type PendingRow = {
 export async function publishDue(
   db: Db,
   orgId: string,
-  opts: { campaignId?: string; connect?: MarketingConnect; now: Date },
+  opts: {
+    campaignId?: string;
+    connect?: MarketingConnect;
+    now: Date;
+    /** Ingen ny automat påbörjas efter den här tiden (ms); resten skickas nästa körning. */
+    deadlineAt?: number;
+  },
 ): Promise<{ shown: number; failed: number }> {
   const due = await query<PendingRow>(
     db,
@@ -414,7 +424,8 @@ export async function publishDue(
     const message = shortError(error);
     for (const r of due) {
       await db.execute(
-        sql`update public.campaign_machines set status = 'failed', error = ${message}
+        sql`update public.campaign_machines
+            set status = 'failed', error = ${message}, ${nextRetrySql(opts.now)}
             where organization_id = ${orgId}::uuid and id = ${r.id}::uuid and status = 'scheduled'`,
       );
     }
@@ -422,8 +433,13 @@ export async function publishDue(
   }
   let shown = 0;
   let failed = 0;
+  let firstError: unknown = null;
   try {
     for (const r of due) {
+      // Tiden är slut: raden står kvar som planerad och skickas nästa körning.
+      if (opts.deadlineAt !== undefined && Date.now() + CAMPAIGN_MIN_MACHINE_MS > opts.deadlineAt) {
+        break;
+      }
       const claimed = await query<{ id: string }>(
         db,
         sql`update public.campaign_machines set status = 'sending', error = null
@@ -431,15 +447,31 @@ export async function publishDue(
             returning id`,
       );
       if (claimed.length === 0) continue;
+      const expiredAt = unixSeconds(new Date(iso(r.ends_at)));
       const wanted = { coverImage: r.image_url, title: r.title };
-      const before = await api.banners(r.awish_machine_id).catch(() => []);
       try {
+        // Listan före skapandet är skyddet mot dubbla kampanjer: utan den går det inte att
+        // se om ett avbrutet CreateBanner ändå skapade kampanjen. Går den inte att läsa
+        // skickas ingenting (raden blir failed och försöks igen automatiskt).
+        const before = await api.banners(r.awish_machine_id);
+        // Ett tidigare försök (som såg ut att misslyckas, eller stoppades mitt i) gick ändå
+        // fram: kampanjen finns redan. Den räknas som visad och skickas inte igen.
+        const existing = findExistingBanner(before, { ...wanted, expiredAt });
+        if (existing) {
+          await db.execute(
+            sql`update public.campaign_machines
+                set status = 'shown', awish_banner_id = ${existing.id}, sent_at = ${tsParam(opts.now)}
+                where organization_id = ${orgId}::uuid and id = ${r.id}::uuid`,
+          );
+          shown += 1;
+          continue;
+        }
         try {
           await api.createBanner({
             machineId: r.awish_machine_id,
             coverImage: r.image_url,
             title: r.title,
-            expiredAt: unixSeconds(new Date(iso(r.ends_at))),
+            expiredAt,
           });
         } catch (error) {
           // Ett avbrutet svar kan ändå ha skapat kampanjen i Awish. Finns den nu räknas den
@@ -456,8 +488,10 @@ export async function publishDue(
         );
         shown += 1;
       } catch (error) {
+        firstError ??= error;
         await db.execute(
-          sql`update public.campaign_machines set status = 'failed', error = ${shortError(error)}
+          sql`update public.campaign_machines
+              set status = 'failed', error = ${shortError(error)}, ${nextRetrySql(opts.now)}
               where organization_id = ${orgId}::uuid and id = ${r.id}::uuid`,
         );
         failed += 1;
@@ -466,7 +500,90 @@ export async function publishDue(
   } finally {
     api.close();
   }
+  await recordCampaignHealth(db, orgId, shown + failed > 0, failed === 0, firstError, opts.now);
   return { shown, failed };
+}
+
+/** En automat påbörjas bara med minst så här lång tid kvar (lista, skapa, lista). */
+const CAMPAIGN_MIN_MACHINE_MS = 5_000;
+/** En rad som har stått som "skickas" så här länge stoppades mitt i (funktionen dog). */
+export const CAMPAIGN_STUCK_SENDING_MS = 10 * 60_000;
+
+/**
+ * Väntan (minuter) före automatiskt försök 1, 2 och 3 med en automat där kampanjen inte kom
+ * fram. Därefter inga fler automatiska försök ("Försök igen" finns kvar).
+ */
+export const CAMPAIGN_RETRY_MIN: readonly number[] = [5, 15, 60];
+
+/** `next_retry_at` efter ett misslyckande, räknat på radens retry_count. */
+function nextRetrySql(now: Date) {
+  const steps = CAMPAIGN_RETRY_MIN.map(
+    (m, i) => sql`when ${i} then ${tsParam(new Date(now.getTime() + m * 60_000))}`,
+  );
+  return sql`next_retry_at = case retry_count ${sql.join(steps, sql` `)} else null::timestamptz end`;
+}
+
+/** Hälsan för vägen "campaigns" (Datakällor, vakten). Kastar aldrig. */
+async function recordCampaignHealth(
+  db: Db,
+  orgId: string,
+  contacted: boolean,
+  ok: boolean,
+  error: unknown,
+  now: Date,
+): Promise<void> {
+  if (!contacted) return;
+  try {
+    const source = await awishSourceOf(db, orgId);
+    if (!source) return;
+    await recordPathResult(db, {
+      organizationId: orgId,
+      dataSourceId: source.id,
+      path: "campaigns",
+      route: ok ? "open_api" : "ingen",
+      ok,
+      ...(ok ? {} : { error }),
+      now,
+    });
+  } catch (e) {
+    console.error("[kampanjer] hälsan kunde inte sparas", e instanceof Error ? e.name : "fel");
+  }
+}
+
+/**
+ * Automater där kampanjen inte kom fram och väntetiden har gått (CAMPAIGN_RETRY_MIN): de
+ * läggs tillbaka som planerade, så att körningen nedan skickar dem igen med samma skydd mot
+ * dubbla kampanjer. Högst 3 automatiska försök per automat. Kastar inte.
+ */
+export async function requeueFailedCampaigns(db: Db, now: Date): Promise<number> {
+  try {
+    // Rader som stoppades mitt i en sändning (funktionen dog): de blir misslyckade med ett
+    // nytt försök, och försöket ser i Awish om kampanjen ändå kom fram (ingen dubblett).
+    await db.execute(
+      sql`update public.campaign_machines
+          set status = 'failed', error = 'Sändningen avbröts. Försöker igen.', ${nextRetrySql(now)}
+          where status = 'sending'
+            and updated_at < ${tsParam(new Date(now.getTime() - CAMPAIGN_STUCK_SENDING_MS))}`,
+    );
+    const rows = await query<{ id: string }>(
+      db,
+      sql`update public.campaign_machines cm
+          set status = 'scheduled', error = null, retry_count = cm.retry_count + 1,
+              next_retry_at = null
+          from public.campaigns c, public.organizations o
+          where c.organization_id = cm.organization_id and c.id = cm.campaign_id
+            and o.id = cm.organization_id and o.archived_at is null and not o.is_demo
+            and cm.status = 'failed' and cm.next_retry_at is not null
+            and cm.next_retry_at <= ${tsParam(now)}
+            and cm.retry_count < ${CAMPAIGN_RETRY_MIN.length}
+            and c.stopped_at is null and c.ends_at > ${tsParam(now)}
+          returning cm.id`,
+    );
+    return rows.length;
+  } catch (error) {
+    console.error("[kampanjer] nya försök kunde inte planeras", shortError(error));
+    return 0;
+  }
 }
 
 /** Den schemalagda körningen: alla organisationers kampanjer vars start har passerat. */
@@ -474,8 +591,15 @@ export async function publishAllDueCampaigns(deps: {
   db: Db;
   connect?: MarketingConnect;
   now?: Date;
+  /**
+   * Ingen ny organisation eller automat påbörjas efter den här tiden (ms), och varje anrop
+   * till Awish kortas till den. Det som inte hinns med skickas nästa körning.
+   */
+  deadlineAt?: number;
 }): Promise<{ organizations: number; shown: number; failed: number }> {
   const now = deps.now ?? new Date();
+  // Automater där kampanjen inte kom fram tidigare och vars väntetid har gått.
+  await requeueFailedCampaigns(deps.db, now);
   const orgs = await query<{ organization_id: string }>(
     deps.db,
     sql`select distinct cm.organization_id
@@ -488,11 +612,21 @@ export async function publishAllDueCampaigns(deps: {
   );
   let shown = 0;
   let failed = 0;
+  const connect =
+    deps.connect ??
+    (deps.deadlineAt !== undefined ? marketingConnectUntil(deps.deadlineAt) : undefined);
   for (const o of orgs) {
+    if (deps.deadlineAt !== undefined && Date.now() + CAMPAIGN_MIN_MACHINE_MS > deps.deadlineAt) {
+      break;
+    }
     // En kampanj som inte startade ska höras (larmet job:kampanjer), inte bara loggas.
     let problem: Error | null = null;
     try {
-      const r = await publishDue(deps.db, o.organization_id, { connect: deps.connect, now });
+      const r = await publishDue(deps.db, o.organization_id, {
+        connect,
+        now,
+        ...(deps.deadlineAt !== undefined ? { deadlineAt: deps.deadlineAt } : {}),
+      });
       shown += r.shown;
       failed += r.failed;
       if (r.failed > 0) {
@@ -675,7 +809,8 @@ export async function retryCampaignFor(
   const now = nowOf(deps);
   const reset = await query<{ id: string }>(
     db,
-    sql`update public.campaign_machines cm set status = 'scheduled', error = null
+    sql`update public.campaign_machines cm
+        set status = 'scheduled', error = null, retry_count = 0, next_retry_at = null
         from public.campaigns c
         where cm.organization_id = ${orgId}::uuid and cm.campaign_id = ${campaignId}::uuid
           and c.organization_id = cm.organization_id and c.id = cm.campaign_id

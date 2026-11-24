@@ -27,6 +27,16 @@ const sync = vi.fn(async () => ({
 vi.mock("@/server/awish/sync", () => ({ syncAllAwishSources: sync }));
 const campaigns = vi.fn(async () => ({ organizations: 1, shown: 2, failed: 0 }));
 vi.mock("@/server/campaigns/service", () => ({ publishAllDueCampaigns: campaigns }));
+const pushRetry = vi.fn(async (_db: unknown, _o: { deadline: number }) => ({
+  organizations: 1,
+  tried: 1,
+  cleared: 1,
+  waiting: 0,
+  breaker: 0,
+  budget: 0,
+  errors: 0,
+}));
+vi.mock("@/server/awish/web-service", () => ({ retryPendingAwishPushesForAll: pushRetry }));
 const offline = vi.fn(async (_db: unknown, _orgs: string[], _o: unknown) => ({
   organizations: [{ organizationId: "org-1" }],
   deliveries: { processed: 1, sent: 1, failed: 0, skipped: 0 },
@@ -54,6 +64,7 @@ describe("/api/cron/awish", () => {
     delete process.env.CRON_SECRET;
     sync.mockClear();
     campaigns.mockClear();
+    pushRetry.mockClear();
     offline.mockClear();
     salePush.mockClear();
   });
@@ -95,6 +106,7 @@ describe("/api/cron/awish", () => {
         },
       ],
       campaigns: { shown: 2, failed: 0 },
+      pushRetry: { organizations: 1, tried: 1, cleared: 1 },
       watch: { raised: 0, resolved: 0 },
       salePush: { orders: 2, sent: 1 },
       offlineAlerts: { organizations: 1, sent: 1 },
@@ -162,16 +174,49 @@ describe("/api/cron/awish", () => {
     expect(campaigns).toHaveBeenCalledTimes(1);
   });
 
-  it("försäljningsnotisen körs sist, med en tidsgräns inom cronens minut", async () => {
+  it("försäljningsnotisen före kampanjerna, med en tidsgräns inom cronens minut", async () => {
     process.env.CRON_SECRET = SECRET;
     const before = Date.now();
     await GET(req(`Bearer ${SECRET}`));
-    // Efter kampanjerna: en långsam push-tjänst håller inte upp dem.
-    expect(campaigns.mock.invocationCallOrder[0]).toBeLessThan(
-      salePush.mock.invocationCallOrder[0]!,
+    // Notiserna först: kampanjerna (Awish) får det som är kvar och tas annars nästa körning.
+    expect(salePush.mock.invocationCallOrder[0]).toBeLessThan(
+      campaigns.mock.invocationCallOrder[0]!,
     );
     const { deadline } = salePush.mock.calls[0]![1] as { deadline: number };
     expect(deadline).toBeGreaterThan(before);
     expect(deadline).toBeLessThanOrEqual(Date.now() + 12_000);
+    // Kampanjerna har en tidsgräns före cronens minut (inget anrop till Awish efter den).
+    const { deadlineAt } = (campaigns.mock.calls[0] as unknown as [{ deadlineAt: number }])[0];
+    expect(deadlineAt).toBeGreaterThan(before);
+    expect(deadlineAt).toBeLessThanOrEqual(before + 57_000 + 1_000);
+  });
+
+  it("påfyllningar som inte nådde Awish försöks igen direkt efter synken, med egen tidsgräns", async () => {
+    process.env.CRON_SECRET = SECRET;
+    const before = Date.now();
+    await GET(req(`Bearer ${SECRET}`));
+    expect(pushRetry).toHaveBeenCalledTimes(1);
+    // Före vakten (en sändning som just gick fram larmar inte) och före kampanjerna och
+    // notiserna, så att de alltid får tid när Open API är långsamt.
+    expect(pushRetry.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      watch.mock.invocationCallOrder.at(-1)!,
+    );
+    expect(pushRetry.mock.invocationCallOrder[0]).toBeLessThan(
+      campaigns.mock.invocationCallOrder[0]!,
+    );
+    expect(pushRetry.mock.invocationCallOrder[0]).toBeLessThan(
+      salePush.mock.invocationCallOrder[0]!,
+    );
+    const { deadline } = pushRetry.mock.calls[0]![1];
+    expect(deadline).toBeGreaterThan(before);
+    expect(deadline).toBeLessThanOrEqual(Date.now() + 50_000);
+  });
+
+  it("ett fel i de nya försöken stoppar inte synkens svar", async () => {
+    process.env.CRON_SECRET = SECRET;
+    pushRetry.mockRejectedValueOnce(new Error("nere"));
+    const res = await GET(req(`Bearer ${SECRET}`));
+    expect(res.status).toBe(200);
+    expect((await res.json()).pushRetry).toBeNull();
   });
 });

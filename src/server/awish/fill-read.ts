@@ -21,18 +21,25 @@ import { isDemoFor } from "@/server/demo/guard";
 
 import type { AwishApi, AwishCredentials } from "./grpc-client";
 import { readFillStock, type AwishConnectOptions, type FillReadResult } from "./sync";
+import type { AwishWebApi, AwishWebClientOptions } from "./web-client";
 
 export interface FillRefreshResult {
   /** none: ingen Awish API-källa. demo: Demo för kunder (inga anrop till Awish). */
   readonly status: FillReadResult["status"] | "none" | "demo";
   /** Senaste Awish-läsningen av någon automat i organisationen (ISO), efter försöket. */
   readonly lastReadAt: string | null;
+  /** Lästes facken nu? false: sidan visar "Läst HH:MM" (senaste läsningen). */
+  readonly read: boolean;
+  /** Vägen för läsningen nu (webbpanelen = reservvägen), eller senast_kanda. */
+  readonly via: FillReadResult["via"];
 }
 
 export interface FillRefreshDeps {
   serviceDb?: Db;
   connect?: (creds: AwishCredentials, options?: AwishConnectOptions) => AwishApi;
   now?: () => Date;
+  /** Webbpanelens klient för reservvägen; injiceras i tester. */
+  makeWebClient?: (options: AwishWebClientOptions) => AwishWebApi;
 }
 
 async function lastReadAt(db: Db, orgId: string): Promise<string | null> {
@@ -56,7 +63,12 @@ export async function refreshFillStockFor(
   await requireRoleFor(viewer.user, orgId, FIELD_REFILL_ROLES);
   const db = deps.serviceDb ?? getServiceDb();
   if (await isDemoFor(viewer.user, orgId)) {
-    return { status: "demo", lastReadAt: await lastReadAt(db, orgId) };
+    return {
+      status: "demo",
+      lastReadAt: await lastReadAt(db, orgId),
+      read: false,
+      via: "senast_kanda",
+    };
   }
   const [source] = Array.from(
     await db.execute(
@@ -67,10 +79,22 @@ export async function refreshFillStockFor(
           limit 1`,
     ),
   ) as { id: string }[];
-  if (!source) return { status: "none", lastReadAt: await lastReadAt(db, orgId) };
+  if (!source) {
+    return {
+      status: "none",
+      lastReadAt: await lastReadAt(db, orgId),
+      read: false,
+      via: "senast_kanda",
+    };
+  }
   const r = await readFillStock(
-    { db, connect: deps.connect, now: deps.now },
+    {
+      db,
+      connect: deps.connect,
+      now: deps.now,
+      ...(deps.makeWebClient ? { makeWebClient: deps.makeWebClient } : {}),
+    },
     { dataSourceId: source.id },
   );
-  return { status: r.status, lastReadAt: await lastReadAt(db, orgId) };
+  return { status: r.status, lastReadAt: await lastReadAt(db, orgId), read: r.read, via: r.via };
 }

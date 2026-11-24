@@ -146,7 +146,10 @@ export function StaffFill({
                 ? "Borttaget. Tryck Klar och skriv rätt antal."
                 : done.awish === "pushed"
                   ? "Automaten är uppdaterad."
-                  : "Sparat. Automaten uppdateras strax."}
+                  : done.awish === "pending"
+                    ? // Sändningen gick inte fram nu: den ligger i kön och skickas igen av sig själv.
+                      "Sparat. Skickas till Awish automatiskt."
+                    : "Sparat. Automaten uppdateras strax."}
             </p>
           </div>
         </div>

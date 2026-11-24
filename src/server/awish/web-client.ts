@@ -16,7 +16,7 @@
  * (testing/fake-web-server.ts) och aldrig mot riktiga Awish.
  */
 
-import { AwishApiError, type AwishErrorKind } from "./grpc-client";
+import { AWISH_MIN_CALL_MS, AwishApiError, budgetError, type AwishErrorKind } from "./grpc-client";
 import {
   awishPriceToOre,
   type AwishGoodSummary,
@@ -121,11 +121,33 @@ export interface AwishWebClientOptions {
   readonly appVersion?: string;
   readonly lang?: string;
   readonly timeoutMs?: number;
+  /**
+   * Absolut tidpunkt (ms) då anropen måste vara klara (körningens budget). Varje anrops
+   * tidsgräns blir min(timeoutMs, det som återstår); är tiden slut kastas AwishApiError
+   * "budget" utan anrop.
+   */
+  readonly deadlineAt?: number;
+  /** Försök för läsningar (Signin, Products, Goods, MachinesLite, Profile …); standard 3. */
+  readonly readAttempts?: number;
+  /** Väntan mellan försök; injiceras i tester. */
+  readonly sleep?: (ms: number) => Promise<void>;
   /** Klocka i ms; injiceras i tester (annars Date.now). */
   readonly now?: () => number;
   /** fetch; injiceras i tester (annars global fetch). */
   readonly fetch?: typeof fetch;
 }
+
+/** Väntan före andra och tredje försöket för en läsning. */
+const READ_BACKOFF_MS = [500, 1500];
+/** Läsningar som provas igen vid 5xx, 429 och tidsgräns (de ändrar inget hos Awish). */
+const READ_OPERATIONS = new Set([
+  "Signin",
+  "MachinesLite",
+  "Products",
+  "Profile",
+  "UnitsAndCurrencies",
+  "Goods",
+]);
 
 interface GraphqlError {
   message?: string;
@@ -234,8 +256,11 @@ export interface AwishWebApi {
   useTokens(tokens: AwishWebTokens): void;
   machines(): Promise<AwishWebMachine[]>;
   products(machineId: number): Promise<AwishWebProduct[]>;
-  /** Inloggad butik (Profile): butikens merchant-id och kontots behörigheter. */
-  profile(): Promise<{ merchantId: number; permissions: string[] }>;
+  /**
+   * Inloggad butik (Profile): butikens merchant-id, kontots behörigheter och kontots slutdag
+   * (merchant.expired_at, som Awish skriver den; null när den saknas).
+   */
+  profile(): Promise<{ merchantId: number; permissions: string[]; expiredAt: string | null }>;
   /** Butikens valutor (UnitsAndCurrencies). */
   currencies(merchantId: number): Promise<AwishCurrency[]>;
   /** En sida varor (Goods, 20 per sida som panelen). */
@@ -268,10 +293,42 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const now = options.now ?? (() => Date.now());
   const doFetch = options.fetch ?? fetch;
+  const readAttempts = Math.max(1, options.readAttempts ?? 3);
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const remaining = () =>
+    options.deadlineAt === undefined ? Number.POSITIVE_INFINITY : options.deadlineAt - now();
 
   let tokens: AwishWebTokens | null = null;
 
+  /**
+   * Ett anrop med nya försök för läsningar: Awish nere (5xx) eller tidsgräns provas igen
+   * (högst readAttempts, 0,5 s och 1,5 s väntan) om tiden räcker. Begränsat (429) provas inte
+   * igen (rate_limited).
+   * Skrivningar provas aldrig igen här (web-service.ts avgör det).
+   */
   async function call<T>(
+    operationName: string,
+    query: string,
+    variables: Record<string, unknown>,
+    opts: { auth: boolean } = { auth: true },
+  ): Promise<T> {
+    const attempts = READ_OPERATIONS.has(operationName) ? readAttempts : 1;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await callOnce<T>(operationName, query, variables, opts);
+      } catch (error) {
+        const retryable =
+          error instanceof AwishApiError &&
+          (error.kind === "unavailable" || error.kind === "timeout");
+        if (!retryable || attempt >= attempts) throw error;
+        const backoff = READ_BACKOFF_MS[attempt - 1] ?? 1500;
+        if (remaining() - backoff < AWISH_MIN_CALL_MS) throw error;
+        await sleep(backoff);
+      }
+    }
+  }
+
+  async function callOnce<T>(
     operationName: string,
     query: string,
     variables: Record<string, unknown>,
@@ -286,8 +343,11 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
       Lang: lang,
       Authorization: opts.auth && tokens ? `Bearer ${tokens.accessToken}` : "",
     };
+    const left = remaining();
+    if (left < AWISH_MIN_CALL_MS) throw budgetError();
+    const limit = Math.min(timeoutMs, Math.floor(left));
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), limit);
     let res: Response;
     try {
       res = await doFetch(`${baseUrl}/graphql`, {
@@ -298,6 +358,8 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
       });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
+        // Kortad av körningens budget: det är budgeten som tog slut.
+        if (limit < timeoutMs) throw budgetError();
         throw toApiError(`Awish svarade inte inom ${Math.round(timeoutMs / 1000)} s.`, "timeout");
       }
       throw toApiError("Kunde inte nå Awish. Försök igen om en stund.", "unavailable");
@@ -308,6 +370,13 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
       throw toApiError(
         "Awish nekade inloggningen. Kontrollera e-post och lösenord under Datakällor.",
         "auth",
+      );
+    }
+    if (res.status === 429) {
+      // Inget nytt försök (varken här eller i web-service.ts): brytaren pausar en stund.
+      throw toApiError(
+        "Awish tar inte emot fler anrop just nu. Försök igen om en stund.",
+        "rate_limited",
       );
     }
     if (res.status >= 500) {
@@ -389,7 +458,10 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
 
     async profile() {
       const data = await call<{
-        profile: { merchant?: { id?: unknown } | null; permissions?: unknown } | null;
+        profile: {
+          merchant?: { id?: unknown; expired_at?: unknown } | null;
+          permissions?: unknown;
+        } | null;
       }>("Profile", PROFILE_DOCUMENT, {});
       const id = Number(data.profile?.merchant?.id);
       if (!Number.isInteger(id) || id <= 0) {
@@ -400,7 +472,14 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
       const permissions = Array.isArray(raw)
         ? raw.filter((p): p is string => typeof p === "string")
         : [];
-      return { merchantId: id, permissions };
+      const expired = data.profile?.merchant?.expired_at;
+      const expiredAt =
+        typeof expired === "string" && expired.trim() !== ""
+          ? expired.trim()
+          : typeof expired === "number" && Number.isFinite(expired)
+            ? String(expired)
+            : null;
+      return { merchantId: id, permissions, expiredAt };
     },
 
     async currencies(merchantId) {

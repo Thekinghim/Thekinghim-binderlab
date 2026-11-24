@@ -6,7 +6,8 @@
  * - `lastAwishRead`: senaste Awish-läsningen bland automaterna.
  * - `autoRefreshDue`: ska sidan hämta om datan när appen öppnas igen? Högst en gång per
  *   AUTO_REFRESH_MS (dyker också upp när en sparad sida från service workern visas).
- * - `refreshNotice`: raden efter Uppdatera ("Uppdaterat 14:52" eller ett lugnt fel).
+ * - `refreshNotice`: raden efter Uppdatera ("Uppdaterat 14:52", "Läst 14:47" när inget
+ *   lästes nu, "· via webbpanelen" på reservvägen, eller ett lugnt fel).
  */
 
 import { wallClockIn } from "@/components/shell/period-state";
@@ -76,12 +77,24 @@ export type RefreshOutcome =
         | "none"
         | "demo";
       readonly lastReadAt: string | null;
+      /** Lästes facken nu? false (spärr, upptagen, ingen källa): "Läst 14:47". */
+      readonly read?: boolean;
+      /** Vägen för läsningen: webbpanelen = reservvägen när Open API inte svarar. */
+      readonly via?: "open_api" | "webbpanelen" | "senast_kanda";
     }
   | { readonly ok: false; readonly offline: boolean };
 
 export interface RefreshNotice {
   readonly text: string;
   readonly tone: "ok" | "warn";
+}
+
+/** Under så här lång tid sedan räknas en läsning som färsk ("Uppdaterat", inte "Läst"). */
+const FRESH_READ_MS = 2 * 60_000;
+
+function freshRead(at: string, now: string | Date): boolean {
+  const ms = new Date(now).getTime() - new Date(at).getTime();
+  return Number.isFinite(ms) && ms < FRESH_READ_MS;
 }
 
 /**
@@ -103,13 +116,20 @@ export function refreshNotice(
       tone: "warn",
     };
   }
+  const via = outcome.via === "webbpanelen" ? t.fill.refreshViaWeb : "";
   switch (outcome.status) {
     case "failed":
     case "no_credentials":
       return { text: t.fill.refreshFailed(latest), tone: "warn" };
     case "partial":
-      return { text: t.fill.refreshPartial(at(ctx.now)), tone: "warn" };
+      return { text: `${t.fill.refreshPartial(at(ctx.now))}${via}`, tone: "warn" };
     default:
-      return { text: t.fill.refreshUpdated(at(ctx.now)), tone: "ok" };
+      // Inget lästes nu (någon läste nyss, eller ingen Awish-källa): säg när facken lästes,
+      // inte "Uppdaterat" som om de just hade lästs.
+      // Är förra läsningen helt färsk (under två minuter) är datan på sidan aktuell ändå.
+      if (outcome.read === false && latest && last && !freshRead(last, ctx.now)) {
+        return { text: t.fill.refreshRead(latest), tone: "ok" };
+      }
+      return { text: `${t.fill.refreshUpdated(at(ctx.now))}${via}`, tone: "ok" };
   }
 }

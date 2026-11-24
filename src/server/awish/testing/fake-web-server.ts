@@ -143,6 +143,16 @@ export interface FakeWebState {
   }>;
   /** Anrop som nekades för fel form (meddelandet). */
   rejected: string[];
+  /** Kontots slutdag i Profile (merchant.expired_at); null = skickas som null. */
+  merchantExpiredAt: string | null;
+  /** Väntan (ms) innan varje GraphQL-svar (för tidsgränser). */
+  delayMs: number;
+  /** HTTP 503 för en viss operation så här många gånger (räknas ned). */
+  failTimes: Record<string, number>;
+  /** Signin svarar HTTP 401 (inloggningen nekas, t.ex. bytt lösenord eller låst konto). */
+  authFail: boolean;
+  /** Antal kommande GraphQL-anrop som svarar HTTP 429 (Awish begränsar anropen). */
+  rateLimit: number;
 }
 
 export interface FakeWeb {
@@ -309,6 +319,11 @@ export async function startFakeAwishWeb(
     uploadFailStatus: null,
     calls: [],
     rejected: [],
+    merchantExpiredAt: "2027-04-18 23:48:54",
+    delayMs: 0,
+    failTimes: {},
+    authFail: false,
+    rateLimit: 0,
     ...initial,
   };
   // Varor som facken redan har finns också i varulistan.
@@ -498,6 +513,22 @@ export async function startFakeAwishWeb(
         : null;
     state.calls.push({ operationName: op, variables, token, query });
 
+    if (state.rateLimit > 0) {
+      state.rateLimit -= 1;
+      send(res, 429, { errors: [{ message: "too many requests" }] });
+      return;
+    }
+    const failsLeft = state.failTimes[op] ?? 0;
+    if (failsLeft > 0) {
+      state.failTimes[op] = failsLeft - 1;
+      send(res, 503, { errors: [{ message: "service unavailable" }] });
+      return;
+    }
+    if (op === "Signin" && state.authFail) {
+      send(res, 401, { message: "Unauthenticated." });
+      return;
+    }
+
     const reject = (message: string) => {
       state.rejected.push(message);
       send(res, 200, { errors: [{ message, extensions: { category: "graphql" } }] });
@@ -620,7 +651,12 @@ export async function startFakeAwishWeb(
             username: "butik",
             status: 1,
             permissions: state.permissions,
-            merchant: { id: state.merchantId, title: "Binderlab test", tax_enabled: false },
+            merchant: {
+              id: state.merchantId,
+              title: "Binderlab test",
+              expired_at: state.merchantExpiredAt,
+              tax_enabled: false,
+            },
             role: { id: state.isRoot ? 1 : 2, name: state.isRoot ? "root" : "merchant" },
             is_readonly: false,
             is_email_verified: true,
@@ -917,7 +953,9 @@ export async function startFakeAwishWeb(
       return;
     }
     readBody(req)
-      .then((raw) => {
+      .then(async (raw) => {
+        if (state.delayMs > 0) await new Promise((r) => setTimeout(r, state.delayMs));
+        if (res.destroyed) return;
         try {
           handleGraphql(req, res, raw);
         } catch (error) {
@@ -936,6 +974,7 @@ export async function startFakeAwishWeb(
     baseUrl,
     state,
     async stop() {
+      server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };

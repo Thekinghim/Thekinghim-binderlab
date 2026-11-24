@@ -73,6 +73,39 @@ export async function pendingAwishPushes(
 }
 
 /**
+ * Markerar automaterna som väntande INNAN en sändning till Awish påbörjas (en rad
+ * 'awish_push_failed' för de som inte redan väntar). Stoppas funktionen mitt i sändningen
+ * (plattformens tidsgräns) står de kvar som väntande: påfyllningen försvinner inte, och nästa
+ * läsning av facken sänker inte saldot till Awishs gamla antal. logAwishPushOutcomes stänger
+ * raden när sändningen gick fram. Tiden sätts en millisekund bakåt, så att utfallet alltid
+ * blir den senaste raden även i samma transaktion. Kastar aldrig.
+ */
+export async function markAwishPushesPending(
+  db: Db,
+  organizationId: string,
+  machineIds: readonly string[],
+): Promise<void> {
+  try {
+    for (const machineId of new Set(machineIds)) {
+      await db.execute(
+        sql`insert into public.automation_log (organization_id, kind, machine_id, units, occurred_at)
+            select ${organizationId}::uuid, 'awish_push_failed', ${machineId}::uuid, 0,
+                   now() - interval '1 millisecond'
+            where coalesce((
+                    select a.kind from public.automation_log a
+                    where a.organization_id = ${organizationId}::uuid
+                      and a.machine_id = ${machineId}::uuid
+                      and a.kind in ('awish_push', 'awish_push_failed', 'awish_push_cleared')
+                    order by a.occurred_at desc, a.created_at desc, a.id desc
+                    limit 1), '') <> 'awish_push_failed'`,
+      );
+    }
+  } catch (error) {
+    console.error("Kunde inte markera Awish-sändningar som väntande.", error);
+  }
+}
+
+/**
  * Sparar utfallet per automat efter ett försök att skicka till Awish:
  * - fel ("error"): en rad 'awish_push_failed', om automaten inte redan väntar,
  * - allt annat för en automat som väntade: en rad 'awish_push_cleared' (försöket gick fram,

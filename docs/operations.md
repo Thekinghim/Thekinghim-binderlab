@@ -176,6 +176,7 @@ räknar därför läget ur det som står i databasen, på två ställen som inte
 | "Försäljningen har inte hämtats sedan …"       | tre misslyckade hämtningar i rad, eller 30 minuter utan lyckad hämtning, för en Awish API-källa      | `watch:synk:<källa>`   |
 | "Larmen har inte kontrollerats sedan …"        | ingen lyckad körning av larmjobbet på 26 timmar                                                      | `watch:larmjobb`       |
 | "Gammal data från Awish: BL-003 2 tim sedan …" | en automat har inte setts i en hämtning på över 30 minuter (bara Hem; annars en lugn rad med åldern) | ingen (raden på Hem)   |
+| "Lagret har inte lästs sedan …" m.fl.          | en Awish-väg fungerar varken via Open API eller webbpanelen, se "Om Awish krånglar" nedan            | `watch:awish:<väg>`    |
 
 **Gör så här när en rad syns:**
 
@@ -183,7 +184,7 @@ räknar därför läget ur det som står i databasen, på två ställen som inte
    en e-postleverantör är inställd (`MAIL_PROVIDER=resend`); utan den står det "E-post är inte påslagen".
 2. _Kontrollen har inte körts_: tryck "Kör kontrollen nu" (Inställningar → Kontroll). Raden säger vad schemat
    fick till svar när det går att se ("… men fick fel 500 till svar"). Se "Schemats svar" nedan.
-3. _Försäljningen har inte hämtats_: Datakällor visar felet. "Awish svarade inte i tid" betyder att Awish är
+3. _Försäljningen har inte hämtats_: ladda upp orderlistan från Awish i Datakällor så länge. Datakällor visar felet. "Awish svarade inte i tid" betyder att Awish är
    långsamt eller nere; fel inloggning står som det. Körs hämtningen inte alls är det schemat (pg_cron) eller
    `CRON_SECRET`.
 4. _Larmen har inte kontrollerats_: Vercel Cron kör inte `/api/cron/larm` (Vercel → Cron Jobs).
@@ -216,6 +217,81 @@ dessutom av larmjobbet (Vercel Cron), en kontroll som hänger sparas som fel ino
 (`job:kontroll`), och svaren loggas så att orsaken går att läsa nästa gång. **Efter driftsättningen:** läs
 `private.cron_calls` för `kontroll` morgonen efter. Står det `timed_out` eller fel där är orsaken en annan än
 anslutningen, och raden säger vilken.
+
+## Om Awish krånglar
+
+Binderlab pratar med Awish på två sätt: **Open API** (gRPC, synken var femte minut: order, automater, fack,
+kontots slutdag, kampanjer, gratis-pack) och **webbpanelen** (e-post och lösenord i Datakällor: påfyllningar,
+varor, fack). Varje väg sparar efter varje försök vilken väg som fungerade (`public.awish_path_health`,
+`src/server/awish/health.ts`). Vakten, Datakällor ("Om Awish krånglar") och Kontroll läser raderna, så ett fel
+går aldrig tyst. Fungerar reservvägen blir det bara en lugn rad, ingen push.
+
+| Symptom                                             | Binderlab gör själv                                                                                                                                                | Ägaren gör                                                                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Open API ger internt fel (13) för facken            | Läser facken via webbpanelen (samma kapacitet). Drift och Datakällor visar "via webbpanelen". Ingen push.                                                          | Inget. Pågår det över ett dygn varnar Kontroll: kontakta Awish.                                                    |
+| Varken Open API eller webbpanelen svarar för facken | Visar senaste läsningen ("Senast kända HH:MM"). Larm efter 30 min: "Lagret har inte lästs sedan …" (`watch:awish:stock`).                                          | "Testa reservvägen" i Datakällor. Påfyllningar sparas som vanligt.                                                 |
+| Orderna hämtas inte                                 | Försöker var femte minut; markören flyttas aldrig vid fel, så inget tappas. Banner på Hem och larm efter 30 min (`watch:synk:<källa>`).                            | "Synka nu", eller ladda upp orderlistan från Awish (CSV) i Datakällor. API:t hämtar resten sedan, utan dubbletter. |
+| Automaternas status (Machines) svarar inte          | Använder senast kända automater; synken av order och fack fortsätter. Inga falska offline-larm. Varning efter 30 min, kritiskt efter 2 h (`watch:awish:machines`). | Synka nu. Titta i Awish om en automat verkligen står still.                                                        |
+| Påfyllningar når inte Awish                         | Sparar alltid i Binderlab först och försöker igen själv. Larm när något har väntat över 60 min (`watch:awish:push`).                                               | "Försök igen" i Fyll på, eller skriv antalet i Awish.                                                              |
+| Inloggningen till webbpanelen fungerar inte         | Slutar försöka i 6 timmar (så att Awish-kontot inte låses). Larm direkt: "Inloggningen till webbpanelen fungerar inte".                                            | Byt lösenord i Datakällor → Awish → Ändra inloggning.                                                              |
+| Kontots slutdag kan inte läsas                      | Läser den via webbpanelen i stället; försöker igen efter en timme. En känd slutdag skrivs aldrig över med "ingen" eller en oläslig text.                           | Inget. Kontroll varnar efter 48 h.                                                                                 |
+| Open API hänger (inget svar, inget fel)             | Automaterna får högst en fjärdedel av synkens tid, orderna resten utom 3/8 som alltid hålls för facken. Svarar ingen av dem läses facken direkt via webbpanelen.   | Inget. Larmen för automater och order går som vanligt.                                                             |
+| En automat läses inte, de andra gör det             | Varning efter 30 min: "En automat har inte lästs från Awish sedan …" (`watch:awish:stock`). Hem visar tiden för den automat som lästes längst sedan.               | Titta i Datakällor om automaten finns i Awish.                                                                     |
+| Webbpanelen svarar 429 (för många anrop)            | Inget nytt försök i samma körning; brytaren pausar i 5 min. Påfyllningen väntar och skickas sedan.                                                                 | Inget.                                                                                                             |
+| Kampanj: svaret från Awish försvann                 | Nästa försök läser Awishs lista först. Finns kampanjen redan räknas den som visad (ingen dubblett). En rad som fastnat som "skickas" i 10 min försöks igen.        | Inget.                                                                                                             |
+
+**Larm och push.** En push per väg när den slutar fungera (nyckel `watch:awish:<väg>`, en öppen åt gången), och en
+när den fungerar igen ("Lagret läses från Awish igen", "Alla påfyllningar har nått Awish", "Försäljningen hämtas
+från Awish igen"), till dem som fick larmet. Samma öppna larm aviseras inte igen. `alerted_at` på hälsoraden visar
+att larmet är öppet.
+
+**Brytaren.** En väg som felar hoppas över (direkt till reserven) en tid, och provas sedan en gång:
+
+| Fel                                                  | Brytaren öppen |
+| ---------------------------------------------------- | -------------- |
+| Awish internt fel, nere, för långsamt, konstiga data | 15 min         |
+| Webbpanelen: för många anrop (429)                   | 5 min          |
+| Inloggningen fungerar inte, Awish har ändrat något   | 6 h            |
+
+Facken byter till webbpanelen direkt vid internt fel (13); vid "nere" eller "för långsamt" först efter två fel i rad
+(automaterna och orderna i samma körning räknas), så att en kort hicka inte flyttar alla läsningar i 15 minuter.
+
+**Tidsgränser.** Varje anrop till Awish har ett tak som aldrig går förbi funktionens tid: synken 40 s (av 60), en
+påfyllning 25 s + 5 s per extra automat (högst 45 s), ny vara, ändra vara och fack 45 s, kampanjerna i cron till 57 s.
+Cronen kör i ordningen synk → nya försök med påfyllningar (till 50 s) → vakten → offlinelarm → försäljningsnotiser →
+kampanjer.
+
+**Påfyllningar som aldrig försvinner.** Automaten markeras som väntande _innan_ något skickas till Awish; markeringen
+tas bort när sändningen gick fram. Stoppas funktionen mitt i står automaten kvar som väntande: nästa läsning av facken
+sänker inte saldot, och den automatiska körningen försöker igen (5, 10, 20, 40, 60 min). Automatiska försök görs bara
+för sändningar som felade det senaste dygnet; äldre väntar på "Försök igen" i Fyll på. Ett nytt försök med en
+skrivning läser facket först och skickar inte igen om det har ändrats (då gick det första fram), så ett sålt pack
+läggs aldrig tillbaka.
+
+**Läget i databasen** (ägaren eller Claude, med organisationens id):
+
+```sql
+select path, active_route, last_success_at, last_error_kind, last_error_code, failing_since
+from awish_path_health
+where organization_id = '<org-uuid>'
+order by path;
+```
+
+`active_route`: `open_api` (som vanligt), `webbpanelen` (reservvägen), `senast_kanda` (ingen väg, senaste datan
+visas), `ingen`. `failing_since` tom = någon väg fungerar. `fallback_since` (migreringen
+`20261229200000_kontroll_awish_vagar.sql`) = på reservvägen sedan. För påfyllningar, varor och fack är webbpanelen
+den vanliga vägen, så där är `fallback_since` alltid tom och Kontroll varnar inte.
+
+**Det som inte går att lösa helt, och planen:**
+
+1. **Orderna när Awish är helt nere.** Det finns ingen annan källa. Plan B: bannern och uppladdningen av orderlistan;
+   API:t hämtar resten när Awish svarar. Framöver: Nayax API som egen källa.
+2. **Automaternas status utan Open API.** Webbpanelen visar den inte. Binderlab visar "senast kända" och larmar inte
+   falskt om automater som står still.
+3. **Skrivningar när webbpanelen är helt nere.** Kö, nya försök och larm. Inget i Binderlab går förlorat.
+4. **Gratis-pack och kampanjer när Open API inte tar emot skrivningar.** Webbpanelen har ingen motsvarighet; görs för
+   hand tills det fungerar.
+5. **Awish ändrar sitt API** (`changed`). Brytaren i 6 h, ett larm, och koden måste ändras.
 
 ## Felövervakning och larm
 

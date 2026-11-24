@@ -71,7 +71,8 @@ körningar överlappar inte. "Synka nu" läser alltid facken; en schemalagd kör
 läsning läser inte om dem (`STOCK_DUE_MARGIN_MS` i `src/server/awish/stock.ts`).
 
 Awish har inte publicerat någon gräns för antal anrop. Svarar Awish med fel eller för långsamt tas det som inte hanns
-med nästa körning; det finns ingen extra backoff mellan körningar. Blir belastningen ett problem kan
+med nästa körning. En väg som felar hoppas över en tid (brytaren, 15 min eller 6 h) och facken läses då via
+webbpanelen; se "Om Awish krånglar" i [operations.md](operations.md). Blir belastningen ett problem kan
 `STOCK_SYNC_INTERVAL_MS` (`src/server/awish/stock.ts`) höjas till 10 eller 15 minuter utan att orderna påverkas.
 
 I Binderlab skriver varje körning automatens läge (`source_machines.awish_*`) och facken. Läget loggas inte i

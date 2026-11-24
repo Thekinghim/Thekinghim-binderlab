@@ -369,7 +369,35 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
       dataSourceId: options.dataSourceId,
       organizationTimezone: source.org_timezone,
     };
-    const classification = await classify(tx, ctx, fetched);
+    // Samma försäljning som redan finns i en annan Awish-källa (t.ex. Awish API, med andra
+    // ordernummer): samma betaltid (sekund) och belopp. Importeras inte igen (som synken gör
+    // åt andra hållet, sameSaleElsewhere i src/server/awish/sync.ts); räknas som dubblett.
+    const elsewhere = AWISH_PROVIDERS.includes(source.provider)
+      ? await awishSaleElsewhere(
+          tx,
+          options.organizationId,
+          { id: options.dataSourceId, provider: source.provider },
+          fetched.rows,
+        )
+      : new Set<string>();
+    const classification = await classify(
+      tx,
+      ctx,
+      elsewhere.size === 0
+        ? fetched
+        : {
+            ...fetched,
+            rows: fetched.rows.filter((r) => !(r.isPaid && elsewhere.has(r.externalId))),
+          },
+    );
+    const withElsewhere = <T extends { total: number; duplicate: number }>(summary: T): T =>
+      elsewhere.size === 0
+        ? summary
+        : {
+            ...summary,
+            total: summary.total + elsewhere.size,
+            duplicate: summary.duplicate + elsewhere.size,
+          };
 
     const firstPaid = fetched.rows.find((r) => r.isPaid);
     const firstRow: FirstRowCheck | null = firstPaid
@@ -405,14 +433,14 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
         dryRun: true,
         importId: null,
         file: { name: options.file.name, sha256, bytes: bytes.byteLength, storagePath: null },
-        summary: classification.summary,
+        summary: withElsewhere(classification.summary),
         rows: classification.rows.slice(0, rowLimit),
         rowsTruncated: classification.rows.length > rowLimit,
         newTitles: classification.newTitles,
         unknownMachines: classification.unknownMachines,
         warnings: buildWarnings(
           classification.rows,
-          classification.summary,
+          withElsewhere(classification.summary),
           previous,
           classification.newTitles,
           classification.unknownMachines,
@@ -446,7 +474,7 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
     }
 
     const outcome = await commitClassification(tx, ctx, created.id, classification);
-    const s = outcome.summary;
+    const s = withElsewhere(outcome.summary);
 
     const [finished] = await query<{ started_at: unknown; finished_at: unknown }>(
       tx,
@@ -494,6 +522,86 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
       finishedAt: isoOrNull(finished?.finished_at),
     };
   });
+}
+
+/** Datakällor med order från Awish (samma försäljningar, olika ordernummer). */
+const AWISH_PROVIDERS: readonly DataSourceProvider[] = [
+  "awish_csv",
+  "awish_web",
+  "awish_extension",
+  "awish_grpc",
+];
+
+/**
+ * Ordernummer (av de givna betalda raderna) vars betaltid (sekund) och belopp finns i en
+ * annan Awish-källa: samma försäljning med andra ordernummer. Ett mot ett: finns en sådan
+ * order i den andra källan räknas bara en inkommande rad med samma tid och belopp som
+ * dubblett, så att två riktiga köp samma sekund för samma pris (t.ex. i två automater) inte
+ * båda försvinner.
+ */
+export async function awishSalesElsewhere(
+  tx: Tx,
+  organizationId: string,
+  dataSourceId: string,
+  rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number }>,
+  /** Bara källor av de här slagen jämförs (standard: alla Awish-källor). */
+  providers: readonly DataSourceProvider[] = AWISH_PROVIDERS,
+): Promise<Set<string>> {
+  if (rows.length === 0 || providers.length === 0) return new Set();
+  const payload = rows.map((r) => ({
+    external_id: r.externalId,
+    ordered_at: r.paidAtUtc.toISOString(),
+    amount_ore: r.amountOre,
+  }));
+  const found = await query<{ external_id: string }>(
+    tx,
+    sql`with incoming as (
+          select r.external_id, r.ordered_at, r.amount_ore,
+                 row_number() over (partition by r.ordered_at, r.amount_ore
+                                    order by r.external_id) as n
+          from (select distinct * from jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
+                  as x(external_id text, ordered_at timestamptz, amount_ore bigint)) r
+        ),
+        existing as (
+          select o.ordered_at, o.amount_ore, count(*) as c
+          from public.orders o
+          join public.data_sources ds
+            on ds.organization_id = o.organization_id and ds.id = o.data_source_id
+          where o.organization_id = ${organizationId}::uuid
+            and o.data_source_id <> ${dataSourceId}::uuid
+            and ds.provider in (${sql.join(
+              providers.map((p) => sql`${p}`),
+              sql`, `,
+            )})
+            and (o.ordered_at, o.amount_ore) in (select ordered_at, amount_ore from incoming)
+          group by o.ordered_at, o.amount_ore
+        )
+        select i.external_id
+        from incoming i
+        join existing e on e.ordered_at = i.ordered_at and e.amount_ore = i.amount_ore
+        where i.n <= e.c`,
+  );
+  return new Set(found.map((r) => r.external_id));
+}
+
+/**
+ * Ordernummer (av de givna betalda raderna) som finns i en Awish-källa av ett annat slag
+ * (se ovan): orderlistan (CSV) mot Awish API, där samma köp har andra ordernummer. Två
+ * uppladdade orderlistor jämförs inte med varandra (som förut).
+ */
+async function awishSaleElsewhere(
+  tx: Tx,
+  organizationId: string,
+  source: { id: string; provider: DataSourceProvider },
+  rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number; isPaid: boolean }>,
+): Promise<Set<string>> {
+  return awishSalesElsewhere(
+    tx,
+    organizationId,
+    source.id,
+    rows.filter((r) => r.isPaid),
+    AWISH_PROVIDERS.filter((p) => p !== source.provider),
+  );
 }
 
 /** Antal ej betalda rader för en sparad import (räknas inte rad för rad). */

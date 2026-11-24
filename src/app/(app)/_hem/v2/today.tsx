@@ -299,7 +299,16 @@ function agoText(iso: string, nowMs: number): string {
   return h < 24 ? `${h}${NBSP}h sedan` : `${Math.floor(h / 24)}${NBSP}d sedan`;
 }
 
-export function LiveCard({ orders, nowIso }: { orders: readonly LiveOrder[]; nowIso: string }) {
+export function LiveCard({
+  orders,
+  nowIso,
+  freshness,
+}: {
+  orders: readonly LiveOrder[];
+  nowIso: string;
+  /** "Försäljning 14:52 · Lager 14:50 (via webbpanelen)" (loadAwishFreshnessFor), om känt. */
+  freshness?: string | null;
+}) {
   const nowMs = Date.parse(nowIso);
   return (
     <Card
@@ -315,7 +324,7 @@ export function LiveCard({ orders, nowIso }: { orders: readonly LiveOrder[]; now
       {orders.length === 0 ? (
         <div className="aempty">
           <b>Inga köp de senaste två dygnen.</b>
-          <span>Köpen kommer från Awish ungefär var 5:e minut.</span>
+          <span>{freshness ? `Från Awish: ${freshness}.` : "Köpen kommer från Awish."}</span>
         </div>
       ) : (
         <div>
@@ -335,7 +344,9 @@ export function LiveCard({ orders, nowIso }: { orders: readonly LiveOrder[]; now
           ))}
         </div>
       )}
-      <div className="ft">Awish skickar köp ungefär var 5:e minut.</div>
+      <div className="ft">
+        {freshness ? `Från Awish: ${freshness}` : "Köpen kommer från Awish."}
+      </div>
     </Card>
   );
 }

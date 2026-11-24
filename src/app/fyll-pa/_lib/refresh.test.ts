@@ -84,4 +84,60 @@ describe("refreshNotice", () => {
       "Kunde inte nå Awish",
     );
   });
+  it("inget lästes nu (spärr, upptagen, ingen källa): Läst med senaste läsningen", () => {
+    for (const status of ["throttled", "busy", "none"] as const) {
+      expect(
+        refreshNotice(
+          {
+            ok: true,
+            status,
+            lastReadAt: "2026-11-06T13:47:00Z",
+            read: false,
+            via: "senast_kanda",
+          },
+          ctx,
+        ),
+      ).toEqual({ text: "Läst 14:47", tone: "ok" });
+    }
+    // Förra läsningen är helt färsk (under två minuter): datan är aktuell, Uppdaterat.
+    expect(
+      refreshNotice(
+        { ok: true, status: "none", lastReadAt: "2026-11-06T13:51:30Z", read: false },
+        ctx,
+      ).text,
+    ).toBe("Uppdaterat 14:52");
+    // Ingen läsning alls att visa: som förut.
+    expect(
+      refreshNotice(
+        { ok: true, status: "none", lastReadAt: null, read: false },
+        { ...ctx, lastReadAt: null },
+      ).text,
+    ).toBe("Uppdaterat 14:52");
+  });
+  it("via webbpanelen (reservvägen)", () => {
+    expect(
+      refreshNotice(
+        {
+          ok: true,
+          status: "read",
+          lastReadAt: "2026-11-06T13:52:00Z",
+          read: true,
+          via: "webbpanelen",
+        },
+        ctx,
+      ),
+    ).toEqual({ text: "Uppdaterat 14:52 · via webbpanelen", tone: "ok" });
+    expect(
+      refreshNotice(
+        { ok: true, status: "partial", lastReadAt: null, read: true, via: "webbpanelen" },
+        ctx,
+      ).text,
+    ).toBe("Uppdaterat 14:52 · några automater svarade inte · via webbpanelen");
+    expect(
+      refreshNotice(
+        { ok: true, status: "read", lastReadAt: null, read: true, via: "open_api" },
+        ctx,
+      ).text,
+    ).toBe("Uppdaterat 14:52");
+  });
 });

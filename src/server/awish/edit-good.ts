@@ -34,7 +34,7 @@ import {
 } from "@/server/data/core/loaders";
 import { sumOwnStock } from "@/server/data/core/own-stock";
 import { safeErrorForLog } from "@/server/errors";
-import type { Tx } from "@/db/client";
+import type { Db, Tx } from "@/db/client";
 
 import { formatKr, goodNameKey, NewProductError, planFingerprint, type GoodImage } from "./goods";
 import {
@@ -48,23 +48,31 @@ import {
   type AwishGoodFull,
   type EditGoodPlan,
 } from "./goods-edit";
+import { AwishApiError, type AwishMarketingApi } from "./grpc-client";
 import {
   buildGoodsOverview,
+  slotsFromOpenApi,
   type GoodRow,
   type GoodTitleLink,
   type OverviewSlot,
 } from "./goods-overview";
+import { recordPathResult } from "./health";
+import { marketingClient, type MarketingConnect } from "./marketing";
 import {
+  interactiveRetry,
   loggedInClient,
+  recordWebHealth,
   requireOperator,
   rows,
   STALE_MESSAGE,
   titleStateFor,
   withAwishWriteLock,
+  withWebHealth,
   type NewProductDeps,
 } from "./new-product";
 import { awishImageSrc } from "./image-proxy";
 import type { AwishWebApi } from "./web-client";
+import { withWriteRetry } from "./web-service";
 
 export interface EditGoodDeps extends NewProductDeps {
   /** "Med VMB" (vyknappen); standard av, som Inköpspriser. */
@@ -80,6 +88,36 @@ export interface EditGoodDeps extends NewProductDeps {
   storeIds?: readonly string[] | null;
   /** Vyknappen "Visa butikernas andel" (standard av: kvar per order före andelen). */
   storeShare?: boolean;
+  /** Open API (gRPC) som reserv för facken; injiceras i tester (låtsas-Awish). */
+  connect?: MarketingConnect;
+  /** Tidsgräns för listan (ms); standard GOODS_PAGE_BUDGET_MS. */
+  pageBudgetMs?: number;
+}
+
+/** Listan "Varor i Awish" väntar högst så här länge på automaternas fack … */
+export const GOODS_PAGE_BUDGET_MS = 15_000;
+/** … plus så här mycket per automat utöver den första, högst GOODS_PAGE_MAX_MS. */
+export const GOODS_PAGE_PER_MACHINE_MS = 2_000;
+export const GOODS_PAGE_MAX_MS = 35_000;
+
+/** Tiden för listan med `machines` automater. */
+export function goodsPageBudgetMs(machines: number): number {
+  return Math.min(
+    GOODS_PAGE_MAX_MS,
+    GOODS_PAGE_BUDGET_MS + Math.max(0, machines - 1) * GOODS_PAGE_PER_MACHINE_MS,
+  );
+}
+
+/** Väntar på `p` högst `ms`; annars ett tidsgränsfel (anropet får fortsätta i bakgrunden). */
+function within<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new AwishApiError("timeout", "Awish svarade inte i tid.")),
+      Math.max(0, ms),
+    );
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
 }
 
 /** Om vår del (efter butikernas andel) visas: vyknappen eller vald butik, inte en automat. */
@@ -259,6 +297,96 @@ export interface GoodsOverview {
   readonly notices: string[];
 }
 
+interface OverviewSlotsRead {
+  readonly slots: OverviewSlot[];
+  readonly notices: string[];
+  /** Första felet från webbpanelen, eller null när alla automater lästes där. */
+  readonly webError: unknown;
+  /** Automater som lästes via Open API i stället. */
+  readonly viaOpenApi: number;
+}
+
+/**
+ * Facken per automat, en i taget inom listans tidsgräns: webbpanelen först, Open API (gRPC
+ * Products) som reserv. En automat som inte går att läsa ger en rad "kunde inte läsas" för
+ * just den automaten, inte ett fel för hela sidan.
+ */
+async function readOverviewSlots(
+  db: Db,
+  orgId: string,
+  client: AwishWebApi,
+  machines: readonly LinkedMachine[],
+  goods: readonly AwishGoodFull[],
+  deadline: number,
+  deps: EditGoodDeps,
+): Promise<OverviewSlotsRead> {
+  const slots: OverviewSlot[] = [];
+  const notices: string[] = [];
+  let webError: unknown = null;
+  let viaOpenApi = 0;
+  let grpc: AwishMarketingApi | null | undefined;
+  try {
+    for (const m of machines) {
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        notices.push(`Facken i ${m.label} kunde inte läsas: Awish svarade för långsamt.`);
+        continue;
+      }
+      try {
+        for (const s of await within(client.slots(m.awishId), left)) {
+          slots.push({
+            goodId: s.goodId,
+            machine: m.label,
+            slot: s.channelName ?? String(s.id),
+            count: s.currentInventory,
+            capacity: s.capacity,
+          });
+        }
+        continue;
+      } catch (error) {
+        webError ??= error;
+      }
+      // Reserv: Open API. Klienten skapas en gång, och bara om den behövs.
+      try {
+        if (grpc === undefined)
+          grpc = await marketingClient(db, orgId, deps.connect).catch(() => null);
+        const rest = deadline - Date.now();
+        if (!grpc || rest <= 0) throw new Error("ingen reserv");
+        const products = await within(grpc.products(String(m.awishId)), rest);
+        slots.push(...slotsFromOpenApi(products, goods, m.label));
+        viaOpenApi += 1;
+      } catch {
+        notices.push(`Kunde inte läsa facken i ${m.label} just nu.`);
+      }
+    }
+  } finally {
+    grpc?.close();
+  }
+  return { slots, notices, webError, viaOpenApi };
+}
+
+/** Hälsan för "slots" efter listan: webbpanelen, eller Open API när reserven användes. */
+async function recordSlotsHealth(
+  db: Db,
+  orgId: string,
+  sourceId: string,
+  read: OverviewSlotsRead,
+): Promise<void> {
+  if (read.viaOpenApi === 0) {
+    await recordWebHealth(db, orgId, sourceId, "slots", read.webError);
+    return;
+  }
+  // Reserven fungerade: vägen räknas som fungerande, med webbpanelens fel som senaste fel.
+  await recordPathResult(db, {
+    organizationId: orgId,
+    dataSourceId: sourceId,
+    path: "slots",
+    route: "open_api",
+    ok: true,
+    error: read.webError,
+  });
+}
+
 /**
  * Varorna i Awish (Goods) med fack (Products per kopplad automat) och Binderlabs siffror.
  * Läser Awish men skriver ingenting.
@@ -267,30 +395,17 @@ export async function goodsOverviewFor(
   viewer: Viewer,
   deps: EditGoodDeps = {},
 ): Promise<GoodsOverview> {
-  const { client, sourceId } = await loggedInClient(viewer, deps);
+  const { db, client, sourceId } = await loggedInClient(viewer, deps);
   const orgId = viewer.organization.id;
   const now = (deps.now ?? (() => new Date()))();
   const { today, period } = salesPeriod(viewer, now);
-
+  const started = Date.now();
   const machines = await linkedMachines(viewer, sourceId);
-  const goods = await client.allGoodsFull();
-  const notices: string[] = [];
-  const slots: OverviewSlot[] = [];
-  for (const m of machines) {
-    try {
-      for (const s of await client.slots(m.awishId)) {
-        slots.push({
-          goodId: s.goodId,
-          machine: m.label,
-          slot: s.channelName ?? String(s.id),
-          count: s.currentInventory,
-          capacity: s.capacity,
-        });
-      }
-    } catch {
-      notices.push(`Kunde inte läsa facken i ${m.label} just nu.`);
-    }
-  }
+  const deadline = started + (deps.pageBudgetMs ?? goodsPageBudgetMs(machines.length));
+  const goods = await withWebHealth(db, orgId, sourceId, "goods", () => client.allGoodsFull());
+  const read = await readOverviewSlots(db, orgId, client, machines, goods, deadline, deps);
+  const { slots, notices } = read;
+  await recordSlotsHealth(db, orgId, sourceId, read);
 
   const scoped = shareShown(deps);
   const [byName, domain, stock] = await Promise.all([
@@ -573,15 +688,18 @@ export async function saveEditGoodFor(
   fingerprint: string,
   deps: EditGoodDeps = {},
 ): Promise<EditGoodResult> {
-  const { db, client } = await loggedInClient(viewer, deps);
+  const { db, client, sourceId } = await loggedInClient(viewer, deps);
   const orgId = viewer.organization.id;
+  const retry = interactiveRetry(deps);
   return withAwishWriteLock(db, orgId, async () => {
     const {
       plan,
       fingerprint: now,
       good,
       permissions,
-    } = await computeEdit(viewer, client, raw, image);
+    } = await withWebHealth(db, orgId, sourceId, "goods", () =>
+      computeEdit(viewer, client, raw, image),
+    );
     if (plan.blocking) throw new NewProductError(plan.blocking);
     if (now !== fingerprint) throw new NewProductError(STALE_MESSAGE);
     const before = summaryOf(good);
@@ -598,7 +716,15 @@ export async function saveEditGoodFor(
       };
     }
 
-    const imageUrl = plan.changes.image && image ? await client.uploadImage(image) : null;
+    // Bilden: en uppladdning till gör ingen skada (bara en fil till hos Awish).
+    const imageUrl =
+      plan.changes.image && image
+        ? await withWriteRetry(() => client.uploadImage(image), {
+            idempotent: true,
+            waits: [500],
+            ...retry,
+          })
+        : null;
     const input = encodeUpdateGoodInput(
       good,
       { name: plan.to.name, priceOre: plan.to.priceOre, imageUrl },
@@ -612,8 +738,15 @@ export async function saveEditGoodFor(
         const readBack = async () =>
           (await client.allGoodsFull()).find((g) => g.id === plan.goodId) ?? null;
         try {
-          await client.updateGood(plan.goodId, input);
+          // Hela varan skickas: samma anrop två gånger ger samma vara (tål två nya försök).
+          await withWriteRetry(() => client.updateGood(plan.goodId, input), {
+            idempotent: true,
+            waits: [500, 1_500],
+            ...retry,
+          });
+          await recordWebHealth(db, orgId, sourceId, "goods", null);
         } catch (error) {
+          await recordWebHealth(db, orgId, sourceId, "goods", error);
           // Nekar Awish rullas Binderlab tillbaka. Men ett tappat svar (tidsgräns, 503) kan
           // betyda att Awish ändå sparade: då måste aliaset sparas, annars kopplas inte
           // försäljningen under det nya namnet. Läs varan och avgör.
