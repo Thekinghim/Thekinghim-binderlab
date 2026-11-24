@@ -24,6 +24,7 @@ import {
 } from "@/analytics/self-check";
 import type { Db, Tx } from "@/db/client";
 import { addDays, agreementGaps, daysBetween, type IsoDate, type Period } from "@/domain";
+import type { AwishPathName } from "@/analytics/watch/awish";
 import { awishExpiryNotice } from "@/server/awish/expiry";
 import { mysteryBatchSql } from "@/server/data/core/queries";
 import { parseState } from "@/server/awish/sync";
@@ -272,15 +273,24 @@ export async function querySyncSources(
   now: Date,
 ): Promise<SyncSourceState[]> {
   const list = await rows<{
+    id: string;
     name: string;
     status: string;
     cursor: string | null;
     expires_at: unknown;
+    created_at: unknown;
+    merchant_checked_at: unknown;
     linked: number;
     stock_read_at: unknown;
   }>(
     db,
-    sql`select ds.name, ds.status::text as status, ds.cursor, ds.awish_expires_at as expires_at,
+    sql`select ds.id::text as id, ds.name, ds.status::text as status, ds.cursor,
+               ds.awish_expires_at as expires_at, ds.created_at,
+               greatest(ds.awish_merchant_checked_at,
+                        (select h.last_success_at from public.awish_path_health h
+                          where h.organization_id = ds.organization_id
+                            and h.data_source_id = ds.id and h.path = 'merchant'))
+                 as merchant_checked_at,
                (select count(*)::int from public.source_machines sm
                  join public.machines m on m.organization_id = sm.organization_id and m.id = sm.machine_id
                  where sm.organization_id = ds.organization_id and sm.data_source_id = ds.id
@@ -295,6 +305,7 @@ export async function querySyncSources(
           and ds.archived_at is null
         order by ds.created_at`,
   );
+  const health = await querySyncHealth(db, orgId);
   return list.map((s) => {
     const state = parseState(s.cursor);
     const expires = iso(s.expires_at);
@@ -307,8 +318,58 @@ export async function querySyncSources(
       // Den äldsta automatens läsning (alla ska läsas varje gång), annars synkens egen tid.
       stockReadAt: iso(s.stock_read_at) ?? state.stockSyncedAt,
       expiry: notice ? { level: notice.level, text: notice.text } : null,
+      createdAt: iso(s.created_at),
+      health: {
+        pushPending: health.pushPending,
+        pushPendingSince: health.pushPendingSince,
+        merchantCheckedAt: iso(s.merchant_checked_at),
+        fallbacks: health.fallbacks.filter((f) => f.sourceId === s.id),
+      },
     };
   });
+}
+
+/**
+ * Påfyllningar som väntar på Awish (organisationen; samma regel som Fyll på) och vägar på
+ * reservvägen (awish_path_health.fallback_since).
+ */
+async function querySyncHealth(
+  db: Db,
+  orgId: string,
+): Promise<{
+  pushPending: number;
+  pushPendingSince: string | null;
+  fallbacks: { sourceId: string; path: AwishPathName; since: string }[];
+}> {
+  const [push] = await rows<{ pending: number; oldest: unknown }>(
+    db,
+    sql`select count(*)::int as pending, min(l.occurred_at) as oldest
+        from (
+          select distinct on (a.machine_id) a.machine_id, a.kind, a.occurred_at
+          from public.automation_log a
+          where a.organization_id = ${orgId}::uuid and a.machine_id is not null
+            and a.kind in ('awish_push', 'awish_push_failed', 'awish_push_cleared')
+          order by a.machine_id, a.occurred_at desc, a.created_at desc, a.id desc
+        ) l
+        join public.machines m on m.organization_id = ${orgId}::uuid and m.id = l.machine_id
+        where l.kind = 'awish_push_failed' and m.archived_at is null`,
+  );
+  const fallbacks = await rows<{ source_id: string; path: string; since: unknown }>(
+    db,
+    sql`select h.data_source_id::text as source_id, h.path, h.fallback_since as since
+        from public.awish_path_health h
+        where h.organization_id = ${orgId}::uuid and h.fallback_since is not null
+          and h.active_route <> 'open_api'
+        order by h.path`,
+  );
+  return {
+    pushPending: Number(push?.pending ?? 0),
+    pushPendingSince: iso(push?.oldest ?? null),
+    fallbacks: fallbacks.flatMap((f) => {
+      const since = iso(f.since);
+      return since ? [{ sourceId: f.source_id, path: f.path as AwishPathName, since }] : [];
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------

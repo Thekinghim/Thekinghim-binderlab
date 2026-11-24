@@ -354,6 +354,64 @@ describe("synk färsk", () => {
     expect(r.findings[0]!.text).toBe("Awish: läsningen av facken lyckades senast för 2 h sedan.");
   });
 
+  it("påfyllningar som väntar på Awish mer än 60 min: fel", () => {
+    const health = {
+      pushPending: 2,
+      pushPendingSince: minutesAgo(61),
+      merchantCheckedAt: minutesAgo(60),
+      fallbacks: [],
+    };
+    const r = syncFreshnessCheck({ sources: [{ ...source, health }], now: NOW });
+    expect(r.status).toBe("fail");
+    expect(r.findings[0]!.text).toBe(
+      "Awish: 2 automater har väntat på Awish i 61 min. Påfyllningarna är sparade i Binderlab.",
+    );
+    const soon = { ...health, pushPendingSince: minutesAgo(30) };
+    expect(syncFreshnessCheck({ sources: [{ ...source, health: soon }], now: NOW }).status).toBe(
+      "pass",
+    );
+  });
+
+  it("kontots slutdag inte läst på 48 h: varning", () => {
+    const health = {
+      pushPending: 0,
+      pushPendingSince: null,
+      merchantCheckedAt: minutesAgo(49 * 60),
+      fallbacks: [],
+    };
+    const r = syncFreshnessCheck({ sources: [{ ...source, health }], now: NOW });
+    expect(r.status).toBe("warn");
+    expect(r.findings[0]!.text).toBe(
+      "Awish: Awish-kontots slutdag lästes senast för 2 dygn sedan.",
+    );
+    // En ny källa har inte hunnit läsa den än.
+    const fresh = { ...health, merchantCheckedAt: null };
+    expect(
+      syncFreshnessCheck({
+        sources: [{ ...source, health: fresh, createdAt: minutesAgo(60) }],
+        now: NOW,
+      }).status,
+    ).toBe("pass");
+  });
+
+  it("reservvägen mer än ett dygn: varning, kontakta Awish", () => {
+    const health = {
+      pushPending: 0,
+      pushPendingSince: null,
+      merchantCheckedAt: minutesAgo(60),
+      fallbacks: [{ path: "stock" as const, since: minutesAgo(25 * 60) }],
+    };
+    const r = syncFreshnessCheck({ sources: [{ ...source, health }], now: NOW });
+    expect(r.status).toBe("warn");
+    expect(r.findings[0]!.text).toBe(
+      "Awish: Open API har inte fungerat på ett dygn – kontakta Awish. Lager i automaterna har gått via webbpanelen i 25 h.",
+    );
+    const day = { ...health, fallbacks: [{ path: "stock" as const, since: minutesAgo(23 * 60) }] };
+    expect(syncFreshnessCheck({ sources: [{ ...source, health: day }], now: NOW }).status).toBe(
+      "pass",
+    );
+  });
+
   it("aldrig lyckats: fel", () => {
     expect(
       syncFreshnessCheck({ sources: [{ ...source, lastSuccessAt: null }], now: NOW }).status,

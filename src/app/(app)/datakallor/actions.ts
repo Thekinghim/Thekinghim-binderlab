@@ -25,6 +25,7 @@ import {
   syncAwishNowFor,
   testAwishConnectionFor,
   testAwishWebLoginFor,
+  testWebFallbackFor,
   previewAwishPushFor,
   pushAwishNowFor,
   type AwishPushPreview,
@@ -325,6 +326,25 @@ export async function pushAwishNow(): Promise<ActionResult<{ message: string }>>
     const r = await pushAwishNowFor(viewer);
     if (!r.ok) return { ok: false, error: r.message };
     return { ok: true, data: { message: r.message } };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Om Awish krånglar: "Testa reservvägen" (webbpanelen läser facken för en automat).
+// ---------------------------------------------------------------------------
+
+/**
+ * Testa reservvägen: loggar in på webbpanelen med den sparade inloggningen och läser facken
+ * för en kopplad automat (sparar inget i lagret, bara hälsan). Svarar med beskedet.
+ */
+export async function testAwishFallback(): Promise<ActionResult<{ ok: boolean; message: string }>> {
+  try {
+    const viewer = await awishOperator();
+    const r = await testWebFallbackFor(viewer);
+    await revalidateSettlementData();
+    return { ok: true, data: { ok: r.ok, message: r.message } };
   } catch (error) {
     return failure(error);
   }

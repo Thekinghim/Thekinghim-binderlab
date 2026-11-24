@@ -12,6 +12,7 @@ import { requireRoute, requireViewer } from "@/server/data/core";
 import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
 
 import { AwishExpiry } from "../../_awish/awish-expiry";
+import { AwishFreshnessLine } from "../../_vakt/data-age-line";
 import { WatchLines } from "../../_vakt/watch-lines";
 
 import { AlertList } from "../_components/alert-list";
@@ -134,9 +135,14 @@ export default async function DriftPage() {
         </>
       }
     >
-      {/* Vakten: ingen får larm, kontrollen eller hämtningen har stannat. */}
+      {/* Vakten: ingen får larm, kontrollen eller hämtningen har stannat, lagret eller
+          automaternas status har inte lästs (Open API och webbpanelen), påfyllningar som
+          inte når Awish. Under: hur färsk datan är och vägar som går via reservvägen. */}
       <Suspense fallback={null}>
         <WatchLines />
+      </Suspense>
+      <Suspense fallback={null}>
+        <AwishFreshnessLine className="mb-3" />
       </Suspense>
 
       {awishExpiry ? <AwishExpiry notice={awishExpiry} className="mb-0 max-md:mb-0" /> : null}

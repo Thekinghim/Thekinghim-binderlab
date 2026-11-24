@@ -6,7 +6,8 @@
  * - `lastAwishRead`: senaste Awish-läsningen bland automaterna.
  * - `autoRefreshDue`: ska sidan hämta om datan när appen öppnas igen? Högst en gång per
  *   AUTO_REFRESH_MS (dyker också upp när en sparad sida från service workern visas).
- * - `refreshNotice`: raden efter Uppdatera ("Uppdaterat 14:52" eller ett lugnt fel).
+ * - `refreshNotice`: raden efter Uppdatera ("Uppdaterat 14:52", "Läst 14:47" när inget
+ *   lästes nu, "· via webbpanelen" på reservvägen, eller ett lugnt fel).
  */
 
 import { wallClockIn } from "@/components/shell/period-state";
@@ -76,6 +77,10 @@ export type RefreshOutcome =
         | "none"
         | "demo";
       readonly lastReadAt: string | null;
+      /** Lästes facken nu? false (spärr, upptagen, ingen källa): "Läst 14:47". */
+      readonly read?: boolean;
+      /** Vägen för läsningen: webbpanelen = reservvägen när Open API inte svarar. */
+      readonly via?: "open_api" | "webbpanelen" | "senast_kanda";
     }
   | { readonly ok: false; readonly offline: boolean };
 
@@ -103,13 +108,19 @@ export function refreshNotice(
       tone: "warn",
     };
   }
+  const via = outcome.via === "webbpanelen" ? t.fill.refreshViaWeb : "";
   switch (outcome.status) {
     case "failed":
     case "no_credentials":
       return { text: t.fill.refreshFailed(latest), tone: "warn" };
     case "partial":
-      return { text: t.fill.refreshPartial(at(ctx.now)), tone: "warn" };
+      return { text: `${t.fill.refreshPartial(at(ctx.now))}${via}`, tone: "warn" };
     default:
-      return { text: t.fill.refreshUpdated(at(ctx.now)), tone: "ok" };
+      // Inget lästes nu (någon läste nyss, eller ingen Awish-källa): säg när facken lästes,
+      // inte "Uppdaterat" som om de just hade lästs.
+      if (outcome.read === false && latest) {
+        return { text: t.fill.refreshRead(latest), tone: "ok" };
+      }
+      return { text: `${t.fill.refreshUpdated(at(ctx.now))}${via}`, tone: "ok" };
   }
 }

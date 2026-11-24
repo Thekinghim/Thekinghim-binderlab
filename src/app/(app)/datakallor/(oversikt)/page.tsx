@@ -13,12 +13,14 @@ import { FoldCard } from "@/app/(app)/installningar/_components/fold-card";
 import "@/app/(app)/installningar/_components/settings.css";
 
 import { AwishCard } from "../_components/awish-card";
+import { AwishHealthPanel } from "../_components/awish-health-panel";
 import { ImportLog } from "../_components/import-log";
 import { MachineQueue } from "../_components/machine-queue";
 import { SourceList } from "../_components/source-list";
 import { UploadPanel } from "../_components/upload-panel";
 import { formatWhen, plural } from "../_lib/display";
 import { headlineOf } from "../_lib/headline";
+import { loadAwishHealthPanelFor } from "../_lib/awish-health-load";
 import { loadDatakallorFor } from "../_lib/service";
 import { currentViewer } from "../_lib/session";
 import { loadAwishPanelFor } from "@/server/awish/manage";
@@ -56,6 +58,10 @@ export default async function DatakallorPage() {
     isDemoFor(viewer.user, viewer.organization.id),
     loadAwishExpirySafe(viewer),
   ]);
+  // Om Awish krånglar: hälsan per väg (null vid fel eller utan Awish-nycklar: döljs).
+  const awishHealth = awish.source?.credentials
+    ? await loadAwishHealthPanelFor(viewer, data.timeZone, new Date(data.now))
+    : null;
   const headline = headlineOf(data);
   const fileSources = data.sources.filter((s) => s.acceptsFiles && !s.archived);
   const queuedOrders = data.queue.reduce((sum, q) => sum + q.pendingOrders, 0);
@@ -113,6 +119,7 @@ export default async function DatakallorPage() {
             </h2>
             <AwishExpiry notice={awishExpiry} link={false} className="mb-0 max-md:mb-0" />
             <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
+            {awishHealth ? <AwishHealthPanel data={awishHealth} /> : null}
             <CsvLink />
           </section>
         )}

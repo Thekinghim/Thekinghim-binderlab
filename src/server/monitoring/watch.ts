@@ -20,9 +20,19 @@ import "server-only";
 import { sql } from "drizzle-orm";
 
 import {
+  AWISH_WATCH_KEYS,
+  awishFreshnessText,
+  awishStatusLines,
   machineAges,
   machineAgeSummary,
+  ordersBannerText,
+  syncBroken,
   watchLines,
+  type AwishPathFacts,
+  type AwishPathName,
+  type AwishRouteName,
+  type AwishStatusLine,
+  type AwishWatchFacts,
   type ChannelsWorking,
   type CronAnswer,
   type MachineAge,
@@ -33,13 +43,14 @@ import {
 } from "@/analytics/watch";
 import { wallClockIn } from "@/components/shell/period-state";
 import { getServiceDb, type Db } from "@/db/client";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatTime } from "@/lib/format";
 import type { Viewer } from "@/server/data/core/loaders";
 import { mailCanSend } from "@/server/mail/can-send";
 import { pushStatus } from "@/server/notify/push";
 import { smsStatus } from "@/server/notify/sms";
 
 import { raiseAndNotify, safely } from "./failures";
+import { notifySystemAlert } from "./notify";
 import { resolveSystemAlert } from "./system-alerts";
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -165,6 +176,62 @@ export async function loadCronAnswer(db: Db, job: string): Promise<CronAnswer | 
   );
 }
 
+/**
+ * Hälsan per Awish-väg för organisationens aktiva Awish-källor (public.awish_path_health)
+ * och påfyllningarna som väntar på Awish. En pausad eller arkiverad källa räknas inte.
+ */
+export async function loadAwishWatchFacts(db: Db, orgId: string): Promise<AwishWatchFacts> {
+  const rows = Array.from(
+    await db.execute(
+      sql`select h.data_source_id::text as source_id, h.path, h.active_route, h.last_success_at,
+                 h.last_success_route, h.last_attempt_at, h.last_error_at, h.last_error_kind,
+                 h.last_error_code, h.failing_since, h.breaker_route, h.breaker_open_until,
+                 h.fallback_since
+          from public.awish_path_health h
+          join public.data_sources ds
+            on ds.organization_id = h.organization_id and ds.id = h.data_source_id
+          where h.organization_id = ${orgId}::uuid and ds.provider = 'awish_grpc'
+            and ds.archived_at is null and ds.status = 'active'
+          order by h.path, ds.created_at`,
+    ),
+  ) as Record<string, unknown>[];
+  const paths: AwishPathFacts[] = rows.map((r) => ({
+    sourceId: String(r.source_id),
+    path: r.path as AwishPathName,
+    activeRoute: r.active_route as AwishRouteName,
+    lastSuccessAt: iso(r.last_success_at),
+    lastSuccessRoute: (r.last_success_route as AwishRouteName | null) ?? null,
+    lastAttemptAt: iso(r.last_attempt_at),
+    lastErrorAt: iso(r.last_error_at),
+    lastErrorKind: (r.last_error_kind as string | null) ?? null,
+    lastErrorCode: r.last_error_code === null ? null : Number(r.last_error_code),
+    failingSince: iso(r.failing_since),
+    breakerRoute: (r.breaker_route as AwishRouteName | null) ?? null,
+    breakerOpenUntil: iso(r.breaker_open_until),
+    fallbackSince: iso(r.fallback_since),
+  }));
+  // Automater vars senaste sändning till Awish felade (samma regel som Fyll på:
+  // public.awish_push_pending), utan arkiverade.
+  const [push] = Array.from(
+    await db.execute(
+      sql`select count(*)::int as pending, min(l.occurred_at) as oldest
+          from (
+            select distinct on (a.machine_id) a.machine_id, a.kind, a.occurred_at
+            from public.automation_log a
+            where a.organization_id = ${orgId}::uuid and a.machine_id is not null
+              and a.kind in ('awish_push', 'awish_push_failed', 'awish_push_cleared')
+            order by a.machine_id, a.occurred_at desc, a.created_at desc, a.id desc
+          ) l
+          join public.machines m on m.organization_id = ${orgId}::uuid and m.id = l.machine_id
+          where l.kind = 'awish_push_failed' and m.archived_at is null`,
+    ),
+  ) as { pending: number; oldest: unknown }[];
+  return {
+    paths,
+    push: { pendingMachines: Number(push?.pending ?? 0), oldestAt: iso(push?.oldest ?? null) },
+  };
+}
+
 /** Allt vakten behöver om organisationen. `null` = finns inte, är arkiverad eller en demo. */
 export async function loadWatchFacts(
   db: Db,
@@ -191,11 +258,13 @@ export async function loadWatchFacts(
   // En demo skickar aldrig något och körs inte av larmjobbet: där finns inget att vakta.
   if (!org || org.is_demo) return null;
   const createdAt = iso(org.created_at) ?? new Date(0).toISOString();
-  const [members, works, sync, lastCall] = await Promise.all([
+  const [members, works, sync, lastCall, awish] = await Promise.all([
     loadReachMembers(db, orgId),
     channelsWorking(env),
     loadSyncFacts(db, orgId),
     loadCronAnswer(db, "kontroll"),
+    // Ett fel i hälsan stoppar inte resten av vakten.
+    safely("Awish-hälsan", () => loadAwishWatchFacts(db, orgId), null),
   ]);
   return {
     timeZone: org.timezone,
@@ -208,6 +277,7 @@ export async function loadWatchFacts(
       },
       sync,
       alertRun: { lastRunAt: iso(org.alert_at), organizationCreatedAt: createdAt },
+      awish,
     },
   };
 }
@@ -283,10 +353,91 @@ export async function loadMachineAgeFor(
 }
 
 const WATCH_RULE =
-  "Vakten: larmar när ett schemalagt jobb inte har körts i tid, när hämtningen från Awish står still eller när ingen nås av larmen. Stängs när det fungerar igen.";
+  "Vakten: larmar när ett schemalagt jobb inte har körts i tid, när hämtningen från Awish står still, när varken Open API eller webbpanelen fungerar på en väg, eller när ingen nås av larmen. Stängs när det fungerar igen.";
 
 /** Nycklarna vakten kan larma med (utom per källa, som har källans id i nyckeln). */
-const FIXED_KEYS = ["larm-nar-ingen", "kontroll", "larmjobb"] as const;
+const FIXED_KEYS = ["larm-nar-ingen", "kontroll", "larmjobb", ...AWISH_WATCH_KEYS] as const;
+
+/** Beskedet när en Awish-väg fungerar igen (en push, se resolveWithRecovery). */
+const RECOVERY_TITLE: Readonly<Record<string, string>> = {
+  "awish:stock": "Lagret läses från Awish igen",
+  "awish:machines": "Automaternas status kommer från Awish igen",
+  "awish:push": "Alla påfyllningar har nått Awish",
+};
+
+function recoveryTitle(key: string): string | null {
+  if (key.startsWith("synk:")) return "Försäljningen hämtas från Awish igen";
+  return RECOVERY_TITLE[key] ?? null;
+}
+
+/**
+ * Stänger larmet och skickar EN push om att det fungerar igen, till ägare och admin, om
+ * larmet hade aviserats (samma regel som larmjobbet: inget "löst" om inget sades). Bara för
+ * Awish-raderna; de andra stängs tyst som förut. Ger antalet stängda.
+ */
+async function resolveWithRecovery(db: Db, orgId: string, key: string, now: Date): Promise<number> {
+  const title = recoveryTitle(key);
+  if (!title) return resolveSystemAlert(db, orgId, `watch:${key}`, now);
+  const closed = Array.from(
+    await db.execute(
+      sql`update public.alerts
+          set status = 'closed', closed_at = ${now.toISOString()}::timestamptz
+          where organization_id = ${orgId}::uuid and incident_key = ${`watch:${key}`}
+            and alert_group = 'system' and status = 'open'
+          returning id::text as id, notify_count, severity::text as severity`,
+    ),
+  ) as { id: string; notify_count: number; severity: "critical" | "warning" | "info" }[];
+  for (const c of closed) {
+    if (Number(c.notify_count) === 0) continue;
+    await safely(
+      "push om att Awish fungerar igen",
+      () =>
+        notifySystemAlert(
+          db,
+          c.id,
+          {
+            organizationId: orgId,
+            kind: "job_failed",
+            key: `watch:${key}`,
+            // Samma allvar som larmet: den som fick larmet får också beskedet.
+            severity: c.severity,
+            title,
+            detail: "Det fungerar igen. Binderlab har hämtat det som saknades.",
+            rule: WATCH_RULE,
+            link: "/datakallor#awish-halsa",
+            now,
+          },
+          { reason: "resolved", roles: ["owner", "admin"] },
+        ),
+      0,
+    );
+  }
+  if (key.startsWith("awish:")) await markAwishAlerted(db, orgId, key, null);
+  return closed.length;
+}
+
+/** alerted_at på hälsoraderna för vägen (null när larmet har stängts). Kastar inte. */
+async function markAwishAlerted(
+  db: Db,
+  orgId: string,
+  key: string,
+  at: Date | null,
+): Promise<void> {
+  const path = key.slice("awish:".length);
+  await safely(
+    "Awish-hälsans larmtid",
+    async () => {
+      await db.execute(
+        sql`update public.awish_path_health
+            set alerted_at = ${at ? at.toISOString() : null}::timestamptz
+            where organization_id = ${orgId}::uuid and path = ${path}
+              and alerted_at is distinct from ${at ? at.toISOString() : null}::timestamptz
+              and (${at === null}::boolean or alerted_at is null)`,
+      );
+    },
+    undefined,
+  );
+}
 
 export interface WatchAlertOutcome {
   readonly raised: number;
@@ -314,6 +465,7 @@ export async function syncWatchAlerts(
       let raised = 0;
       let resolved = 0;
       for (const line of lines) {
+        if (line.key.startsWith("awish:")) await markAwishAlerted(db, orgId, line.key, now);
         await raiseAndNotify(db, {
           organizationId: orgId,
           kind: "job_failed",
@@ -330,7 +482,7 @@ export async function syncWatchAlerts(
       const keys = [...FIXED_KEYS, ...loaded.facts.sync.map((s) => `synk:${s.id}`)];
       for (const key of keys) {
         if (open.has(key)) continue;
-        resolved += await resolveSystemAlert(db, orgId, `watch:${key}`, now);
+        resolved += await resolveWithRecovery(db, orgId, key, now);
       }
       return { raised, resolved };
     },
@@ -363,4 +515,95 @@ export async function syncWatchAlertsForAll(
     resolved += r.resolved;
   }
   return { raised, resolved };
+}
+
+// ---------------------------------------------------------------------------
+// Hem och Drift: hur färsk datan från Awish är, och reservvägen
+// ---------------------------------------------------------------------------
+
+export interface AwishFreshness {
+  /** "Försäljning 14:52 · Lager 14:50 (via webbpanelen)", null utan Awish-källa. */
+  readonly text: string | null;
+  /** Försäljningen har inte hämtats på 30 min (bannern på Hem), annars null. */
+  readonly banner: string | null;
+  /** Vägar där reservvägen fungerar just nu (ingen push, bara en rad). */
+  readonly status: readonly AwishStatusLine[];
+}
+
+/** "14:52" i dag, annars datum och tid (organisationens tidszon). */
+function clockIn(timeZone: string, now: Date) {
+  return (at: string) => {
+    const a = wallClockIn(new Date(at), timeZone);
+    const n = wallClockIn(now, timeZone);
+    return a.toDateString() === n.toDateString() ? formatTime(a) : formatDateTime(a, { now: n });
+  };
+}
+
+/** Färskheten för organisationen (systemrollen; organisationen ur sessionen). */
+export async function awishFreshnessFor(
+  db: Db,
+  orgId: string,
+  now: Date = new Date(),
+): Promise<AwishFreshness> {
+  const [org] = Array.from(
+    await db.execute(
+      sql`select o.timezone,
+                 (select max(l.awish_synced_at) from public.stock_locations l
+                   where l.organization_id = o.id and l.machine_id is not null
+                     and l.archived_at is null) as stock_at
+          from public.organizations o where o.id = ${orgId}::uuid`,
+    ),
+  ) as { timezone: string; stock_at: unknown }[];
+  if (!org) return { text: null, banner: null, status: [] };
+  const [sync, awish] = await Promise.all([
+    loadSyncFacts(db, orgId),
+    loadAwishWatchFacts(db, orgId),
+  ]);
+  if (sync.length === 0) return { text: null, banner: null, status: [] };
+  const clock = clockIn(org.timezone, now);
+  // Den källa som släpar mest bestämmer (oftast finns bara en).
+  const ordersAt = sync.reduce<string | null>(
+    (oldest, s) =>
+      s.lastSuccessAt === null
+        ? oldest
+        : oldest === null || s.lastSuccessAt < oldest
+          ? s.lastSuccessAt
+          : oldest,
+    null,
+  );
+  const stockRows = awish.paths.filter((p) => p.path === "stock");
+  const stockHealthAt = stockRows.reduce<string | null>(
+    (best, p) => (p.lastSuccessAt && (!best || p.lastSuccessAt > best) ? p.lastSuccessAt : best),
+    null,
+  );
+  const stockAt = iso(org.stock_at) ?? stockHealthAt;
+  const stockVia = stockRows.some((p) => p.activeRoute === "webbpanelen")
+    ? "webbpanelen"
+    : (stockRows[0]?.activeRoute ?? null);
+  const broken = sync.find((s) => syncBroken(s, now));
+  return {
+    text: awishFreshnessText({ ordersAt, stockAt, stockVia }, clock),
+    banner: broken ? ordersBannerText(broken.lastSuccessAt, clock) : null,
+    status: awishStatusLines(awish, clock),
+  };
+}
+
+/**
+ * Färskheten för den inloggade. Bannern och reservvägen bara för ägare och admin (de kan
+ * göra något åt det). Ett fel ger null och skrivs i serverloggen.
+ */
+export async function loadAwishFreshnessFor(
+  viewer: Viewer,
+  now: Date = new Date(),
+): Promise<AwishFreshness | null> {
+  const role = viewer.organization.role;
+  const operator = role === "owner" || role === "admin";
+  return safely(
+    "Awish-färskheten",
+    async () => {
+      const f = await awishFreshnessFor(getServiceDb(), viewer.organization.id, now);
+      return operator ? f : { ...f, banner: null, status: [] };
+    },
+    null,
+  );
 }

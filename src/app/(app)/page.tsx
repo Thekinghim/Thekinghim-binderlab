@@ -15,6 +15,7 @@ import {
   loadOptionalContextIfSignedIn,
   loadPeriod,
   requireRoute,
+  requireViewer,
 } from "@/server/data/core";
 import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
 import { loadLiveOrders } from "@/server/data/v2/analytics/live";
@@ -22,9 +23,11 @@ import { loadFleetState } from "@/server/data/v2/fleet";
 import { loadDayRoute } from "@/server/data/v2/route";
 import { isDemoFor } from "@/server/demo/guard";
 import { pushStatus } from "@/server/notify/push";
+import { loadAwishFreshnessFor } from "@/server/monitoring/watch";
 import { loadSalePushPref } from "@/server/sales-push/prefs";
 import { withUserDb } from "@/server/session";
 
+import { AwishOrdersBanner } from "./_vakt/data-age-line";
 import { SalesScreen } from "./forsaljning/_components/sales-screen";
 import {
   GeoCardView,
@@ -98,6 +101,12 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         </Suspense>
       }
     >
+      {/* Försäljningen har inte hämtats på 30 min (Awish svarar inte): orderlistan i
+          Datakällor är reserven. Bara ägare och admin; ingenting när allt fungerar. */}
+      <Suspense fallback={null}>
+        <AwishOrdersBanner className="mb-3" />
+      </Suspense>
+
       {/* Hjältekortet (visuellt/02): vinst, pallen och månadens mål, nyckeltalen kompakt under
           (ersätter KPI-bandet; _hem/v2/hero-card.tsx). Bara ekonomiroller. */}
       {economy ? (
@@ -270,11 +279,17 @@ async function Actions({ canRoute, nowIso }: { canRoute: boolean; nowIso: string
 }
 
 async function Live({ nowIso }: { nowIso: string }) {
-  const orders = await loadLiveOrders().catch((error: unknown) => {
-    console.error("[hem] Senaste köp kunde inte läsas:", error);
-    return null;
-  });
-  return orders ? <LiveCard orders={orders} nowIso={nowIso} /> : null;
+  const [orders, fresh] = await Promise.all([
+    loadLiveOrders().catch((error: unknown) => {
+      console.error("[hem] Senaste köp kunde inte läsas:", error);
+      return null;
+    }),
+    // Riktig ålder i stället för "ungefär var 5:e minut" (null vid fel: raden blir neutral).
+    requireViewer()
+      .then((viewer) => loadAwishFreshnessFor(viewer))
+      .catch(() => null),
+  ]);
+  return orders ? <LiveCard orders={orders} nowIso={nowIso} freshness={fresh?.text} /> : null;
 }
 
 async function Route({ canRoute }: { canRoute: boolean }) {

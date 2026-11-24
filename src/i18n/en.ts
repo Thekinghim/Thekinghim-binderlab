@@ -314,6 +314,8 @@ export const en: Messages = {
     sourceMissing: (place) => `${placeName(place)} has no packs`,
     sourceOnly: (place, n) => `${placeName(place)} only has ${f.int(n)}`,
     refreshUpdated: (time) => `Updated ${time}`,
+    refreshRead: (time) => `Checked ${time}`,
+    refreshViaWeb: " · via the backup route",
     refreshPartial: (time) => `Updated ${time} · some machines did not answer`,
     refreshFailed: (latest) =>
       `Could not reach the machines${latest ? ` – showing the check from ${latest}` : ""}`,
