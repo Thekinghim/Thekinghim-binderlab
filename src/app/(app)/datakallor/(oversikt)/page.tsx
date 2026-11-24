@@ -12,6 +12,7 @@ import { requireRoute } from "@/server/data/core";
 import { FoldCard } from "@/app/(app)/installningar/_components/fold-card";
 import "@/app/(app)/installningar/_components/settings.css";
 
+import { AwishApiSection } from "../_components/awish-api-section";
 import { AwishCard } from "../_components/awish-card";
 import { ImportLog } from "../_components/import-log";
 import { MachineQueue } from "../_components/machine-queue";
@@ -113,6 +114,7 @@ export default async function DatakallorPage() {
             </h2>
             <AwishExpiry notice={awishExpiry} link={false} className="mb-0 max-md:mb-0" />
             <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
+            <AwishApiSection viewer={viewer} timeZone={data.timeZone} />
             <CsvLink />
           </section>
         )}

@@ -12,7 +12,8 @@ import { getServiceDb } from "@/db/client";
 import { checkOwnPin, setOwnPin, skipPinChange } from "@/server/auth/phone-login";
 import { validateNewPin } from "@/server/auth/phone";
 import { summariseAwishPush } from "@/server/awish/push-status";
-import { pushMachinesToAwish, recordAwishPushFailure } from "@/server/awish/web-service";
+import { pushRefillToAwish } from "@/server/awish/control/refill-push";
+import { recordAwishPushFailure } from "@/server/awish/web-service";
 import { saveRefillItems, undoRefillItems } from "@/server/data/field-refills";
 import { requireStaff } from "@/server/staff/session";
 
@@ -41,7 +42,7 @@ export type StaffSubmitResult =
 /** Skickar automatens antal till Awish (bara den här automaten). */
 async function pushToAwish(orgId: string, machineId: string): Promise<StaffAwish> {
   try {
-    const pushed = await pushMachinesToAwish(orgId, [machineId], { withPending: false });
+    const pushed = await pushRefillToAwish(orgId, [machineId], { withPending: false });
     const summary = summariseAwishPush(pushed, [machineId]);
     return summary === undefined || summary.state === "off"
       ? "off"

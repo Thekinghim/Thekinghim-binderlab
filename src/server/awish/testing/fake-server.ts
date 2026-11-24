@@ -12,6 +12,15 @@ import * as grpc from "@grpc/grpc-js";
 import type { AwishGrpcOrder } from "@/import/adapters/awish-grpc";
 
 import { awishServiceConstructor } from "../grpc-client";
+import {
+  checkSignature,
+  controlHandlers,
+  defaultControlState,
+  fakeProductId,
+  type FakeControlState,
+} from "./fake-control";
+
+export type { FakeControlState } from "./fake-control";
 
 export interface FakeMachine {
   id: string;
@@ -25,10 +34,21 @@ export interface FakeMachine {
 
 /** Ett fack i låtsas-Awish (Products). */
 export interface FakeProduct {
+  /** Fackets id i Products (standard: plats + 1 i listan). */
+  id?: string;
   channel: string;
   good: string | null;
   current: number;
   capacity: number;
+  /** Kanalens kortadress, motor och våningstyp (ExecuteShipment). */
+  addr?: string;
+  motor_id?: string;
+  floor_type?: number;
+  /** Varans id (standard 100 + plats). */
+  good_id?: string;
+  category_id?: string;
+  /** Product.status (standard true). */
+  status?: boolean;
 }
 
 /** En kampanjbild i låtsas-Awish (Banners). */
@@ -51,7 +71,7 @@ export interface FakePickupCode {
   status: boolean;
 }
 
-export interface FakeAwishState {
+export interface FakeAwishState extends FakeControlState {
   appId: string;
   appSecret: string;
   appKey: string;
@@ -147,6 +167,7 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     writeCode: 0,
     hideNewCodes: false,
     calls: [],
+    ...defaultControlState(),
     ...initial,
   };
   let nextId = 900;
@@ -245,7 +266,14 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
           status: "APPROVED",
           created_at: "2024-04-18 23:48:27",
           ...(state.merchantExpiredAt === null ? {} : { expired_at: state.merchantExpiredAt }),
-          config: { debug: false, is_dev: false, appid: state.appId, app_key: "kva" },
+          config: {
+            debug: false,
+            is_dev: false,
+            appid: state.appId,
+            app_key: "kva",
+            timezone: state.merchantTimezone,
+            ...(state.whitelistIp === null ? {} : { whitelist_ip: state.whitelistIp }),
+          },
         },
         request_id: "fake",
       });
@@ -282,15 +310,29 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
       const list = state.products[machineId] ?? [];
       callback(null, {
         data: list.map((p, i) => ({
-          id: String(i + 1),
+          id: fakeProductId(p, i),
           machine_id: machineId,
-          status: true,
+          status: p.status ?? true,
           current_inventory: String(p.current),
           inventory: String(p.capacity),
-          channel: { id: String(i + 1), name: p.channel, addr: String(i + 1) },
+          channel: {
+            id: String(i + 1),
+            name: p.channel,
+            addr: p.addr ?? String(i + 1),
+            motor_id: p.motor_id ?? String(i + 1),
+            floor_type: String(p.floor_type ?? 0),
+            total: String(p.capacity),
+          },
           ...(p.good === null
             ? {}
-            : { good: { id: String(100 + i), name: p.good, price: "170.00", content: "" } }),
+            : {
+                good: {
+                  id: p.good_id ?? String(100 + i),
+                  name: p.good,
+                  price: "170.00",
+                  content: "",
+                },
+              }),
         })),
         request_id: "fake",
       });
@@ -316,6 +358,11 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     },
     CreateBanner(call: Call, callback: Callback): void {
       if (!guard("CreateBanner", call, callback)) return;
+      if (
+        state.requireSignOnLegacyWrites &&
+        !checkSignature(state, "CreateBannerRequest", call, callback)
+      )
+        return;
       if (state.writeCode !== 0) return writeReply(callback);
       const machineId = String(call.request.machine_id ?? "");
       const list = (state.banners[machineId] ??= []);
@@ -332,6 +379,11 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     },
     UpdateBanner(call: Call, callback: Callback): void {
       if (!guard("UpdateBanner", call, callback)) return;
+      if (
+        state.requireSignOnLegacyWrites &&
+        !checkSignature(state, "UpdateBannerRequest", call, callback)
+      )
+        return;
       if (state.writeCode !== 0) return writeReply(callback);
       const machineId = String(call.request.machine_id ?? "");
       const banner = (state.banners[machineId] ?? []).find((b) => b.id === String(call.request.id));
@@ -363,6 +415,11 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     },
     CreatePickupCode(call: Call, callback: Callback): void {
       if (!guard("CreatePickupCode", call, callback)) return;
+      if (
+        state.requireSignOnLegacyWrites &&
+        !checkSignature(state, "CreatePickupCodesRequest", call, callback)
+      )
+        return;
       if (state.writeCode !== 0) return writeReply(callback);
       const machineId = String(call.request.machine_id ?? "");
       const productId = String(call.request.product_id ?? "");
@@ -400,6 +457,10 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     UpdateBanner: delayed(handlers.UpdateBanner),
     PickupCodes: delayed(handlers.PickupCodes),
     CreatePickupCode: delayed(handlers.CreatePickupCode),
+    // De nya anropen i v1.2.41 (fake-control.ts).
+    ...Object.fromEntries(
+      Object.entries(controlHandlers(state, guard)).map(([name, fn]) => [name, delayed(fn)]),
+    ),
   });
   const port = await new Promise<number>((resolve, reject) =>
     server.bindAsync("127.0.0.1:0", grpc.ServerCredentials.createInsecure(), (error, p) =>

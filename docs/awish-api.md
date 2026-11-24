@@ -189,3 +189,80 @@ databasen (migreringar ändras aldrig) men används inte; alla token är återka
 
 Inställning hos beställaren: Developer Center → Advanced Settings: Debug Mode på, Time Zone Settings på med
 Europe/Stockholm (och samma tidszon på automaterna). Datakällans tidszon i Binderlab ska då vara Europe/Stockholm.
+
+## Styrning via API:t (v1.2.41)
+
+Awishs gRPC-API v1.2.41 (AW-DOC-110) har skrivande anrop för att styra automaterna:
+starta om och stäng av (ControlPower), strömschema (SetPowerSchedule/ClearPowerSchedule),
+mata ut ett pack (ExecuteShipment), fack (UpdateProduct, BatchUpdateProducts,
+ReplenishProductInventory), varor och kategorier, skärm och reklam (UpdateMachineConfig),
+medlemmar, tidszon (UpdateMerchant), DeleteBanner, Currencies och Version. Koden ligger i
+`src/server/awish/control/` (klient, skydd, Version, plan B för påfyllning) och
+`src/server/awish/sign.ts` (signering). Proto-filens fältnummer gäller, inte PDF:ens.
+
+### Signering
+
+Sedan v1.2.40 kräver "riskabla" skrivningar `timestamp` (Unix-sekunder) och `sign`:
+
+```
+sign = hex_gemener(HMAC-SHA256(nyckel = appid, `${timestamp}.${request_body}`))
+```
+
+Servern godtar ±300 s. Dokumentationen säger inte vad `request_body` är. Awishs
+referensbibliotek (@cakioe/hmac-signer) serialiserar ett JSON-objekt med serde_json och
+sorterade nycklar och räknar inte med `sign` och `timestamp`. Vi bygger därför begäran som
+kompakt JSON, utan sign och timestamp, med sorterade nycklar, uint64 som tal och
+uppräkningar som tal. Tre lägen finns, eftersom det är osäkert hur Awish bygger om JSON ur
+protobuf:
+
+| Läge                      | request_body                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| present_sorted (standard) | Fälten som går över tråden (optional-fält som är satta, vanliga fält som inte har standardvärdet), sorterade |
+| full_sorted               | Alla fält: null för ej satta optional-fält och meddelanden, standardvärden annars, sorterade                 |
+| present_proto_order       | Som present_sorted men i fältnummerordning                                                                   |
+
+**Datakällor → Awish API → Testa signering** gör en ofarlig signerad skrivning
+(UpdateMerchant med samma tidszon igen, annars UpdateCategory med samma titel) i varje läge
+och sparar det första som Awish godtar. Godtas inget, eller nekar Awish en signatur senare,
+pausas alla skrivningar via API:t (påfyllning och varor går då via webbpanelen) tills
+signeringen fungerar igen. `AWISH_SIGN_MODE` i miljön går före det sparade.
+
+CreateBanner, UpdateBanner och CreatePickupCode ska också signeras (P3 i samma arbete).
+
+### Version
+
+Varje timme (pg_cron `binderlab-awish-version`, minut 41 → `/api/cron/awish-version`)
+läses Version. Byts den skapas ett systemlarm ("Awish bytte API-version") och Mata ut och
+Stäng av pausas tills ägaren eller admin trycker **Jag har kontrollerat** under Datakällor.
+Bakgrund: en oannonserad omnumrering av fälten fick facken att läsas fel.
+
+### TLS (runbook)
+
+Styrningen provar `grpc.awish.vip:443` (TLS) först och faller tillbaka till
+`49.51.72.74:50051` (okrypterad) om TLS inte svarar (`AWISH_CONTROL_ENDPOINT=auto`).
+Inloggningen är densamma; TLS krypterar bara appid och token. Synken och kampanjerna
+använder fortfarande `AWISH_GRPC_ADDRESS`/`AWISH_GRPC_TLS`. När Datakällor visar
+"Anslutning: Krypterad (TLS)":
+
+1. Sätt `AWISH_GRPC_TLS=true` och `AWISH_GRPC_ADDRESS=grpc.awish.vip:443` i Vercel.
+2. Kör Hämta nu under Datakällor och kontrollera att order kommer.
+3. Går det inte: ta bort variablerna igen (den okrypterade adressen gäller då).
+
+Har Awish-kontot en IP-lista (`whitelist_ip`) kan Vercels utgående adresser nekas.
+
+### Skydd för varje skrivning
+
+`runControlAction` (control/guard.ts): bara ägare och admin; en demo anropar aldrig Awish;
+`AWISH_CONTROL_DISABLED=true` stänger av allt; samma bekräftelse (idempotensnyckel från
+förhandsvisningen) skickas en gång; gränser (mata ut 1 per automat per 2 min, 5 i timmen,
+10 per dygn; stäng av 1 per 30 min; starta om 1 per 10 min); mata ut kräver skäl och att
+automaten är online. Varje skrivning loggas i `awish_actions` (vem, vad, när, Awishs svar)
+utan sign, timestamp, hemligheter eller personuppgifter. Skrivningar provas aldrig igen
+automatiskt; uteblir svaret blir utfallet "okänt" och användaren ombeds titta på automaten.
+
+### Påfyllning och varor: webbpanelen eller API:t
+
+Datakällor → Awish API → **Påfyllning till Awish**: Webbpanelen (som nu, standard), API,
+eller API med webbpanelen som reserv (`awish_api_state.slot_writes_via`). API används bara
+när signeringen fungerar. Plan B (`control/api-push.ts`) använder samma plan som
+webbvägen (höjer bara, sänker aldrig) och skriver med UpdateProduct.
