@@ -81,15 +81,25 @@
   .ut-row .am.neg {
     color: var(--v2-crit-text);
   }
+  .ut-row > div:first-child {
+    grid-row: span 2;
+    align-self: center;
+  }
   .ut-row .go {
-    grid-column: 1 / -1;
+    grid-column: 2;
     display: flex;
     justify-content: flex-end;
     gap: 8px;
   }
+  .ut-row .go:empty {
+    display: none;
+  }
   @media (min-width: 640px) {
     .ut-row {
       grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+    .ut-row > div:first-child {
+      grid-row: auto;
     }
     .ut-row .go {
       grid-column: auto;

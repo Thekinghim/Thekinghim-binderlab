@@ -44,7 +44,7 @@ export default async function PayoutsPage({
         .filter((p) => p.unpaidLines > 0)
         .flatMap((p) => p.allocation?.warnings ?? [])
         .filter((w) => w.code !== "DIFF_EXPECTED" && w.code !== "NEGATIVE_OWNER"),
-      ...(latest?.allocation?.warnings ?? []).filter(
+      ...(latest && latest.unpaidLines > 0 ? (latest.allocation?.warnings ?? []) : []).filter(
         (w) => w.code === "DIFF_EXPECTED" || w.code === "NEGATIVE_OWNER",
       ),
     ],

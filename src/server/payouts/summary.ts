@@ -34,7 +34,7 @@ const t = (v: number) => krText(v * 100, "never");
 
 /** Mallens text (används utan AI och när AI-texten inte klarar kontrollen). */
 export function templateSummary(f: SummaryFacts): string {
-  const parts = [`Nayax betalade ${t(f.beloppKr)} för ${f.period}.`];
+  const parts = [`Nayax betalade ${t(f.beloppKr)} för ${f.period.replace(/\.$/, "")}.`];
   const top = [...f.butiker].sort((a, b) => b.kr - a.kr)[0];
   if (top && top.kr > 0) {
     parts.push(
