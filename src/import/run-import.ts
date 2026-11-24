@@ -369,7 +369,30 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
       dataSourceId: options.dataSourceId,
       organizationTimezone: source.org_timezone,
     };
-    const classification = await classify(tx, ctx, fetched);
+    // Samma försäljning som redan finns i en annan Awish-källa (t.ex. Awish API, med andra
+    // ordernummer): samma betaltid (sekund) och belopp. Importeras inte igen (som synken gör
+    // åt andra hållet, sameSaleElsewhere i src/server/awish/sync.ts); räknas som dubblett.
+    const elsewhere = AWISH_PROVIDERS.includes(source.provider)
+      ? await awishSaleElsewhere(tx, options.organizationId, options.dataSourceId, fetched.rows)
+      : new Set<string>();
+    const classification = await classify(
+      tx,
+      ctx,
+      elsewhere.size === 0
+        ? fetched
+        : {
+            ...fetched,
+            rows: fetched.rows.filter((r) => !(r.isPaid && elsewhere.has(r.externalId))),
+          },
+    );
+    const withElsewhere = <T extends { total: number; duplicate: number }>(summary: T): T =>
+      elsewhere.size === 0
+        ? summary
+        : {
+            ...summary,
+            total: summary.total + elsewhere.size,
+            duplicate: summary.duplicate + elsewhere.size,
+          };
 
     const firstPaid = fetched.rows.find((r) => r.isPaid);
     const firstRow: FirstRowCheck | null = firstPaid
@@ -405,14 +428,14 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
         dryRun: true,
         importId: null,
         file: { name: options.file.name, sha256, bytes: bytes.byteLength, storagePath: null },
-        summary: classification.summary,
+        summary: withElsewhere(classification.summary),
         rows: classification.rows.slice(0, rowLimit),
         rowsTruncated: classification.rows.length > rowLimit,
         newTitles: classification.newTitles,
         unknownMachines: classification.unknownMachines,
         warnings: buildWarnings(
           classification.rows,
-          classification.summary,
+          withElsewhere(classification.summary),
           previous,
           classification.newTitles,
           classification.unknownMachines,
@@ -446,7 +469,7 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
     }
 
     const outcome = await commitClassification(tx, ctx, created.id, classification);
-    const s = outcome.summary;
+    const s = withElsewhere(outcome.summary);
 
     const [finished] = await query<{ started_at: unknown; finished_at: unknown }>(
       tx,
@@ -494,6 +517,46 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
       finishedAt: isoOrNull(finished?.finished_at),
     };
   });
+}
+
+/** Datakällor med order från Awish (samma försäljningar, olika ordernummer). */
+const AWISH_PROVIDERS: readonly string[] = [
+  "awish_csv",
+  "awish_web",
+  "awish_extension",
+  "awish_grpc",
+];
+
+/** Ordernummer (av de givna betalda raderna) vars betaltid och belopp finns i en annan Awish-källa. */
+async function awishSaleElsewhere(
+  tx: Tx,
+  organizationId: string,
+  dataSourceId: string,
+  rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number; isPaid: boolean }>,
+): Promise<Set<string>> {
+  const paid = rows.filter((r) => r.isPaid);
+  if (paid.length === 0) return new Set();
+  const payload = paid.map((r) => ({
+    external_id: r.externalId,
+    ordered_at: r.paidAtUtc.toISOString(),
+    amount_ore: r.amountOre,
+  }));
+  const found = await query<{ external_id: string }>(
+    tx,
+    sql`select distinct r.external_id
+        from jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
+          as r(external_id text, ordered_at timestamptz, amount_ore bigint)
+        where exists (
+          select 1 from public.orders o
+          join public.data_sources ds
+            on ds.organization_id = o.organization_id and ds.id = o.data_source_id
+          where o.organization_id = ${organizationId}::uuid
+            and o.data_source_id <> ${dataSourceId}::uuid
+            and ds.provider in ('awish_csv', 'awish_web', 'awish_extension', 'awish_grpc')
+            and o.ordered_at = r.ordered_at and o.amount_ore = r.amount_ore
+        )`,
+  );
+  return new Set(found.map((r) => r.external_id));
 }
 
 /** Antal ej betalda rader för en sparad import (räknas inte rad för rad). */

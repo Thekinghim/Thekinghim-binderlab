@@ -85,7 +85,28 @@ export interface FakeAwishState {
   hideNewCodes: boolean;
   /** Alla anrop: metod och begäran. */
   calls: Array<{ method: string; request: Record<string, unknown>; token: string | null }>;
+  /**
+   * Fel per metod (gRPC-statuskod), t.ex. { Products: grpc.status.INTERNAL } som Awish
+   * 24 nov. 2026. Gäller tills det tas bort, eller `failTimes[metod]` gånger om det är satt.
+   */
+  failWith: Partial<Record<FakeMethod, grpc.status>>;
+  /** Hur många gånger `failWith[metod]` gäller (räknas ned; saknas = varje gång). */
+  failTimes: Partial<Record<FakeMethod, number>>;
+  /** Väntan (ms) innan svaret för en viss metod (utöver delayMs). */
+  delayByMethod: Partial<Record<FakeMethod, number>>;
 }
+
+export type FakeMethod =
+  | "Merchant"
+  | "Machines"
+  | "Orders"
+  | "Order"
+  | "Products"
+  | "Banners"
+  | "CreateBanner"
+  | "UpdateBanner"
+  | "PickupCodes"
+  | "CreatePickupCode";
 
 export interface FakeAwish {
   address: string;
@@ -147,6 +168,9 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     writeCode: 0,
     hideNewCodes: false,
     calls: [],
+    failWith: {},
+    failTimes: {},
+    delayByMethod: {},
     ...initial,
   };
   let nextId = 900;
@@ -179,6 +203,15 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
       state.failNext -= 1;
       callback({ code: grpc.status.UNAVAILABLE, details: "upstream connect error" });
       return false;
+    }
+    const failCode = state.failWith[method as FakeMethod];
+    if (failCode !== undefined) {
+      const times = state.failTimes[method as FakeMethod];
+      if (times === undefined || times > 0) {
+        if (times !== undefined) state.failTimes[method as FakeMethod] = times - 1;
+        callback({ code: failCode, details: "fake failure" });
+        return false;
+      }
     }
     if (!appid) {
       callback({ code: grpc.status.UNAUTHENTICATED, details: "appid is missing" });
@@ -230,9 +263,10 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
   const server = new grpc.Server();
   const Ctor = awishServiceConstructor();
   const delayed =
-    <A extends unknown[]>(fn: (...args: A) => void) =>
+    <A extends unknown[]>(fn: (...args: A) => void, method?: FakeMethod) =>
     (...args: A) => {
-      if (state.delayMs > 0) setTimeout(() => fn(...args), state.delayMs);
+      const ms = state.delayMs + (method ? (state.delayByMethod[method] ?? 0) : 0);
+      if (ms > 0) setTimeout(() => fn(...args), ms);
       else fn(...args);
     };
   const handlers = {
@@ -390,16 +424,16 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     },
   };
   server.addService(Ctor.service, {
-    Merchant: delayed(handlers.Merchant),
-    Machines: delayed(handlers.Machines),
-    Orders: delayed(handlers.Orders),
-    Order: delayed(handlers.Order),
-    Products: delayed(handlers.Products),
-    Banners: delayed(handlers.Banners),
-    CreateBanner: delayed(handlers.CreateBanner),
-    UpdateBanner: delayed(handlers.UpdateBanner),
-    PickupCodes: delayed(handlers.PickupCodes),
-    CreatePickupCode: delayed(handlers.CreatePickupCode),
+    Merchant: delayed(handlers.Merchant, "Merchant"),
+    Machines: delayed(handlers.Machines, "Machines"),
+    Orders: delayed(handlers.Orders, "Orders"),
+    Order: delayed(handlers.Order, "Order"),
+    Products: delayed(handlers.Products, "Products"),
+    Banners: delayed(handlers.Banners, "Banners"),
+    CreateBanner: delayed(handlers.CreateBanner, "CreateBanner"),
+    UpdateBanner: delayed(handlers.UpdateBanner, "UpdateBanner"),
+    PickupCodes: delayed(handlers.PickupCodes, "PickupCodes"),
+    CreatePickupCode: delayed(handlers.CreatePickupCode, "CreatePickupCode"),
   });
   const port = await new Promise<number>((resolve, reject) =>
     server.bindAsync("127.0.0.1:0", grpc.ServerCredentials.createInsecure(), (error, p) =>

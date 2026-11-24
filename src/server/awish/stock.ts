@@ -52,6 +52,14 @@ import { comparableText } from "@/import/adapter";
 import { writeSlotCapacities } from "@/server/awish/slot-capacity";
 
 import { AWISH_MIN_CALL_MS, AwishApiError, type AwishApi, type AwishProduct } from "./grpc-client";
+import {
+  breakerOpen,
+  clearWebIdsVerified,
+  markWebIdsVerified,
+  openBreaker,
+  recordPathResult,
+  webIdsVerifiedAt,
+} from "./health";
 import { classifySwaps, swapNote, type ProductSwap } from "./product-swap";
 import { awishRefillNote, refillDeductions } from "./refill-deduction";
 import { webStockFallback, type StockFallback } from "./stock-web-fallback";
@@ -162,6 +170,8 @@ export interface AwishStockSummary {
   readonly failed: number;
   /** Automater som inte hanns med (tidsgränsen). */
   readonly deferred: number;
+  /** Automater vars fack lästes via webbpanelen (reservvägen) i stället för Open API. */
+  readonly viaWeb?: number;
   /** Första felet i körningen (art och Awishs kod), för felsökning. Inga hemligheter. */
   readonly error?: string;
   readonly at: string;
@@ -816,21 +826,74 @@ async function syncSlots(
   return changed;
 }
 
+/** Open API får så här lång tid per automat när webbpanelen finns som reserv. */
+export const GRPC_WITH_FALLBACK_MS = 5_000;
+
+/** Fel som säger att Open API inte fungerar alls just nu (in-run-brytaren slår till). */
+function grpcDown(error: AwishApiError): boolean {
+  return (
+    error.kind === "server" ||
+    error.kind === "unavailable" ||
+    error.kind === "timeout" ||
+    error.kind === "auth" ||
+    error.kind === "changed"
+  );
+}
+
+function errorDetail(error: AwishApiError): string {
+  return `${error.kind} ${error.grpcCode ?? "-"} ${(error.technical ?? "").slice(0, 160)}`.trim();
+}
+
+/** Tomt svar för en automat som hade fack förra gången: inte att lita på. */
+function emptyReadError(): AwishApiError {
+  return new AwishApiError(
+    "invalid_response",
+    "Awish svarade utan fack för en automat som har fack. Förra läsningen behålls.",
+  );
+}
+
 /**
  * Läser facken för alla kopplade automater i källan och sparar dem. Respekterar
  * körningens tidsgräns (deadlineAt): automater som inte hinns med tas nästa gång.
+ *
+ * Reservvägen (webbpanelen, ./stock-web-fallback): finns en sparad webbinloggning får Open API
+ * högst GRPC_WITH_FALLBACK_MS och ett försök per automat; svarar den inte (internt fel, nere,
+ * tidsgräns, inloggning) läses samma fack via webbpanelen. Efter första sådana felet i
+ * körningen hoppas Open API över för resten av automaterna, och brytaren (health.ts) öppnas
+ * i 15 minuter: nästa körningar går direkt till webbpanelen, och efter tiden provas Open API
+ * på första automaten. Ett tomt svar för en automat som hade fack förra gången sparas inte
+ * (förra läsningen behålls). Hälsan för vägen "stock" sparas efter körningen.
  */
 export async function syncSourceStock(
   db: Db,
   api: AwishApi,
   source: { id: string; organization_id: string },
-  opts: { now: () => Date; deadlineAt: number; fallback?: StockFallback | null },
+  opts: {
+    now: () => Date;
+    deadlineAt: number;
+    fallback?: StockFallback | null;
+    /** Spara hälsan och brytaren (standard ja). */
+    health?: boolean;
+    /**
+     * Jämför webbpanelens fack-id med Open API:s en gång per dygn (Gratis-pack, se
+     * verifyWebIds). Bara synken, inte Uppdatera i Fyll på.
+     */
+    verifyWebIds?: boolean;
+  },
 ): Promise<AwishStockSummary> {
   const fallback =
-    opts.fallback === undefined ? webStockFallback(db, source.organization_id) : opts.fallback;
-  const machines = await query<{ external_id: string; machine_id: string }>(
+    opts.fallback === undefined
+      ? webStockFallback(db, source.organization_id, {
+          deadlineAt: opts.deadlineAt,
+          now: opts.now,
+        })
+      : opts.fallback;
+  const health = opts.health !== false;
+  const machines = await query<{ external_id: string; machine_id: string; had_slots: boolean }>(
     db,
-    sql`select sm.external_id, sm.machine_id::text as machine_id
+    sql`select sm.external_id, sm.machine_id::text as machine_id,
+               coalesce(jsonb_typeof(l.awish_fill) = 'array'
+                        and jsonb_array_length(l.awish_fill) > 0, false) as had_slots
         from public.source_machines sm
         join public.machines m on m.organization_id = sm.organization_id and m.id = sm.machine_id
         left join public.stock_locations l
@@ -842,30 +905,83 @@ export async function syncSourceStock(
         -- Den som lästes längst sedan först: hinns inte alla med fortsätter nästa körning där.
         order by l.awish_synced_at asc nulls first, sm.external_id`,
   );
+  const hasFallback =
+    fallback !== null && machines.length > 0 && (await (fallback.available?.() ?? true));
+  // Brytaren: Open API felade nyss, gå direkt till webbpanelen (bara när den finns).
+  let skipGrpc =
+    hasFallback && health && (await breakerOpen(db, source.id, "stock", "open_api", opts.now()));
+  const grpcCall = hasFallback
+    ? { timeoutMs: GRPC_WITH_FALLBACK_MS, attempts: 1, retryServer: false }
+    : undefined;
+
   let read = 0;
+  let viaWeb = 0;
   let counts = 0;
   let warehouseOut = 0;
   let titlesCreated = 0;
   let failed = 0;
   let deferred = 0;
   let firstError: string | undefined;
+  let grpcError: AwishApiError | null = null;
+  let webError: AwishApiError | null = null;
+  let lastError: unknown = null;
+  /** En automat som Open API läste (för id-kontrollen). */
+  let sample: { externalId: string; products: AwishProduct[] } | null = null;
+
+  const viaFallback = async (externalId: string): Promise<AwishProduct[] | null> => {
+    if (!hasFallback || !fallback) return null;
+    if (opts.deadlineAt - opts.now().getTime() < AWISH_MIN_CALL_MS) return null;
+    try {
+      return await fallback(externalId);
+    } catch (error) {
+      if (error instanceof AwishApiError) webError ??= error;
+      lastError = error;
+      return null;
+    }
+  };
+
   for (const [index, m] of machines.entries()) {
     if (opts.deadlineAt - opts.now().getTime() < STOCK_MIN_LEFT_MS) {
       deferred = machines.length - index;
       break;
     }
     try {
-      let products: AwishProduct[];
-      try {
-        products = await api.products(m.external_id);
-      } catch (error) {
-        // Open API svarar inte (fel hos Awish): läs samma fack via webbpanelen.
-        if (!(error instanceof AwishApiError) || error.kind === "budget" || !fallback) throw error;
-        const viaWeb = await fallback(m.external_id).catch(() => null);
-        if (!viaWeb) throw error;
-        console.warn(`[awish] facken för automat ${m.external_id} lästes via webbpanelen`);
-        products = viaWeb;
+      let products: AwishProduct[] | null = null;
+      let web = false;
+      if (!skipGrpc) {
+        try {
+          products = await api.products(m.external_id, grpcCall);
+          if (sample === null && products.length > 0)
+            sample = { externalId: m.external_id, products };
+          // Tomt svar för en automat som har fack: prova webbpanelen innan det godtas.
+          if (products.length === 0 && m.had_slots) {
+            const viaWebNow = await viaFallback(m.external_id);
+            if (viaWebNow && viaWebNow.length > 0) {
+              products = viaWebNow;
+              web = true;
+            }
+          }
+        } catch (error) {
+          if (!(error instanceof AwishApiError)) throw error;
+          if (error.kind !== "budget") {
+            grpcError ??= error;
+            lastError = error;
+            // In-run-brytaren: resten av automaterna går direkt till webbpanelen.
+            if (grpcDown(error)) skipGrpc = true;
+          }
+          products = await viaFallback(m.external_id);
+          if (!products) throw error;
+          web = true;
+          console.warn(`[awish] facken för automat ${m.external_id} lästes via webbpanelen`);
+        }
+      } else {
+        products = await viaFallback(m.external_id);
+        if (!products) {
+          throw webError ?? grpcError ?? new AwishApiError("unavailable", "Awish svarar inte.");
+        }
+        web = true;
       }
+      if (products.length === 0 && m.had_slots) throw emptyReadError();
       const r = await applyMachineStock(db, {
         organizationId: source.organization_id,
         dataSourceId: source.id,
@@ -873,7 +989,10 @@ export async function syncSourceStock(
         products,
         at: opts.now(),
       });
-      if (r.skipped === null) read += 1;
+      if (r.skipped === null) {
+        read += 1;
+        if (web) viaWeb += 1;
+      }
       counts += r.counts;
       warehouseOut += r.warehouseOut;
       titlesCreated += r.titlesCreated;
@@ -883,15 +1002,52 @@ export async function syncSourceStock(
         break;
       }
       failed += 1;
+      lastError = error;
       if (error instanceof AwishApiError) {
-        const detail =
-          `${error.kind} ${error.grpcCode ?? "-"} ${(error.technical ?? "").slice(0, 160)}`.trim();
+        const detail = errorDetail(error);
         firstError ??= `awish: ${detail}`;
         console.warn(`[awish] saldot kunde inte läsas för automat ${m.external_id}: ${detail}`);
       } else {
         firstError ??= `spara: ${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`;
         console.error("[awish] saldot kunde inte sparas", error);
       }
+    }
+  }
+
+  // Webbpanelen nekade inloggningen eller har ändrat sig: logga inte in igen på 6 timmar.
+  const webErr = webError as AwishApiError | null;
+  const grpcErr = grpcError as AwishApiError | null;
+  if (health && firstError === undefined && webErr === null && grpcErr !== null) {
+    firstError = `awish: ${errorDetail(grpcErr)}`;
+  }
+  if (health && machines.length > 0) {
+    const now = opts.now();
+    // Brytaren för Open API behövs bara när det finns en reserv att gå till. Utan reserv (t.ex.
+    // webbpanelens brytare är öppen) skrivs den inte, så att den inte ersätter webbpanelens.
+    if (hasFallback && grpcErr && grpcDown(grpcErr)) {
+      await openBreaker(db, source.id, "stock", "open_api", grpcErr.kind, now);
+    }
+    const route =
+      viaWeb > 0 ? "webbpanelen" : read > 0 ? "open_api" : failed > 0 ? "senast_kanda" : null;
+    if (route !== null) {
+      await recordPathResult(db, {
+        organizationId: source.organization_id,
+        dataSourceId: source.id,
+        path: "stock",
+        route,
+        ok: read > 0,
+        // Lästes något: felet som gjorde att en väg inte räckte (Open API, tomt svar). Lästes
+        // inget: helst webbpanelens fel (reserven var sista utvägen), annars Open API:s.
+        error: read > 0 ? (grpcErr ?? lastError ?? undefined) : (webErr ?? grpcErr ?? lastError),
+        now,
+      });
+    }
+    if (webErr && (webErr.kind === "auth" || webErr.kind === "changed")) {
+      await openBreaker(db, source.id, "stock", "webbpanelen", webErr.kind, now);
+    }
+    const s = sample as { externalId: string; products: AwishProduct[] } | null;
+    if (opts.verifyWebIds && s && hasFallback && fallback && !webErr) {
+      await verifyWebIds(db, source, fallback, s, now, opts.deadlineAt);
     }
   }
   return {
@@ -902,7 +1058,53 @@ export async function syncSourceStock(
     titlesCreated,
     failed,
     deferred,
+    ...(viaWeb > 0 ? { viaWeb } : {}),
     ...(firstError ? { error: firstError } : {}),
     at: opts.now().toISOString(),
   };
+}
+
+/** Id-kontrollen görs högst så här ofta. */
+export const WEB_IDS_CHECK_MS = 24 * 3_600_000;
+
+/** Samma fack (id och kanal) i båda listorna? Ren funktion. */
+export function sameSlotIds(a: readonly AwishProduct[], b: readonly AwishProduct[]): boolean {
+  if (a.length === 0 || a.length !== b.length) return false;
+  const key = (p: AwishProduct) => `${p.id}\u0000${p.channel}`;
+  const left = new Set(a.map(key));
+  return b.every((p) => left.has(key(p)));
+}
+
+/**
+ * Gratis-pack: webbpanelens fack-id måste vara Open API:s product_id för att en kod ska kunna
+ * skapas från fack som lästs via webbpanelen. En gång per dygn, när Open API fungerar, läses
+ * en automat även via webbpanelen och id:na jämförs. Samma: web_ids_verified_at sätts.
+ * Olika: den tas bort, så att inga koder skapas via webbpanelen. Kastar inte.
+ */
+async function verifyWebIds(
+  db: Db,
+  source: { id: string; organization_id: string },
+  fallback: StockFallback,
+  sample: { externalId: string; products: AwishProduct[] },
+  now: Date,
+  deadlineAt: number,
+): Promise<void> {
+  try {
+    const last = await webIdsVerifiedAt(db, source.id);
+    if (last && now.getTime() - last.getTime() < WEB_IDS_CHECK_MS) return;
+    if (deadlineAt - now.getTime() < STOCK_MIN_LEFT_MS) return;
+    const web = await fallback(sample.externalId);
+    if (!web) return;
+    const ids = { organizationId: source.organization_id, dataSourceId: source.id, now };
+    if (sameSlotIds(sample.products, web)) {
+      await markWebIdsVerified(db, ids);
+    } else {
+      console.warn(
+        "[awish] webbpanelens fack-id skiljer sig från Open API:s; inga koder via panelen",
+      );
+      await clearWebIdsVerified(db, ids);
+    }
+  } catch {
+    console.warn("[awish] id-kontrollen mot webbpanelen kunde inte göras");
+  }
 }

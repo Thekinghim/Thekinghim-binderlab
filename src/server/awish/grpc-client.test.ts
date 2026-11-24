@@ -164,6 +164,53 @@ describe("klienten mot en låtsas-Awish (gRPC på 127.0.0.1)", () => {
     }
   });
 
+  it("internt fel (gRPC 13) provas igen en gång vid läsning, inte med reservväg eller skrivning", async () => {
+    const before = fake.state.calls.length;
+    const api = createAwishClient(creds(), { address: fake.address, tls: false, sleep: noSleep });
+    try {
+      fake.state.failWith = { Products: grpc.status.INTERNAL };
+      fake.state.failTimes = { Products: 1 };
+      expect(await api.products("2")).toEqual([]);
+      expect(fake.state.calls.length - before).toBe(2);
+
+      // Hela tiden internt fel: ett nytt försök, sedan felet (inte tre).
+      fake.state.failTimes = {};
+      const mid = fake.state.calls.length;
+      await expect(api.products("2")).rejects.toMatchObject({ kind: "server", grpcCode: 13 });
+      expect(fake.state.calls.length - mid).toBe(2);
+
+      // Med reservväg: ett försök, direkt till reserven.
+      const once = fake.state.calls.length;
+      await expect(
+        api.products("2", { attempts: 1, retryServer: false, timeoutMs: 5_000 }),
+      ).rejects.toMatchObject({ grpcCode: 13 });
+      expect(fake.state.calls.length - once).toBe(1);
+    } finally {
+      fake.state.failWith = {};
+      fake.state.failTimes = {};
+      api.close();
+    }
+  });
+
+  it("RESOURCE_EXHAUSTED (8) blir unavailable och provas igen", () => {
+    const e = mapGrpcError({ code: grpc.status.RESOURCE_EXHAUSTED, details: "rate" }, "x");
+    expect(e.kind).toBe("unavailable");
+    expect(e.retryable).toBe(true);
+  });
+
+  it("en egen tidsgräns per anrop ger timeout, inte budget", async () => {
+    const api = createAwishClient(creds(), { address: fake.address, tls: false, sleep: noSleep });
+    try {
+      fake.state.delayByMethod = { Products: 2_500 };
+      await expect(api.products("2", { timeoutMs: 1_200, attempts: 1 })).rejects.toMatchObject({
+        kind: "timeout",
+      });
+    } finally {
+      fake.state.delayByMethod = {};
+      api.close();
+    }
+  });
+
   it("en server som inte svarar ger UNAVAILABLE på svenska", async () => {
     const api = createAwishClient(creds(), {
       address: "127.0.0.1:1",

@@ -24,14 +24,18 @@ import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 
-import { AwishApiError } from "../awish/grpc-client";
+import { AwishApiError, type AwishMarketingApi, type AwishProduct } from "../awish/grpc-client";
+import { recordPathResult, webIdsVerifiedAt } from "../awish/health";
 import {
   AwishNotConnectedError,
+  awishSourceOf,
   linkedMachines,
   marketingClient,
   type LinkedMachine,
   type MarketingConnect,
 } from "../awish/marketing";
+import { webStockFallback } from "../awish/stock-web-fallback";
+import type { AwishWebApi, AwishWebClientOptions } from "../awish/web-client";
 import {
   createdCodes,
   freePackCost,
@@ -57,6 +61,74 @@ export interface FreePackDeps {
   readonly db?: Db;
   readonly connect?: MarketingConnect;
   readonly now?: () => Date;
+  /** Webbpanelens klient för reservvägen (testerna ger låtsas-panelen). */
+  readonly makeWebClient?: (options: AwishWebClientOptions) => AwishWebApi;
+}
+
+/** Meddelandet när varken Open API eller en kontrollerad reservväg kan läsa facken. */
+export const FREE_PACKS_DOWN =
+  "Gratis-pack kan inte skapas just nu: Awish svarar inte. Försök igen senare.";
+
+/** Reservvägens fack-id räknas som kontrollerade så länge (sedan id-kontrollen i synken). */
+const WEB_IDS_VALID_MS = 7 * 24 * 3_600_000;
+/** Tidsgräns för att läsa facken via webbpanelen här (användaren väntar). */
+const WEB_READ_MS = 15_000;
+
+/**
+ * Automatens fack: Open API (Products), annars webbpanelen. Webbpanelens fack-id används bara
+ * när synken har visat att de är samma som Open API:s product_id (web_ids_verified_at):
+ * annars kunde en kod skapas för fel fack. Går ingen väg kastas FreePackError (FREE_PACKS_DOWN).
+ * Hälsan för vägen "free_packs" sparas.
+ */
+async function machineProducts(
+  db: Db,
+  orgId: string,
+  api: AwishMarketingApi,
+  awishMachineId: string,
+  deps: FreePackDeps,
+): Promise<{ products: AwishProduct[]; via: "open_api" | "webbpanelen" }> {
+  const source = await awishSourceOf(db, orgId);
+  const record = (route: "open_api" | "webbpanelen" | "ingen", ok: boolean, error?: unknown) =>
+    source
+      ? recordPathResult(db, {
+          organizationId: orgId,
+          dataSourceId: source.id,
+          path: "free_packs",
+          route,
+          ok,
+          error,
+          now: nowOf(deps),
+        })
+      : Promise.resolve();
+  let grpcError: unknown;
+  try {
+    const products = await api.products(awishMachineId);
+    await record("open_api", true);
+    return { products, via: "open_api" };
+  } catch (error) {
+    grpcError = error;
+    if (!(error instanceof AwishApiError) || error.kind === "not_found") throw error;
+  }
+  const verified = source ? await webIdsVerifiedAt(db, source.id) : null;
+  if (!source || !verified || nowOf(deps).getTime() - verified.getTime() > WEB_IDS_VALID_MS) {
+    await record("ingen", false, grpcError);
+    throw new FreePackError(FREE_PACKS_DOWN);
+  }
+  const now = nowOf(deps);
+  const fallback = webStockFallback(db, orgId, {
+    deadlineAt: now.getTime() + WEB_READ_MS,
+    ...(deps.now ? { now: deps.now } : {}),
+    ...(deps.makeWebClient ? { makeClient: deps.makeWebClient } : {}),
+  });
+  try {
+    const products = await fallback(awishMachineId);
+    if (!products) throw grpcError;
+    await record("webbpanelen", true, grpcError);
+    return { products, via: "webbpanelen" };
+  } catch (error) {
+    await record("ingen", false, error);
+    throw new FreePackError(FREE_PACKS_DOWN);
+  }
 }
 
 const dbOf = (deps: FreePackDeps) => deps.db ?? getServiceDb();
@@ -159,7 +231,7 @@ export async function freePackChoicesFor(
   const api = await marketingClient(db, orgId, deps.connect);
   let options: FreePackOption[];
   try {
-    const products = await api.products(machine.awishMachineId);
+    const { products } = await machineProducts(db, orgId, api, machine.awishMachineId, deps);
     options = freePackOptions(products);
   } finally {
     api.close();
@@ -218,7 +290,7 @@ export async function createFreePacksFor(
 
   const api = await marketingClient(db, orgId, deps.connect);
   try {
-    const products = await api.products(machine.awishMachineId);
+    const { products } = await machineProducts(db, orgId, api, machine.awishMachineId, deps);
     const slot = products.find((p) => p.id === input.productId);
     const goodName = slot?.goodName?.trim();
     if (!slot || !goodName) throw new FreePackError("Titeln finns inte längre i automaten.");

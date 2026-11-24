@@ -17,7 +17,7 @@ import { pgErrorOf } from "@/server/errors";
 import type { Viewer } from "@/server/data/core/loaders";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
 
-import type { AwishApi, AwishCredentials } from "./grpc-client";
+import { AwishApiError, type AwishApi, type AwishCredentials } from "./grpc-client";
 import {
   parseState,
   syncAwishSource,
@@ -26,6 +26,7 @@ import {
   type AwishLastRun,
   type AwishSyncResult,
 } from "./sync";
+import { closeBreakers, recordPathResult } from "./health";
 import { createAwishWebClient, type AwishWebApi, type AwishWebClientOptions } from "./web-client";
 import { linkedAwishMachineIds, pushMachinesToAwish } from "./web-service";
 
@@ -286,6 +287,8 @@ export async function saveAwishWebCredentialsFor(
       rpcError(error);
     }
   });
+  // Ny inloggning: brytaren för webbpanelen (nekad inloggning) gäller inte längre.
+  await closeBreakers(getServiceDb(), id, "webbpanelen");
   return { dataSourceId: id };
 }
 
@@ -357,9 +360,104 @@ export async function syncAwishNowFor(
 ): Promise<AwishSyncResult> {
   const id = await operatorSource(viewer);
   return syncAwishSource(
-    { db: deps.serviceDb ?? getServiceDb(), connect: deps.connect },
+    {
+      db: deps.serviceDb ?? getServiceDb(),
+      connect: deps.connect,
+      ...(deps.makeWebClient ? { makeWebClient: deps.makeWebClient } : {}),
+    },
     { dataSourceId: id, trigger: "manual", actorUserId: viewer.user.userId },
   );
+}
+
+export interface AwishWebFallbackTest {
+  ok: boolean;
+  message: string;
+  /** Automaten som lästes (den första kopplade), och hur många fack panelen visade. */
+  machine: { code: string; name: string } | null;
+  slots: number | null;
+}
+
+/**
+ * "Testa reservvägen" i Datakällor: loggar in på webbpanelen med den sparade inloggningen och
+ * läser facken för en kopplad automat, utan att spara något i lagret. Så vet ägaren att
+ * facken kan läsas även när Open API inte svarar. Sparar hälsan (vägen "slots"); lyckas det
+ * stängs webbpanelens brytare. Kastar inte för fel från Awish.
+ */
+export async function testWebFallbackFor(
+  viewer: Viewer,
+  deps: ManageDeps = {},
+): Promise<AwishWebFallbackTest> {
+  const id = await operatorSource(viewer);
+  const orgId = viewer.organization.id;
+  const db = deps.serviceDb ?? getServiceDb();
+  const rows = await query<{ creds: unknown }>(
+    db as unknown as Tx,
+    sql`select private.awish_read_web_credentials(${id}::uuid) as creds`,
+  );
+  const c = (rows[0]?.creds ?? null) as { email?: unknown; password?: unknown } | null;
+  if (!c || typeof c.email !== "string" || typeof c.password !== "string") {
+    return {
+      ok: false,
+      message: "Ingen inloggning till webbpanelen sparad. Fyll i e-post och lösenord.",
+      machine: null,
+      slots: null,
+    };
+  }
+  const [m] = await query<{ code: string; name: string; external_id: string }>(
+    db as unknown as Tx,
+    sql`select m.code, m.name, sm.external_id
+        from public.source_machines sm
+        join public.machines m on m.organization_id = sm.organization_id and m.id = sm.machine_id
+        where sm.organization_id = ${orgId}::uuid and sm.data_source_id = ${id}::uuid
+          and m.archived_at is null and sm.external_id ~ '^[0-9]{1,20}$'
+        order by m.code
+        limit 1`,
+  );
+  if (!m) {
+    return {
+      ok: false,
+      message: "Ingen automat är kopplad till Awish än.",
+      machine: null,
+      slots: null,
+    };
+  }
+  const machine = { code: m.code, name: m.name };
+  const client = (deps.makeWebClient ?? createAwishWebClient)({
+    ...(deps.webClientOptions ?? {}),
+    deadlineAt: Date.now() + 20_000,
+  });
+  const record = (ok: boolean, error?: unknown) =>
+    recordPathResult(db, {
+      organizationId: orgId,
+      dataSourceId: id,
+      path: "slots",
+      route: ok ? "webbpanelen" : "ingen",
+      ok,
+      error,
+    });
+  try {
+    await client.login({ email: c.email, password: c.password });
+    const slots = await client.slots(Number(m.external_id));
+    await record(true);
+    await closeBreakers(db, id, "webbpanelen");
+    return {
+      ok: true,
+      message: `Reservvägen fungerar: ${slots.length} fack lästes för ${m.code} via webbpanelen.`,
+      machine,
+      slots: slots.length,
+    };
+  } catch (error) {
+    await record(false, error);
+    return {
+      ok: false,
+      message:
+        error instanceof AwishApiError
+          ? `Reservvägen fungerar inte: ${error.message}`
+          : "Reservvägen fungerar inte: webbpanelen svarade inte som väntat.",
+      machine,
+      slots: null,
+    };
+  }
 }
 
 export interface AwishPushPreview {

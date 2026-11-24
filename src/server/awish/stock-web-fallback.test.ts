@@ -2,7 +2,32 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { webProductToAwish } = await import("./stock-web-fallback");
+const { webProductToAwish, webSlotToAwish } = await import("./stock-web-fallback");
+
+describe("webSlotToAwish", () => {
+  it("fackets egen kapacitet (inventory) som Open API, inte kanalens", () => {
+    expect(
+      webSlotToAwish("2", {
+        id: 7,
+        channelName: " B1 ",
+        goodId: 9,
+        goodName: "Black Bolt",
+        status: true,
+        floorStatus: "ERR_NORMAL",
+        currentInventory: 4,
+        capacity: 8,
+      }),
+    ).toEqual({
+      id: "7",
+      machineId: "2",
+      channel: "B1",
+      goodId: "9",
+      goodName: "Black Bolt",
+      currentInventory: 4,
+      capacity: 8,
+    });
+  });
+});
 
 describe("webProductToAwish", () => {
   it("ger samma form som Open API:s Products", () => {

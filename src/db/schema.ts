@@ -934,3 +934,6 @@ export * from "./schema/v2";
 
 // Notis vid varje försäljning: order som notisjobbet har tagit om hand (20261227000000_saljnotis.sql).
 export * from "./schema/saljnotis";
+
+// Om Awish krånglar: hälsan per Awish-väg (20261229000000_awish_halsa.sql).
+export * from "./schema/awish-halsa";
