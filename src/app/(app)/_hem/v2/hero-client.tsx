@@ -11,6 +11,8 @@ import { Button } from "@/components/v2/button";
 import { PackFan } from "@/components/v2/pack-visuals";
 import { cn } from "@/lib/cn";
 
+import { HERO_CALM_CLASS } from "./hero-model";
+
 /* ------------------------------------------------------------------ */
 /* Intro: bara vid första visningen                                    */
 /* ------------------------------------------------------------------ */
@@ -21,14 +23,15 @@ let introPlayed = false;
 
 /**
  * Kortens trappade fade-up spelas när Hem laddas. Byter man period eller kommer tillbaka
- * till Hem i samma flik står korten still (`calm`), så att siffrorna inte hoppar varje gång.
+ * till Hem i samma flik står korten still (HERO_CALM_CLASS), så att siffrorna inte hoppar varje
+ * gång.
  */
 export function HeroIntro({ children, className }: { children: ReactNode; className?: string }) {
   const [calm] = useState(() => introPlayed);
   useEffect(() => {
     introPlayed = true;
   }, []);
-  return <div className={cn(className, calm && "calm")}>{children}</div>;
+  return <div className={cn(className, calm && HERO_CALM_CLASS)}>{children}</div>;
 }
 
 /* ------------------------------------------------------------------ */

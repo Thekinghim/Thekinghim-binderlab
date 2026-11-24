@@ -34,7 +34,11 @@ alter table public.payouts
   add column inferred_note text check (inferred_note is null or char_length(inferred_note) <= 500);
 
 -- Befintliga rader: rapporten (Nayax-PDF eller fil) när de inte är inskrivna.
+-- payouts_guard (t10_guard) stoppar alla ändringar av en utbetalning. Den nya kolumnen
+-- fylls i här en enda gång, så vakten stängs av bara runt den raden (samma transaktion).
+alter table public.payouts disable trigger t10_guard;
 update public.payouts set period_basis = 'report' where not manual;
+alter table public.payouts enable trigger t10_guard;
 
 create index payouts_period_end_idx on public.payouts (organization_id, period_end)
   where archived_at is null;

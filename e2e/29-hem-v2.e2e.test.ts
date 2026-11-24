@@ -80,3 +80,31 @@ describe.each([
     await screenshot(page, `hem-v2-pafyllare-${name}`);
   });
 });
+
+describe("Hem V2 på iPhone 15, tillbaka till Hem", () => {
+  // Hjälten får HeroIntros lugna klass när Hem visas igen i samma flik. Den hette förut
+  // "calm", samma namn som Kräver åtgärds rad (.hem2 .calm, align-items: center): korten
+  // krympte då till innehållets bredd mitt på skärmen efter ett periodbyte.
+  it("hjältens kort fyller bredden efter ett besök på en annan sida", async () => {
+    const page = await pageFor(e2e().users.owner, { device: "iPhone 15" });
+    await page.goto("/");
+    await page.locator(".hem2 .hh").waitFor();
+    await page.locator(".v2-tabs").getByRole("link", { name: "Lager" }).click();
+    await page.waitForURL((url) => url.pathname !== "/");
+    await page.locator(".v2-tabs").getByRole("link", { name: "Hem" }).click();
+    await page.locator(".hem2 .hh.hh-calm").waitFor();
+    await page.locator(".v2-mperiod").getByRole("button", { name: "I går" }).click();
+    await page.waitForURL((url) => url.searchParams.get("period") === "igar");
+    await page.locator("main:not([aria-busy])").waitFor();
+    const widths = await page.evaluate(() => {
+      const hh = document.querySelector(".hem2 .hh");
+      if (!hh) return null;
+      const full = hh.getBoundingClientRect().width;
+      return [...hh.children]
+        .filter((c) => c.getBoundingClientRect().width > 0)
+        .map((c) => Math.round(full - c.getBoundingClientRect().width));
+    });
+    expect(widths?.length).toBeGreaterThan(0);
+    for (const gap of widths ?? []) expect(gap).toBe(0);
+  });
+});
