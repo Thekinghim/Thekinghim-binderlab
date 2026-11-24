@@ -185,6 +185,8 @@ describe("tabeller", () => {
         "audit_log",
         // Värde: logg över automatiskt arbete (20261111000000_varde.sql).
         "automation_log",
+        // Om Awish krånglar: hälsan per Awish-väg (20261229000000_awish_halsa.sql).
+        "awish_path_health",
         "baselines",
         // Bokföring: kontoplan, skickade månader, kvitton (20261103210000_bokforing.sql)
         // och sparade månadspaket (20261104130000_bokforing_paket.sql).
