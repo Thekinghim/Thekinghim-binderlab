@@ -62,10 +62,12 @@ export function ToastProvider({
   return (
     <ToastContext.Provider value={value}>
       {children}
+      {/* Telefon: ovanför bottenraden (76 px + hemindikatorn) och med ViewportPins förskjutning,
+          som V2-notiserna, så att notisen aldrig hamnar över eller under flikarna. */}
       <section
         aria-label={labels.region}
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[380px]"
+        className="pointer-events-none fixed inset-x-4 bottom-[calc(76px+env(safe-area-inset-bottom,0px)-var(--v2-vp-shift,0px))] z-50 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[380px]"
       >
         {items.map((t) => (
           <ToastView

@@ -464,6 +464,15 @@
   }
 }
 
+/*
+ * iPhone-appen: layoutvyn kan fastna för kort (se ViewportPin). Modala <dialog> och deras
+ * bakgrund sträcker sig då ändå till skärmens nederkant, så att ark nerifrån inte svävar.
+ */
+dialog:modal,
+dialog::backdrop {
+  bottom: calc(0px - var(--v2-vp-shift, 0px));
+}
+
 dialog::backdrop {
   background: var(--bl-overlay);
   animation: bl-fade var(--bl-dur-slow) var(--bl-ease);

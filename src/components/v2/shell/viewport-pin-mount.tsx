@@ -2,7 +2,14 @@
 
 import { useEffect } from "react";
 
-import { isTypingTarget, keyboardUp, looksStuck, nextHealthy, pinShift } from "./viewport-pin";
+import {
+  forgetsHealthy,
+  HealthyTracker,
+  isTypingTarget,
+  keyboardUp,
+  looksStuck,
+  pinShift,
+} from "./viewport-pin";
 
 const DEBUG_KEY = "binderlab:vp-debug";
 
@@ -30,11 +37,13 @@ export function ViewportPin() {
       window.matchMedia("(display-mode: standalone)").matches ||
       (navigator as Navigator & { standalone?: boolean }).standalone === true;
     const screenMax = Math.max(window.screen.width, window.screen.height);
+    const screenMin = Math.min(window.screen.width, window.screen.height);
     // Bara telefoner: en iPad i Stage Manager kan ändra höjden på riktigt utan att bredden ändras.
-    const phone = Math.min(window.screen.width, window.screen.height) < 500;
+    const phone = screenMin < 500;
     const useHealthy = standalone && phone;
-    const healthy = new Map<number, number>();
-    const widthKey = () => Math.round(window.innerWidth);
+    const healthy = new HealthyTracker();
+    // Högre höjd som väntar på bekräftelse: mät om nästa bildruta, men inte i all evighet.
+    let confirmFrames = 0;
 
     const debug = setupDebug();
     let shift = 0;
@@ -51,17 +60,24 @@ export function ViewportPin() {
         const visibleBottom = vv.offsetTop + vv.height;
         let healthyBottom = 0;
         if (useHealthy) {
-          const k = widthKey();
-          const next = nextHealthy(healthy.get(k) ?? 0, {
+          const r = healthy.sample({
+            innerWidth: window.innerWidth,
             innerHeight: window.innerHeight,
+            vvWidth: vv.width,
             visibleBottom,
             naturalBottom,
             typing,
             scale: vv.scale,
+            screenMin,
             screenMax,
           });
-          healthy.set(k, next);
-          healthyBottom = next;
+          healthyBottom = r.healthy;
+          if (r.confirm && confirmFrames < 30) {
+            confirmFrames++;
+            measure(); // nästa bildruta
+          } else if (!r.confirm) {
+            confirmFrames = 0;
+          }
         }
         const next = pinShift({
           naturalBottom,
@@ -107,7 +123,7 @@ export function ViewportPin() {
       const typing = isTypingTarget(document.activeElement);
       const stuck = looksStuck({
         innerHeight: window.innerHeight,
-        healthyBottom: healthy.get(widthKey()) ?? 0,
+        healthyBottom: healthy.get(window.innerWidth),
         offsetTop: vv.offsetTop,
         typing,
       });
@@ -142,11 +158,24 @@ export function ViewportPin() {
     const onVisible = () => {
       if (document.visibilityState === "visible") settle();
     };
+    let lastWidth = Math.round(window.innerWidth);
+    // Vridning: mät om när vyn landat. Glöm inget här: är bredden oförändrad (vyn kan vara fast
+    // just då) skulle den fastnade höjden läras in. Ny bredd glöms i onResize och i sample().
+    const onOrientation = settle;
+    const onResize = () => {
+      const w = Math.round(window.innerWidth);
+      if (forgetsHealthy("resize", lastWidth, w)) {
+        lastWidth = w;
+        healthy.reset();
+        confirmFrames = 0;
+      }
+      measure();
+    };
     vv.addEventListener("resize", onVvResize);
     vv.addEventListener("scroll", measure);
-    window.addEventListener("resize", measure);
+    window.addEventListener("resize", onResize);
     window.addEventListener("scroll", measure, { passive: true });
-    window.addEventListener("orientationchange", settle);
+    window.addEventListener("orientationchange", onOrientation);
     window.addEventListener("pageshow", settle);
     window.addEventListener("focus", settle);
     document.addEventListener("focusout", settle);
@@ -158,9 +187,9 @@ export function ViewportPin() {
       for (const t of timers) window.clearTimeout(t);
       vv.removeEventListener("resize", onVvResize);
       vv.removeEventListener("scroll", measure);
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", measure);
-      window.removeEventListener("orientationchange", settle);
+      window.removeEventListener("orientationchange", onOrientation);
       window.removeEventListener("pageshow", settle);
       window.removeEventListener("focus", settle);
       document.removeEventListener("focusout", settle);

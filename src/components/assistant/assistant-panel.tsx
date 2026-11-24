@@ -222,7 +222,7 @@ export function AssistantPanelProvider({
         aria-hidden
         onClick={() => setIsOpen(false)}
         className={cn(
-          "fixed inset-0 z-40 bg-[var(--bl-overlay)] transition-opacity duration-300 sm:hidden",
+          "fixed inset-0 bottom-[calc(0px-var(--v2-vp-shift,0px))] z-40 bg-[var(--bl-overlay)] transition-opacity duration-300 sm:hidden",
           isOpen ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       />
@@ -306,7 +306,7 @@ function Panel({
       className={cn(
         "shadow-2xl fixed z-50 flex flex-col border-line bg-bg transition-[transform,opacity] duration-300 ease-instrument",
         // Mobil: ark nerifrån. Från sm: panel från höger.
-        "rounded-t-lg inset-x-0 bottom-0 h-[88dvh] border-t sm:inset-x-auto sm:top-0 sm:right-0 sm:h-dvh sm:w-[420px] sm:rounded-none sm:border-t-0 sm:border-l",
+        "rounded-t-lg inset-x-0 bottom-[calc(0px-var(--v2-vp-shift,0px))] h-[88dvh] border-t sm:inset-x-auto sm:top-0 sm:right-0 sm:bottom-auto sm:h-dvh sm:w-[420px] sm:rounded-none sm:border-t-0 sm:border-l",
         open
           ? "translate-y-0 opacity-100 sm:translate-x-0"
           : "pointer-events-none translate-y-full opacity-0 sm:translate-x-full sm:translate-y-0",

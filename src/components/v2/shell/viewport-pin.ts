@@ -7,8 +7,8 @@
  * `position: fixed; bottom: 0` ritas då mitt på skärmen. `visualViewport` är ofta lika fel
  * i det läget, så den räcker inte som facit.
  *
- * Därför minns vi den största friska höjden per fönsterbredd (bredden ändras bara när
- * telefonen vrids) och flyttar det fasta innehållet dit med `--v2-vp-shift` (transform, så
+ * Därför minns vi den största friska höjden för fönsterbredden (bredden ändras bara när
+ * telefonen vrids, och då glöms höjden; se HealthyTracker) och flyttar det fasta innehållet dit med `--v2-vp-shift` (transform, så
  * att träffytan följer det som ritas). I vanliga Safari ändrar verktygsraden höjden på riktigt,
  * så där används bara visualViewport som förut.
  */
@@ -37,25 +37,101 @@ export function pinShift(i: PinInput): number {
 }
 
 export type HealthySample = {
+  innerWidth: number;
   innerHeight: number;
+  /** visualViewport.width: skiljer den sig från innerWidth håller vyn på att vridas. */
+  vvWidth: number;
   visibleBottom: number;
   naturalBottom: number;
   typing: boolean;
   scale: number;
-  /** Skärmens längsta sida (screen.width/height): högre än så kan vyn aldrig vara. */
+  /** Skärmens kortaste och längsta sida (screen.width/height, i stående läge på iPhone). */
+  screenMin: number;
   screenMax: number;
 };
 
 /**
- * Nästa friska höjd: den största höjden vi sett för bredden medan ingen skriver. Höjden kan
- * bara växa; en fastnad (för kort) vy ändrar den alltså aldrig.
+ * Skärmsidan som är höjd i det läge vyn har nu: i liggande läge (bredare än den korta sidan)
+ * den korta, annars den långa. 0 när skärmmåtten saknas.
  */
-export function nextHealthy(prev: number, s: HealthySample): number {
-  if (s.typing || Math.abs(s.scale - 1) > 0.01) return prev;
+export function screenHeightFor(innerWidth: number, screenMin: number, screenMax: number): number {
+  if (!(screenMin > 0) || !(screenMax > 0)) return 0;
+  return innerWidth > screenMin + 1 ? screenMin : screenMax;
+}
+
+/**
+ * En enskild avläsning av vyns höjd, eller null när den inte går att lita på: medan man skriver
+ * eller zoomar, och mitt i en vridning (innerWidth och visualViewport.width är inte överens).
+ * Avläsningen kapas vid skärmsidan för det aktuella läget, så att en kvarglömd stående höjd
+ * aldrig kan bli den friska höjden i liggande läge.
+ */
+export function healthyReading(s: HealthySample): number | null {
+  if (s.typing || Math.abs(s.scale - 1) > 0.01) return null;
+  if (Math.round(s.innerWidth) !== Math.round(s.vvWidth)) return null;
   const seen = Math.max(s.innerHeight, s.visibleBottom, s.naturalBottom);
-  if (!Number.isFinite(seen) || seen <= 0) return prev;
-  const capped = s.screenMax > 0 ? Math.min(seen, s.screenMax) : seen;
-  return Math.max(prev, Math.round(capped));
+  if (!Number.isFinite(seen) || seen <= 0) return null;
+  const side = screenHeightFor(s.innerWidth, s.screenMin, s.screenMax);
+  return Math.round(side > 0 ? Math.min(seen, side) : seen);
+}
+
+/**
+ * Minns den största friska höjden för nuvarande bredd. Höjden kan bara växa, och bara av en
+ * avläsning som är likadan två bildrutor i rad (en ensam felaktig bildruta under en vridning
+ * lärs alltså aldrig in). Ny bredd, eller `reset()`, glömmer allt.
+ */
+export class HealthyTracker {
+  private value = 0;
+  private pending: number | null = null;
+  private width = -1;
+
+  /** Den friska höjden för bredden, 0 om vi inte vet. */
+  get(innerWidth: number): number {
+    return Math.round(innerWidth) === this.width ? this.value : 0;
+  }
+
+  reset(): void {
+    this.value = 0;
+    this.pending = null;
+    this.width = -1;
+  }
+
+  /**
+   * Lägger till en avläsning. `confirm` är sant när en högre höjd väntar på bekräftelse i nästa
+   * bildruta: då ska anroparen mäta en gång till.
+   */
+  sample(s: HealthySample): { healthy: number; confirm: boolean } {
+    const w = Math.round(s.innerWidth);
+    if (w !== this.width) {
+      this.reset();
+      this.width = w;
+    }
+    const r = healthyReading(s);
+    if (r === null || r <= this.value) {
+      this.pending = null;
+      return { healthy: this.value, confirm: false };
+    }
+    if (this.pending === r) {
+      this.value = r;
+      this.pending = null;
+      return { healthy: this.value, confirm: false };
+    }
+    this.pending = r;
+    return { healthy: this.value, confirm: true };
+  }
+}
+
+/**
+ * Ska den friska höjden glömmas vid den här händelsen? Bara när fönsterbredden faktiskt bytts.
+ * En orientationchange med oförändrad bredd (t.ex. medan vyn är fast) får inte glömma: nästa
+ * avläsning vore då den fastnade höjden, och den skulle läras in som frisk.
+ */
+export function forgetsHealthy(
+  event: "orientationchange" | "resize",
+  lastWidth: number,
+  innerWidth: number,
+): boolean {
+  if (event === "orientationchange") return false;
+  return Math.round(lastWidth) !== Math.round(innerWidth);
 }
 
 /** Sant när vyn är för kort (eller förskjuten) fast ingen skriver: då puffar vi WebKit. */
