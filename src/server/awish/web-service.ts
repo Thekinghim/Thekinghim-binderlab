@@ -13,7 +13,8 @@ import { sql } from "drizzle-orm";
 
 import { logAwishPushOutcomes, logAwishPushes, pendingAwishPushes } from "@/server/varde/log";
 
-import { AwishApiError } from "./grpc-client";
+import { AwishApiError, type AwishErrorKind } from "./grpc-client";
+import { breakerOpen, openBreaker, recordPathResult } from "./health";
 import {
   createAwishWebClient,
   type AwishWebApi,
@@ -21,6 +22,68 @@ import {
   type AwishWebClientOptions,
 } from "./web-client";
 import { planAwishPush, type MachineTitleQuantity, type NotSent } from "./web-push";
+
+// ---------------------------------------------------------------------------
+// Nytt försök vid skrivningar (Om Awish krånglar)
+// ---------------------------------------------------------------------------
+
+/** Väntan före försök 2, 3 och 4 för en skrivning som tål att göras om. */
+export const WRITE_RETRY_WAITS_MS: readonly number[] = [500, 1_500, 4_000];
+/** Ett nytt försök påbörjas bara om minst så här lång tid finns kvar till deadline. */
+export const WRITE_RETRY_MIN_CALL_MS = 1_000;
+/** Tidsgräns för en sändning som en användare väntar på (Fyll på, Klar). */
+export const INTERACTIVE_WRITE_BUDGET_MS = 25_000;
+
+export type Sleep = (ms: number) => Promise<void>;
+const realSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export interface WriteRetryOptions {
+  /**
+   * Tål skrivningen att göras om? UpdateProduct (absolut antal) och UpdateGood (hela varan)
+   * gör det; CreateGood gör det inte (då kan varan skapas två gånger).
+   */
+  readonly idempotent: boolean;
+  /** Ingen ny början efter den här tiden (ms sedan 1970). */
+  readonly deadlineAt?: number;
+  /** Väntetider mellan försöken; standard WRITE_RETRY_WAITS_MS. */
+  readonly waits?: readonly number[];
+  readonly now?: () => number;
+  readonly sleep?: Sleep;
+}
+
+/**
+ * Fel där ett nytt försök kan hjälpa: Awish svarar inte (5xx, nätverk, 429 räknas som
+ * unavailable) eller svarade inte i tid. Aldrig auth (kontot kan spärras av upprepade
+ * inloggningar), changed (koden måste ändras) eller server (Awish sa nej).
+ */
+export function isRetryableAwishError(error: unknown): boolean {
+  return (
+    error instanceof AwishApiError && (error.kind === "unavailable" || error.kind === "timeout")
+  );
+}
+
+/**
+ * Kör `op` och försöker igen vid tillfälliga fel, med väntan 0,5, 1,5 och 4 s, så länge det
+ * finns tid kvar till `deadlineAt`. Bara för skrivningar som tål att göras om (`idempotent`);
+ * annars körs `op` en gång. Kastar det sista felet.
+ */
+export async function withWriteRetry<T>(op: () => Promise<T>, opts: WriteRetryOptions): Promise<T> {
+  const waits = opts.idempotent ? (opts.waits ?? WRITE_RETRY_WAITS_MS) : [];
+  const now = opts.now ?? (() => Date.now());
+  const sleep = opts.sleep ?? realSleep;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await op();
+    } catch (error) {
+      const wait = waits[attempt];
+      if (wait === undefined || !isRetryableAwishError(error)) throw error;
+      if (opts.deadlineAt != null && now() + wait + WRITE_RETRY_MIN_CALL_MS > opts.deadlineAt) {
+        throw error;
+      }
+      await sleep(wait);
+    }
+  }
+}
 
 /** En rads resultat för en automat. */
 export interface MachinePushResult {
@@ -41,6 +104,8 @@ export interface MachinePushResult {
   /** Provkörning: antal fack Awish visade för automaten. */
   slotsRead?: number;
   error?: string;
+  /** Feltypen när status är "error" (auth, unavailable, timeout, budget …). */
+  errorKind?: AwishErrorKind;
 }
 
 export interface WebPushResult {
@@ -62,6 +127,16 @@ export interface WebPushDeps {
    * försök i samma körning). Används när en påfyllning sparas.
    */
   withPending?: boolean;
+  /**
+   * Ingen ny automat eller nytt försök påbörjas efter den här tiden (ms sedan 1970). Standard
+   * INTERACTIVE_WRITE_BUDGET_MS från anropet. Automater som inte hanns med väntar och tas
+   * igen av den automatiska körningen.
+   */
+  deadlineAt?: number;
+  /** Klocka i ms; injiceras i tester. */
+  nowMs?: () => number;
+  /** Väntan mellan försöken; injiceras i tester. */
+  sleep?: Sleep;
 }
 
 interface WebSource {
@@ -220,9 +295,26 @@ export async function pushMachinesToAwish(
   const client = (deps.makeClient ?? createAwishWebClient)(deps.clientOptions ?? {});
   const machines: MachinePushResult[] = [];
   let loggedIn = false;
+  let firstError: unknown = null;
+  const nowMs = deps.nowMs ?? (() => Date.now());
+  const deadlineAt = deps.deadlineAt ?? nowMs() + INTERACTIVE_WRITE_BUDGET_MS;
+  const retry = { deadlineAt, now: nowMs, ...(deps.sleep ? { sleep: deps.sleep } : {}) };
 
   for (const machineId of ids) {
     const code = codes.get(machineId) ?? null;
+    // Tiden är slut: resten väntar och tas igen automatiskt (aldrig halvvägs i en automat).
+    if (nowMs() + WRITE_RETRY_MIN_CALL_MS > deadlineAt) {
+      machines.push({
+        machineId,
+        machineCode: code,
+        status: "error",
+        slotsUpdated: 0,
+        titlesWithoutSlot: [],
+        error: "Tiden tog slut. Appen försöker igen själv.",
+        errorKind: "budget",
+      });
+      continue;
+    }
     try {
       const awishId = await awishMachineId(db, organizationId, source.id, machineId);
       if (awishId == null) {
@@ -237,7 +329,8 @@ export async function pushMachinesToAwish(
       }
       const want = await machineTitleStock(db, organizationId, machineId);
       if (!loggedIn) {
-        await client.login(creds);
+        // Inloggningen tål att göras om vid 503/tidsgräns, men aldrig vid nekad inloggning.
+        await withWriteRetry(() => client.login(creds), { idempotent: true, ...retry });
         loggedIn = true;
       }
       const products = await client.products(awishId);
@@ -260,11 +353,16 @@ export async function pushMachinesToAwish(
         continue;
       }
       for (const u of plan.updates) {
-        await client.setProductInventory(u.productId, {
-          goodId: u.goodId,
-          status: u.status,
-          currentInventory: u.currentInventory,
-        });
+        // Absolut antal: samma anrop två gånger ger samma fack, så det tål ett nytt försök.
+        await withWriteRetry(
+          () =>
+            client.setProductInventory(u.productId, {
+              goodId: u.goodId,
+              status: u.status,
+              currentInventory: u.currentInventory,
+            }),
+          { idempotent: true, ...retry },
+        );
       }
       machines.push({
         machineId,
@@ -275,10 +373,12 @@ export async function pushMachinesToAwish(
         ...(plan.notSent.length > 0 ? { notSent: plan.notSent } : {}),
       });
     } catch (error) {
+      firstError ??= error;
       const message =
         error instanceof AwishApiError
           ? error.message
           : "Kunde inte skicka till Awish. Försök igen.";
+      const errorKind: AwishErrorKind = error instanceof AwishApiError ? error.kind : "server";
       machines.push({
         machineId,
         machineCode: code,
@@ -286,6 +386,7 @@ export async function pushMachinesToAwish(
         slotsUpdated: 0,
         titlesWithoutSlot: [],
         error: message,
+        errorKind,
       });
       // Ett auth-fel gäller hela inloggningen: sluta försöka med fler automater. De som
       // inte hanns med får samma fel, så att de också sparas som väntande.
@@ -300,6 +401,7 @@ export async function pushMachinesToAwish(
             slotsUpdated: 0,
             titlesWithoutSlot: [],
             error: message,
+            errorKind,
           });
         }
         break;
@@ -319,8 +421,63 @@ export async function pushMachinesToAwish(
       organizationId,
       machines.map((m) => ((m.notSent?.length ?? 0) > 0 ? { ...m, status: "error" } : m)),
     );
+    // Hälsan för vägen "push" (Datakällor, vakten). Bara när Awish faktiskt kontaktades.
+    if (loggedIn || firstError !== null) {
+      await recordPushHealth(db, organizationId, source.id, machines, firstError);
+    }
   }
   return { status: "done", machines };
+}
+
+/**
+ * Sparar utfallet för vägen "push" och, vid nekad inloggning, öppnar brytaren (6 h) så att
+ * den automatiska körningen inte loggar in om och om igen och spärrar Awish-kontot. Kastar
+ * aldrig.
+ */
+async function recordPushHealth(
+  db: Db,
+  organizationId: string,
+  dataSourceId: string,
+  machines: readonly MachinePushResult[],
+  firstError: unknown,
+): Promise<void> {
+  const failed = machines.filter((m) => m.status === "error");
+  const authError =
+    firstError instanceof AwishApiError && firstError.kind === "auth"
+      ? firstError
+      : failed.some((m) => m.errorKind === "auth")
+        ? new AwishApiError("auth", "Awish nekade inloggningen.")
+        : null;
+  const budgetOnly = failed.length > 0 && failed.every((m) => m.errorKind === "budget");
+  try {
+    await recordPathResult(db, {
+      organizationId,
+      dataSourceId,
+      path: "push",
+      // Inget nådde fram: påfyllningarna väntar i Binderlab tills webbpanelen svarar.
+      route: failed.length === 0 ? "webbpanelen" : "ingen",
+      ok: failed.length === 0,
+      ...(failed.length > 0
+        ? {
+            error:
+              authError ??
+              (firstError instanceof AwishApiError
+                ? firstError
+                : budgetOnly
+                  ? new AwishApiError("budget", "Tiden tog slut.")
+                  : new AwishApiError("server", failed[0]?.error ?? "Okänt fel.")),
+          }
+        : {}),
+    });
+    if (authError) {
+      await openBreaker(db, dataSourceId, "push", "webbpanelen", "auth");
+    }
+  } catch (error) {
+    console.error(
+      "[awish-push] hälsan kunde inte sparas",
+      error instanceof Error ? error.name : "fel",
+    );
+  }
 }
 
 /**
@@ -375,4 +532,167 @@ export async function retryPendingAwishPushes(
     );
   }
   return { push, pending: [...(await pendingAwishPushes(db, organizationId)).keys()] };
+}
+
+// ---------------------------------------------------------------------------
+// Automatiskt nytt försök för alla organisationer (cron var femte minut)
+// ---------------------------------------------------------------------------
+
+/**
+ * Väntan (minuter) före automatiskt försök 1, 2, 3, 4 och sedan varje: 5, 10, 20, 40, 60.
+ * Räknas från den äldsta väntande sändningen, och sedan från förra automatiska försöket.
+ */
+export const PUSH_RETRY_BACKOFF_MIN: readonly number[] = [5, 10, 20, 40, 60];
+
+/** När nästa automatiska försök får göras (väntetiden räknad från försök eller fel). */
+export function nextPushRetryAt(
+  oldestPending: Date,
+  attempts: number,
+  lastAttemptAt: Date | null,
+): Date {
+  const wait = PUSH_RETRY_BACKOFF_MIN[Math.min(attempts, PUSH_RETRY_BACKOFF_MIN.length - 1)] ?? 60;
+  const from = attempts > 0 && lastAttemptAt ? lastAttemptAt : oldestPending;
+  return new Date(from.getTime() + wait * 60_000);
+}
+
+export interface PushRetryAllOptions extends Pick<
+  WebPushDeps,
+  "makeClient" | "clientOptions" | "sleep" | "nowMs"
+> {
+  /** Ingen ny organisation påbörjas efter den här tiden (ms sedan 1970). */
+  readonly deadline: number;
+  /** Klocka för väntetiden; injiceras i tester. */
+  readonly now?: () => Date;
+  /** Bara de här organisationerna (tester); utelämnat = alla. */
+  readonly organizationIds?: readonly string[];
+}
+
+export interface PushRetryAllResult {
+  /** Organisationer med väntande sändningar. */
+  readonly organizations: number;
+  /** Organisationer där ett försök gjordes nu. */
+  readonly tried: number;
+  /** Av dem: inget väntar längre. */
+  readonly cleared: number;
+  /** Väntar på sin tur (väntetiden har inte gått). */
+  readonly waiting: number;
+  /** Hoppades över: brytaren är öppen (t.ex. nekad inloggning, 6 h). */
+  readonly breaker: number;
+  /** Hanns inte med i den här körningen. */
+  readonly budget: number;
+  /** Oväntade fel (loggade). */
+  readonly errors: number;
+}
+
+const tsOf = (v: unknown): Date | null =>
+  v == null ? null : v instanceof Date ? v : new Date(String(v));
+
+/**
+ * Försöker igen med väntande sändningar till Awish i alla organisationer, med väntetid per
+ * organisation (PUSH_RETRY_BACKOFF_MIN). Påfyllningen är redan sparad i Binderlab; det här
+ * ser bara till att Awish till slut får antalen utan att någon trycker "Försök igen".
+ *
+ * - Demo-organisationer och arkiverade hoppas över.
+ * - En öppen brytare för "push" (nekad inloggning: 6 h) hoppar över organisationen, så att
+ *   kontot inte spärras av upprepade inloggningar.
+ * - Varje försök loggas som 'awish_push_retry' (för väntetiden) och i hälsan.
+ * - Kastar aldrig.
+ */
+export async function retryPendingAwishPushesForAll(
+  db: Db,
+  opts: PushRetryAllOptions,
+): Promise<PushRetryAllResult> {
+  const out = {
+    organizations: 0,
+    tried: 0,
+    cleared: 0,
+    waiting: 0,
+    breaker: 0,
+    budget: 0,
+    errors: 0,
+  };
+  const nowMs = opts.nowMs ?? (() => Date.now());
+  const now = opts.now ?? (() => new Date(nowMs()));
+  let orgs: Array<{ organization_id: string; oldest: unknown; machines: number }>;
+  try {
+    orgs = Array.from(
+      await db.execute(sql`
+        select x.organization_id::text as organization_id, min(x.occurred_at) as oldest,
+               count(*)::int as machines
+        from (
+          select distinct on (a.organization_id, a.machine_id)
+                 a.organization_id, a.machine_id, a.kind, a.occurred_at
+          from public.automation_log a
+          where a.machine_id is not null
+            and a.kind in ('awish_push', 'awish_push_failed', 'awish_push_cleared')
+          order by a.organization_id, a.machine_id, a.occurred_at desc, a.created_at desc, a.id desc
+        ) x
+        join public.organizations o on o.id = x.organization_id
+        where x.kind = 'awish_push_failed' and o.archived_at is null and not o.is_demo
+        group by x.organization_id
+        order by min(x.occurred_at)`),
+    ) as typeof orgs;
+  } catch (error) {
+    console.error(
+      "[awish-push] väntande sändningar kunde inte läsas",
+      error instanceof Error ? error.name : "fel",
+    );
+    return { ...out, errors: 1 };
+  }
+  if (opts.organizationIds) {
+    const only = new Set(opts.organizationIds);
+    orgs = orgs.filter((o) => only.has(o.organization_id));
+  }
+  out.organizations = orgs.length;
+
+  for (const org of orgs) {
+    if (nowMs() + WRITE_RETRY_MIN_CALL_MS * 5 > opts.deadline) {
+      out.budget += 1;
+      continue;
+    }
+    const orgId = org.organization_id;
+    try {
+      const oldest = tsOf(org.oldest) ?? now();
+      const [prev] = Array.from(
+        await db.execute(sql`
+          select count(*)::int as attempts, max(a.occurred_at) as last_at
+          from public.automation_log a
+          where a.organization_id = ${orgId}::uuid and a.kind = 'awish_push_retry'
+            and a.occurred_at >= ${oldest.toISOString()}::timestamptz`),
+      ) as Array<{ attempts: number; last_at: unknown }>;
+      const due = nextPushRetryAt(oldest, Number(prev?.attempts ?? 0), tsOf(prev?.last_at));
+      if (now().getTime() < due.getTime()) {
+        out.waiting += 1;
+        continue;
+      }
+      const source = await loadWebSource(db, orgId);
+      if (source && (await breakerOpen(db, source.id, "push", "webbpanelen", now()))) {
+        out.breaker += 1;
+        continue;
+      }
+      // Försöket räknas innan det görs: ett avbrott mitt i ger ändå längre väntan nästa gång.
+      await db.execute(
+        sql`insert into public.automation_log (organization_id, kind, machine_id, units, occurred_at)
+            values (${orgId}::uuid, 'awish_push_retry', null, ${Math.min(org.machines, 10_000)},
+                    ${now().toISOString()}::timestamptz)`,
+      );
+      out.tried += 1;
+      const r = await retryPendingAwishPushes(orgId, null, {
+        serviceDb: db,
+        ...(opts.makeClient ? { makeClient: opts.makeClient } : {}),
+        ...(opts.clientOptions ? { clientOptions: opts.clientOptions } : {}),
+        ...(opts.sleep ? { sleep: opts.sleep } : {}),
+        ...(opts.nowMs ? { nowMs: opts.nowMs } : {}),
+        deadlineAt: opts.deadline,
+      });
+      if (r.pending.length === 0) out.cleared += 1;
+    } catch (error) {
+      out.errors += 1;
+      console.error(
+        "[awish-push] automatiskt försök misslyckades",
+        error instanceof AwishApiError ? error.kind : error instanceof Error ? error.name : "fel",
+      );
+    }
+  }
+  return out;
 }

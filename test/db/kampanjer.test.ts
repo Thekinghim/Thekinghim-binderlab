@@ -271,7 +271,7 @@ describe("kampanjer", () => {
     expect(await retryCampaignFor(v, r.campaignId, deps())).toEqual({ shown: 1, failed: 0 });
   });
 
-  it("en schemalagd kampanj som inte startar larmar (job:kampanjer); Försök igen stänger larmet", async () => {
+  it("en schemalagd kampanj som inte startar larmar (job:kampanjer); nytt försök efter 5 min stänger larmet", async () => {
     const v = await viewerFor(owner, orgId);
     const open = () =>
       rows<{ severity: string; title: string; message: string; link: string }>(
@@ -296,6 +296,7 @@ describe("kampanjer", () => {
     expect(await open()).toEqual([]);
 
     // Starten har passerat, men Awish säger nej: förr stod det bara i serverloggen.
+    const createdBefore = fake.state.calls.filter((c) => c.method === "CreateBanner").length;
     fake.state.writeCode = 500;
     const start = new Date("2026-11-20T06:00:00Z");
     const due = await publishAllDueCampaigns({ db: db(), connect, now: start });
@@ -309,15 +310,24 @@ describe("kampanjer", () => {
     });
     expect(alerts[0]!.message).toContain("Kampanjen startade inte i 1 automat.");
     expect(alerts[0]!.message).toContain("Öppna Kampanjer och starta den där.");
-    // Nästa körning: samma larm står kvar (automaten är misslyckad, inget nytt försök).
-    await publishAllDueCampaigns({ db: db(), connect, now: new Date("2026-11-20T06:05:00Z") });
+    // Nästa körning före väntetiden (5 min): samma larm står kvar, inget nytt försök.
+    await publishAllDueCampaigns({ db: db(), connect, now: new Date("2026-11-20T06:04:00Z") });
     expect(await open()).toHaveLength(1);
+    expect(fake.state.calls.filter((c) => c.method === "CreateBanner")).toHaveLength(
+      createdBefore + 1,
+    );
 
-    // Ägaren trycker Försök igen under Kampanjer: nästa körning stänger larmet.
-    now = start;
-    expect(await retryCampaignFor(v, r.campaignId, deps())).toEqual({ shown: 1, failed: 0 });
-    await publishAllDueCampaigns({ db: db(), connect, now: new Date("2026-11-20T06:10:00Z") });
+    // Efter 5 min försöker körningen själv igen (Awish svarar nu) och stänger larmet.
+    const auto = await publishAllDueCampaigns({
+      db: db(),
+      connect,
+      now: new Date("2026-11-20T06:05:00Z"),
+    });
+    expect(auto.shown).toBe(1);
     expect(await open()).toEqual([]);
+    // Inget kvar för Försök igen.
+    now = new Date("2026-11-20T06:06:00Z");
+    await expect(retryCampaignFor(v, r.campaignId, deps())).rejects.toThrow(/Inget att försöka/);
   });
 
   it("Stäng av: utgångstiden blir nu i Awish och kampanjen är avstängd", async () => {

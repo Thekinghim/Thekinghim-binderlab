@@ -44,6 +44,39 @@ export interface OverviewSlot {
   readonly capacity: number | null;
 }
 
+/** Ett fack enligt Open API (gRPC Products), som reserv när webbpanelen inte svarar. */
+export interface OpenApiSlot {
+  readonly channel: string;
+  readonly goodName: string | null;
+  readonly currentInventory: number;
+  readonly capacity: number;
+}
+
+/**
+ * Reserv för "Varor i Awish": automatens fack ur Open API i stället för webbpanelen. Varan
+ * kopplas på namnet (samma nyckel som listan), inte på Open API:s id, eftersom det inte är
+ * bevisat att id:na är desamma i båda. Ett namn som finns på flera varor (eller ingen) ger
+ * facket utan vara. Ren funktion.
+ */
+export function slotsFromOpenApi(
+  products: readonly OpenApiSlot[],
+  goods: readonly { readonly id: number; readonly name: string }[],
+  machine: string,
+): OverviewSlot[] {
+  const byName = new Map<string, number | null>();
+  for (const g of goods) {
+    const k = goodNameKey(g.name);
+    byName.set(k, byName.has(k) ? null : g.id);
+  }
+  return products.map((p, i) => ({
+    goodId: p.goodName == null ? null : (byName.get(goodNameKey(p.goodName)) ?? null),
+    machine,
+    slot: p.channel || String(i + 1),
+    count: p.currentInventory,
+    capacity: Number.isFinite(p.capacity) && p.capacity > 0 ? p.capacity : null,
+  }));
+}
+
 export type GoodFlagKind =
   "duplicate" | "unlinked" | "no-purchase" | "no-image" | "no-slot" | "low-margin" | "no-sales";
 

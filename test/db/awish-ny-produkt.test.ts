@@ -365,12 +365,46 @@ describe("Ny produkt: hela flödet", () => {
     const input = { name: "Bildfel", salePrice: "50", purchasePrice: "20", ownProduct: false };
     const image = checkGoodImage(JPG, "Bildfel");
     const preview = await np.previewNewProductFor(viewer, input, image, deps());
-    fake.state.uploadFailStatus = 500;
+    // Ett 500 försöks igen en gång; här svarar uppladdningen 500 båda gångerna.
+    const failingUpload = {
+      ...deps(),
+      sleep: async () => {},
+      makeWebClient: (o: Parameters<typeof createAwishWebClient>[0] = {}) => {
+        const real = deps().makeWebClient(o);
+        return {
+          ...real,
+          uploadImage: async (img: Parameters<typeof real.uploadImage>[0]) => {
+            fake.state.uploadFailStatus = 500;
+            return real.uploadImage(img);
+          },
+        };
+      },
+    };
     await expect(
-      np.createNewProductFor(viewer, input, image, preview.fingerprint, deps()),
+      np.createNewProductFor(viewer, input, image, preview.fingerprint, failingUpload),
     ).rejects.toThrow(/Awish svarar inte just nu/);
+    expect(fake.state.uploads).toHaveLength(0);
     expect(fake.state.calls.some((c) => c.operationName === "CreateGood")).toBe(false);
     expect(await titleRows("Bildfel")).toEqual([]);
+  });
+
+  it("bilden svarar 500 en gång: ett nytt försök, varan skapas", async () => {
+    const viewer = await viewerFor(owner, orgId);
+    const input = {
+      name: "Bildfel en gång",
+      salePrice: "50",
+      purchasePrice: "20",
+      ownProduct: false,
+    };
+    const image = checkGoodImage(JPG, "Bildfel en gång");
+    const preview = await np.previewNewProductFor(viewer, input, image, deps());
+    fake.state.uploadFailStatus = 500;
+    const r = await np.createNewProductFor(viewer, input, image, preview.fingerprint, {
+      ...deps(),
+      sleep: async () => {},
+    });
+    expect(r.status).toBe("created");
+    expect(fake.state.calls.filter((c) => c.operationName === "CreateGood")).toHaveLength(1);
   });
 
   it("ändrad plan efter förhandsvisningen (annan bild) skickar ingenting", async () => {

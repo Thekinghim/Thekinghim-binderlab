@@ -10,6 +10,7 @@ import {
   filterGoodRows,
   goodsFilterCounts,
   isLowMargin,
+  slotsFromOpenApi,
   withEditedGood,
   type GoodsOverviewInput,
 } from "./goods-overview";
@@ -147,5 +148,35 @@ describe("withEditedGood", () => {
     expect(next.find((r) => r.id === 2)!.flags.map((f) => f.kind)).not.toContain("duplicate");
     const cheaper = withEditedGood(rows, 1, { name: "Delta Reign", priceOre: 11_000, image: "/b" });
     expect(cheaper.find((r) => r.id === 1)!.flags.map((f) => f.kind)).toEqual(["low-margin"]);
+  });
+});
+
+describe("slotsFromOpenApi (reserv när webbpanelen inte svarar)", () => {
+  const goods = [
+    { id: 5, name: "30th Celebration" },
+    { id: 6, name: "Mystery Pack" },
+    { id: 7, name: "Mystery  pack" },
+  ];
+  it("kopplar facken till varan på namnet, inte på Open API:s id", () => {
+    const slots = slotsFromOpenApi(
+      [
+        { channel: "A1", goodName: "30th celebration", currentInventory: 3, capacity: 10 },
+        { channel: "", goodName: null, currentInventory: 0, capacity: 0 },
+      ],
+      goods,
+      "BL-001 Sega gubben",
+    );
+    expect(slots).toEqual([
+      { goodId: 5, machine: "BL-001 Sega gubben", slot: "A1", count: 3, capacity: 10 },
+      { goodId: null, machine: "BL-001 Sega gubben", slot: "2", count: 0, capacity: null },
+    ]);
+  });
+  it("ett namn på flera varor ger facket utan vara", () => {
+    const [slot] = slotsFromOpenApi(
+      [{ channel: "A2", goodName: "Mystery Pack", currentInventory: 1, capacity: 8 }],
+      goods,
+      "BL-001",
+    );
+    expect(slot?.goodId).toBeNull();
   });
 });

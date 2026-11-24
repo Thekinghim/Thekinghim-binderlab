@@ -27,6 +27,16 @@ const sync = vi.fn(async () => ({
 vi.mock("@/server/awish/sync", () => ({ syncAllAwishSources: sync }));
 const campaigns = vi.fn(async () => ({ organizations: 1, shown: 2, failed: 0 }));
 vi.mock("@/server/campaigns/service", () => ({ publishAllDueCampaigns: campaigns }));
+const pushRetry = vi.fn(async (_db: unknown, _o: { deadline: number }) => ({
+  organizations: 1,
+  tried: 1,
+  cleared: 1,
+  waiting: 0,
+  breaker: 0,
+  budget: 0,
+  errors: 0,
+}));
+vi.mock("@/server/awish/web-service", () => ({ retryPendingAwishPushesForAll: pushRetry }));
 const offline = vi.fn(async (_db: unknown, _orgs: string[], _o: unknown) => ({
   organizations: [{ organizationId: "org-1" }],
   deliveries: { processed: 1, sent: 1, failed: 0, skipped: 0 },
@@ -54,6 +64,7 @@ describe("/api/cron/awish", () => {
     delete process.env.CRON_SECRET;
     sync.mockClear();
     campaigns.mockClear();
+    pushRetry.mockClear();
     offline.mockClear();
     salePush.mockClear();
   });
@@ -95,6 +106,7 @@ describe("/api/cron/awish", () => {
         },
       ],
       campaigns: { shown: 2, failed: 0 },
+      pushRetry: { organizations: 1, tried: 1, cleared: 1 },
       watch: { raised: 0, resolved: 0 },
       salePush: { orders: 2, sent: 1 },
       offlineAlerts: { organizations: 1, sent: 1 },
@@ -173,5 +185,29 @@ describe("/api/cron/awish", () => {
     const { deadline } = salePush.mock.calls[0]![1] as { deadline: number };
     expect(deadline).toBeGreaterThan(before);
     expect(deadline).toBeLessThanOrEqual(Date.now() + 12_000);
+  });
+
+  it("påfyllningar som inte nådde Awish försöks igen efter kampanjerna, med egen tidsgräns", async () => {
+    process.env.CRON_SECRET = SECRET;
+    const before = Date.now();
+    await GET(req(`Bearer ${SECRET}`));
+    expect(pushRetry).toHaveBeenCalledTimes(1);
+    expect(campaigns.mock.invocationCallOrder[0]).toBeLessThan(
+      pushRetry.mock.invocationCallOrder[0]!,
+    );
+    expect(pushRetry.mock.invocationCallOrder[0]).toBeLessThan(
+      salePush.mock.invocationCallOrder[0]!,
+    );
+    const { deadline } = pushRetry.mock.calls[0]![1];
+    expect(deadline).toBeGreaterThan(before);
+    expect(deadline).toBeLessThanOrEqual(before + 45_000);
+  });
+
+  it("ett fel i de nya försöken stoppar inte synkens svar", async () => {
+    process.env.CRON_SECRET = SECRET;
+    pushRetry.mockRejectedValueOnce(new Error("nere"));
+    const res = await GET(req(`Bearer ${SECRET}`));
+    expect(res.status).toBe(200);
+    expect((await res.json()).pushRetry).toBeNull();
   });
 });

@@ -44,8 +44,17 @@ import {
   type NewProductPlan,
   type SlotChangePlan,
 } from "./goods";
+import { recordPathResult, type AwishPath } from "./health";
 import { createAwishWebClient, type AwishWebApi, type AwishWebClientOptions } from "./web-client";
-import { awishMachineId, loadWebSource, readWebCredentials } from "./web-service";
+import {
+  awishMachineId,
+  INTERACTIVE_WRITE_BUDGET_MS,
+  isRetryableAwishError,
+  loadWebSource,
+  readWebCredentials,
+  withWriteRetry,
+  type Sleep,
+} from "./web-service";
 
 export interface NewProductDeps {
   serviceDb?: Db;
@@ -54,6 +63,60 @@ export interface NewProductDeps {
   webClientOptions?: AwishWebClientOptions;
   /** Klocka (dagens datum för inköpspriset); injiceras i tester. */
   now?: () => Date;
+  /** Väntan mellan nya försök mot Awish; injiceras i tester. */
+  sleep?: Sleep;
+}
+
+/** Tidsgräns och väntan för nya försök i en skrivning som användaren väntar på. */
+export function interactiveRetry(deps: Pick<NewProductDeps, "sleep">) {
+  return {
+    deadlineAt: Date.now() + INTERACTIVE_WRITE_BUDGET_MS,
+    ...(deps.sleep ? { sleep: deps.sleep } : {}),
+  };
+}
+
+/**
+ * Hälsan för en väg i webbpanelen (goods, slots) efter en åtgärd som användaren gjorde.
+ * Bara Awish-fel räknas (inte våra egna kontroller). Kastar aldrig.
+ */
+export async function recordWebHealth(
+  db: Db,
+  orgId: string,
+  sourceId: string,
+  path: Extract<AwishPath, "goods" | "slots">,
+  error: unknown,
+): Promise<void> {
+  if (error instanceof NewProductError || error instanceof AuthorizationError) return;
+  try {
+    await recordPathResult(db, {
+      organizationId: orgId,
+      dataSourceId: sourceId,
+      path,
+      route: error === null ? "webbpanelen" : "ingen",
+      ok: error === null,
+      ...(error === null ? {} : { error }),
+    });
+  } catch (e) {
+    console.error("[awish-webb] hälsan kunde inte sparas", e instanceof Error ? e.name : "fel");
+  }
+}
+
+/** Kör `fn` och sparar hälsan för vägen efteråt (lyckat eller Awish-fel). */
+export async function withWebHealth<T>(
+  db: Db,
+  orgId: string,
+  sourceId: string,
+  path: Extract<AwishPath, "goods" | "slots">,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    const out = await fn();
+    await recordWebHealth(db, orgId, sourceId, path, null);
+    return out;
+  } catch (error) {
+    await recordWebHealth(db, orgId, sourceId, path, error);
+    throw error;
+  }
 }
 
 type Row = Record<string, unknown>;
@@ -393,6 +456,32 @@ async function saveInBinderlab(viewer: Viewer, plan: NewProductPlan): Promise<st
 }
 
 /**
+ * CreateGood är inte idempotent: ett blint nytt försök kan skapa varan två gånger. Vid
+ * tidsgräns eller 503 läses varorna först. Finns den nya varan redan tog Awish emot den
+ * (svaret försvann på vägen) och inget skickas igen. Finns den inte görs ett enda nytt
+ * försök. Går listan inte att läsa skickas ingenting igen (felet visas).
+ */
+export async function createGoodOnce(
+  client: AwishWebApi,
+  input: Parameters<AwishWebApi["createGood"]>[0],
+  createdNow: () => Promise<readonly unknown[]>,
+  sleep?: Sleep,
+): Promise<void> {
+  try {
+    await client.createGood(input);
+    return;
+  } catch (error) {
+    if (!isRetryableAwishError(error)) throw error;
+    // En kort stund först, så att en vara som Awish just skapade hinner synas i listan.
+    await (sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms))))(500);
+    const found = await createdNow().catch(() => null);
+    if (found === null) throw error;
+    if (found.length > 0) return;
+    await client.createGood(input);
+  }
+}
+
+/**
  * "Skicka till Awish": skapar varan i Awish (om den inte finns) och kopplar den i Binderlab.
  * `fingerprint` måste vara förhandsvisningens; annars skickas ingenting.
  */
@@ -403,13 +492,16 @@ export async function createNewProductFor(
   fingerprint: string,
   deps: NewProductDeps = {},
 ): Promise<NewProductResult> {
-  const { db, client } = await loggedInClient(viewer, deps);
+  const { db, client, sourceId } = await loggedInClient(viewer, deps);
+  const retry = interactiveRetry(deps);
   return withAwishWriteLock(db, viewer.organization.id, async () => {
     const {
       plan,
       fingerprint: now,
       goods,
-    } = await computeNewProductPlan(viewer, client, raw, image, deps);
+    } = await withWebHealth(db, viewer.organization.id, sourceId, "goods", () =>
+      computeNewProductPlan(viewer, client, raw, image, deps),
+    );
     if (plan.blocking) throw new NewProductError(plan.blocking);
     if (now !== fingerprint) throw new NewProductError(STALE_MESSAGE);
 
@@ -433,19 +525,27 @@ export async function createNewProductFor(
         throw new NewProductError(
           "Awish-butiken har ingen valuta SEK. Lägg till den i Awish först.",
         );
-      const imageUrl = image ? await client.uploadImage(image) : null;
+      // Bilden: en uppladdning till gör ingen skada (bara en fil till hos Awish).
+      const imageUrl = image
+        ? await withWriteRetry(() => client.uploadImage(image), {
+            idempotent: true,
+            waits: [500],
+            ...retry,
+          })
+        : null;
       const before = new Set(goods.map((g) => g.id));
-      await client.createGood(
-        encodeGoodInput({
-          name: plan.name,
-          salePriceOre: plan.awish.priceOre,
-          currencyId: sek.id,
-          imageUrl,
-        }),
+      const input = encodeGoodInput({
+        name: plan.name,
+        salePriceOre: plan.awish.priceOre,
+        currencyId: sek.id,
+        imageUrl,
+      });
+      const createdNow = async () =>
+        sameNameGoods(await client.allGoods(), plan.name).filter((g) => !before.has(g.id));
+      await withWebHealth(db, viewer.organization.id, sourceId, "goods", () =>
+        createGoodOnce(client, input, createdNow, retry.sleep),
       );
-      const created = sameNameGoods(await client.allGoods(), plan.name).filter(
-        (g) => !before.has(g.id),
-      );
+      const created = await createdNow();
       if (created.length !== 1) {
         throw new NewProductError(
           `Awish tog emot ${plan.name} men varan syns inte i listan. Titta i Awish innan du försöker igen.`,
@@ -574,19 +674,31 @@ export async function applySlotChangeFor(
   deps: NewProductDeps = {},
 ): Promise<{ message: string }> {
   const { db, client, sourceId } = await loggedInClient(viewer, deps);
-  return withAwishWriteLock(db, viewer.organization.id, async () => {
-    const { plan, fingerprint: now } = await computeSlotPlan(db, client, viewer, sourceId, raw);
+  const orgId = viewer.organization.id;
+  const retry = interactiveRetry(deps);
+  return withAwishWriteLock(db, orgId, async () => {
+    const { plan, fingerprint: now } = await withWebHealth(db, orgId, sourceId, "slots", () =>
+      computeSlotPlan(db, client, viewer, sourceId, raw),
+    );
     if (plan.blocking) throw new NewProductError(plan.blocking);
     if (now !== fingerprint) throw new NewProductError(STALE_MESSAGE);
     if (plan.unchanged)
       return { message: `${plan.slotName} har redan ${plan.to.goodName} ${plan.to.count} st.` };
     if (plan.confirm && !confirmed) throw new NewProductError(`Bekräfta först: ${plan.confirm}`);
 
-    await client.setProductInventory(plan.productId, {
-      goodId: plan.to.goodId,
-      status: plan.status,
-      currentInventory: plan.to.count,
-    });
+    // Vara och absolut antal: samma anrop två gånger ger samma fack (tål ett nytt försök).
+    // Läses tillbaka nedan, så ett försök som ändå inte gick fram syns.
+    await withWebHealth(db, orgId, sourceId, "slots", () =>
+      withWriteRetry(
+        () =>
+          client.setProductInventory(plan.productId, {
+            goodId: plan.to.goodId,
+            status: plan.status,
+            currentInventory: plan.to.count,
+          }),
+        { idempotent: true, ...retry },
+      ),
+    );
     const input = slotChangeInputSchema.parse(raw);
     const awishId = await awishIdOf(db, viewer, sourceId, input.machineId);
     const after = (await client.slots(awishId)).find((s) => s.id === plan.productId);
