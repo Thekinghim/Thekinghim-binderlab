@@ -192,6 +192,8 @@ describe("Utbetalningar (telefon)", () => {
     for (const kind of ["store", "store", "partner", "vat_reserve"] as const) {
       const button = page.locator(`[data-testid="pay-${kind}"]`).first();
       await button.waitFor();
+      // Mitt på skärmen, inte bakom menyn längst ner.
+      await button.evaluate((el) => el.scrollIntoView({ block: "center" }));
       await button.click();
       const dialog = page.getByRole("dialog");
       await dialog.locator('[data-testid="pay-confirm"]').click();

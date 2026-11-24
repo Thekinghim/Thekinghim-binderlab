@@ -99,6 +99,8 @@
   }
   .ut-row .go > * {
     flex: 1;
+    /* Fokus och rullning stannar ovanför menyn längst ner på telefonen. */
+    scroll-margin-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
   .ut-row .go:empty {
     display: none;

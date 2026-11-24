@@ -330,9 +330,11 @@ export function extractFromRows(
   const cell = (r: readonly string[], f: PayoutImportField) =>
     c[f] === undefined ? undefined : r[c[f]!];
   if (!transactional) {
-    const withAmount = data.filter(
-      (r) => parseLooseOre(cell(r, "amount") ?? cell(r, "gross")) !== null,
-    );
+    // En rad med 0 kr är ingen utbetalning.
+    const withAmount = data.filter((r) => {
+      const v = parseLooseOre(cell(r, "amount") ?? cell(r, "gross"));
+      return v !== null && v !== 0;
+    });
     if (withAmount.length > 1) warnings.push({ code: "MANY_PAYOUTS", rows: withAmount.length });
     if (withAmount.length === 0) {
       warnings.push({ code: "NO_AMOUNT" });
