@@ -6,6 +6,7 @@
 
 import "server-only";
 
+import { storeNameLabel } from "@/lib/format";
 import { storeShareTerms } from "@/lib/store-share";
 import { machineLookOf } from "@/lib/machine-look";
 import { cache } from "react";
@@ -484,7 +485,8 @@ export async function loadStoreDetail(
     period: info,
     store,
     headline: storeHeadline({
-      name: store.name,
+      // Visningsform: orten i namnet med stor bokstav (src/lib/format.ts).
+      name: storeNameLabel(store.name, store.city),
       revenueOre: revenueOf(row),
       previousRevenueOre: prevByStore ? revenueOf(prevRow ?? undefined) : null,
       profitOre: row?.profitOre ?? 0,

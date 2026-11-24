@@ -405,7 +405,14 @@ export function StoreOwnerPicker({
           }}
           options={[
             { value: "", label: "Ingen ägare" },
-            ...owners.map((o) => ({ value: o.id, label: `${o.legalName} (${o.orgNumber})` })),
+            // Bara namnet (org.nr står redan på kortet); org.nr bara när två bolag heter lika.
+            ...owners.map((o) => ({
+              value: o.id,
+              label:
+                owners.filter((x) => x.legalName === o.legalName).length > 1
+                  ? `${o.legalName} (${o.orgNumber})`
+                  : o.legalName,
+            })),
             { value: NEW_OWNER, label: "Ny ägare …" },
           ]}
         />

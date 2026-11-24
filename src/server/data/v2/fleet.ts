@@ -13,6 +13,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { cache } from "react";
 
+import { cityLabel, storeNameLabel } from "@/lib/format";
 import type { AwishFillRow } from "@/analytics/fleet-status";
 import { loadFleetRanking } from "@/app/(app)/automater/_lib/ranking-data";
 import { withUserDbFor } from "@/server/access";
@@ -135,8 +136,9 @@ export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<Fleet
     const on = str(r.power_on_time);
     stores.set(String(r.id), {
       id: String(r.id),
-      name: String(r.name ?? ""),
-      city: str(r.city),
+      // Visningsform: "alingsås" → "Alingsås", även i butiksnamnet (src/lib/format.ts).
+      name: storeNameLabel(String(r.name ?? ""), str(r.city)),
+      city: cityLabel(str(r.city)),
       address: str(r.address),
       phone: str(r.phone),
       contactName: str(r.contact_name),

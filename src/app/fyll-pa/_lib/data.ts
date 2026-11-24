@@ -21,6 +21,7 @@ import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { queryRefillSources, type RefillSources } from "@/server/data/core/places";
 import { mysteryBatchSql } from "@/server/data/core/queries";
 import { FIELD_REFILL_ROLES } from "@/server/data/field-refills";
+import { cityLabel, storeNameLabel } from "@/lib/format";
 import { machineLookOf, type MachineLook } from "@/lib/machine-look";
 import { queryResponsibles } from "@/server/data/team";
 
@@ -344,9 +345,10 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
         placements.map((p) => [
           p.machineId,
           {
-            name: p.storeName,
+            // Visningsform: orten med stor bokstav, även i namnet (src/lib/format.ts).
+            name: storeNameLabel(p.storeName, p.city),
             address: p.address?.trim() || null,
-            city: p.city?.trim() || null,
+            city: cityLabel(p.city),
             phone: p.phone?.trim() || null,
             contactName: p.contactName?.trim() || null,
             lat: p.latitude ?? null,

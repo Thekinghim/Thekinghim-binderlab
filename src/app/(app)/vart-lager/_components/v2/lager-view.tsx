@@ -137,19 +137,33 @@ export function LagerView(p: LagerViewProps) {
         <div className="col">
           {p.route && p.route.stops > 0 && p.route.packs > 0 ? (
             <div className={cn("rtl", p.route.short.length > 0 && "o")}>
-              <div>
-                <b>Dagens rutt behöver {formatInt(p.route.packs)} pack</b>
-                <small>
-                  {formatInt(p.route.stops)} stopp
-                  {p.route.short.length > 0
-                    ? ` · ${p.route.short
-                        .map(
-                          (s) =>
-                            `${s.titleName}: behövs ${formatInt(s.need)}, hemma ${formatInt(s.home)}`,
-                        )
-                        .join(" · ")}`
-                    : " · allt finns hemma"}
-                </small>
+              <div className="min-w-0 flex-1">
+                <b>
+                  Dagens rutt: {formatInt(p.route.packs)}
+                  {NBSP}pack, {formatInt(p.route.stops)}
+                  {NBSP}stopp
+                </b>
+                {p.route.short.length > 0 ? (
+                  <>
+                    <small>Saknas hemma</small>
+                    {/* En rad per titel, högst tre; talen bryts aldrig från sin etikett. */}
+                    <ul className="rsh">
+                      {p.route.short.slice(0, 3).map((s) => (
+                        <li key={s.titleName}>
+                          <span className="nm">{s.titleName}</span>
+                          <span className="n">
+                            saknas {formatInt(Math.max(0, s.need - Math.max(0, s.home)))}
+                          </span>
+                        </li>
+                      ))}
+                      {p.route.short.length > 3 ? (
+                        <li className="more">+{formatInt(p.route.short.length - 3)} till</li>
+                      ) : null}
+                    </ul>
+                  </>
+                ) : (
+                  <small>Allt finns hemma</small>
+                )}
               </div>
               <ButtonLink href="/rutt" variant="act" size="sm">
                 Packa →
@@ -159,7 +173,8 @@ export function LagerView(p: LagerViewProps) {
 
           <section className="v2-card head2">
             <div className="l">
-              <span className="v2-lab">Hemma</span>
+              {/* Flera lagerplatser: siffran är alla tillsammans, inte bara Hemma. */}
+              <span className="v2-lab">{p.places.length > 1 ? "Vårt lager" : "Hemma"}</span>
               <div className="big">
                 <RollingNumber value={p.home} unit="int" ariaLabel={`${formatInt(p.home)} pack`} />
                 <span className="unit">{NBSP}pack</span>

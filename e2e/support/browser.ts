@@ -76,6 +76,7 @@ export interface Page {
     options?: { timeout?: number },
   ): Promise<unknown>;
   emulateMedia(options: { media: "print" | "screen" | null }): Promise<void>;
+  setViewportSize(size: { width: number; height: number }): Promise<void>;
   setDefaultTimeout(ms: number): void;
   close(): Promise<void>;
   on(event: "pageerror", fn: (error: Error) => void): void;

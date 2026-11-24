@@ -16,15 +16,22 @@ export function Chips<T extends string>({
   onChange,
   ariaLabel,
   className,
+  scroll = false,
 }: {
   options: ReadonlyArray<ChipOption<T>>;
   value: T;
   onChange: (value: T) => void;
   ariaLabel: string;
   className?: string;
+  /** Telefon: en sidledsrad med fast höjd i stället för radbrytning (verktygsrader). */
+  scroll?: boolean;
 }) {
   return (
-    <div role="group" aria-label={ariaLabel} className={cn("v2-chips", className)}>
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className={cn("v2-chips", scroll && "scroll", className)}
+    >
       {options.map((o) => (
         <button
           key={o.value}

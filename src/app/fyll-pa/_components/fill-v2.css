@@ -203,7 +203,8 @@
   .v2-fill-app .foot {
     order: 2;
     position: sticky;
-    bottom: 0;
+    /* Följer skärmens nederkant när ViewportPin rättar iPhones för korta vy. */
+    bottom: calc(0px - var(--v2-vp-shift, 0px));
     z-index: 6;
     margin: 0 -16px;
     padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));

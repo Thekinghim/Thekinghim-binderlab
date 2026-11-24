@@ -11,6 +11,7 @@ import { localParts, tryParseInstant } from "@/analytics/todos/time";
 import { isMachineActive } from "@/analytics/todos/common";
 import type { MachineRef } from "@/analytics/todos";
 import { addDays, type IsoDate, type Period } from "@/domain";
+import { cityLabel } from "@/lib/format";
 
 /** Dagar i drift för alla automater i perioden (en automat × en dag = 1). */
 export function machineDays(machines: readonly MachineRef[], period: Period): number {
@@ -70,7 +71,7 @@ export const NO_CITY = "Utan stad";
 export function profitByCity(lines: readonly CityLineInput[]): CityLine[] {
   const map = new Map<string, { machines: Set<string>; profit: number; revenue: number }>();
   for (const l of lines) {
-    const city = l.city?.trim() || NO_CITY;
+    const city = cityLabel(l.city) ?? NO_CITY;
     const row = map.get(city) ?? { machines: new Set<string>(), profit: 0, revenue: 0 };
     row.machines.add(l.machineId);
     row.profit += l.profitOre;

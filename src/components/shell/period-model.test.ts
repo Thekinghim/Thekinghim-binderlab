@@ -146,6 +146,10 @@ describe("eget intervall", () => {
     // Korta namn står kvar ("10 nov.").
     const one = parsePeriod(sp("from=2026-11-10&to=2026-11-10"), { now: NOW });
     expect(periodNameCompact(one)).toBe(periodName(one));
+    // Inom en månad: samma form som rubrikerna, inte "10/11–16/11".
+    const week = parsePeriod(sp("from=2026-11-10&to=2026-11-16"), { now: NOW });
+    expect(periodNameCompact(week)).toBe(periodName(week));
+    expect(periodNameCompact(week)).not.toContain("/");
   });
   it("slut i framtiden kapas vid i dag", () => {
     expect(iso(parsePeriod(sp("from=2026-11-20&to=2026-12-31"), { now: NOW }).range)).toBe(

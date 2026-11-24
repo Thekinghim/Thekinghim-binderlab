@@ -208,7 +208,13 @@ export function AutomaterView({
             placeholder="Sök automat, butik, stad, titel"
             hotkey
           />
-          <Chips options={chipOptions} value={filter} onChange={setFilter} ariaLabel="Visa" />
+          <Chips
+            options={chipOptions}
+            value={filter}
+            onChange={setFilter}
+            ariaLabel="Visa"
+            scroll
+          />
           <div className="grp" role="group" aria-label="Gruppera">
             <span>Gruppera</span>
             {(["stad", "butik", "ingen"] as const).map((g) => (

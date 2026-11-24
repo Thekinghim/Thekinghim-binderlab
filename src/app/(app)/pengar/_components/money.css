@@ -1161,16 +1161,11 @@
     .g4-btools .v2-search {
       flex-basis: 100%;
     }
+    /* Sidledsraden (v2.css, .v2-chips.scroll) går kant i kant i panelen. */
     .g4-btools .v2-chips {
-      flex-basis: calc(100% + 24px);
-      margin: 0 -12px;
+      width: calc(100% + 24px);
+      margin: -4px -12px;
       padding: 0 12px;
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      scrollbar-width: none;
-    }
-    .g4-btools .v2-chips button {
-      flex: none;
     }
     .g4-bpay {
       padding: 12px 16px;
@@ -1703,6 +1698,20 @@
     align-items: center;
     font-size: var(--v2-t-md);
     white-space: nowrap;
+  }
+  .g4-mrow .mt small.cntm {
+    display: none;
+    color: var(--v2-ink);
+    font-weight: 550;
+  }
+  @media (max-width: 900px) {
+    .g4-mrow .mt small.cntm {
+      display: block;
+      margin-top: 2px;
+    }
+    .g4-mrow .cnt.side {
+      display: none;
+    }
   }
   a.g4-mrow:active {
     background: var(--v2-hover);

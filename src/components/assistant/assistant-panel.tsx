@@ -588,7 +588,9 @@ function FloatingAskButton({
       aria-label="Fråga AI"
       data-testid="ai-fab"
       tabIndex={shown ? undefined : -1}
-      style={{ bottom: `calc(${layout.assistantBottom}px + env(safe-area-inset-bottom))` }}
+      style={{
+        bottom: `calc(${layout.assistantBottom}px + env(safe-area-inset-bottom) - var(--v2-vp-shift, 0px))`,
+      }}
       className={cn(
         "shadow-lg fixed right-4 z-30 flex size-11 items-center justify-center rounded-full border border-line-strong bg-inverse text-on-inverse transition-[transform,opacity] duration-300 ease-instrument active:scale-95 motion-reduce:transition-none max-md:hidden lg:hidden",
         shown ? "scale-100 opacity-100" : "pointer-events-none translate-y-4 scale-75 opacity-0",

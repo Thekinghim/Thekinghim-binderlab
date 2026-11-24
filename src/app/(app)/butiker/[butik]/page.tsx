@@ -13,7 +13,7 @@ import { Notice } from "@/components/v2/notice";
 import { PAGE_BODY, PageIntro } from "@/components/v2/page-intro";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { SubNav } from "@/components/v2/sub-nav";
-import { formatInt, MISSING, NBSP } from "@/lib/format";
+import { cityLabel, formatInt, MISSING, NBSP, storeNameLabel } from "@/lib/format";
 import { StorePortalAccess } from "@/app/portal/_components/store-portal-access";
 
 import { AddAgreementButton } from "../_components/agreement-dialogs";
@@ -98,6 +98,9 @@ export default async function StorePage({
     .filter((o) => !o.archived || o.id === owner?.id)
     .map((o) => ({ id: o.id, legalName: o.legalName, orgNumber: o.orgNumber }));
   const { ctx, store, period, headline, current } = data;
+  // Visningsform för namn och ort ("alingsås" → "Alingsås"); det sparade värdet är orört.
+  const shownName = nameOf(data);
+  const shownCity = cityLabel(store.city);
   const days = `${formatInt(period.days)}${NBSP}d`;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const placed = data.machines.filter((m) => m.current);
@@ -125,7 +128,7 @@ export default async function StorePage({
 
   return (
     <V2Page
-      title={store.name}
+      title={shownName}
       date={headerDate(new Date(ctx.now), ctx.timeZone)}
       period
       sub={
@@ -146,8 +149,11 @@ export default async function StorePage({
           <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
         </Suspense>
         <StoreHero
-          name={store.name}
-          face={{ storeType: banner.face.storeType, city: banner.face.city ?? store.city }}
+          name={shownName}
+          face={{
+            storeType: banner.face.storeType,
+            city: cityLabel(banner.face.city) ?? shownCity,
+          }}
           sales={banner.sales}
           machines={placed.map((m) => ({ id: m.machineId, name: m.name, look: m.appearance }))}
           days={days}
@@ -283,6 +289,11 @@ export default async function StorePage({
 // Sektioner
 // ---------------------------------------------------------------------------
 
+/** Butikens namn som det visas (orten med stor bokstav), för rubriker och tomlägen. */
+function nameOf(data: StoreDetailData): string {
+  return storeNameLabel(data.store.name, data.store.city);
+}
+
 function Issues({ data }: { data: StoreDetailData }) {
   const issues = data.issues.filter((i) => !BANNER_ISSUES.has(i.id));
   return (
@@ -342,14 +353,14 @@ function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
         />
         {total > 0 ? (
           <StoreRevenueChart
-            name={data.store.name}
+            name={nameOf(data)}
             daily={data.daily}
             compare={data.dailyCompare}
             compareName={data.period.comparisonLabel ? `Föreg. ${days}` : undefined}
           />
         ) : (
           <Empty
-            title={sentence(`Inga order i ${data.store.name} ${data.period.rangeLabel}`)}
+            title={sentence(`Inga order i ${nameOf(data)} ${data.period.rangeLabel}`)}
             action={
               data.machines.length === 0 && data.ctx.canEdit ? (
                 <ButtonLink href="/automater" variant="act" touch>
@@ -414,7 +425,7 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
                 storeName={store.name}
               />
             ) : (
-              <Empty title={`${store.name} har inga villkor.`} />
+              <Empty title={`${nameOf(data)} har inga villkor.`} />
             )}
             <p className="mt-3 text-v2-sm">
               <Link
@@ -506,11 +517,11 @@ function MachinesSection({ data, days }: { data: StoreDetailData; days: string }
           <MachinesTable
             machines={data.machines}
             today={data.ctx.today}
-            caption={`Automater i ${data.store.name}, intäkt ${data.period.rangeLabel}`}
+            caption={`Automater i ${nameOf(data)}, intäkt ${data.period.rangeLabel}`}
           />
         ) : (
           <Empty
-            title={`Ingen automat har stått i ${data.store.name}.`}
+            title={`Ingen automat har stått i ${nameOf(data)}.`}
             action={
               data.ctx.canEdit ? (
                 <ButtonLink href="/automater" touch>
@@ -582,7 +593,7 @@ function ContactSection({ data }: { data: StoreDetailData }) {
       value: store.phone,
       href: store.phone ? `tel:${store.phone.replace(/[^+0-9]/g, "")}` : undefined,
     },
-    { label: "Adress", value: placeText(store.address, store.city) },
+    { label: "Adress", value: placeText(store.address, cityLabel(store.city)) },
   ];
   const suggested =
     store.contactName && store.email && !recipients.some((r) => r.email === store.email)
@@ -609,10 +620,10 @@ function ContactSection({ data }: { data: StoreDetailData }) {
                   timeZone={ctx.timeZone}
                   now={ctx.now}
                   canEdit={ctx.canEdit}
-                  caption={`Mottagare av månadsrapporten för ${store.name}`}
+                  caption={`Mottagare av månadsrapporten för ${nameOf(data)}`}
                 />
               ) : (
-                <Empty title={`Ingen mottagare för ${store.name}.`} />
+                <Empty title={`Ingen mottagare för ${nameOf(data)}.`} />
               )}
               {ctx.canEdit && !store.archived ? (
                 <div>

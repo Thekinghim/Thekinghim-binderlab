@@ -260,7 +260,7 @@ export function StaffFill({
         </ul>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-v2-line bg-v2-panel px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
+      <div className="fixed inset-x-0 bottom-0 translate-y-[var(--v2-vp-shift,0px)] border-t border-v2-line bg-v2-panel px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
         <div className="mx-auto flex max-w-[560px] flex-col gap-2">
           {error ? (
             <Notice tone="critical" live>

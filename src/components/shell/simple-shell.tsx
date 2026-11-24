@@ -236,7 +236,7 @@ export function SimpleTabs({ role }: { role: MemberRole }) {
   return (
     <nav
       aria-label={t.simple.nav}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-40 translate-y-[var(--v2-vp-shift,0px)] border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
     >
       <ul
         className="mx-auto grid max-w-[560px]"

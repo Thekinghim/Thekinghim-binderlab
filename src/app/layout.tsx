@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { Google_Sans, Google_Sans_Code } from "next/font/google";
 import { cookies } from "next/headers";
 import { ThemeSync } from "@/components/shell/theme-sync";
+import { ViewportPin } from "@/components/v2/shell/viewport-pin-mount";
 import { ToastProvider } from "@/components/ui/toast";
 import { getRequestLocale } from "@/i18n/request";
 import { THEME_COOKIE, themeFromCookie } from "@/lib/theme";
@@ -74,6 +75,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     >
       <body>
         <ThemeSync />
+        <ViewportPin />
         <ToastProvider locale={locale}>{children}</ToastProvider>
       </body>
     </html>

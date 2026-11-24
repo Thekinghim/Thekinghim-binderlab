@@ -311,6 +311,7 @@ export function ShopsView({
         />
         <Chips<ShopFilter>
           ariaLabel="Visa butiker"
+          scroll
           value={filter}
           onChange={setFilter}
           options={[

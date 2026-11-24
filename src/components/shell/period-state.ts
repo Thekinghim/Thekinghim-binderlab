@@ -765,6 +765,12 @@ export function withPeriodHref(href: string, periodQs: string): string {
 export function periodNameCompact(p: PeriodLike): string {
   const name = periodName(p);
   if (p.key !== "eget" || !p.range || name.length <= 9) return name;
+  // Inom en månad räcker namnet ("10–16 nov."), samma stil som rubrikerna; siffror bara över
+  // månadsgränsen.
+  const { start, end } = p.range;
+  const sameMonth =
+    start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+  if (sameMonth && name.length <= 11) return name;
   const dm = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
   if (isSingleDay(p)) return dm(p.range.start);
   return `${dm(p.range.start)}–${dm(p.range.end)}`;

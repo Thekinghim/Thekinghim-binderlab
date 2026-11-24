@@ -367,13 +367,18 @@
       left: 0;
       right: 0;
       bottom: 0;
-      /* iPhone: tab-bar.tsx flyttar raden hit om Safari ritar den för högt (viewport-pin.ts). */
-      transform: translateY(var(--v2-tabs-shift, 0px));
-      background: rgb(255 255 255 / 0.97);
+      /* iPhone: ViewportPin flyttar raden hit om Safari ritar den för högt (viewport-pin.ts). */
+      transform: translateY(var(--v2-vp-shift, 0px));
+      background: var(--v2-panel);
       border-top: 1px solid var(--v2-line);
       justify-content: space-around;
       padding: 6px max(6px, env(safe-area-inset-right, 0px))
         calc(6px + env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
+    }
+    /* Tangentbordet uppe (ViewportPin): raden göms som i en riktig app i stället för att stå
+       mitt i vägen ovanför tangenterna. */
+    :root[data-v2-kb] .v2-tabs {
+      visibility: hidden;
     }
     .v2-tabs a {
       flex: 1;
@@ -745,6 +750,21 @@
       padding: 0 14px;
     }
   }
+  /* Telefon: knapparna ser ut som förut men träffytan växer till ungefär 44 pt (Apples
+     minsta tryckyta) med en osynlig kant runt om. */
+  @media (max-width: 900px) and (pointer: coarse) {
+    .v2-btn:where(:not(.lg, .touch)) {
+      position: relative;
+    }
+    .v2-btn:where(:not(.lg, .touch))::after {
+      content: "";
+      position: absolute;
+      inset: -6px -2px;
+    }
+    .v2-btn:where(.sm)::after {
+      inset: -8px -2px;
+    }
+  }
   @media (prefers-reduced-motion: reduce) {
     .v2-btn .spin {
       animation: none;
@@ -904,6 +924,36 @@
   @media (hover: hover) and (pointer: fine) {
     .v2-chips button:not([aria-pressed="true"]):hover {
       background: var(--v2-hover);
+    }
+  }
+  /* Telefon: större chips att träffa med tummen, och raden med class "scroll" (Chips scroll)
+     blir en sidledsrad med fast höjd: aldrig avklippta chips, oavsett hur WebKit räknar
+     höjden på en scrollruta i en flexrad. Kanten tonar ut så att man ser att det finns mer. */
+  @media (max-width: 900px) {
+    .v2-chips button {
+      height: 36px;
+      padding: 0 14px;
+    }
+    .v2-chips.scroll {
+      flex: 0 0 auto;
+      flex-wrap: nowrap;
+      align-items: center;
+      height: 44px;
+      min-height: 44px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+      scroll-padding-inline: 12px;
+      mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+    }
+    .v2-chips.scroll::-webkit-scrollbar {
+      display: none;
+    }
+    .v2-chips.scroll button {
+      flex: none;
+      white-space: nowrap;
     }
   }
 
@@ -1427,7 +1477,8 @@
   .v2-sheet[data-vaul-drawer-direction="bottom"] {
     left: 0;
     right: 0;
-    bottom: 0;
+    /* Skärmens nederkant även när iPhones vy fastnat för kort (ViewportPin). */
+    bottom: calc(0px - var(--v2-vp-shift, 0px));
     max-height: 92dvh;
     border-radius: var(--v2-r-lg) var(--v2-r-lg) 0 0;
     box-shadow: 0 -8px 30px rgb(0 0 0 / 0.08);
