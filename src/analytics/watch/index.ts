@@ -11,9 +11,14 @@
  *   kontrollen har inte körts  "Kontrollen har inte körts sedan …"
  *   hämtningen står still      "Försäljningen har inte hämtats sedan …"
  *   larmen har inte setts över "Larmen har inte kontrollerats sedan …"
+ *   Awish per väg              "Lagret har inte lästs sedan …" m.fl. (./awish.ts)
  *
  * Rent: inga anrop, ingen klocka. Texterna är enkel svenska, det viktigaste först.
  */
+
+import { awishLines, type AwishWatchFacts } from "./awish";
+
+export * from "./awish";
 
 export type WatchLevel = "critical" | "warning";
 
@@ -198,13 +203,15 @@ export function syncLine(f: SyncSourceFacts, now: Date, when: WhenText): WatchLi
       ? `Awish svarar med fel: ${f.lastError}`
       : "Hämtningen går men kommer inte fram till Awish."
     : "Hämtningen körs inte alls just nu.";
+  // Det finns ingen annan väg till orderna: orderlistan från Awish (CSV) är reserven. Binderlab
+  // hämtar resten själv när Awish svarar igen (inga order tappas, inga dubbletter).
   return {
     key: `synk:${f.id}`,
     level: "critical",
     title: since,
-    detail: `${why} Siffrorna, lagret och larmen om automaterna står still tills det fungerar igen.`,
-    href: "/datakallor",
-    action: "Öppna Datakällor",
+    detail: `${why} Försäljningen står still tills det fungerar igen. Ladda upp orderlistan från Awish i Datakällor så länge. Binderlab hämtar resten själv sedan.`,
+    href: "/datakallor#ladda-upp",
+    action: "Ladda upp orderlistan",
   };
 }
 
@@ -323,15 +330,21 @@ export interface WatchFacts {
   readonly selfCheck: SelfCheckFacts | null;
   readonly sync: readonly SyncSourceFacts[];
   readonly alertRun: AlertRunFacts | null;
+  /** Hälsan per Awish-väg (lager, automater, påfyllningar). Utelämnat = inga rader. */
+  readonly awish?: AwishWatchFacts | null;
 }
 
 /** Raderna som ska visas, de allvarligaste först. */
 export function watchLines(f: WatchFacts, now: Date, when: WhenText): WatchLine[] {
   const lines = [
     ...f.sync.map((s) => syncLine(s, now, when)),
+    ...(f.awish ? awishLines(f.awish, now, when) : []),
     f.reach ? reachLine(f.reach) : null,
     f.alertRun ? alertRunLine(f.alertRun, now, when) : null,
     f.selfCheck ? selfCheckLine(f.selfCheck, now, when) : null,
   ];
-  return lines.filter((l): l is WatchLine => l !== null);
+  // Kritiska först; annars i ordningen ovan (sort är stabil).
+  return lines
+    .filter((l): l is WatchLine => l !== null)
+    .sort((a, b) => (a.level === b.level ? 0 : a.level === "critical" ? -1 : 1));
 }

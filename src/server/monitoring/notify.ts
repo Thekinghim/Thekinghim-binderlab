@@ -29,7 +29,14 @@ export async function notifySystemAlert(
   db: Db,
   alertId: string,
   input: SystemAlertInput,
-  options: { readonly roles?: readonly string[] } = {},
+  options: {
+    readonly roles?: readonly string[];
+    /**
+     * "resolved": beskedet att det fungerar igen (vakten för Awish). Går till dem som fick
+     * larmet, också utan "Meddela när det är löst" (en push, inte fler).
+     */
+    readonly reason?: "new" | "resolved";
+  } = {},
 ): Promise<number> {
   // Dynamisk import: larmjobbet (evaluate) importerar själv felövervakningen.
   const { allowedSubscriptions, loadSubscriptions } = await import("@/server/alerts/evaluate");
@@ -50,8 +57,10 @@ export async function notifySystemAlert(
     const operators = new Set(
       rows.filter((r) => r.role === "owner" || r.role === "admin").map((r) => r.userId),
     );
+    const resolved = options.reason === "resolved";
     const subs = allowedSubscriptions(rows).map((sub) => ({
       ...sub,
+      ...(resolved ? { notifyResolved: true } : {}),
       kinds:
         !selectable && sub.kinds !== "all" && operators.has(sub.userId)
           ? [...sub.kinds, input.kind]
@@ -63,7 +72,7 @@ export async function notifySystemAlert(
       key: input.key,
       kind: input.kind,
       severity: input.severity,
-      reason: "new",
+      reason: options.reason ?? "new",
       machineId: null,
       titleId: null,
       title: input.title,

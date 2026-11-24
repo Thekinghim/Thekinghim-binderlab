@@ -182,6 +182,8 @@ export const sv = {
     sourceMissing: (place: string) => `${place} saknar pack`,
     sourceOnly: (place: string, n: number) => `${place} har bara ${f.int(n)}`,
     refreshUpdated: (time: string) => `Uppdaterat ${time}`,
+    refreshRead: (time: string) => `Läst ${time}`,
+    refreshViaWeb: " · via webbpanelen",
     refreshPartial: (time: string) => `Uppdaterat ${time} · några automater svarade inte`,
     refreshFailed: (latest: string | null) =>
       `Kunde inte nå Awish${latest ? ` – visar senaste läsningen ${latest}` : ""}`,

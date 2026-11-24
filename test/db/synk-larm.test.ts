@@ -180,7 +180,7 @@ describe("hämtningen från Awish", () => {
     expect(alerts[0]!.title.startsWith("Försäljningen har inte hämtats sedan ")).toBe(true);
     expect(alerts[0]!.message).toContain(`Awish svarar med fel: ${NO_ORDERS_IN_TIME}`);
     expect(alerts[0]!.message).toContain(
-      "Siffrorna, lagret och larmen om automaterna står still tills det fungerar igen.",
+      "Försäljningen står still tills det fungerar igen. Ladda upp orderlistan från Awish i Datakällor så länge.",
     );
     // Ett utskick (inte ett per körning), fast ägaren bara har valt "Titel nära slut".
     const sent = await deliveries();
@@ -195,6 +195,12 @@ describe("hämtningen från Awish", () => {
     expect((await source()).state.failures ?? 0).toBe(0);
     await syncWatchAlerts(db(), orgId, at(20), ENV);
     expect((await syncAlerts()).map((a) => a.status)).toEqual(["closed"]);
+    // Ett besked om att det fungerar igen (till den som fick larmet), inte fler.
+    await syncWatchAlerts(db(), orgId, at(21), ENV);
+    expect(await deliveries()).toEqual([
+      expect.stringMatching(/^Försäljningen har inte hämtats sedan /),
+      "Försäljningen hämtas från Awish igen",
+    ]);
   });
 
   it("30 minuter utan lyckad hämtning larmar också när inget försök görs", async () => {

@@ -27,6 +27,8 @@ export const awishPathHealth = pgTable("awish_path_health", {
   alertedAt: ts("alerted_at"),
   recoveredAt: ts("recovered_at"),
   webIdsVerifiedAt: ts("web_ids_verified_at"),
+  // 20261229200000_kontroll_awish_vagar.sql (trigger): på reservvägen sedan.
+  fallbackSince: ts("fallback_since"),
   createdAt: ts("created_at").notNull().defaultNow(),
   createdBy: uuid("created_by"),
   updatedAt: ts("updated_at").notNull().defaultNow(),

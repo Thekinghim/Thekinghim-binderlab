@@ -329,3 +329,38 @@ export async function pushAwishNow(): Promise<ActionResult<{ message: string }>>
     return failure(error);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Om Awish krånglar: "Testa reservvägen" (webbpanelen läser facken för en automat).
+// ---------------------------------------------------------------------------
+
+/** Svaret från testWebFallbackFor (src/server/awish/manage.ts). */
+interface WebFallbackTest {
+  ok: boolean;
+  message: string;
+}
+
+type WebFallbackFn = (
+  viewer: Awaited<ReturnType<typeof awishOperator>>,
+) => Promise<WebFallbackTest>;
+
+/**
+ * Testa reservvägen: loggar in på webbpanelen med den sparade inloggningen och läser facken
+ * för en kopplad automat (sparar inget i lagret, bara hälsan). Svarar med beskedet.
+ */
+export async function testAwishFallback(): Promise<ActionResult<WebFallbackTest>> {
+  try {
+    const viewer = await awishOperator();
+    // Funktionen kommer med reservvägen (manage.ts); utan den säger knappen det lugnt.
+    const manage = (await import("@/server/awish/manage")) as unknown as Record<string, unknown>;
+    const fn = manage.testWebFallbackFor as WebFallbackFn | undefined;
+    if (typeof fn !== "function") {
+      return { ok: false, error: "Reservvägen går inte att testa i den här versionen." };
+    }
+    const r = await fn(viewer);
+    await revalidateSettlementData();
+    return { ok: true, data: { ok: r.ok, message: r.message } };
+  } catch (error) {
+    return failure(error);
+  }
+}
