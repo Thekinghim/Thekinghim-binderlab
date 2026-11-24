@@ -270,7 +270,7 @@ describe("skrivningar signeras och godtas", () => {
     api.close();
   });
 
-  it("de gamla skrivningarna kräver signatur när servern gör det", async () => {
+  it("de gamla skrivningarna signeras och godtas när servern kräver det", async () => {
     fake.state.requireSignOnLegacyWrites = true;
     const { createAwishClient } = await import("../grpc-client");
     const legacy = createAwishClient(creds(), { address: fake.address, tls: false });
@@ -281,7 +281,18 @@ describe("skrivningar signeras och godtas", () => {
         title: "T",
         expiredAt: 2_000_000_000,
       }),
+    ).resolves.toMatchObject({ code: expect.any(Number) });
+    // Fel nyckel ger fortfarande nej.
+    fake.state.signKeyOverride = "fel-nyckel";
+    await expect(
+      legacy.createBanner({
+        machineId: "7",
+        coverImage: "https://x/y.png",
+        title: "T",
+        expiredAt: 2_000_000_000,
+      }),
     ).rejects.toBeTruthy();
+    fake.state.signKeyOverride = null;
     legacy.close();
   });
 });

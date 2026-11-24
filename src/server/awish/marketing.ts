@@ -19,6 +19,8 @@ import {
   type AwishCredentials,
   type AwishMarketingApi,
 } from "./grpc-client";
+import { loadApiState } from "./control/state";
+import { isAwishSignMode, type AwishSignMode } from "./sign";
 import { readCredentials } from "./sync";
 
 type Row = Record<string, unknown>;
@@ -28,7 +30,10 @@ async function query<T extends Row>(db: Db | Tx, q: ReturnType<typeof sql>): Pro
 }
 
 /** Testerna ger låtsas-Awish; appen använder adressen ur miljön. */
-export type MarketingConnect = (creds: AwishCredentials) => AwishMarketingApi;
+export type MarketingConnect = (
+  creds: AwishCredentials,
+  opts?: { signMode?: AwishSignMode },
+) => AwishMarketingApi;
 
 /** Tidsgräns per anrop (s): användaren väntar på svaret. */
 export const MARKETING_DEADLINE_MS = 10_000;
@@ -84,9 +89,13 @@ export async function linkedMachines(db: Db | Tx, orgId: string): Promise<Linked
     .sort((a, b) => a.code.localeCompare(b.code, "sv", { numeric: true }));
 }
 
-function defaultConnect(creds: AwishCredentials): AwishMarketingApi {
+function defaultConnect(
+  creds: AwishCredentials,
+  opts: { signMode?: AwishSignMode } = {},
+): AwishMarketingApi {
   return createAwishClient(creds, {
     ...awishClientConfigFromEnv(),
+    signMode: opts.signMode,
     deadlineMs: MARKETING_DEADLINE_MS,
   });
 }
@@ -102,5 +111,9 @@ export async function marketingClient(
   const creds = await readCredentials(db, source);
   if (!creds)
     throw new AwishNotConnectedError("Spara AppId, AppSecret och AppKey under Datakällor.");
-  return connect(creds);
+  // Samma signeringsläge som styrningen (miljön, sedan det sparade efter "Testa signering").
+  const fromEnv = process.env.AWISH_SIGN_MODE?.trim();
+  const saved = await loadApiState(db, orgId, source.id).catch(() => null);
+  const signMode = isAwishSignMode(fromEnv) ? fromEnv : (saved?.signMode ?? undefined);
+  return connect(creds, { signMode });
 }

@@ -29,7 +29,7 @@ import protobuf from "protobufjs";
 import type { AwishGrpcOrder } from "@/import/adapters/awish-grpc";
 
 import { AWISH_PROVIDER_PROTO } from "./provider-proto";
-import { signRequest } from "./sign";
+import { signRequest, type AwishSignMode } from "./sign";
 
 /** Leverantörens server enligt dokumentationen (ingen TLS i exemplet). */
 export const DEFAULT_AWISH_GRPC_ADDRESS = "49.51.72.74:50051";
@@ -60,6 +60,8 @@ export interface AwishClientOptions {
    */
   deadlineAt?: number;
   clock?: () => number;
+  /** Signeringsläget för de signerade skrivningarna (standard present_sorted). */
+  signMode?: AwishSignMode;
 }
 
 /** Ett anrop påbörjas inte med mindre tid kvar än så här. */
@@ -690,6 +692,7 @@ export function createAwishClient(
               is_link: false,
             },
             creds.appId,
+            { mode: options.signMode },
           ),
           false,
         ),
@@ -710,6 +713,7 @@ export function createAwishClient(
               media_type: AWISH_MEDIA_IMAGE,
             },
             creds.appId,
+            { mode: options.signMode },
           ),
           false,
         ),
@@ -733,6 +737,7 @@ export function createAwishClient(
               status: true,
             },
             creds.appId,
+            { mode: options.signMode },
           ),
           false,
         ),
