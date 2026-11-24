@@ -466,6 +466,13 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: () => [false],
   },
+  // Om Awish krånglar → "Testa reservvägen": läser facken via webbpanelen, sparar bara hälsan.
+  {
+    module: "@/app/(app)/datakallor/actions",
+    name: "testAwishFallback",
+    allowed: OP,
+    args: () => [],
+  },
   // Inköpspriser → Ny produkt: skapar varor och byter vara i fack i Awish (ägare och admin).
   {
     module: "@/app/(app)/inkopspriser/ny-produkt/actions",
