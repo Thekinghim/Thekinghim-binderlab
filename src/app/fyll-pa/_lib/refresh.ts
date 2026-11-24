@@ -89,6 +89,14 @@ export interface RefreshNotice {
   readonly tone: "ok" | "warn";
 }
 
+/** Under så här lång tid sedan räknas en läsning som färsk ("Uppdaterat", inte "Läst"). */
+const FRESH_READ_MS = 2 * 60_000;
+
+function freshRead(at: string, now: string | Date): boolean {
+  const ms = new Date(now).getTime() - new Date(at).getTime();
+  return Number.isFinite(ms) && ms < FRESH_READ_MS;
+}
+
 /**
  * Raden efter Uppdatera. Lyckad läsning, spärr (någon läste nyss) eller ingen Awish-källa:
  * "Uppdaterat 14:52" (sidan har hämtat om datan). Gick Awish inte att nå: "Kunde inte nå
@@ -118,7 +126,8 @@ export function refreshNotice(
     default:
       // Inget lästes nu (någon läste nyss, eller ingen Awish-källa): säg när facken lästes,
       // inte "Uppdaterat" som om de just hade lästs.
-      if (outcome.read === false && latest) {
+      // Är förra läsningen helt färsk (under två minuter) är datan på sidan aktuell ändå.
+      if (outcome.read === false && latest && last && !freshRead(last, ctx.now)) {
         return { text: t.fill.refreshRead(latest), tone: "ok" };
       }
       return { text: `${t.fill.refreshUpdated(at(ctx.now))}${via}`, tone: "ok" };

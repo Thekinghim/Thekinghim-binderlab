@@ -99,6 +99,13 @@ describe("refreshNotice", () => {
         ),
       ).toEqual({ text: "Läst 14:47", tone: "ok" });
     }
+    // Förra läsningen är helt färsk (under två minuter): datan är aktuell, Uppdaterat.
+    expect(
+      refreshNotice(
+        { ok: true, status: "none", lastReadAt: "2026-11-06T13:51:30Z", read: false },
+        ctx,
+      ).text,
+    ).toBe("Uppdaterat 14:52");
     // Ingen läsning alls att visa: som förut.
     expect(
       refreshNotice(

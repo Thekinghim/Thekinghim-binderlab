@@ -373,7 +373,12 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
     // ordernummer): samma betaltid (sekund) och belopp. Importeras inte igen (som synken gör
     // åt andra hållet, sameSaleElsewhere i src/server/awish/sync.ts); räknas som dubblett.
     const elsewhere = AWISH_PROVIDERS.includes(source.provider)
-      ? await awishSaleElsewhere(tx, options.organizationId, options.dataSourceId, fetched.rows)
+      ? await awishSaleElsewhere(
+          tx,
+          options.organizationId,
+          { id: options.dataSourceId, provider: source.provider },
+          fetched.rows,
+        )
       : new Set<string>();
     const classification = await classify(
       tx,
@@ -520,7 +525,7 @@ export async function runImport(db: Db, options: RunImportOptions): Promise<RunI
 }
 
 /** Datakällor med order från Awish (samma försäljningar, olika ordernummer). */
-const AWISH_PROVIDERS: readonly string[] = [
+const AWISH_PROVIDERS: readonly DataSourceProvider[] = [
   "awish_csv",
   "awish_web",
   "awish_extension",
@@ -539,8 +544,10 @@ export async function awishSalesElsewhere(
   organizationId: string,
   dataSourceId: string,
   rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number }>,
+  /** Bara källor av de här slagen jämförs (standard: alla Awish-källor). */
+  providers: readonly DataSourceProvider[] = AWISH_PROVIDERS,
 ): Promise<Set<string>> {
-  if (rows.length === 0) return new Set();
+  if (rows.length === 0 || providers.length === 0) return new Set();
   const payload = rows.map((r) => ({
     external_id: r.externalId,
     ordered_at: r.paidAtUtc.toISOString(),
@@ -562,7 +569,10 @@ export async function awishSalesElsewhere(
             on ds.organization_id = o.organization_id and ds.id = o.data_source_id
           where o.organization_id = ${organizationId}::uuid
             and o.data_source_id <> ${dataSourceId}::uuid
-            and ds.provider in ('awish_csv', 'awish_web', 'awish_extension', 'awish_grpc')
+            and ds.provider in (${sql.join(
+              providers.map((p) => sql`${p}`),
+              sql`, `,
+            )})
             and (o.ordered_at, o.amount_ore) in (select ordered_at, amount_ore from incoming)
           group by o.ordered_at, o.amount_ore
         )
@@ -574,18 +584,23 @@ export async function awishSalesElsewhere(
   return new Set(found.map((r) => r.external_id));
 }
 
-/** Ordernummer (av de givna betalda raderna) som finns i en annan Awish-källa (se ovan). */
+/**
+ * Ordernummer (av de givna betalda raderna) som finns i en Awish-källa av ett annat slag
+ * (se ovan): orderlistan (CSV) mot Awish API, där samma köp har andra ordernummer. Två
+ * uppladdade orderlistor jämförs inte med varandra (som förut).
+ */
 async function awishSaleElsewhere(
   tx: Tx,
   organizationId: string,
-  dataSourceId: string,
+  source: { id: string; provider: DataSourceProvider },
   rows: ReadonlyArray<{ externalId: string; paidAtUtc: Date; amountOre: number; isPaid: boolean }>,
 ): Promise<Set<string>> {
   return awishSalesElsewhere(
     tx,
     organizationId,
-    dataSourceId,
+    source.id,
     rows.filter((r) => r.isPaid),
+    AWISH_PROVIDERS.filter((p) => p !== source.provider),
   );
 }
 
