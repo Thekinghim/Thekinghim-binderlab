@@ -109,6 +109,7 @@ export function awishPackage(): grpc.GrpcObject {
     "google/protobuf/empty.proto",
     "google/protobuf/wrappers.proto",
     "google/protobuf/any.proto",
+    "google/protobuf/struct.proto",
   ]) {
     const common = protobuf.common.get(file);
     if (!common) throw new Error(`protobufjs saknar ${file}.`);
