@@ -54,6 +54,7 @@ import { writeSlotCapacities } from "@/server/awish/slot-capacity";
 import { AWISH_MIN_CALL_MS, AwishApiError, type AwishApi, type AwishProduct } from "./grpc-client";
 import { classifySwaps, swapNote, type ProductSwap } from "./product-swap";
 import { awishRefillNote, refillDeductions } from "./refill-deduction";
+import { webStockFallback, type StockFallback } from "./stock-web-fallback";
 
 type Row = Record<string, unknown>;
 
@@ -823,8 +824,10 @@ export async function syncSourceStock(
   db: Db,
   api: AwishApi,
   source: { id: string; organization_id: string },
-  opts: { now: () => Date; deadlineAt: number },
+  opts: { now: () => Date; deadlineAt: number; fallback?: StockFallback | null },
 ): Promise<AwishStockSummary> {
+  const fallback =
+    opts.fallback === undefined ? webStockFallback(db, source.organization_id) : opts.fallback;
   const machines = await query<{ external_id: string; machine_id: string }>(
     db,
     sql`select sm.external_id, sm.machine_id::text as machine_id
@@ -852,7 +855,17 @@ export async function syncSourceStock(
       break;
     }
     try {
-      const products = await api.products(m.external_id);
+      let products: AwishProduct[];
+      try {
+        products = await api.products(m.external_id);
+      } catch (error) {
+        // Open API svarar inte (fel hos Awish): läs samma fack via webbpanelen.
+        if (!(error instanceof AwishApiError) || error.kind === "budget" || !fallback) throw error;
+        const viaWeb = await fallback(m.external_id).catch(() => null);
+        if (!viaWeb) throw error;
+        console.warn(`[awish] facken för automat ${m.external_id} lästes via webbpanelen`);
+        products = viaWeb;
+      }
       const r = await applyMachineStock(db, {
         organizationId: source.organization_id,
         dataSourceId: source.id,
