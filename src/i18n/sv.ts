@@ -676,6 +676,7 @@ export const sv = {
     diagErrorCode: "Felkod",
     diagTime: "Tid",
     diagPage: "Sida",
+    diagMessage: "Fel",
     /** components/ui/route-error: sidans namn (svenskt) i rubriken. */
     areaTitle: (area: string) => `${area} kunde inte visas.`,
     areaEyebrow: (area: string) => area,

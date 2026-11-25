@@ -767,6 +767,7 @@ export const en: Messages = {
     diagErrorCode: "Error code",
     diagTime: "Time",
     diagPage: "Page",
+    diagMessage: "Error",
     // The area names are Swedish (passed by each page): not shown in English.
     areaTitle: () => "This page could not load.",
     areaEyebrow: () => "Error",

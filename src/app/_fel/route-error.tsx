@@ -31,6 +31,29 @@ function digestOf(error: unknown): string | undefined {
 }
 
 /**
+ * Felet som telefonen eller webbläsaren själv kastade (inget fel-id: det kom inte från
+ * servern), kort: "TypeError: undefined is not an object (evaluating 'a.b')" och första
+ * raden i stacken. Fel från servern har alltid ett fel-id och visar aldrig sitt meddelande.
+ */
+export function clientErrorText(error: unknown): string | null {
+  if (digestOf(error)) return null;
+  if (!error || typeof error !== "object")
+    return error == null ? null : String(error).slice(0, 300);
+  const e = error as { name?: unknown; message?: unknown; stack?: unknown };
+  const name = typeof e.name === "string" && e.name ? e.name : "Error";
+  const message = typeof e.message === "string" ? e.message : "";
+  const head = `${name}: ${message}`.replace(/\s+/g, " ").trim().slice(0, 300);
+  const frame =
+    typeof e.stack === "string"
+      ? e.stack
+          .split("\n")
+          .map((l) => l.trim())
+          .find((l) => l && !l.startsWith(name) && !l.includes(message || "\u0000"))
+      : undefined;
+  return frame ? `${head} · ${frame.slice(0, 200)}` : head;
+}
+
+/**
  * Felläget när en sida inte kan laddas, i V2: ett vitt kort med rubriken som h1, tiden i en
  * grå rad, `StateMessage kind="loading-failed"` (röd prick, "Ej laddad"), "Försök igen" som
  * huvudknapp och de tekniska uppgifterna (fel-id, tid, sida) bakom "Visa detaljer". Ingen
@@ -48,10 +71,14 @@ export function RouteError({
 }: RouteErrorProps & { homeHref?: string | null }) {
   // Felgränsen renderas i webbläsaren (React byter till klientrendering vid fel), så tid
   // och sökväg läses en gång där. På servern blir de tomma.
-  const [where] = useState<{ at: string; path: string } | null>(() =>
+  const [where] = useState<{ at: string; path: string; message: string | null } | null>(() =>
     typeof window === "undefined"
       ? null
-      : { at: stockholmTime.format(new Date()), path: window.location.pathname },
+      : {
+          at: stockholmTime.format(new Date()),
+          path: window.location.pathname,
+          message: clientErrorText(error),
+        },
   );
   useEffect(() => {
     console.error(error);
@@ -66,6 +93,7 @@ export function RouteError({
       { label: t.state.diagTime, value: `${where.at} Stockholm` },
       { label: t.state.diagPage, value: where.path },
     );
+    if (where.message) diagnostics.push({ label: t.state.diagMessage, value: where.message });
   }
 
   const again = retry ?? reset ?? (() => window.location.reload());
