@@ -4,7 +4,7 @@ import type { LineView, PayoutView, RecipientRow } from "@/server/payouts/balanc
 import { ButtonLink } from "@/components/v2/button";
 
 import { kr, krExact, monthName } from "../../_components/fmt";
-import { storeComponentText, type WarningView } from "../_lib/model";
+import { periodsText, storeComponentText, type WarningView } from "../_lib/model";
 import { PaySheet } from "./pay-sheet";
 
 const pct = (bp: number) => `${Math.round(bp) / 100} %`.replace(".", ",");
@@ -32,7 +32,7 @@ export function RecipientList({
                 ? `inköp ${kr(r.partnerParts.reimbOre)} + vinst ${kr(r.partnerParts.profitOre)}`
                 : r.kind === "vat_reserve"
                   ? "Lägg undan till momsen"
-                  : `Nayax ${[...new Set(r.periodTexts)].join(", ")}`}
+                  : periodsText(r.periodTexts)}
             </div>
           </div>
           <div className="am">{krExact(r.leftOre)}</div>
@@ -201,8 +201,8 @@ export function PayoutLines({ payout, today }: { payout: PayoutView; today: stri
               ? "Lägg undan till momsen"
               : l.kind === "owner"
                 ? l.amountOre < 0
-                  ? "Du behöver lägga till"
-                  : "Kvar till dig"
+                  ? "Nayax räckte inte till allt"
+                  : "Din del av vinsten"
                 : l.kind === "store_owner"
                   ? `${new Set(l.stores.map((c) => c.storeId)).size} butiker`
                   : "Butikens andel";

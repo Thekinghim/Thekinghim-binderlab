@@ -10,7 +10,7 @@
     --fill-gap: 12px;
     max-width: 1180px;
     margin: 0 auto;
-    padding: calc(12px + env(safe-area-inset-top)) 16px 0;
+    padding: max(12px, env(safe-area-inset-top)) 16px 0;
     display: flex;
     flex-direction: column;
     gap: var(--fill-gap);
@@ -418,18 +418,18 @@
   .v2-net.off > .dt {
     color: var(--v2-crit-icon);
   }
-  /* Telefonen: har nät och inget i kön = bara en grön prick (texten för skärmläsare). */
+  /* Telefonen: har nät och inget i kön = inget alls att se (en ensam prick bredvid
+     uppdateringsknappen såg ut som ett fel). Texten står kvar för skärmläsare; utan nät eller
+     med kö syns rutan med text. */
   @media (max-width: 900px) {
     .v2-net.calm {
-      justify-content: center;
-      width: 16px;
+      position: absolute;
+      width: 1px;
+      height: 1px;
       padding: 0;
       border: 0;
-      background: none;
-    }
-    .v2-net.calm > .dt {
-      width: 8px;
-      height: 8px;
+      overflow: hidden;
+      clip-path: inset(50%);
     }
     .v2-net .quiet {
       position: absolute;

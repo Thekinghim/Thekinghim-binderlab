@@ -26,7 +26,7 @@ export async function FillPage({
   const t = messages(ctx.locale);
   if (!["owner", "admin", "refiller"].includes(ctx.role)) {
     return (
-      <div className="flex flex-col gap-4 px-4 pt-[calc(24px+env(safe-area-inset-top))]">
+      <div className="flex flex-col gap-4 px-4 pt-[max(24px,env(safe-area-inset-top))]">
         <p className="text-v2-sm font-[550] text-v2-mute">{t.fill.title}</p>
         <h1 className="text-v2-xl font-[650] text-v2-ink">{t.fill.onlyRefillers}</h1>
         <Link href="/" className="text-v2-md text-v2-mute underline underline-offset-4">

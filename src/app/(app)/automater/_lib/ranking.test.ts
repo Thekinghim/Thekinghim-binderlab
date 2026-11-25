@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { fleetRanking, type FleetMachineInput } from "@/analytics/ranking/fleet";
 
-import { homeRankingLine, rankingView } from "./ranking";
+import { homeRankingLine, rankingView, verdictText } from "./ranking";
 
 const machines = new Map(
   ["a", "b", "c", "d"].map((id, i) => [id, { code: `BL-00${i + 1}`, name: id.toUpperCase() }]),
@@ -90,7 +90,8 @@ describe("rankingView: flera automater", () => {
     expect(plain(v.aside)).toBe(
       "För lite data för att jämföra: minst två automater behöver 14 dagar.",
     );
-    expect(plain(v.rows[0]!.verdictText)).toBe("För ny: 6 dagar");
+    expect(plain(v.rows[0]!.verdictText)).toBe("För ny");
+    expect(plain(v.rows[0]!.basis)).toMatch(/^6 dagar/);
     expect(homeRankingLine(v, ranking)).toBeNull();
   });
 
@@ -164,5 +165,13 @@ describe("rankingView: en automat", () => {
       rows: [],
       title: "Ingen automat har sålt i perioden.",
     });
+  });
+});
+
+describe("För ny eller för kort period", () => {
+  it("en automat som sålt hela en kort period är inte ny: perioden är för kort", () => {
+    expect(verdictText({ verdict: "new", activeDays: 1 }, 1)).toBe("För kort period");
+    expect(verdictText({ verdict: "new", activeDays: 6 }, 30)).toBe("För ny");
+    expect(verdictText({ verdict: "new", activeDays: 6 })).toBe("För ny");
   });
 });

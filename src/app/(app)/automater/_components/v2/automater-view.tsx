@@ -600,7 +600,8 @@ function Detail({
                 </>
               )}
               <div>
-                <dt>Sålt per dag</dt>
+                {/* Takten de senaste 14 dagarna (prognosens), inte periodvalet: säg det. */}
+                <dt>Sålt per dag, 14 d</dt>
                 <dd>{packsPerDay(m.perDayMilli)}</dd>
               </div>
               <div>

@@ -91,6 +91,7 @@
 .ip-set {
   display: flex;
   justify-content: center;
+  white-space: nowrap;
   margin-top: auto;
   padding: 6px 10px;
   border-radius: var(--v2-r-md);
@@ -124,7 +125,7 @@
 }
 .ip-tag small {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--v2-mute);
 }
 .ip-tag b {

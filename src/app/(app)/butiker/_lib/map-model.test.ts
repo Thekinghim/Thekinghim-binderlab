@@ -4,6 +4,7 @@ import {
   MIN_SPAN_LAT,
   cityPoint,
   dotRadius,
+  firstOfEachText,
   fitView,
   labelBox,
   placeLabels,
@@ -112,5 +113,17 @@ describe("etiketter runt pricken", () => {
     // Allt blockerat: ingen etikett.
     expect(placeLabelsAround([cands], [{ x: 0, y: 0, w: 300, h: 200 }]).size).toBe(0);
     expect(labelBox(x, y, 10, 40, "above")).toEqual({ x: 80, y: 20, w: 40, h: 16 });
+  });
+});
+
+describe("firstOfEachText", () => {
+  it("bara första etiketten av varje text, oavsett stora bokstäver", () => {
+    expect(firstOfEachText(["Örebro", "Sala", "örebro ", "Västerås", "Sala"])).toEqual([
+      true,
+      true,
+      false,
+      true,
+      false,
+    ]);
   });
 });

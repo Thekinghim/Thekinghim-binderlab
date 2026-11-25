@@ -139,7 +139,7 @@ export default async function EnhetsekonomiPage({
           averageRevenuePerDayOre={comparison.averageRevenuePerDayOre}
           investmentOre={investmentOre}
           bookValueOre={bookValueOre}
-          comparison={`${periodText(period.period)}, ${formatInt(period.days)} dagar`}
+          comparison={`${periodText(period.period)}, ${formatInt(period.days)} ${period.days === 1 ? "dag" : "dagar"}`}
         />
 
         <section aria-labelledby="per-dag" className="v2-card">

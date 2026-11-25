@@ -89,7 +89,6 @@ import {
   DoneRow,
   FullFold,
   NeedCard,
-  NextCard,
   placeLine,
   ReceiptCard,
   ReceiptSheet,
@@ -930,7 +929,6 @@ export function FillApp({
   if (!simple) {
     const groups = listGroups(shown);
     const bring = bringStrip(groups.need);
-    const firstNext = nextStopOf(groups.need[0]?.id);
     const ariaOf = (m: (typeof shown)[number]) =>
       t.fill.cardAria(m.place, needLabel(m, t), m.fillPct);
     const openMachine = (id: string) => {
@@ -1099,17 +1097,17 @@ export function FillApp({
                   onUndo={() => undoDone(done)}
                 />
               ) : null}
-              {firstNext ? (
-                <NextCard next={firstNext} onOpen={() => openMachine(firstNext.machine.id)} />
+              {/* Nästa automat står redan först i listan (mörk ram): inget kort till om den. */}
+              {bring.total > 0 ? (
+                <BringCard
+                  items={bring.items}
+                  total={bring.total}
+                  onOpen={() => {
+                    setBring({ chosen: null, placeId: null });
+                    window.scrollTo({ top: 0 });
+                  }}
+                />
               ) : null}
-              <BringCard
-                items={bring.items}
-                total={bring.total}
-                onOpen={() => {
-                  setBring({ chosen: null, placeId: null });
-                  window.scrollTo({ top: 0 });
-                }}
-              />
             </aside>
           </div>
         ) : null}
@@ -1119,7 +1117,7 @@ export function FillApp({
   }
 
   return (
-    <div className="flex flex-col gap-6 px-4 pt-[calc(16px+env(safe-area-inset-top))] pb-[calc(32px+env(safe-area-inset-bottom))]">
+    <div className="flex flex-col gap-6 px-4 pt-[max(16px,env(safe-area-inset-top))] pb-[calc(32px+env(safe-area-inset-bottom))]">
       <header className="rise flex flex-col gap-3" style={rise(0)}>
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           {simple ? (
@@ -1998,7 +1996,7 @@ function MachineScreen({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <div className="flex flex-1 flex-col gap-5 px-4 pt-[calc(12px+env(safe-area-inset-top))] pb-6">
+      <div className="flex flex-1 flex-col gap-5 px-4 pt-[max(12px,env(safe-area-inset-top))] pb-6">
         <header className="rise flex flex-col gap-3" style={rise(0)}>
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <button

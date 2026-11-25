@@ -97,7 +97,9 @@ const columns: Column<IncidentListRow>[] = [
   },
   {
     key: "refunded",
-    header: "Återbetalt",
+    // Kort rubrik: "Återbetalt" klipptes till "Återbeta" i den smala kolumnen på telefon.
+    header: "Återbet.",
+    headerTitle: "Återbetalt",
     numeric: true,
     sortValue: (r) => r.refundedOre,
     render: (r) => (r.refundedOre > 0 ? kronorOfOre(r.refundedOre) : MISSING),

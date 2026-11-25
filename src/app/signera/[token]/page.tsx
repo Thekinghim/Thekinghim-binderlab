@@ -19,10 +19,10 @@ export const dynamic = "force-dynamic";
 const CLOSED: Record<"missing" | "expired" | "used" | "changed", { title: string; body: string }> =
   {
     // Okänd, ersatt av en ny länk eller avklippt: texten avslöjar inget.
-    missing: { title: "Länken fungerar inte.", body: "Be om en ny länk." },
-    expired: { title: "Länken har gått ut.", body: "Be om en ny länk." },
-    used: { title: "Avtalet är redan signerat.", body: "Länken kan bara användas en gång." },
-    changed: { title: "Avtalet har ändrats.", body: "Be om en ny länk." },
+    missing: { title: "Länken fungerar inte", body: "Be om en ny länk." },
+    expired: { title: "Länken har gått ut", body: "Be om en ny länk." },
+    used: { title: "Avtalet är redan signerat", body: "Länken kan bara användas en gång." },
+    changed: { title: "Avtalet har ändrats", body: "Be om en ny länk." },
   };
 
 /** V2-ramen (som inloggningen): loggan överst och ett vitt kort mitt på den grå ytan. */
@@ -75,7 +75,7 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
     return (
       <Frame>
         <div className="v2-auth-hd">
-          <h1>{copy.title.replace(/\.$/, "")}</h1>
+          <h1>{copy.title}</h1>
           <p>
             {copy.body}
             {lookup.status !== "missing" && lookup.organizationName
@@ -83,6 +83,10 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
               : ""}
           </p>
         </div>
+        {/* En väg vidare, som på en ogiltig inbjudan. */}
+        <a href="/logga-in" className="v2-btn touch mt-4 w-full justify-center">
+          Till inloggningen
+        </a>
       </Frame>
     );
   }

@@ -245,7 +245,7 @@ export function CommandMenu({
         id: "action-notices",
         group: "actions",
         label: "Notiser i mobilen",
-        icon: "alert",
+        icon: "bell",
         keywords: ["notiser", "push", "larm", "mobil", "iphone", "telefon"],
         run: () => go("/drift/larm", "none"),
       });
@@ -622,8 +622,11 @@ export function CommandMenu({
     : remote.status === "error"
       ? remote.message
       : null;
+  // Träffarna ur listan står redan där medan servern söker: räkna dem, "söker fler" efter.
   const status = loading
-    ? "Söker …"
+    ? rowCount > 0
+      ? `${rowCount} ${rowCount === 1 ? "träff" : "träffar"} · söker fler …`
+      : "Söker …"
     : failed
       ? failed
       : q || step

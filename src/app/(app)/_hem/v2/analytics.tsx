@@ -69,6 +69,11 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
   const mag = Math.pow(10, Math.floor(Math.log10(Math.max(1, maxKr))));
   const topKr = Math.max(mag, Math.floor(maxKr / mag) * mag);
   const grid = [0, topKr / 2, topKr];
+  // Inga köp i perioden (och ingen jämförelse att rita): en rad i stället för ett tomt diagram
+  // med en ensam nolla.
+  const sold = r.bars.some((b) => b.value > 0);
+  const empty = !sold && !r.bars.some((b) => (b.previous ?? 0) > 0);
+  const marginShown = r.marginBp !== null && (r.revenueOre ?? 0) > 0;
   return (
     <XCard
       title={`Resultat · ${r.periodText}`}
@@ -98,7 +103,7 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
           <div>
             <dt>Marginal</dt>
             <dd>
-              {r.marginBp !== null
+              {marginShown && r.marginBp !== null
                 ? `${(r.marginBp / 100).toLocaleString("sv-SE", { maximumFractionDigits: 1 })}${NBSP}%`
                 : "–"}
             </dd>
@@ -113,75 +118,88 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
           ) : null}
         </dl>
       </div>
-      <div className="x-leg" aria-hidden="true">
-        {hours ? null : (
-          <span>
-            <i className="lp" />
-            Vinst
-          </span>
-        )}
-        <span>
-          <i className="lr" />
-          Intäkt
-        </span>
-        {hours && !r.pace ? null : (
-          <span>
-            <i className="lgh" />
-            {r.pace ? "Vanlig dag samma timme" : "Förra perioden"}
-            {r.previousPerBarOre !== null
-              ? `, vinst per ${unitName} ${kr(r.previousPerBarOre)}`
-              : ""}
-          </span>
-        )}
-      </div>
-      <div className={cn("x-ch", hours && "hrs")}>
-        <div className="x-plot" role="img" aria-label={`Intäkt och vinst per ${unitName}.`}>
-          {grid.map((g, gi) => (
-            <span
-              key={gi}
-              className={cn("x-gl", g === 0 && "z")}
-              style={{ bottom: `${((g * 100) / max) * 100}%` }}
-            >
-              <i>{g >= 1000 ? `${formatInt(g / 1000)}k` : formatInt(g)}</i>
+      {empty ? (
+        <p className="x-sum">{r.pace ? "Inga köp hittills i dag." : "Inga köp i perioden."}</p>
+      ) : null}
+      {!sold && !empty && r.pace ? (
+        <p className="x-sum">Inga köp hittills i dag. Konturerna visar en vanlig dag.</p>
+      ) : null}
+      {empty ? null : (
+        <>
+          <div className="x-leg" aria-hidden="true">
+            {hours ? null : (
+              <span>
+                <i className="lp" />
+                Vinst
+              </span>
+            )}
+            <span>
+              <i className="lr" />
+              Intäkt
             </span>
-          ))}
-          {r.bars.map((b, i) => (
-            <div
-              key={b.key}
-              className={cn("x-col", b.partial && "part")}
-              title={`${b.label}: intäkt ${kr(b.value)}${b.part !== undefined ? `, vinst ${kr(b.part)}` : ""}${b.previous ? `, förra ${kr(b.previous)}` : ""}`}
-            >
-              {b.previous ? (
-                <span className="x-gh" style={{ height: `${(b.previous / max) * 100}%` }} />
-              ) : null}
-              <span className="x-rv" style={{ height: `${(b.value / max) * 100}%`, ...grow(i) }} />
-              {b.part !== undefined ? (
+            {hours && !r.pace ? null : (
+              <span>
+                <i className="lgh" />
+                {r.pace ? "Vanlig dag samma timme" : "Förra perioden"}
+                {r.previousPerBarOre !== null
+                  ? `, vinst per ${unitName} ${kr(r.previousPerBarOre)}`
+                  : ""}
+              </span>
+            )}
+          </div>
+          <div className={cn("x-ch", hours && "hrs")}>
+            <div className="x-plot" role="img" aria-label={`Intäkt och vinst per ${unitName}.`}>
+              {grid.map((g, gi) => (
                 <span
-                  className="x-pf"
-                  style={{ height: `${(Math.max(0, b.part) / max) * 100}%`, ...grow(i) }}
-                />
-              ) : null}
-              {r.best && b.label === r.best.label && !hours ? (
-                <span className="x-anc" style={{ bottom: `${(b.value / max) * 100}%` }}>
-                  <span className="x-bl">Bäst</span>
+                  key={gi}
+                  className={cn("x-gl", g === 0 && "z")}
+                  style={{ bottom: `${((g * 100) / max) * 100}%` }}
+                >
+                  <i>{g >= 1000 ? `${formatInt(g / 1000)}k` : formatInt(g)}</i>
                 </span>
-              ) : null}
+              ))}
+              {r.bars.map((b, i) => (
+                <div
+                  key={b.key}
+                  className={cn("x-col", b.partial && "part")}
+                  title={`${b.label}: intäkt ${kr(b.value)}${b.part !== undefined ? `, vinst ${kr(b.part)}` : ""}${b.previous ? `, förra ${kr(b.previous)}` : ""}`}
+                >
+                  {b.previous ? (
+                    <span className="x-gh" style={{ height: `${(b.previous / max) * 100}%` }} />
+                  ) : null}
+                  <span
+                    className="x-rv"
+                    style={{ height: `${(b.value / max) * 100}%`, ...grow(i) }}
+                  />
+                  {b.part !== undefined ? (
+                    <span
+                      className="x-pf"
+                      style={{ height: `${(Math.max(0, b.part) / max) * 100}%`, ...grow(i) }}
+                    />
+                  ) : null}
+                  {r.best && b.label === r.best.label && !hours ? (
+                    <span className="x-anc" style={{ bottom: `${(b.value / max) * 100}%` }}>
+                      <span className="x-bl">Bäst</span>
+                    </span>
+                  ) : null}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="x-xl v2-axr" aria-hidden="true">
-          {r.bars.map((b, i) => (
-            <span key={b.key}>
-              <AxisTick index={i} count={r.bars.length} step={step}>
-                {b.label}
-              </AxisTick>
-              {b.partial && !hours ? (
-                <small>{i === r.bars.length - 1 ? "pågår" : "del"}</small>
-              ) : null}
-            </span>
-          ))}
-        </div>
-      </div>
+            <div className="x-xl v2-axr" aria-hidden="true">
+              {r.bars.map((b, i) => (
+                <span key={b.key}>
+                  <AxisTick index={i} count={r.bars.length} step={step}>
+                    {b.label}
+                  </AxisTick>
+                  {b.partial && !hours ? (
+                    <small>{i === r.bars.length - 1 ? "pågår" : "del"}</small>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </XCard>
   );
 }
@@ -274,11 +292,7 @@ export async function TopCardView({ sp }: { sp: SearchParamsInput }) {
         <span>Trend</span>
       </div>
       {rows.map((t) => (
-        <div
-          className="x-tr"
-          key={t.titleId}
-          style={{ gridTemplateColumns: "minmax(0,1fr) 44px 78px 64px" }}
-        >
+        <div className="x-tr" key={t.titleId}>
           <span className="x-tn">
             <span className="x-pkb">
               <PackImage title={t.name} size="s" />
@@ -295,7 +309,10 @@ export async function TopCardView({ sp }: { sp: SearchParamsInput }) {
             {t.profitPerPackOre !== null ? kr(t.profitPerPackOre) : "–"}
           </span>
           <span className={cn("x-trd", t.trendBp !== null && t.trendBp < 0 && "dn")}>
-            {t.trendBp === null ? "–" : `${t.trendBp > 0 ? "+" : "−"}${pct(Math.abs(t.trendBp))}`}
+            {/* −100 % = inget sålt de senaste 7 dagarna: ett streck, inte ett larm. */}
+            {t.trendBp === null || t.trendBp <= -10_000
+              ? "–"
+              : `${t.trendBp > 0 ? "+" : "−"}${pct(Math.abs(t.trendBp))}`}
           </span>
         </div>
       ))}
@@ -313,7 +330,7 @@ export async function WorstCardView() {
   if (!w) return null;
   return (
     <XCard
-      title="Sämst presterande · vinst/dag, 30 d"
+      title="Sämst presterande · senaste 30 dagarna"
       link={{ href: "/automater?f=under", label: "Alla" }}
       className="x-worst"
     >
@@ -471,7 +488,9 @@ export async function LossCardView({ sp }: { sp: SearchParamsInput }) {
           <p className="x-sum">
             {l.lost.ongoing > 0 ? (
               <>
-                <b>{formatInt(l.lost.ongoing)}</b> titlar är slut i en automat just nu.{" "}
+                <b>{formatInt(l.lost.ongoing)}</b>{" "}
+                {l.lost.ongoing === 1 ? "titel är slut" : "titlar är slut"} i en automat just
+                nu.{" "}
               </>
             ) : null}
             <Link href={l.lost.href}>Underlaget →</Link>
@@ -530,7 +549,7 @@ export async function ShopsCardView({ sp }: { sp: SearchParamsInput }) {
     <XCard title="Butiker" link={{ href: "/butiker", label: "Butiker" }} className="x-shops">
       <div className="x-st3 two">
         <div>
-          <span className="x-l">Att betala</span>
+          <span className="x-l">Avräkningar att betala</span>
           <b>{kr(s.unpaidOre)}</b>
           <small>
             {formatInt(s.stores)} {s.stores === 1 ? "butik" : "butiker"}
@@ -594,11 +613,7 @@ export async function OpsCardView({ timeZone }: { timeZone: string }) {
       )
     : "–";
   return (
-    <XCard
-      title="Driftstatus"
-      link={{ href: "/automater?f=offline", label: "Offline" }}
-      className="x-ops"
-    >
+    <XCard title="Driftstatus" link={{ href: "/drift", label: "Drift" }} className="x-ops">
       <div className="x-ops4">
         <div>
           <span className="x-l">Online nu</span>
@@ -610,8 +625,8 @@ export async function OpsCardView({ timeZone }: { timeZone: string }) {
           </small>
         </div>
         <div>
-          <span className="x-l">Strömmen av nu</span>
-          <b>{formatInt(o.powerOff)}</b>
+          <span className="x-l">Ström av just nu</span>
+          <b>{o.powerOff > 0 ? formatInt(o.powerOff) : "Ingen"}</b>
           <small>
             {o.powerWindow ? `enligt butikens tider, ${o.powerWindow}` : "enligt butikernas tider"}
           </small>

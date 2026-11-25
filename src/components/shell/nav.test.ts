@@ -183,7 +183,7 @@ describe("underfliken Mer", () => {
   });
 
   it("Lager i automaterna har ett kort namn för mobilen", () => {
-    expect(navSections[1]!.tabs.find((t) => t.route === "lager")?.short).toBe("Lager");
+    expect(navSections[1]!.tabs.find((t) => t.route === "lager")?.short).toBe("I automaterna");
   });
 });
 

@@ -238,7 +238,8 @@ export function RouteView({
             }
           >
             {stopCount === 0 ? (
-              <Empty title={empty.title}>{empty.body ? `${empty.body}.` : null}</Empty>
+              // Varför listan är tom står redan överst (empty.title): inte samma mening två gånger.
+              <Empty title="Inga stopp att visa" />
             ) : (
               route.groups.map((g, gi) => (
                 <div className="rcity" key={`${g.city ?? "-"}-${gi}`}>
@@ -298,9 +299,8 @@ export function RouteView({
 
           <Card
             className="o-later"
-            title={`Kommande dagar · ${formatInt(
-              route.upcoming.reduce((a, d) => a + d.stops.length, 0),
-            )} automater`}
+            // Antalet står i listan; i rubriken bröt det raden bredvid gränsen (telefon).
+            title="Kommande dagar"
             actions={
               canEditLimits ? (
                 <LimitsSheet limits={route.limits} />
@@ -634,7 +634,7 @@ function StopRow({
           <>
             <Button
               variant="plain"
-              size="sm"
+              touch
               disabled={pending}
               pending={busy === `${s.machineId}:skip`}
               onClick={() => onChange(s.machineId, "skip", s.name)}
@@ -643,7 +643,7 @@ function StopRow({
             </Button>
             <Button
               variant="plain"
-              size="sm"
+              touch
               disabled={pending}
               pending={busy === `${s.machineId}:later`}
               onClick={() => onChange(s.machineId, "later", s.name)}

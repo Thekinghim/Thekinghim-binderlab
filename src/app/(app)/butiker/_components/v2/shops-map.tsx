@@ -17,6 +17,7 @@ import {
   WATER,
   cityPoint,
   dotRadius,
+  firstOfEachText,
   fitView,
   labelBox,
   placeLabels,
@@ -210,7 +211,10 @@ export function ShopsMap({
   };
   const sidesFor = (d: (typeof dots)[number]): LabelSide[] =>
     d.item.offline ? ["left", "right", "below", "above"] : ["right", "left", "below", "above"];
-  const candidates = labelOrder.map((d) => {
+  // Samma text två gånger ("Örebro" för två butiker där): bara den första får etikett.
+  const firstLabel = firstOfEachText(labelOrder.map(labelText));
+  const candidates = labelOrder.map((d, i) => {
+    if (!firstLabel[i]) return [];
     const tw = textWidth(labelText(d));
     return sidesFor(d).map((side) => labelBox(d.x, d.y, d.r, tw, side));
   });
@@ -246,7 +250,12 @@ export function ShopsMap({
 
   // Expansionens ringar får sin ort (lägre prioritet än butikerna: bara där det finns plats).
   const leadText = (r: (typeof rings)[number]) => r.item.city ?? r.item.name;
+  // En ring i en ort där det redan finns en butik får ingen egen ortsetikett (två "Örebro").
+  const storeCities = new Set(
+    stores.map((s) => s.city?.trim().toLocaleLowerCase("sv-SE")).filter(Boolean),
+  );
   const leadCandidates = rings.map((r) => {
+    if (storeCities.has(leadText(r).trim().toLocaleLowerCase("sv-SE"))) return [];
     const tw = textWidth(leadText(r), 11);
     return (["right", "left", "below", "above"] as const).map((side) =>
       labelBox(r.x, r.y, 9, tw, side),

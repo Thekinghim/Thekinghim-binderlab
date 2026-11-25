@@ -114,12 +114,14 @@ export default async function AssistentPage({
   const modelLabel = ready ? (local ? "lokal testmodell" : config.model) : "–";
 
   const verified = recent.filter((r) => r.status === "answered").length;
-  const title = ready ? "Fråga om er data." : "Assistenten är av.";
-  const aside = !ready
-    ? config.status === "not-configured"
-      ? "Kräver nyckel till Claude API."
-      : `${config.variable} har ett ogiltigt värde.`
-    : undefined;
+  const title = ready ? "Fråga om er data." : "Assistenten är inte påslagen än.";
+  // Tekniken (API-nyckel, miljövariabel) bara för den som kan göra något åt den.
+  const aside =
+    !ready && ctx.role === "owner"
+      ? config.status === "not-configured"
+        ? "Den behöver en nyckel till Claude API."
+        : `${config.variable} har ett ogiltigt värde.`
+      : undefined;
 
   const notConfigured = ready
     ? null
@@ -137,11 +139,11 @@ export default async function AssistentPage({
       sub={
         <>
           <b>{title}</b> {aside ? `${aside} ` : null}
-          {`Modell ${modelLabel}`}
-          {recent.length > 0
+          {ready ? `Modell ${modelLabel}` : null}
+          {ready && recent.length > 0
             ? ` · ${formatInt(verified)} av ${formatInt(recent.length)} kontrollerade`
             : ""}
-          .
+          {ready ? "." : null}
         </>
       }
     >

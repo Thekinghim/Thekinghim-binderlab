@@ -298,7 +298,10 @@ export function CalmLine({
           </span>
         </>
       ) : null}
-      <i aria-hidden="true">·</i>
+      {/* Pricken före länken göms (hem.css): länken står längst till höger eller på egen rad. */}
+      <i className="sep-all" aria-hidden="true">
+        ·
+      </i>
       <span className="all">Alla {formatInt(total)} automater →</span>
     </Link>
   );

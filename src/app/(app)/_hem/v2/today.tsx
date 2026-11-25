@@ -323,8 +323,8 @@ export function LiveCard({
     >
       {orders.length === 0 ? (
         <div className="aempty">
+          {/* Varifrån köpen kommer står i foten nedanför: inte två gånger. */}
           <b>Inga köp de senaste två dygnen.</b>
-          <span>{freshness ? `Från Awish: ${freshness}.` : "Köpen kommer från Awish."}</span>
         </div>
       ) : (
         <div>

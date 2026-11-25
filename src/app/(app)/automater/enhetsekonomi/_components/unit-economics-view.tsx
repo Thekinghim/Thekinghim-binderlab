@@ -50,7 +50,7 @@ export function UnitEconomicsKpis({
   const items: KpiItem[] = [
     {
       id: "profit",
-      label: "Vinst per automat och dag",
+      label: "Vinst per automat/dag",
       value: averageProfitPerDayOre ?? 0,
       format: (v) => (averageProfitPerDayOre === null ? MISSING : sek(v)),
       primary: true,

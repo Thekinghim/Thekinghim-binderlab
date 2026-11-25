@@ -208,10 +208,10 @@ function PeriodPanel({
   phone: boolean;
 }) {
   const min = addDays(today, -(MAX_RANGE_DAYS - 1));
+  // Kalendern visar den valda perioden (även ett snabbval som "I dag" eller "7 d") som ett
+  // ifyllt intervall: man ser var man står innan man väljer om.
   const [draft, setDraft] = useState<RangeDraft>(() =>
-    current && currentKey === "eget"
-      ? { start: current.start, end: current.end }
-      : { start: null, end: null },
+    current ? { start: current.start, end: current.end } : { start: null, end: null },
   );
   const r = draftRange(draft);
   const tooLong = r ? inclusiveDays(r.start, r.end) > MAX_RANGE_DAYS : false;

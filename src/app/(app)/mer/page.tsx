@@ -105,7 +105,12 @@ export default async function MorePage() {
   const allowed = new Set(routesForRole(ctx.role).map((r) => r.id));
   const top = v2NavForRole(ctx.role).filter((i) => i.id === "butiker" || i.id === "pengar");
   const pages = routesForRole(ctx.role).filter(
-    (r) => !IN_MENU.has(r.id) && r.id !== "pengar" && r.id !== "butiker",
+    (r) =>
+      !IN_MENU.has(r.id) &&
+      r.id !== "pengar" &&
+      r.id !== "butiker" &&
+      // Inställningar står redan under Driften för den som får ändra.
+      !(ctx.canEdit && r.id === "installningar"),
   );
   const sync = counts.sync;
   const time = (iso: string) =>
@@ -213,7 +218,7 @@ export default async function MorePage() {
                 href={ph(r.href)}
                 title={r.label}
                 sub={r.lead}
-                actions={<span aria-hidden="true">→</span>}
+                actions={<span aria-hidden="true">›</span>}
               />
             ))}
           </Card>

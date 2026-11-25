@@ -10,7 +10,7 @@ export default function Loading() {
     <div
       aria-busy="true"
       aria-label={t.state.loading}
-      className="flex flex-col gap-3 px-4 pt-[calc(72px+env(safe-area-inset-top))]"
+      className="flex flex-col gap-3 px-4 pt-[calc(60px+max(12px,env(safe-area-inset-top)))]"
     >
       <Skeleton className="mb-3 h-8 w-3/4" />
       {[0, 1, 2, 3].map((i) => (

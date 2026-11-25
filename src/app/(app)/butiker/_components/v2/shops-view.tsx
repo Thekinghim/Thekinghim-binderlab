@@ -402,7 +402,7 @@ export function ShopsView({
         <span>
           Butikernas andel {days}: <b className="text-v2-ink">{kr(shareTotal)}</b>
         </span>
-        <span>Andelen räknas enligt varje butiks avtal, som avräkningen.</span>
+        <span>Provision och fast hyra enligt varje butiks avtal, som avräkningen.</span>
       </div>
     </Card>
   );

@@ -141,6 +141,18 @@ export const PAGE_INFO: Partial<Record<RouteId, PageInfo>> = {
     about: "synken från Awish och importer",
     chips: ["Fungerar synken från Awish?"],
   },
+  pengar: {
+    name: "Pengar",
+    about:
+      "vinst, intäkt och kostnader för perioden, vad som ska betalas och utbetalningarna från Nayax",
+    chips: ["Varför ändrades vinsten?", "Vad ska jag betala ut?", "Vilken automat tjänar mest?"],
+  },
+  rutt: {
+    name: "Rutt",
+    about: "dagens påfyllningsrunda: stoppen i ordning, packen att ta med och kommande dagar",
+    chips: ["Vilket stopp är viktigast?", "Vad ska jag ta med?"],
+    refillerChips: ["Vilket stopp är viktigast?", "Vad ska jag ta med?"],
+  },
   assistent: {
     name: "Assistent",
     about: "samtalet med assistenten",

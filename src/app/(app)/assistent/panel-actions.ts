@@ -43,9 +43,7 @@ export async function assistantPanelState(): Promise<PanelState> {
     return {
       status: "off",
       message:
-        config.status === "not-configured"
-          ? "AI är inte påslagen än (nyckel saknas)."
-          : "AI är avstängd: fel inställning.",
+        config.status === "not-configured" ? "AI är inte påslagen än." : "AI är avstängd just nu.",
       local: false,
       budgetLeft: null,
     };

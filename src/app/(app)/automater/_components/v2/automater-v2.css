@@ -233,7 +233,8 @@
     color: var(--v2-mute);
     text-align: left;
     white-space: nowrap;
-    overflow: hidden;
+    /* Bara i sidled: i höjdled får raden växa (annars klipps 3 px av ortnamnet). */
+    overflow-x: clip;
   }
   .v2-auto .agh b {
     color: var(--v2-ink);
@@ -722,7 +723,9 @@
     .v2-auto .arow.nomoney {
       grid-template-columns: minmax(0, 1fr) auto;
       min-height: 64px;
-      padding: 0 16px;
+      /* Nederkanten hålls fri för fyllnadsstrecket (.mbar, 7 + 3 px): en butik på två rader
+         går inte in i strecket. */
+      padding: 8px 16px 14px;
       gap: 10px;
       -webkit-user-select: none;
       user-select: none;

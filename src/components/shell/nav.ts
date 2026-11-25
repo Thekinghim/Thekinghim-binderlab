@@ -584,7 +584,8 @@ export const navSections: ReadonlyArray<NavSection> = [
     tabs: [
       tab("automater", "Automater"),
       tab("drift", "Drift"),
-      tab("lager", "Lager i automaterna", undefined, { short: "Lager" }),
+      // Kort namn utan "Lager": bottenradens Lager är Vårt lager.
+      tab("lager", "Lager i automaterna", undefined, { short: "I automaterna" }),
       tab("order", "Order"),
       // Mindre använda: under "Mer", så att de fyra viktigaste får plats på mobilen.
       tab("automater", "Svinn", "svinn", { more: true, roles: READERS }),

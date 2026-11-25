@@ -111,6 +111,9 @@ function ActionControl({
 function Prefix({ kind, code }: { kind: StateKind; code?: string }) {
   const t = useT();
   const spec = kinds[kind];
+  // Ett tomt läge säger det själv i meningen ("Ingen utbetalning i perioden."): en etikett
+  // "○ Tomt" ovanför såg ut som en felsökningsmärkning. En egen kod ("0 av 1 240") visas.
+  if ((kind === "empty" || kind === "no-results") && !code) return null;
   return (
     <span className="inline-flex shrink-0 items-center gap-2 text-v2-xs font-[550] text-v2-mute">
       <span className={cn("v2-dot", spec.dot)} aria-hidden="true" />

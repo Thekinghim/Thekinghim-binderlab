@@ -83,8 +83,12 @@ export function MachineTop({
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
   const place = store?.name ?? m.place;
-  const title = m.name && m.name !== place ? `${m.name} · ${place}` : place;
+  // Automatens namn som rubrik och butiken på raden under: "Automat 01 · Kortkammaren" bröts
+  // annars efter pricken på en smal telefon.
+  const title = m.name && m.name !== place ? m.name : place;
+  const named = title !== place;
   const sub = [
+    named ? place : null,
     store?.city,
     m.fillPct !== null ? `${formatInt(m.fillPct)}${NBSP}% fylld` : null,
     syncLabel,

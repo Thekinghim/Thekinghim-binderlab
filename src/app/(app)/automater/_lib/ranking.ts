@@ -57,7 +57,15 @@ function daysText(n: number): string {
   return `${formatInt(n)}${NBSP}${n === 1 ? "dag" : "dagar"}`;
 }
 
-export function verdictText(r: Pick<FleetRow, "verdict" | "activeDays">): string {
+/**
+ * Omdömet som text. "För ny" bara när automaten började sälja under perioden; har den sålt
+ * hela den (korta) perioden är det perioden som är för kort (I dag, I går). Antalet dagar
+ * står redan i raden under (basisText), så det upprepas inte här.
+ */
+export function verdictText(
+  r: Pick<FleetRow, "verdict" | "activeDays">,
+  periodDays?: number,
+): string {
   switch (r.verdict) {
     case "best":
       return "Bäst";
@@ -68,7 +76,7 @@ export function verdictText(r: Pick<FleetRow, "verdict" | "activeDays">): string
     case "weak":
       return "Tjänar dåligt: överväg att flytta";
     case "new":
-      return `För ny: ${daysText(r.activeDays)}`;
+      return periodDays !== undefined && r.activeDays >= periodDays ? "För kort period" : "För ny";
     case "alone":
       return "Inget att jämföra med än";
     case "better":
@@ -117,6 +125,8 @@ export function rankingView(args: {
    * så raden visar driftläget i stället. Talen är desamma.
    */
   down?: ReadonlyMap<string, string>;
+  /** Periodens längd i dagar: skiljer "För ny" från "För kort period". */
+  periodDays?: number;
 }): RankingView {
   const { ranking } = args;
   const codeOf = (id: string) => args.machines.get(id)?.code ?? "Automaten";
@@ -132,7 +142,7 @@ export function rankingView(args: {
         href: args.hrefOf(m.code),
         rank: r.rank,
         verdict: r.verdict,
-        verdictText: down ? `${down} nu` : verdictText(r),
+        verdictText: down ? `${down} nu` : verdictText(r, args.periodDays),
         warn: down !== null || r.verdict === "weak" || r.verdict === "worse",
         profit: perDayText(r.profitPerDayOre),
         sales: `Säljer ${perDayText(r.revenuePerDayOre)} · ${tenths(r.unitsPerDayTenths)}${NBSP}pack/dag`,

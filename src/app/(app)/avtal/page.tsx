@@ -318,7 +318,9 @@ export default async function KontraktPage({
 
         <div key={tab} className="v2-enter v2-stack">
           {tab === "lista" ? (
-            <Card title="Kontrakt per butik" count={list.rows.length > 0 ? list.rows.length : null}>
+            // Inget antal i rubriken: raderna (en per kontrakt, även butiker utan automat)
+            // räknas inte som rubriken ovanför ("Alla 6 butiker …") och såg ut att säga emot den.
+            <Card title="Kontrakt per butik">
               {list.rows.length === 0 ? (
                 <Empty title="Inga butiker än." />
               ) : (
@@ -660,9 +662,10 @@ function ContractItem({
             <div className="flex min-w-0 flex-col">
               <Link
                 href={`/butiker/${row.storeId}`}
-                className="truncate rounded-v2-sm text-v2-md font-[550] text-v2-ink hover:underline max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
+                className="max-w-full min-w-0 truncate rounded-v2-sm text-v2-md font-[550] text-v2-ink hover:underline max-[900px]:inline-flex max-[900px]:min-h-11 max-[900px]:items-center"
               >
-                {row.storeName}
+                {/* Telefon: länken är flex (44 px hög), där kapar bara ett eget block med "…". */}
+                <span className="min-w-0 truncate">{row.storeName}</span>
               </Link>
               <span className={cn("text-v2-sm", row.terms ? "text-v2-mute" : "text-v2-faint")}>
                 {row.terms ?? "Inga villkor"}
@@ -693,7 +696,7 @@ function ContractItem({
               <ButtonLink
                 href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
                 scroll={false}
-                variant="act"
+                // Vit knapp per rad: den mörka knappen i sidhuvudet är sidans huvudåtgärd.
                 size="sm"
                 touch
               >

@@ -180,7 +180,12 @@ export default async function MachinePage({
         <>
           <b>{headline.title}</b>
           {headline.aside ? <span>{headline.aside}</span> : null}
-          {status.reason && status.status !== "ok" ? <span>{status.reason}</span> : null}
+          {status.reason && status.status !== "ok" ? (
+            // På automatens egen sida behövs inte "… i Automat 1" efter skälet.
+            <span>
+              {status.reason.replace(` i ${machine.name}`, "").replace(` i ${machine.code}`, "")}
+            </span>
+          ) : null}
         </>
       }
       tools={
@@ -195,7 +200,10 @@ export default async function MachinePage({
       <div className="v2-stack">
         <nav aria-label="Brödsmulor" className="ops-bar">
           <Link href={listHref} className="ops-link text-v2-mute">
-            <span aria-hidden>← </span>Alla automater
+            <span aria-hidden className="mr-1">
+              ←
+            </span>
+            Alla automater
           </Link>
           {ctx.canEdit ? (
             <div className="acts">

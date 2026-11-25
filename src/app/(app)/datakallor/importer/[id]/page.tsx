@@ -107,23 +107,31 @@ export default async function ImportDetailPage({
                   { label: "Rader", value: formatInt(e.rowsTotal) },
                   { label: "Dubbletter", value: formatInt(e.rowsDuplicate) },
                   { label: "Ej betalda", value: formatInt(e.rowsNotPaid) },
-                  {
-                    label: "Källans tid",
-                    value: detail.sourceTimezoneRecorded
-                      ? detail.sourceTimezone
-                      : `${detail.sourceTimezone} (nuvarande)`,
-                  },
-                  { label: "Tolkare", value: detail.parserVersion || MISSING },
-                  {
-                    label: "Kontrollsumma",
-                    value: detail.sha256 ? (
-                      <span title={detail.sha256}>{detail.sha256.slice(0, 12)}…</span>
-                    ) : (
-                      MISSING
-                    ),
-                  },
                 ]}
               />
+              {/* Felsökningsuppgifter (tidszon, tolkarens version, kontrollsumma): fällda. */}
+              <details className="mt-3 text-v2-sm">
+                <summary className="cursor-pointer text-v2-mute">Tekniskt</summary>
+                <KeyValues
+                  items={[
+                    {
+                      label: "Tidszon i filen",
+                      value: detail.sourceTimezoneRecorded
+                        ? detail.sourceTimezone
+                        : `${detail.sourceTimezone} (nuvarande)`,
+                    },
+                    { label: "Tolkare", value: detail.parserVersion || MISSING },
+                    {
+                      label: "Kontrollsumma",
+                      value: detail.sha256 ? (
+                        <span title={detail.sha256}>{detail.sha256.slice(0, 12)}…</span>
+                      ) : (
+                        MISSING
+                      ),
+                    },
+                  ]}
+                />
+              </details>
             </CardBody>
           </Card>
         </div>

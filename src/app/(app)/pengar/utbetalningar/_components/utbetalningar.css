@@ -134,8 +134,9 @@
   .ut-why summary {
     cursor: pointer;
     color: var(--v2-mute);
-    font-size: var(--v2-t-xs);
-    min-height: 32px;
+    font-size: var(--v2-t-sm);
+    font-weight: 550;
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
     -webkit-tap-highlight-color: transparent;
@@ -158,6 +159,8 @@
   }
   .ut-why .ln small {
     display: block;
+    /* Minst 12 px (webbläsarens small blev 10,4 px här). */
+    font-size: var(--v2-t-xs);
     color: var(--v2-mute);
   }
   .ut-warns {

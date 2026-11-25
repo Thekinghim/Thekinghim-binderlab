@@ -35,6 +35,7 @@ import {
   type StoreComponent,
   type VatComponents,
 } from "@/domain";
+import { storeNameLabel } from "@/lib/format";
 import { parseParts } from "@/server/settlements/advance";
 
 import { smKey } from "./inputs";
@@ -216,7 +217,7 @@ export async function loadPayOverviewTx(
           ),
         ),
       tx
-        .select({ id: s.stores.id, name: s.stores.name })
+        .select({ id: s.stores.id, name: s.stores.name, city: s.stores.city })
         .from(s.stores)
         .where(eq(s.stores.organizationId, orgId)),
       tx
@@ -250,7 +251,8 @@ export async function loadPayOverviewTx(
         .from(s.storeSettlements)
         .where(eq(s.storeSettlements.organizationId, orgId)),
     ]);
-  const storeName = new Map(stores.map((r) => [r.id, r.name]));
+  // Som på Automater: orten i namnet med stor bokstav ("Söt och salt alingsås" → "… Alingsås").
+  const storeName = new Map(stores.map((r) => [r.id, storeNameLabel(r.name, r.city)]));
   const ownerOf = new Map(owners.map((r) => [r.id, r]));
   const partnerById = new Map(partners.map((p) => [p.id, p.name]));
   const currentPartner =

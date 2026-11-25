@@ -228,6 +228,10 @@ export function SeriesView({
                     : series.metric === "stockout_days_month"
                       ? `${tenths(p.baselineForPeriodTenths)}${NBSP}dagar`
                       : minutesText(roundHalfUp(p.baselineForPeriodTenths, 10))}
+                  {/* Pågående månad: utgångsläget är räknat på samma dagar som värdet. */}
+                  {p.partial && series.metric !== "profit_per_machine_month" ? (
+                    <span className="meta block">samma dagar</span>
+                  ) : null}
                 </td>
                 <td className="tnum pl-4 text-right">
                   {p.improvementBp === null ? MISSING : signedPct(p.improvementBp)}

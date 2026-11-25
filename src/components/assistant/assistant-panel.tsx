@@ -275,6 +275,14 @@ function Panel({
   const ready = state?.status === "ready";
   const budgetLeft = last?.budgetLeft ?? state?.budgetLeft ?? null;
 
+  // Datorn: sidan ger plats åt panelen (v2.css, :root[data-ai-open]) i stället för att tabeller
+  // och kort hamnar under den.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.toggleAttribute("data-ai-open", open);
+    return () => root.removeAttribute("data-ai-open");
+  }, [open]);
+
   // Rulla bara panelen (inte sidan bakom) till det senaste.
   useEffect(() => {
     const el = scrollRef.current;
@@ -375,7 +383,8 @@ function Panel({
         }}
         className="flex flex-col gap-2 border-t border-line px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]"
       >
-        {!busy && chips.length > 0 ? (
+        {/* Avstängd AI: inga förslag att trycka på (meddelandet står överst i panelen). */}
+        {!busy && chips.length > 0 && state?.status !== "off" ? (
           <ul className="flex flex-wrap gap-1.5" aria-label="Förslag">
             {chips.map((c, i) => (
               <li
@@ -408,7 +417,7 @@ function Panel({
             rows={1}
             maxLength={QUESTION_MAX_LENGTH}
             disabled={!ready}
-            placeholder={ready ? "Skriv en fråga" : (state?.message ?? "Laddar…")}
+            placeholder={ready ? "Skriv en fråga" : state ? "Går inte att fråga nu" : "Laddar…"}
             className="max-h-32 min-h-9 w-full min-w-0 resize-none rounded-sm border border-line-control bg-bg px-3 py-1.5 text-base text-fg placeholder:text-subtle disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:text-disabled max-md:min-h-11"
           />
           {busy ? (

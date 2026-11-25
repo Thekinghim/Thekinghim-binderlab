@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { cn } from "@/lib/cn";
 
@@ -28,10 +28,27 @@ export function Chips<T extends string>({
   /** Telefon: en sidledsrad med fast höjd i stället för radbrytning (verktygsrader). */
   scroll?: boolean;
 }) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
   const edgeRef = useEdgeFade(scroll);
+  const setRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      rowRef.current = el;
+      edgeRef(el);
+    },
+    [edgeRef],
+  );
+  // Sidledsraden: valt chip rullas fram helt (inte under den tonade kanten eller halvt utanför).
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!scroll || !row) return;
+    const chip = row.querySelector<HTMLElement>('button[aria-pressed="true"]');
+    if (!chip) return;
+    const left = revealLeft(row.scrollLeft, row.clientWidth, chip.offsetLeft, chip.offsetWidth);
+    if (left !== row.scrollLeft) row.scrollTo({ left, behavior: "smooth" });
+  }, [scroll, value]);
   return (
     <div
-      ref={edgeRef}
+      ref={setRef}
       role="group"
       aria-label={ariaLabel}
       className={cn("v2-chips", scroll && "scroll", className)}
@@ -49,6 +66,24 @@ export function Chips<T extends string>({
       ))}
     </div>
   );
+}
+
+/** Tonade kanten (v2.css) är 24 px: ett chip räknas som synligt först utanför den. */
+const FADE = 24;
+
+/**
+ * Var raden ska stå (scrollLeft) för att ett chip ska synas helt, utanför de tonade kanterna.
+ * Oförändrat om det redan syns.
+ */
+export function revealLeft(
+  scrollLeft: number,
+  width: number,
+  chipLeft: number,
+  chipWidth: number,
+): number {
+  if (chipLeft - FADE < scrollLeft) return Math.max(0, chipLeft - FADE);
+  if (chipLeft + chipWidth + FADE > scrollLeft + width) return chipLeft + chipWidth + FADE - width;
+  return scrollLeft;
 }
 
 /**

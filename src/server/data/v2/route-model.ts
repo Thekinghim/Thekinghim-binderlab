@@ -427,7 +427,8 @@ export function emptyRouteText(
     };
   }
   if (route.removed.length > 0 && route.stops.length === 0) {
-    return { title: "Du hoppade över alla stopp i dag", body: route.needing > 0 ? need : null };
+    // Neutralt: läsaren (och den som inte flyttade något) ska inte få skulden.
+    return { title: "Alla dagens stopp är flyttade", body: route.needing > 0 ? need : null };
   }
   if (route.needing > 0) return { title: "Inga stopp i dag", body: need };
   return { title: "Ingen påfyllning behövs i dag", body: null };

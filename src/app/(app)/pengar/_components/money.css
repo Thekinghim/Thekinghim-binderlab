@@ -894,6 +894,13 @@
   .g4-ywrap {
     overflow-x: auto;
     overscroll-behavior-x: contain;
+    /* Skugga i högerkanten medan det finns fler månader att rulla fram; vid slutet täcks den
+       av panelfärgen som följer innehållet (local). */
+    background:
+      linear-gradient(to left, var(--v2-panel) 40%, transparent) right center / 32px 100% no-repeat
+        local,
+      linear-gradient(to left, rgb(0 0 0 / 0.1), transparent) right center / 14px 100% no-repeat
+        scroll;
   }
   .g4-yt {
     border-collapse: collapse;

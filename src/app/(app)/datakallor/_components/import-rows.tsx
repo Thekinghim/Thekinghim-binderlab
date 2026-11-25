@@ -26,6 +26,14 @@ const LABEL: Record<ImportDetailRow["status"], string> = {
 };
 
 /** Radloggen för en import, filtrerad på ?visa= (fel och konflikter som standard). */
+/** Vad talet ovanför tabellen räknar ("0 rader med problem", inte bara "0 rader"). */
+const ROWS_TEXT: Record<ImportRowFilter, string> = {
+  problem: "rader med problem",
+  fel: "rader med fel",
+  konflikter: "rader med konflikt",
+  nya: "nya rader",
+};
+
 export function ImportRows({
   detail,
   filter,
@@ -120,6 +128,11 @@ export function ImportRows({
     },
   ];
 
+  // Meddelandet finns bara på rader med fel eller konflikt: en kolumn med bara streck döljs.
+  const shownColumns = detail.rows.some((r) => r.message)
+    ? columns
+    : columns.filter((col) => col.key !== "message");
+
   const emptyText =
     filter === "nya"
       ? "Importen gav inga nya order."
@@ -134,7 +147,7 @@ export function ImportRows({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-v2-sm text-v2-mute tabular-nums">
           {formatInt(detail.rows.length)}
-          {detail.truncated ? "+" : ""} rader
+          {detail.truncated ? "+" : ""} {ROWS_TEXT[filter]}
         </p>
         <Segmented<ImportRowFilter>
           label="Visa rader"
@@ -161,7 +174,7 @@ export function ImportRows({
         ) : (
           <DataTable
             surface="bg"
-            columns={columns}
+            columns={shownColumns}
             rows={detail.rows}
             rowKey={(r) => String(r.rowNumber)}
             caption="Radlogg för importen"

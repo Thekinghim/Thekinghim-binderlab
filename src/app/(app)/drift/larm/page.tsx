@@ -205,6 +205,7 @@ export default async function AlertSettingsPage() {
                   <WeeklySwitch
                     // Delad komponent: rubriken i kortets storlek (14 px halvfet).
                     className="[&_#vecka-knapp]:text-v2-md [&_#vecka-knapp]:font-[650]"
+                    switchClassName="ops-switch"
                     initial={{
                       on: weekly.on,
                       publicKey: ch.push.publicKey,

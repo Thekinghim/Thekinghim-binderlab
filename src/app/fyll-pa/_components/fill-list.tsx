@@ -632,15 +632,6 @@ export function ReceiptCard({
   );
 }
 
-/** Nästa automat i högerspalten (datorn). */
-export function NextCard({ next, onOpen }: { next: NextStop; onOpen: () => void }) {
-  return (
-    <section className="fl-ncard">
-      <NextBlock next={next} onRoute={false} onOpenNext={onOpen} />
-    </section>
-  );
-}
-
 /**
  * Den gjorda påfyllningen som rad i listan: "Automat 01 · Bio Fyren", "Klar 09:42", packen med
  * "+N" och "+22 pack". På telefonen bär raden bekräftelsen (role="status", Ångra, Stäng); på

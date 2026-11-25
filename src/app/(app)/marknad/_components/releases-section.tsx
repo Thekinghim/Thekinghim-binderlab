@@ -207,7 +207,8 @@ function Outcome({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
       {view.outcomeBasis === "suggestion" ? (
         <p className="text-v2-sm text-v2-mute">
           Förslaget fastställdes inte; utfallet jämförs med förslaget per{" "}
-          {dayText(view.suggestionAsOf, ctx.today)}.
+          {/* dayText kan sluta på "." ("13 nov."): ingen punkt till. */}
+          {dayText(view.suggestionAsOf, ctx.today).replace(/\.$/, "")}.
         </p>
       ) : null}
       {o.machines.length > 0 ? (
@@ -267,12 +268,14 @@ function ReleaseCard({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) 
               {r.series ? ` · ${r.series}` : ""}
             </p>
             <h3 id={headingId} className="text-v2-lg font-[550] text-balance">
-              {r.name}.
+              {r.name}
             </h3>
             <p className="meta text-v2-mute">
               {view.titleName ? `Titel: ${view.titleName}` : "Ingen titel kopplad"}
               {view.supplierName ? ` · ${view.supplierName}` : ""}
-              {r.scaleBp !== 10_000 ? ` · storlek ${formatInt(r.scaleBp / 100)}${NBSP}%` : ""}
+              {r.scaleBp !== 10_000
+                ? ` · ${formatInt(Math.abs(r.scaleBp - 10_000) / 100)}${NBSP}% ${r.scaleBp > 10_000 ? "större" : "mindre"} beställning`
+                : ""}
             </p>
           </div>
           <div className="shrink-0">{statusTag(view)}</div>
