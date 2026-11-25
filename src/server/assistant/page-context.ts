@@ -144,7 +144,7 @@ export const PAGE_INFO: Partial<Record<RouteId, PageInfo>> = {
   pengar: {
     name: "Pengar",
     about:
-      "vinst, intäkt och kostnader för perioden, vad som ska betalas och utbetalningarna från Nayax",
+      "vinst, intäkt och kostnader för perioden, vem pengarna är till (min andel, partnerns, butikernas och momsen att spara, bara för ägare och admin), vad som ska betalas och utbetalningarna från Nayax",
     chips: ["Varför ändrades vinsten?", "Vad ska jag betala ut?", "Vilken automat tjänar mest?"],
   },
   rutt: {
