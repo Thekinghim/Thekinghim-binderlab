@@ -13,7 +13,7 @@
 import { useRouter } from "next/navigation";
 import { Component, Suspense, startTransition, type ReactNode } from "react";
 
-import { isTransientLoadError } from "@/lib/load-error";
+import { isChunkLoadError, isTransientLoadError } from "@/lib/load-error";
 
 /**
  * Bryts strömmen faller ofta många kort på en gång: ett gemensamt router.refresh för alla
@@ -26,6 +26,23 @@ function refreshSoon(refresh: () => void) {
     refreshTimer = null;
     startTransition(refresh);
   }, 50);
+}
+
+/**
+ * En kodfil från ett äldre bygge finns inte kvar: ladda om sidan, men högst en gång per
+ * 30 sekunder (sessionStorage), så att det aldrig blir en slinga.
+ */
+const RELOAD_KEY = "binderlab-kort-omladdning";
+function reloadAllowed(): boolean {
+  try {
+    const last = Number(window.sessionStorage.getItem(RELOAD_KEY) ?? 0);
+    const now = Date.now();
+    if (Number.isFinite(last) && last <= now && now - last < 30_000) return false;
+    window.sessionStorage.setItem(RELOAD_KEY, String(now));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Så många tysta omförsök per kort innan raden med Försök igen visas. */
@@ -78,6 +95,10 @@ class CardBoundary extends Component<BoundaryProps, BoundaryState> {
       this.listening = true;
       window.addEventListener("online", this.onBack);
       document.addEventListener("visibilitychange", this.onBack);
+    }
+    if (isChunkLoadError(this.state.error) && reloadAllowed()) {
+      window.location.reload();
+      return;
     }
     if (isTransientLoadError(this.state.error) && this.state.retries < AUTO_RETRIES) {
       this.schedule(this.state.retries === 0 ? 400 : 2000);

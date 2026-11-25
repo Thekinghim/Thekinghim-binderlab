@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { StateMessage, type StateDiagnostic } from "@/components/ui/state-message";
 import { useT } from "@/i18n/client";
-import { isTransientLoadError } from "@/lib/load-error";
+import { isChunkLoadError, isTransientLoadError } from "@/lib/load-error";
 
 /** Klockan i Stockholm, som resten av appen (inte webbläsarens tidszon): "15:51". */
 const stockholmTime = new Intl.DateTimeFormat("sv-SE", {
@@ -115,7 +115,9 @@ export function RouteError({
     const run = () => {
       if (navigator.onLine === false || document.visibilityState !== "visible") return;
       if (!takeAutoRetry()) return;
-      again();
+      // En kodfil från ett äldre bygge: bara en hel omladdning hämtar det nya bygget.
+      if (isChunkLoadError(error)) window.location.reload();
+      else again();
     };
     const t = window.setTimeout(run, 500);
     window.addEventListener("online", run);

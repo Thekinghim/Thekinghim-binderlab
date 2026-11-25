@@ -14,6 +14,9 @@ const PATTERNS = [
   /network connection was lost/i,
   /^network request failed/i,
   /connection closed/i,
+  // Produktionsbygget av React: "Minified React error #412" = Connection closed.
+  /react\.dev\/errors\/412\b/i,
+  /minified react error #412\b/i,
   /loading (css )?chunk [^ ]+ failed/i,
   /failed to load chunk/i,
   /importing a module script failed/i,
@@ -29,4 +32,13 @@ export function isTransientLoadError(error: unknown): boolean {
   if (e.name === "ChunkLoadError") return true;
   const message = typeof e.message === "string" ? e.message.trim() : "";
   return message !== "" && PATTERNS.some((p) => p.test(message));
+}
+
+/** En kodfil som inte kunde hämtas (gammalt bygge): bara en hel omladdning hjälper. */
+export function isChunkLoadError(error: unknown): boolean {
+  if (!isTransientLoadError(error)) return false;
+  const e = error as { name?: unknown; message?: unknown };
+  if (e.name === "ChunkLoadError") return true;
+  const message = typeof e.message === "string" ? e.message : "";
+  return /chunk|module script|dynamically imported module/i.test(message);
 }

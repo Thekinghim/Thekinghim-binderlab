@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isTransientLoadError } from "./load-error";
+import { isChunkLoadError, isTransientLoadError } from "./load-error";
 
 describe("isTransientLoadError", () => {
   it("känner igen brutna nedladdningar i Safari, Chrome, Firefox och React", () => {
@@ -25,5 +25,20 @@ describe("isTransientLoadError", () => {
     ).toBe(false);
     expect(isTransientLoadError(null)).toBe(false);
     expect(isTransientLoadError("Load failed")).toBe(false);
+  });
+
+  it("Reacts produktionsfel #412 (strömmen bröts) och kodfiler som saknas", () => {
+    expect(
+      isTransientLoadError(
+        new Error(
+          "Minified React error #412; visit https://react.dev/errors/412 for the full message",
+        ),
+      ),
+    ).toBe(true);
+    expect(isChunkLoadError(new Error("Failed to load chunk /_next/static/chunks/a.js"))).toBe(
+      true,
+    );
+    expect(isChunkLoadError(new TypeError("Load failed"))).toBe(false);
+    expect(isChunkLoadError(new Error("boom"))).toBe(false);
   });
 });
