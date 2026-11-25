@@ -462,6 +462,14 @@ Migreringen `20261102122143_drift_larm_arenden.sql`. Drizzle: `alerts` och `inci
   svarade (`job`, `called_at`, `answered_at`, `status_code`, `timed_out`, `error`), 30 dagar. Ligger i schemat
   `private`: inga klientroller når den, servern läser den som systemroll (vakten). Fylls i av
   `private.cron_call` och `private.cron_collect`.
+- **private.client_errors** (`20261231000200_klientfel.sql`): fel som telefonen eller webbläsaren
+  själv kastade (felrutan "Sidan kunde inte laddas" och ohanterade fel i skalet): `user_id`,
+  `organization_id` (bara om personen är medlem), `path` (utan frågesträng), `message` (≤ 500),
+  `stack` (≤ 4000), `digest`, `build_id`, `user_agent` (≤ 300), `extra` (`source`, `online`,
+  `standalone`, `visibility`). 30 dagar. Ingen klientroll når tabellen; enda vägen in är
+  `public.report_client_error` (authenticated, security definer), som kortar fälten, tar bort
+  frågesträngar och e-postadresser och släpper fler än 30 rader per person och timme. Skickas från
+  `POST /api/klientfel` (`src/components/pwa/client-error-report.ts`). Läses av operatören med SQL.
 - **alerts.kind `order_attention`** (familjen `system`): en order som måste hanteras för hand, nyckel
   `order_refund:<källa>:<order>` eller `order_error:<källa>:<order>`. Skrivs av Awish-synken, stängs när ordern är
   hanterad. Vaktens larm har typen `job_failed` och nyckeln `watch:<rad>`.

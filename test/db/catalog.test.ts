@@ -130,6 +130,9 @@ const RPCS = [
   "reopen_period",
   // Månadsstängning från appen: öppna med anledning (ägare).
   "reopen_period_with_reason",
+  // Klientfel (20261231000200_klientfel.sql): telefonens eget fel till private.client_errors,
+  // alla inloggade, högst 30 per person och timme.
+  "report_client_error",
   // V2: dagens gräns för rutten, för alla roller (20261223000000_v2_rutt.sql).
   "route_settings",
   "sales_data_until",
@@ -713,6 +716,7 @@ describe("anon", () => {
       rename_warehouse: sql`gen_random_uuid(), gen_random_uuid(), 'x'`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       reopen_period_with_reason: sql`gen_random_uuid(), '2025-01-01'::date, 'Rödteam'`,
+      report_client_error: sql`'/', 'x', '', null::text, null::text, null::text, '{}'::jsonb, null::uuid`,
       route_settings: sql`gen_random_uuid()`,
       sales_data_until: sql`gen_random_uuid()`,
       save_mystery_recipe: sql`gen_random_uuid(), gen_random_uuid(), 14, '[]'::jsonb`,

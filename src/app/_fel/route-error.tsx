@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { reportClientError } from "@/components/pwa/client-error-report";
 import { StateMessage, type StateDiagnostic } from "@/components/ui/state-message";
 import { useT } from "@/i18n/client";
 
@@ -82,6 +83,9 @@ export function RouteError({
   );
   useEffect(() => {
     console.error(error);
+    // Felet sparas i databasen (private.client_errors) så att det går att läsa utan
+    // skärmdump. En gång per fel; kastar aldrig.
+    reportClientError(error, "boundary");
   }, [error]);
 
   const t = useT();

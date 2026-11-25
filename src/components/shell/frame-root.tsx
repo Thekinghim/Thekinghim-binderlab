@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+
+import { listenForUncaughtErrors } from "@/components/pwa/client-error-report";
 
 import { LocaleProvider, LocaleSync } from "@/i18n/client";
 import type { Locale } from "@/i18n/locale";
@@ -28,6 +30,7 @@ export function AppFrameRoot({
   return (
     <LocaleProvider locale={locale}>
       <LocaleSync locale={locale} />
+      <ClientErrorListener />
       {simple ? (
         <SimpleShell
           role={simple.role as Exclude<Role, "store">}
@@ -41,4 +44,10 @@ export function AppFrameRoot({
       )}
     </LocaleProvider>
   );
+}
+
+/** Fel som ingen felruta fångade skickas till /api/klientfel (client-error-report.ts). */
+function ClientErrorListener() {
+  useEffect(() => listenForUncaughtErrors(), []);
+  return null;
 }
