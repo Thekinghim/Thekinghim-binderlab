@@ -111,6 +111,7 @@ describe("splitView", () => {
       reimbOre: 72_000,
       profitShareOre: 25_600,
       bp: 5_000,
+      bps: [5_000],
       lossOre: 0,
     });
     expect(v.rows[0]!.shareBp).toBe(1_422);
@@ -121,8 +122,8 @@ describe("splitView", () => {
     const co = v.rows.find((r) => r.kind === "store_owner")!;
     expect(co.label).toBe("Bolaget AB");
     expect(co.stores).toEqual([
-      { storeId: "s1", name: "Butik 1", amountOre: 20_000 },
-      { storeId: "s2", name: "Butik 2", amountOre: 5_000 },
+      { storeId: "s1", name: "Butik 1", amountOre: 20_000, displayOre: 20_000 },
+      { storeId: "s2", name: "Butik 2", amountOre: 5_000, displayOre: 5_000 },
     ]);
     const own = v.rows.find((r) => r.kind === "store")!;
     expect(own.label).toBe("Butik 3");
@@ -227,5 +228,71 @@ describe("splitView", () => {
     expect(v.basisOre).toBe(0);
     expect(v.rows.map((r) => r.key)).toEqual(["owner", "partner"]);
     expect(v.rows.every((r) => r.amountOre === 0 && r.shareBp === null)).toBe(true);
+  });
+
+  it("ingen försäljning men hyra: inte tomt, ägaren lägger till hyran", () => {
+    const v = view({
+      slices: [slice({ storeId: "s3", orders: 0, storeShareOre: 58_065 })],
+      trueUps: [],
+      vat: example().vat,
+      partner: null,
+    });
+    expect(v.empty).toBe(false);
+    expect(v.basisOre).toBe(0);
+    expect(v.rows[0]).toMatchObject({ key: "owner", amountOre: -58_065, displayOre: -58_100 });
+    expect(v.rows.find((r) => r.kind === "store")).toMatchObject({ displayOre: 58_100 });
+    expect(v.rows.reduce((a, r) => a + r.displayOre, 0)).toBe(0);
+  });
+
+  it("avtalet ändras mitt i perioden: båda andelarna i ordning", () => {
+    const v = view({
+      ...example(),
+      partner: {
+        segments: [
+          segment({ to: "2026-10-14", costOre: 36_000, weightOre: 1 }),
+          segment({ agreementId: "pa-2", reimburse: false, bp: 3_000, from: "2026-10-15" }),
+        ],
+        carryInOre: 0,
+      },
+    });
+    const p = v.rows.find((r) => r.kind === "partner")!.partner!;
+    expect(p.bps).toEqual([5_000, 3_000]);
+    expect(p.bp).toBe(3_000);
+    expect(p.reimbOre).toBe(36_000);
+    expect(v.rows.reduce((a, r) => a + r.amountOre, 0)).toBe(v.basisOre);
+  });
+
+  it("bolagets butiker i kronor summerar till bolagets rad i kronor", () => {
+    const split = {
+      slices: [
+        slice({
+          storeId: "s1",
+          payee: { kind: "store_owner", id: "o1" },
+          grossOre: 10_000,
+          storeShareOre: 1_049,
+        }),
+        slice({
+          storeId: "s2",
+          payee: { kind: "store_owner", id: "o1" },
+          grossOre: 10_000,
+          storeShareOre: 1_049,
+        }),
+        slice({
+          storeId: "s3",
+          payee: { kind: "store_owner", id: "o1" },
+          grossOre: 10_000,
+          storeShareOre: 1_049,
+        }),
+      ],
+      trueUps: [],
+      vat: { mode: "none" as const, carryInOre: 0, vatRateBp: 2_500 },
+      partner: null,
+    };
+    const v = view(split);
+    const co = v.rows.find((r) => r.kind === "store_owner")!;
+    expect(co.amountOre).toBe(3_147);
+    expect(co.stores!.reduce((a, st) => a + st.displayOre, 0)).toBe(co.displayOre);
+    for (const st of co.stores!)
+      expect(Math.abs(st.displayOre - st.amountOre)).toBeLessThanOrEqual(150);
   });
 });

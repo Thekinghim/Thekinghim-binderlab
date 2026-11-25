@@ -40,6 +40,8 @@ export interface SplitRowStore {
   readonly storeId: string;
   readonly name: string;
   readonly amountOre: number;
+  /** I hela kronor; butikerna summerar till bolagets rad i kronor. */
+  readonly displayOre: number;
 }
 
 export interface SplitRow {
@@ -60,6 +62,8 @@ export interface SplitRow {
     readonly reimbOre: number;
     readonly profitShareOre: number;
     readonly bp: number | null;
+    /** Avtalens andelar (bp) i ordning, utan upprepningar: fler än en = avtalet ändrades. */
+    readonly bps: readonly number[];
     /** Partnerns del av en förlust (≤ 0) som inte dras här. */
     readonly lossOre: number;
   };
@@ -77,7 +81,7 @@ export interface SplitView {
   /** "Min andel" först, sedan störst först. */
   readonly rows: readonly SplitRow[];
   readonly orders: number;
-  /** Ingen försäljning och inga återbetalningar i perioden. */
+  /** Inget att dela: alla rader är 0 (ingen försäljning, ingen hyra, inga återbetalningar). */
   readonly empty: boolean;
   /** Vinsten efter butiker, partnerns inköp och moms (före partnerns andel). */
   readonly profitOre: number;
@@ -118,7 +122,10 @@ export function splitView(input: SplitViewInput): SplitView {
   });
   const refundsOutside = inNayax ? 0 : refundsOre;
 
-  const raw: Omit<SplitRow, "displayOre" | "shareBp">[] = [];
+  type RawRow = Omit<SplitRow, "displayOre" | "shareBp" | "stores"> & {
+    stores?: Omit<SplitRowStore, "displayOre">[];
+  };
+  const raw: RawRow[] = [];
   let partnerLine: Extract<SplitLine, { kind: "partner" }> | null = null;
   for (const line of result.lines) {
     if (line.kind === "store" || line.kind === "store_owner") {
@@ -152,11 +159,11 @@ export function splitView(input: SplitViewInput): SplitView {
       }
     }
   }
-  const agreementBp = (() => {
-    if (!partnerLine) return null;
-    const seg = [...partnerLine.partner.segments].reverse().find((s) => s.agreementId !== null);
-    return seg ? seg.bp : null;
-  })();
+  const agreementBps: number[] = [];
+  for (const seg of partnerLine?.partner.segments ?? []) {
+    if (seg.agreementId !== null && agreementBps.at(-1) !== seg.bp) agreementBps.push(seg.bp);
+  }
+  const agreementBp = agreementBps.at(-1) ?? null;
   raw.push({
     key: "partner",
     kind: "partner",
@@ -167,6 +174,7 @@ export function splitView(input: SplitViewInput): SplitView {
       reimbOre: partnerLine?.partner.reimbOre ?? 0,
       profitShareOre: partnerLine?.partner.profitShareOre ?? 0,
       bp: agreementBp,
+      bps: agreementBps,
       lossOre: partnerLine?.partner.carryOutOre ?? 0,
     },
   });
@@ -183,7 +191,7 @@ export function splitView(input: SplitViewInput): SplitView {
     });
   }
   const ownerLine = result.lines.find((l) => l.kind === "owner");
-  const owner: Omit<SplitRow, "displayOre" | "shareBp"> = {
+  const owner: RawRow = {
     key: "owner",
     kind: "owner",
     label: "Min andel",
@@ -199,18 +207,14 @@ export function splitView(input: SplitViewInput): SplitView {
     // Kan inte hända (ägaren får resten); skydd mot framtida ändringar.
     throw new RangeError(`Fördelningen blir ${sum} öre, inte ${grossOre}.`);
   }
-  const kr = (ore: number) => Math.round(ore / 100) * 100;
-  let cum = 0;
-  let shown = 0;
-  const rows: SplitRow[] = ordered.map((r) => {
-    cum += r.amountOre;
-    const next = kr(cum);
-    const displayOre = next - shown;
-    shown = next;
+  const rows: SplitRow[] = ordered.map((r, i) => {
+    const displayOre = shownKr(ordered, i);
+    const { stores, ...rest } = r;
     return {
-      ...r,
-      displayOre: displayOre === 0 ? 0 : displayOre,
+      ...rest,
+      displayOre,
       shareBp: grossOre > 0 ? ratioBp(Math.abs(r.amountOre), grossOre) : null,
+      ...(stores ? { stores: storesInKr(stores, displayOre) } : {}),
     };
   });
 
@@ -222,7 +226,7 @@ export function splitView(input: SplitViewInput): SplitView {
     basisDisplayOre: kr(grossOre),
     rows,
     orders,
-    empty: grossOre === 0 && refundsOre === 0,
+    empty: ordered.every((r) => r.amountOre === 0),
     profitOre: result.totals.profitOre,
     unpricedOrders: unpriced && unpriced.code === "UNPRICED" ? unpriced.orders : 0,
     shareUnknownStoreIds: [
@@ -230,4 +234,28 @@ export function splitView(input: SplitViewInput): SplitView {
     ],
     liveMonths: live && live.code === "LIVE_ESTIMATE" ? live.months : [],
   };
+}
+
+const kr = (ore: number) => Math.round(ore / 100) * 100;
+
+/** Rad i i hela kronor: round(Σ t.o.m. i) − round(Σ t.o.m. i−1) (se filhuvudet). */
+function shownKr(list: readonly { readonly amountOre: number }[], i: number): number {
+  let before = 0;
+  for (let k = 0; k < i; k++) before += list[k]!.amountOre;
+  const d = kr(before + list[i]!.amountOre) - kr(before);
+  return d === 0 ? 0 : d;
+}
+
+/**
+ * Bolagets butiker i hela kronor, så att de summerar till bolagets rad i kronor: kumulativt
+ * som raderna, och skillnaden mot radens kronor (högst 1 kr) läggs på den största butiken.
+ */
+function storesInKr(
+  stores: readonly Omit<SplitRowStore, "displayOre">[],
+  rowDisplayOre: number,
+): SplitRowStore[] {
+  const out = stores.map((st, i) => ({ ...st, displayOre: shownKr(stores, i) }));
+  const diff = rowDisplayOre - out.reduce((a, st) => a + st.displayOre, 0);
+  if (out.length > 0 && diff !== 0) out[0] = { ...out[0]!, displayOre: out[0]!.displayOre + diff };
+  return out;
 }

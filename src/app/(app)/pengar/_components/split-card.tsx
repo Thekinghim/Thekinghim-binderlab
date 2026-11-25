@@ -42,7 +42,8 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
       </Card>
     );
   }
-  const max = Math.max(1, v.basisOre);
+  // Stapeln: andel av försäljningen; utan försäljning (bara hyra) av den största raden.
+  const max = Math.max(1, v.basisOre, ...v.rows.map((r) => Math.abs(r.amountOre)));
   return (
     <Card title={title} link={PAY} className="g4-split">
       <div className="g4-sp" data-testid="pengar-fordelning">
@@ -90,7 +91,7 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
                   {row.stores.map((st) => (
                     <div key={st.storeId}>
                       <span>{st.name}</span>
-                      <span className="tnum">{kr(st.amountOre)}</span>
+                      <span className="tnum">{kr(st.displayOre)}</span>
                     </div>
                   ))}
                 </div>
@@ -140,6 +141,15 @@ function Notes({ children }: { children: ReactNode[] }) {
   );
 }
 
+/** "50 % av vinsten", eller "50 % av vinsten, sedan 30 %" när avtalet ändrades i perioden. */
+function profitText(bps: readonly number[]): string | null {
+  if (bps.length === 0 || bps.every((bp) => bp === 0)) return null;
+  const [first, ...rest] = bps.map((bp) => pct(bp, 0));
+  return rest.length > 0
+    ? `${first} av vinsten, sedan ${rest.join(", sedan ")}`
+    : `${first} av vinsten`;
+}
+
 /** Raden under namnet: varifrån beloppet kommer, kort. */
 function subText(row: SplitRow): ReactNode {
   switch (row.kind) {
@@ -159,10 +169,9 @@ function subText(row: SplitRow): ReactNode {
           </>
         );
       }
-      const parts = [
-        p.reimbOre > 0 ? `Inköpet ${kr(p.reimbOre)}` : null,
-        p.bp !== null && p.bp > 0 ? `${pct(p.bp, 0)} av vinsten` : null,
-      ].filter(Boolean);
+      const parts = [p.reimbOre > 0 ? `Inköpet ${kr(p.reimbOre)}` : null, profitText(p.bps)].filter(
+        Boolean,
+      );
       const base = parts.length > 0 ? parts.join(" + ") : "Enligt avtalet";
       // Vid förlust blir partnerns rad aldrig negativ: dess del av förlusten dras nästa gång.
       return p.lossOre < 0
