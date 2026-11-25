@@ -21,17 +21,31 @@ const NO_CONTENT = () =>
  * komma fram. Svarar alltid 204 (utom fel ursprung), så att felrutan aldrig får ett nytt fel.
  * Utloggad: proxyn skickar till inloggningen och inget sparas.
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  // Bara från appens egna sidor: en annan webbplats ska inte kunna skriva rader i personens namn.
+/**
+ * Bara från appens egna sidor: en annan webbplats ska inte kunna skriva rader i personens namn.
+ * Samma jämförelse som /installningar/export och /assistent/fraga (Origin mot värden som
+ * Vercel skickar vidare), inte request.nextUrl.origin, som bakom en proxy kan ha fel värd
+ * eller protokoll och då skulle avvisa varje rapport utan att någon märker det. Origin "null"
+ * (sandlådad ram, okänt ursprung) godtas inte.
+ */
+function sameOrigin(request: NextRequest): boolean {
   const site = request.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin") return false;
   const origin = request.headers.get("origin");
-  if (
-    (site && site !== "same-origin") ||
-    (origin && origin !== request.nextUrl.origin && origin !== "null")
-  ) {
-    return new NextResponse(null, { status: 403 });
-  }
+  if (!origin) return true;
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!sameOrigin(request)) return new NextResponse(null, { status: 403 });
+  try {
+    const length = Number(request.headers.get("content-length") ?? "0");
+    if (length > MAX_BODY) return NO_CONTENT();
     const user = await getSessionUser();
     if (!user) return NO_CONTENT();
     const text = await request.text();
