@@ -335,14 +335,15 @@ export function CommandDialog({
                         onPointerDown={(e) => e.preventDefault()}
                         onClick={() => row.onSelect()}
                         className={cn(
-                          "relative mx-1.5 flex min-h-9 cursor-default items-center gap-3 rounded-sm py-1.5 pr-2.5 pl-[22px] select-none sm:py-0",
+                          "relative mx-1.5 flex min-h-9 cursor-default items-center gap-3 rounded-sm py-1.5 pr-2.5 pl-[22px] select-none max-sm:min-h-11 max-sm:pl-3 sm:py-0",
                           isActive && "bg-hover",
                         )}
                       >
                         <span
                           aria-hidden
                           className={cn(
-                            "absolute top-1/2 left-2 size-1 -translate-y-1/2 bg-fg transition-opacity duration-fast ease-instrument",
+                            // Telefon: den markerade raden syns på bakgrunden; fyrkanten såg ut som ett fel.
+                            "absolute top-1/2 left-2 size-1 -translate-y-1/2 bg-fg transition-opacity duration-fast ease-instrument max-sm:hidden",
                             isActive ? "opacity-100" : "opacity-0",
                           )}
                         />
