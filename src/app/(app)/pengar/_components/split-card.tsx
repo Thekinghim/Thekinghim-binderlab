@@ -86,7 +86,8 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
           if (row.stores && row.stores.length > 0) {
             return (
               <details key={row.key} className="g4-sp-co" data-split-row={row.kind}>
-                <summary className={cls}>{line}</summary>
+                {/* "grid" i klassen: globals.css gör annars summary till flex på mobil. */}
+                <summary className={`${cls} grid`}>{line}</summary>
                 <div className="g4-sp-stores">
                   {row.stores.map((st) => (
                     <div key={st.storeId}>
