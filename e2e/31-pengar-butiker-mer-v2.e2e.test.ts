@@ -1,7 +1,8 @@
 /**
  * Pengar, Butiker och Mer i V2 (G4) på datorn och på en iPhone 15: ägaren ser resultatet,
- * vattenfallet och tabellen per automat, butikslistan med den valda butiken och Mer utan
- * sidledsrullning. Påfyllaren skickas bort från Pengar och Butiker och får 403 på exporten.
+ * vem pengarna är till (Min andel först), vattenfallet och tabellen per automat, butikslistan
+ * med den valda butiken och Mer utan sidledsrullning. Påfyllaren skickas bort från Pengar och
+ * Butiker och får 403 på exporten.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -57,6 +58,15 @@ describe.each([
     await page.getByRole("heading", { level: 1, name: /Pengar/ }).waitFor();
     await page.locator('[data-testid="pengar-vinst"]').waitFor();
     await page.locator('[data-waterfall="result"]').waitFor();
+    // Vem pengarna är till: Min andel först (eller en lugn rad utan försäljning).
+    await page
+      .locator('[data-testid="pengar-fordelning"], [data-testid="split-empty"]')
+      .first()
+      .waitFor();
+    const split = page.locator('[data-testid="pengar-fordelning"] [data-split-row]');
+    if ((await split.count()) > 0) {
+      expect(await split.first().getAttribute("data-split-row")).toBe("owner");
+    }
     await page.waitForLoadState("networkidle");
     await noSideScroll(page);
     await screenshot(page, `pengar-v2-agare-${name}`);

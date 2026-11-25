@@ -25,6 +25,7 @@ import {
   WaterfallCard,
   WorstCard,
 } from "./_components/cards";
+import { SplitCard } from "./_components/split-card";
 import "./_components/money.css";
 
 export const metadata: Metadata = { title: "Pengar" };
@@ -41,7 +42,8 @@ function Slot({ o, rows = 3, children }: { o: number; rows?: number; children: R
 }
 
 /**
- * Pengar (/pengar, G4): resultatet för perioden, vägen från intäkt till vinst, vinst per stad,
+ * Pengar (/pengar, G4): resultatet för perioden, vem pengarna är till (Min andel, partnern,
+ * butikerna, momsen; bara ägare och admin), vägen från intäkt till vinst, vinst per stad,
  * underpresterande automater och vinst per automat och månad i huvudspalten; att betala till
  * butikerna, månadens mål, prisrådet och bästsäljarna till höger. Ägare, admin och läsare
  * (läsaren kan inte betala). Varje kort läser samma laddare som Lönsamhet och Butiker
@@ -67,6 +69,9 @@ export default async function MoneyPage({ searchParams }: { searchParams: Promis
               <Sold sp={sp} />
             </Slot>
           ) : null}
+          <Slot o={1} rows={6}>
+            <SplitCard sp={sp} days={days} />
+          </Slot>
           <Slot o={6} rows={7}>
             <WaterfallCard sp={sp} days={days} />
           </Slot>
