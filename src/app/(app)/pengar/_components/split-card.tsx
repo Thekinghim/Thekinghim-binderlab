@@ -43,6 +43,9 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
     );
   }
   // Stapeln: andel av försäljningen; utan försäljning (bara hyra) av den största raden.
+  // Utan partneravtal får ägaren också tillbaka det korten kostade: säg det, så att andelen
+  // inte läses som vinst.
+  const noAgreement = v.rows.some((r) => r.kind === "partner" && !r.partner?.hasAgreement);
   const max = Math.max(1, v.basisOre, ...v.rows.map((r) => Math.abs(r.amountOre)));
   return (
     <Card title={title} link={PAY} className="g4-split">
@@ -56,7 +59,7 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
             <>
               <span className="nm">
                 <b>{row.label}</b>
-                <small>{subText(row)}</small>
+                <small>{subText(row, noAgreement)}</small>
               </span>
               <span className="bar" aria-hidden="true">
                 <i
@@ -152,12 +155,14 @@ function profitText(bps: readonly number[]): string | null {
 }
 
 /** Raden under namnet: varifrån beloppet kommer, kort. */
-function subText(row: SplitRow): ReactNode {
+function subText(row: SplitRow, noAgreement: boolean): ReactNode {
   switch (row.kind) {
     case "owner":
       return row.amountOre < 0
         ? `Förlust. Du behöver lägga till ${kr(-row.amountOre)}.`
-        : "Det som blir kvar till dig.";
+        : noAgreement
+          ? "Det som blir kvar till dig, med pengarna för korten du köpt in."
+          : "Det som blir kvar till dig.";
     case "partner": {
       const p = row.partner;
       if (!p || !p.hasAgreement) {
