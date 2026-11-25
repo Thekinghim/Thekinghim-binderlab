@@ -41,7 +41,11 @@ export type HealthySample = {
   innerHeight: number;
   /** visualViewport.width: skiljer den sig från innerWidth håller vyn på att vridas. */
   vvWidth: number;
-  visibleBottom: number;
+  /**
+   * visualViewport.height, utan offsetTop: vi lär oss höjder, inte var den synliga vyn slutar.
+   * En kvarglömd offsetTop efter tangentbordet skulle annars läras in som en för stor höjd.
+   */
+  vvHeight: number;
   naturalBottom: number;
   typing: boolean;
   scale: number;
@@ -68,7 +72,7 @@ export function screenHeightFor(innerWidth: number, screenMin: number, screenMax
 export function healthyReading(s: HealthySample): number | null {
   if (s.typing || Math.abs(s.scale - 1) > 0.01) return null;
   if (Math.round(s.innerWidth) !== Math.round(s.vvWidth)) return null;
-  const seen = Math.max(s.innerHeight, s.visibleBottom, s.naturalBottom);
+  const seen = Math.max(s.innerHeight, s.vvHeight, s.naturalBottom);
   if (!Number.isFinite(seen) || seen <= 0) return null;
   const side = screenHeightFor(s.innerWidth, s.screenMin, s.screenMax);
   return Math.round(side > 0 ? Math.min(seen, side) : seen);

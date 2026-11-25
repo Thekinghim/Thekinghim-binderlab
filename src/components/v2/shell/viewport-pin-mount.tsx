@@ -64,7 +64,7 @@ export function ViewportPin() {
             innerWidth: window.innerWidth,
             innerHeight: window.innerHeight,
             vvWidth: vv.width,
-            visibleBottom,
+            vvHeight: vv.height,
             naturalBottom,
             typing,
             scale: vv.scale,

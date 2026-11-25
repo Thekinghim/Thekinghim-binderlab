@@ -53,7 +53,7 @@ const portrait = {
   innerWidth: 390,
   innerHeight: 844,
   vvWidth: 390,
-  visibleBottom: 844,
+  vvHeight: 844,
   naturalBottom: 844,
   typing: false,
   scale: 1,
@@ -65,7 +65,7 @@ const landscape = {
   innerWidth: 844,
   innerHeight: 390,
   vvWidth: 844,
-  visibleBottom: 390,
+  vvHeight: 390,
   naturalBottom: 390,
 };
 
@@ -91,7 +91,7 @@ describe("screenHeightFor och healthyReading", () => {
     expect(healthyReading({ ...portrait, typing: true })).toBeNull();
     expect(healthyReading({ ...portrait, scale: 2 })).toBeNull();
     expect(
-      healthyReading({ ...portrait, innerHeight: 0, visibleBottom: 0, naturalBottom: 0 }),
+      healthyReading({ ...portrait, innerHeight: 0, vvHeight: 0, naturalBottom: 0 }),
     ).toBeNull();
   });
 
@@ -112,16 +112,16 @@ describe("HealthyTracker", () => {
   it("sjunker aldrig av en fastnad vy", () => {
     const t = new HealthyTracker();
     settle(t, portrait);
-    const stuck = { ...portrait, innerHeight: 544, visibleBottom: 544, naturalBottom: 544 };
+    const stuck = { ...portrait, innerHeight: 544, vvHeight: 544, naturalBottom: 544 };
     expect(settle(t, stuck)).toBe(844);
   });
 
   it("en ensam felaktig bildruta lärs inte in", () => {
     const t = new HealthyTracker();
-    settle(t, { ...portrait, innerHeight: 800, visibleBottom: 800, naturalBottom: 800 });
+    settle(t, { ...portrait, innerHeight: 800, vvHeight: 800, naturalBottom: 800 });
     expect(t.sample({ ...portrait, innerHeight: 844 }).healthy).toBe(800);
     expect(
-      t.sample({ ...portrait, innerHeight: 800, visibleBottom: 800, naturalBottom: 800 }).healthy,
+      t.sample({ ...portrait, innerHeight: 800, vvHeight: 800, naturalBottom: 800 }).healthy,
     ).toBe(800);
   });
 
@@ -129,7 +129,7 @@ describe("HealthyTracker", () => {
     const t = new HealthyTracker();
     settle(t, portrait);
     // Mitt i vridningen: bredden har bytts men höjden är kvar från stående läge, två gånger.
-    const mid = { ...landscape, innerHeight: 844, naturalBottom: 844, visibleBottom: 844 };
+    const mid = { ...landscape, innerHeight: 844, naturalBottom: 844, vvHeight: 844 };
     t.sample({ ...mid, vvWidth: 390 });
     t.sample(mid);
     t.sample(mid);
@@ -157,13 +157,47 @@ describe("HealthyTracker", () => {
   });
 });
 
+describe("kvarglömd offsetTop efter tangentbordet", () => {
+  it("lär inte in offsetTop som höjd (statusraden gör vyn kortare än skärmen)", () => {
+    const t = new HealthyTracker();
+    const real = {
+      ...portrait,
+      innerHeight: 793,
+      vvHeight: 793,
+      naturalBottom: 793,
+      screenMax: 852,
+    };
+    expect(settle(t, real)).toBe(793);
+    // Fast vy: offsetTop 200 i två bildrutor, höjden densamma.
+    expect(settle(t, real)).toBe(793);
+    const shiftStuck = pinShift({
+      naturalBottom: 793,
+      visibleBottom: 200 + 793,
+      healthyBottom: t.get(390),
+      scale: 1,
+      typing: false,
+    });
+    expect(shiftStuck).toBe(200);
+    // offsetTop tillbaka till 0: ingen förskjutning kvar.
+    expect(
+      pinShift({
+        naturalBottom: 793,
+        visibleBottom: 793,
+        healthyBottom: t.get(390),
+        scale: 1,
+        typing: false,
+      }),
+    ).toBe(0);
+  });
+});
+
 describe("forgetsHealthy", () => {
   it("orientationchange med oförändrad bredd glömmer inte, och fastnad höjd lärs inte in", () => {
     const t = new HealthyTracker();
     settle(t, portrait);
     expect(forgetsHealthy("orientationchange", 390, 390)).toBe(false);
     // Vyn är fast (tangentbordshöjd för kort) när orientationchange kommer.
-    const stuck = { ...portrait, innerHeight: 544, visibleBottom: 544, naturalBottom: 544 };
+    const stuck = { ...portrait, innerHeight: 544, vvHeight: 544, naturalBottom: 544 };
     if (forgetsHealthy("orientationchange", 390, 390)) t.reset();
     expect(settle(t, stuck)).toBe(844);
     expect(
