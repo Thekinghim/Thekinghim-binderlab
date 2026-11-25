@@ -11,6 +11,7 @@
 
 import { csvField } from "@/lib/csv";
 import { changeBp, ratioBp, type IsoDate } from "@/domain";
+import { cityLabel } from "@/lib/format";
 
 /* ------------------------------------------------------------------ */
 /* Från intäkt till vinst                                              */
@@ -286,7 +287,7 @@ export const NO_CITY = "Utan stad";
 export function profitByCity(machines: readonly MachineProfit[]): CityProfit[] {
   const groups = new Map<string, MachineProfit[]>();
   for (const m of machines) {
-    const city = m.city?.trim() || NO_CITY;
+    const city = cityLabel(m.city) ?? NO_CITY;
     const list = groups.get(city);
     if (list) list.push(m);
     else groups.set(city, [m]);

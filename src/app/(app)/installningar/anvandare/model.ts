@@ -173,7 +173,11 @@ export function headline(memberCount: number, pendingCount: number): string {
 /** Metadata till rubriken: antal per roll, i rollordning, även nollor. */
 export function roleMeta(members: readonly Pick<MemberRow, "role">[]) {
   const counts = countByRole(members);
-  return ROLE_ORDER.map((role) => ({ label: ROLE_PLURAL[role], value: formatInt(counts[role]) }));
+  // "1 administratör", "2 administratörer".
+  return ROLE_ORDER.map((role) => ({
+    label: counts[role] === 1 ? ROLE_LABEL[role] : ROLE_PLURAL[role],
+    value: formatInt(counts[role]),
+  }));
 }
 
 /** Namnet att visa: visningsnamn, annars delen före @. */

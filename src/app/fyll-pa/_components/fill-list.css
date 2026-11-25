@@ -665,11 +665,9 @@
 
   /* Nästa stopp */
   .fl-ns .ns-l {
-    font-size: var(--v2-t-xs);
+    font-size: var(--v2-t-sm);
     font-weight: 600;
     color: var(--v2-mute);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     margin-bottom: 10px;
   }
   .fl-ns .ns-c {

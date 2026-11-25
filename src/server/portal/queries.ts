@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import type { IsoDate, Period } from "@/domain";
+import { storeNameLabel } from "@/lib/format";
 
 import type { PortalAgreementRow, PortalMachineRow, PortalSaleRow, PortalStore } from "./model";
 
@@ -31,12 +32,14 @@ const iso = (v: unknown): string | null =>
 export async function queryPortalStores(tx: Tx): Promise<PortalStore[]> {
   const result = await rows(
     tx,
-    sql`select store_id, store_name, organization_id, organization_name, timezone, vat_rate_bp
+    sql`select store_id, store_name, store_city, organization_id, organization_name, timezone,
+          vat_rate_bp
         from public.portal_stores()`,
   );
   return result.map((r) => ({
     storeId: str(r.store_id),
-    storeName: str(r.store_name),
+    // Orten i namnet med stor bokstav, som i resten av appen.
+    storeName: storeNameLabel(str(r.store_name), strOrNull(r.store_city)),
     organizationId: str(r.organization_id),
     organizationName: str(r.organization_name),
     timezone: str(r.timezone),

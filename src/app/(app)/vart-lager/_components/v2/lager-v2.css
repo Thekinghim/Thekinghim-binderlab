@@ -71,6 +71,40 @@
   color: var(--v2-warn-text);
   font-weight: 550;
 }
+.v2-lager .rtl .rsh {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--v2-t-sm);
+  max-width: 420px;
+}
+.v2-lager .rtl .rsh li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.v2-lager .rtl .rsh .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v2-lager .rtl .rsh .n {
+  flex: none;
+  white-space: nowrap;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.v2-lager .rtl.o .rsh {
+  color: var(--v2-warn-text);
+}
+.v2-lager .rtl .rsh .more {
+  color: var(--v2-mute);
+}
 
 /* Hemma + På väg (hyllvyns huvud: siffran till vänster, packen på väg till höger) */
 .v2-lager .head2 {

@@ -467,14 +467,14 @@ function PalettePanel({
                     onPointerDown={(e) => e.preventDefault()}
                     onClick={() => onSelectItem(row.item)}
                     className={cn(
-                      "relative mx-1.5 flex h-9 cursor-default items-center gap-3 rounded-sm pr-2.5 pl-[22px] select-none",
+                      "relative mx-1.5 flex h-9 cursor-default items-center gap-3 rounded-sm pr-2.5 pl-[22px] select-none max-sm:h-11 max-sm:pl-3",
                       isActive && "bg-hover",
                     )}
                   >
                     <span
                       aria-hidden
                       className={cn(
-                        "absolute top-1/2 left-2 size-1 -translate-y-1/2 bg-fg transition-opacity duration-fast ease-instrument",
+                        "absolute top-1/2 left-2 size-1 -translate-y-1/2 bg-fg transition-opacity duration-fast ease-instrument max-sm:hidden",
                         isActive ? "opacity-100" : "opacity-0",
                       )}
                     />

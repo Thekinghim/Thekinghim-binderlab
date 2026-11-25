@@ -109,7 +109,7 @@ const columns: Column<HealthRow>[] = [
   {
     key: "since",
     header: "Sedan",
-    render: (r) => <span className="text-v2-xs text-v2-mute">{r.since}</span>,
+    render: (r) => <span className="text-v2-xs whitespace-nowrap text-v2-mute">{r.since}</span>,
     hideOnMobile: true,
   },
   {
@@ -122,10 +122,12 @@ const columns: Column<HealthRow>[] = [
     key: "detail",
     header: "Underlag",
     render: (r) => (
-      <details className="group max-w-xl">
-        {/* Två rader och "Mer"; utfällt hela texten och regeln (raderna blir inte höga). */}
+      <details className="group max-w-xl min-w-[220px]">
+        {/* En rad och "Mer"; utfällt hela texten och regeln (raderna blir inte höga). */}
         <summary className="cursor-pointer list-none text-v2-sm text-v2-ink [&::-webkit-details-marker]:hidden">
-          <span className="line-clamp-2 group-open:line-clamp-none">{r.detail}</span>
+          <span className="line-clamp-1 group-open:line-clamp-none" title={r.detail}>
+            {r.detail}
+          </span>
           <span className="text-v2-xs font-[550] text-v2-mute group-open:hidden">Mer</span>
         </summary>
         <dl className="ops-dl mt-2">

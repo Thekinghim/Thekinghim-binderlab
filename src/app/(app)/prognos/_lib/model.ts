@@ -1025,6 +1025,12 @@ function planModel(
     lowDataOrder: lines.filter((l) => l.status === "order" && !l.own && l.lowData).length,
     draftTitles: lines.filter((l) => l.status === "order" && !l.own && l.drafts.length > 0).length,
     empty: lines.length === 0,
+    overdueDeliveries: data.purchaseOrders.filter(
+      (po) =>
+        (po.status === "ordered" || po.status === "partially_received") &&
+        po.expectedOn !== null &&
+        po.expectedOn < data.today,
+    ).length,
   });
 
   return {
@@ -1067,6 +1073,8 @@ export function planHeading(x: {
   lowDataOrder: number;
   draftTitles: number;
   empty: boolean;
+  /** Beställningar som skulle ha kommit: "Inget att beställa" får inte stå ensamt då. */
+  overdueDeliveries?: number;
 }): Heading {
   const pack = x.packLines;
   const packOne = pack.length === 1 ? pack[0]! : null;
@@ -1091,6 +1099,9 @@ export function planHeading(x: {
     title = `${plural(x.noSupplier, "titel", "titlar")} saknar leverantör.`;
   } else if (x.empty) {
     title = "Inget att planera ännu.";
+  } else if ((x.overdueDeliveries ?? 0) > 0) {
+    const n = x.overdueDeliveries ?? 0;
+    title = n === 1 ? "1 leverans är sen." : `${formatInt(n)} leveranser är sena.`;
   } else {
     title = "Inget att beställa.";
   }
@@ -1130,7 +1141,9 @@ export function planHeading(x: {
           ? "Behövs för att fylla på automaterna."
           : x.empty
             ? "Ingen försäljning än."
-            : "Lagret räcker.",
+            : (x.overdueDeliveries ?? 0) > 0
+              ? "Inget nytt att beställa. Hör av dig till leverantören."
+              : "Lagret räcker.",
     );
   }
   return { title, aside: parts.join(" ") };

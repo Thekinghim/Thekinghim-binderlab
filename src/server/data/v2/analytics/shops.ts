@@ -17,6 +17,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { cache } from "react";
 
+import { cityLabel, storeNameLabel } from "@/lib/format";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import {
   addDays,
@@ -369,8 +370,8 @@ export async function loadShops(sp: SearchParamsInput): Promise<ShopsData | null
       const p = payBy.get(r.id);
       return {
         id: r.id,
-        name: r.name,
-        city: d?.city?.trim() || null,
+        name: storeNameLabel(r.name, d?.city),
+        city: cityLabel(d?.city),
         address: d?.address ?? null,
         contactName: d?.contactName ?? null,
         phone: d?.phone ?? null,

@@ -25,6 +25,7 @@ import {
   type VisitStop,
 } from "@/analytics/visits";
 import { addDays, dayOfWeek, type IsoDate } from "@/domain";
+import { cityLabel } from "@/lib/format";
 
 import type {
   DayRoute,
@@ -257,7 +258,7 @@ export function buildDayRoute(args: {
   const cities: string[] = [];
   const groups: { city: string | null; machineIds: string[]; packs: number }[] = [];
   for (const s of stops) {
-    const city = s.store?.city?.trim() || null;
+    const city = cityLabel(s.store?.city);
     const last = groups[groups.length - 1];
     if (last && last.city === city) {
       last.machineIds.push(s.machineId);
@@ -356,7 +357,7 @@ export function buildDayRoute(args: {
       const list = d.stops.filter((s) => !inRoute.has(s.machineId));
       const dayCities: string[] = [];
       for (const s of list) {
-        const city = byId.get(s.machineId)?.store?.city?.trim();
+        const city = cityLabel(byId.get(s.machineId)?.store?.city);
         if (city && dayCities[dayCities.length - 1] !== city) dayCities.push(city);
       }
       return {
@@ -426,7 +427,8 @@ export function emptyRouteText(
     };
   }
   if (route.removed.length > 0 && route.stops.length === 0) {
-    return { title: "Du hoppade över alla stopp i dag", body: route.needing > 0 ? need : null };
+    // Neutralt: läsaren (och den som inte flyttade något) ska inte få skulden.
+    return { title: "Alla dagens stopp är flyttade", body: route.needing > 0 ? need : null };
   }
   if (route.needing > 0) return { title: "Inga stopp i dag", body: need };
   return { title: "Ingen påfyllning behövs i dag", body: null };

@@ -19,7 +19,8 @@ export function V2Toaster() {
       position={phone ? "bottom-center" : "bottom-right"}
       offset={22}
       mobileOffset={{
-        bottom: "calc(76px + env(safe-area-inset-bottom, 0px))",
+        // Följer bottenraden när ViewportPin flyttar den (iPhone, viewport-pin.ts).
+        bottom: "calc(76px + env(safe-area-inset-bottom, 0px) - var(--v2-vp-shift, 0px))",
         left: 12,
         right: 12,
       }}

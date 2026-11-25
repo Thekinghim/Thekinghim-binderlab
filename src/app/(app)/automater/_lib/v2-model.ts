@@ -11,6 +11,7 @@ import {
   type FleetStatusTone,
 } from "@/analytics/fleet-status";
 import type { GlyphSlot } from "@/components/v2/machine-glyph-model";
+import { cityLabel } from "@/lib/format";
 import type { MachineLook } from "@/lib/machine-look";
 
 /** Ett fack per titel (Awish samlar fack med samma vara). */
@@ -220,7 +221,7 @@ export function groupMachines(
   }
   const by = new Map<string, AutoMachine[]>();
   for (const m of machines) {
-    const k = (group === "stad" ? m.city : m.storeName)?.trim() || "";
+    const k = (group === "stad" ? cityLabel(m.city) : m.storeName?.trim()) || "";
     const list = by.get(k) ?? [];
     list.push(m);
     by.set(k, list);

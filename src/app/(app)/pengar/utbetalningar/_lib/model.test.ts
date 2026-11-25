@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { oreToField, parseKr, payoutBadge, storeComponentText, warningViews } from "./model";
+import {
+  oreToField,
+  parseKr,
+  payoutBadge,
+  periodsText,
+  storeComponentText,
+  warningViews,
+} from "./model";
 
 const sp = (t: string) => t.replace(/[\u00a0\u202f]/g, " ");
 
@@ -72,5 +79,15 @@ describe("utbetalningarnas texter", () => {
     expect(parseKr("abc")).toBeNull();
     expect(oreToField(4_821_050)).toBe("48210,50");
     expect(oreToField(null)).toBe("");
+  });
+});
+
+describe("periodsText", () => {
+  it("högst två perioder utskrivna, fler som första … sista", () => {
+    expect(periodsText(["1–15 okt", "1–15 okt"])).toBe("Nayax 1–15 okt");
+    expect(periodsText(["1–15 okt", "16–31 okt"])).toBe("Nayax 1–15 okt, 16–31 okt");
+    expect(periodsText(["1–15 sep", "16–30 sep", "1–15 okt", "16–31 okt"])).toBe(
+      "Nayax 1–15 sep … 16–31 okt (4 perioder)",
+    );
   });
 });

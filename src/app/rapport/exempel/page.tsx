@@ -22,7 +22,9 @@ export default async function ExampleReportPage({ searchParams }: { searchParams
   const pages = details ? EXAMPLE_DETAIL_PAGE_COUNT : EXAMPLE_PAGE_COUNT;
   return (
     <ReportChrome
-      back={{ href: "/design#utskrift", label: "Designsystem" }}
+      // Sidan är öppen för alla: tillbaka till appen (inloggade till Hem, andra till inloggningen),
+      // inte till designsystemet.
+      back={{ href: "/", label: "Binderlab" }}
       crumb={
         <>
           Exempelrapport

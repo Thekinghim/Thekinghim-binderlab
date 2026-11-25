@@ -316,6 +316,19 @@ export interface DataPeriod {
   readonly clippedFrom: IsoDate | null;
 }
 
+/** Säljunderlaget räknar på minst så här många hela dagar. */
+export const SALES_DECK_MIN_DAYS = 90;
+
+/**
+ * Säljunderlagets period: den valda om den är minst SALES_DECK_MIN_DAYS dagar, annars de
+ * senaste SALES_DECK_MIN_DAYS hela dagarna (till och med i går). Ett ark till en blivande
+ * butik ska inte visa "0 kr i månaden" för att någon råkade ha "I dag" valt.
+ */
+export function salesDeckPeriod(period: Period, today: IsoDate): Period {
+  if (periodDays(period) >= SALES_DECK_MIN_DAYS) return period;
+  return { start: addDays(today, -SALES_DECK_MIN_DAYS), end: addDays(today, -1) };
+}
+
 export function clipToData(period: Period, dataStart: IsoDate | null): DataPeriod {
   if (dataStart !== null && dataStart > period.start && dataStart <= period.end) {
     const clipped = { start: dataStart, end: period.end };

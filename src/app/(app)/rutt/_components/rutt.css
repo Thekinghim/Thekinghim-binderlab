@@ -521,7 +521,9 @@
   .v2-rutt .rgo {
     display: flex;
     position: sticky;
-    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(
+      68px + max(0px, env(safe-area-inset-bottom, 0px) - 12px) - var(--v2-vp-shift, 0px)
+    );
     z-index: 6;
     margin: 12px -12px 0;
     padding: 12px 12px 10px;

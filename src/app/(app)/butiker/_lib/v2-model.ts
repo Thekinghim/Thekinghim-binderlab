@@ -5,7 +5,9 @@
  * betalda avräkningar. Här filtreras, grupperas och sorteras bara.
  */
 
-export type ShopFilter = "alla" | "betala" | "natt" | "alltid" | "offline";
+import { cityLabel } from "@/lib/format";
+
+export type ShopFilter = "alla" | "betala" | "natt" | "offline";
 
 export interface ShopListRow {
   readonly id: string;
@@ -39,8 +41,6 @@ export function inFilter(
       return row.payOre > 0;
     case "natt":
       return row.power !== null;
-    case "alltid":
-      return row.power === null;
     default:
       return true;
   }
@@ -51,7 +51,6 @@ export function filterCounts(rows: readonly ShopListRow[]): Record<ShopFilter, n
     alla: rows.length,
     betala: rows.filter((r) => inFilter(r, "betala")).length,
     natt: rows.filter((r) => inFilter(r, "natt")).length,
-    alltid: rows.filter((r) => inFilter(r, "alltid")).length,
     offline: rows.filter((r) => inFilter(r, "offline")).length,
   };
 }
@@ -72,7 +71,7 @@ export interface ShopGroup<R> {
 export function groupByCity<R extends ShopListRow>(rows: readonly R[]): ShopGroup<R>[] {
   const map = new Map<string, R[]>();
   for (const r of rows) {
-    const city = r.city?.trim() || NO_CITY_LABEL;
+    const city = cityLabel(r.city) ?? NO_CITY_LABEL;
     const list = map.get(city);
     if (list) list.push(r);
     else map.set(city, [r]);

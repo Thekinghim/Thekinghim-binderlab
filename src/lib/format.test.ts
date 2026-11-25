@@ -5,6 +5,9 @@ import {
   NBSP,
   RANGE_DASH,
   SPACED_RANGE_DASH,
+  cityKey,
+  cityLabel,
+  storeNameLabel,
   formatCompact,
   formatCsvNumber,
   formatDate,
@@ -358,5 +361,34 @@ describe("formatPeriodShort", () => {
     expect(formatPeriodShort(p(d(2025, 12, 28), d(2026, 1, 3)), NOW)).toBe(
       t("28~dec.~2025~–~3~jan."),
     );
+  });
+});
+
+describe("cityLabel, cityKey och storeNameLabel", () => {
+  it("ger orten stor bokstav när den skrivits med små", () => {
+    expect(cityLabel("alingsås")).toBe("Alingsås");
+    expect(cityLabel("  upplands   väsby ")).toBe("Upplands Väsby");
+    expect(cityLabel("öckerö")).toBe("Öckerö");
+    expect(cityLabel("upplands-bro")).toBe("Upplands-Bro");
+  });
+
+  it("rör inte en ort som redan har stor bokstav, och tom ort blir null", () => {
+    expect(cityLabel("Upplands-Bro")).toBe("Upplands-Bro");
+    expect(cityLabel("deSoto")).toBe("deSoto");
+    expect(cityLabel("  ")).toBeNull();
+    expect(cityLabel(null)).toBeNull();
+  });
+
+  it("grupperar orter oavsett stor och liten bokstav", () => {
+    expect(cityKey("alingsås")).toBe(cityKey("Alingsås "));
+    expect(cityKey(null)).toBe("");
+  });
+
+  it("rättar bara orten i butiksnamnet", () => {
+    expect(storeNameLabel("Söt och salt alingsås", "alingsås")).toBe("Söt och salt Alingsås");
+    expect(storeNameLabel("Söt och salt alingsås", "Alingsås")).toBe("Söt och salt Alingsås");
+    expect(storeNameLabel("kortkammaren", "Västerås")).toBe("kortkammaren");
+    expect(storeNameLabel("Alingsåsbutiken", "alingsås")).toBe("Alingsåsbutiken");
+    expect(storeNameLabel("Bio Fyren", null)).toBe("Bio Fyren");
   });
 });

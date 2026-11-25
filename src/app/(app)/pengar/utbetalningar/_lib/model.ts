@@ -227,3 +227,13 @@ export function oreToField(ore: number | null | undefined): string {
   const s = `${Math.floor(abs / 100)}${abs % 100 ? `,${String(abs % 100).padStart(2, "0")}` : ""}`;
   return ore < 0 ? `-${s}` : s;
 }
+
+/**
+ * "Nayax 1–15 okt, 16–31 okt": högst två perioder utskrivna, fler som "första … sista (N
+ * perioder)", så att raden inte blir tre eller fyra rader lång på telefonen.
+ */
+export function periodsText(texts: readonly string[]): string {
+  const list = [...new Set(texts)];
+  if (list.length <= 2) return `Nayax ${list.join(", ")}`;
+  return `Nayax ${list[0]} … ${list[list.length - 1]} (${list.length} perioder)`;
+}

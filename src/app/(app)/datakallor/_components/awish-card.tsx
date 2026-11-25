@@ -334,7 +334,13 @@ export function AwishCard({
             Finns i Awish under Merchant → Developer Center.
           </p>
           <div className="flex flex-wrap gap-2 md:col-span-3">
-            <Button type="submit" variant="primary" loading={busy === "save"} disabled={pending}>
+            <Button
+              type="submit"
+              variant="primary"
+              className="max-sm:w-full"
+              loading={busy === "save"}
+              disabled={pending}
+            >
               Spara
             </Button>
           </div>

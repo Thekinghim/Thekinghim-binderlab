@@ -43,11 +43,8 @@ export default async function PhoneLoginPage({
   return (
     <AuthFrame
       title="Fyll på automaten"
-      aside={
-        qrName
-          ? "Skriv din PIN-kod för att logga in."
-          : "Logga in med ditt mobilnummer och din PIN-kod."
-      }
+      // Med QR-koden säger formuläret redan "Hej …! Skriv din PIN-kod.": ingen rad till.
+      aside={qrName ? undefined : "Logga in med ditt mobilnummer och din PIN-kod."}
       systemStatus={false}
     >
       <PhoneLoginForm notice={notice} qrName={qrName ?? undefined} />

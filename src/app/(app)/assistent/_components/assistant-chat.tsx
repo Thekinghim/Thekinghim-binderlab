@@ -402,9 +402,7 @@ export function AssistantChat({
           aria-describedby={hintId}
           aria-invalid={tooLong || undefined}
           placeholder={
-            ready
-              ? (examples[0] ?? "Ställ en fråga om er data")
-              : "Assistenten är inte konfigurerad"
+            ready ? (examples[0] ?? "Ställ en fråga om er data") : "Assistenten är inte påslagen än"
           }
           className="v2-textarea min-h-24 resize-y disabled:cursor-not-allowed"
         />

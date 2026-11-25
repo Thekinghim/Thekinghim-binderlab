@@ -48,12 +48,14 @@ export default async function AccountPage() {
               />
             </CardBody>
           </Card>
-          <Card
-            title={<span id="sprak">Language / Språk</span>}
-            actions={<span className="lk">Gäller hela appen för dig</span>}
-          >
+          <Card title={<span id="sprak">Language / Språk</span>}>
             <CardBody>
               <LanguageChoice />
+              {/* Ärligt om vad som är översatt: den fulla appen är på svenska. */}
+              <p className="mt-3 text-v2-sm text-v2-mute">
+                English covers Fyll på, Försäljning and Mystery (the simple view). The rest of the
+                app is in Swedish. · Engelska finns i enkla vyn; resten av appen är på svenska.
+              </p>
             </CardBody>
           </Card>
         </div>

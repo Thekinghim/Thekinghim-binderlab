@@ -94,7 +94,8 @@ export default async function EffektPage({
           title={title}
           aside={aside}
           facts={[
-            { label: "Månader", value: monthsText },
+            // Står månaderna redan i meningen ovanför: inte två gånger.
+            ...(aside.includes(monthsText) ? [] : [{ label: "Månader", value: monthsText }]),
             // day() slutar med punkt ("13 okt.")
             ...(data.dataStartInMonth
               ? [{ label: "Data från", value: day(data.dataStartInMonth) }]

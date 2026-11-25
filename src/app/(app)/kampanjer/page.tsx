@@ -87,7 +87,9 @@ export default async function KampanjerPage({
   );
 }
 
-function NotConnected() {
+/** Awish är inte kopplat. Bara den som kan koppla får knappen; läsaren får veta vem som kan. */
+function NotConnected({ canConnect }: { canConnect: boolean }) {
+  if (!canConnect) return <Notice tone="info" title="Ägaren behöver koppla Awish först." />;
   return (
     <Notice
       tone="info"
@@ -140,7 +142,7 @@ async function CampaignsView({
             : `På ${formatInt(liveMachines.size)} av ${formatInt(data.linked.length)} ${data.linked.length === 1 ? "automat" : "automater"}.`
         }
       />
-      {!data.connected ? <NotConnected /> : null}
+      {!data.connected ? <NotConnected canConnect={canEdit} /> : null}
       {canEdit && data.connected && data.linked.length > 0 ? (
         <Card as="section" title="Kampanjer på skärmen">
           <CardBody className="flex flex-col items-start gap-3">
@@ -314,7 +316,7 @@ async function FreePacksView({
         }
         aside={`${kr(data.month.costOre)} till inköpspris${data.month.unpriced > 0 ? ` · ${formatInt(data.month.unpriced)} utan pris` : ""}.`}
       />
-      {!data.connected ? <NotConnected /> : null}
+      {!data.connected ? <NotConnected canConnect={data.canCreate} /> : null}
       {data.canCreate && data.connected ? (
         <Card as="section" title="Gratis-pack">
           <CardBody>

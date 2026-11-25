@@ -470,3 +470,51 @@ export function formatPeriodShort(period: Period, now: Date = new Date()): strin
   }
   return range(formatDate(start, { year: "always" }), formatDate(end, { year: "auto", now }));
 }
+
+// ---------------------------------------------------------------------------
+// Egennamn: orter och butiksnamn som innehåller orten
+// ---------------------------------------------------------------------------
+
+/** Stor bokstav först i varje del ("alingsås" → "Alingsås", "upplands väsby" → "Upplands Väsby"). */
+function capitalizeWords(s: string): string {
+  return s.replace(
+    /(^|[\s\-–/(])(\p{Ll})/gu,
+    (_, sep: string, ch: string) => sep + ch.toLocaleUpperCase("sv-SE"),
+  );
+}
+
+/**
+ * Orten som den ska visas: trimmad, enkla mellanslag och stor bokstav i varje ord när den
+ * skrivits helt med små bokstäver ("alingsås" → "Alingsås"). Har någon redan skrivit en stor
+ * bokstav någonstans ("Upplands-Bro", "deSoto") lämnas den som den är. Det sparade värdet
+ * ändras inte; det här gäller bara visningen. Tom ort ger null.
+ */
+export function cityLabel(city: string | null | undefined): string | null {
+  const s = (city ?? "").replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  return s === s.toLocaleLowerCase("sv-SE") ? capitalizeWords(s) : s;
+}
+
+/** Nyckel för att gruppera på ort: "alingsås" och "Alingsås " hamnar i samma grupp. */
+export function cityKey(city: string | null | undefined): string {
+  return (cityLabel(city) ?? "").toLocaleLowerCase("sv-SE");
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Butiksnamnet som det ska visas: orten i namnet får samma stora bokstav som orten
+ * ("Söt och salt alingsås" i Alingsås → "Söt och salt Alingsås"). Resten av namnet är
+ * ägarens egen text och rörs inte. Utan ort, eller när orten inte står i namnet, oförändrat.
+ */
+export function storeNameLabel(name: string, city: string | null | undefined): string {
+  const label = cityLabel(city);
+  if (!label || !name) return name;
+  const re = new RegExp(
+    `(^|[^\\p{L}\\p{N}])(${escapeRegExp(label.toLocaleLowerCase("sv-SE"))})(?![\\p{L}\\p{N}])`,
+    "gu",
+  );
+  return name.replace(re, (_, pre: string) => pre + label);
+}

@@ -388,8 +388,8 @@ export function PlanView({
           ))}
 
       {canEdit && hasSupplier ? (
-        // Mobil: utan förslag står samma knapp under Inköpsorder; en räcker.
-        <div className={cn(model.proposals.length === 0 && "max-md:hidden")}>
+        // Utan förslag står samma knapp under Inköpsorder; en räcker (telefon och dator).
+        <div className={cn(model.proposals.length === 0 && "hidden")}>
           <Button variant="secondary" size="sm" iconLeft="plus" onClick={() => openDraft(null)}>
             Ny inköpsorder
           </Button>

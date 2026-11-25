@@ -184,6 +184,8 @@ function NoGoal({ canEdit }: { canEdit: boolean }) {
 /* ------------------------------------------------------------------ */
 
 function compactValue(t: KpiBandTile): string {
+  // null = går inte att räkna (marginal utan intäkt): ett streck, inte "0,0 %".
+  if (t.value === null && t.unit === "bp") return "–";
   const v = t.value ?? 0;
   if (t.unit === "ore") return kr(v);
   if (t.unit === "bp")
@@ -244,9 +246,13 @@ export async function HemHero({ sp }: { sp: SearchParamsInput }) {
                 {p.compareText ? <span className="vs"> {p.compareText}</span> : null}
               </span>
             </div>
-          ) : p?.compareText ? (
+          ) : p?.compareText && p.deltaOre !== null ? (
+            // Ingen procent (förra perioden 0 kr): skillnaden i kronor, aldrig bara "mot …".
             <div className="hh-dl">
-              <span>{p.compareText}</span>
+              <span>
+                {signedKr(p.deltaOre)}
+                <span className="vs"> {p.compareText}</span>
+              </span>
             </div>
           ) : null}
           {h.spark ? <HeroSparkline spark={h.spark} /> : null}

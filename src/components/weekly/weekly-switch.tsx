@@ -46,10 +46,16 @@ function blockText(t: Messages, block: PushBlock): string {
 export function WeeklySwitch({
   initial = null,
   className,
+  switchClassName,
 }: {
   /** Läget från servern, om sidan redan har läst det. */
   initial?: WeeklySummarySetting | null;
   className?: string;
+  /**
+   * Sidans egen brytare (t.ex. "ops-switch" på Drift → Notiser, med <i> som knopp), så att
+   * den ser ut som brytarna bredvid. Utan: den stora brytaren i enkla vyn.
+   */
+  switchClassName?: string;
 }) {
   const t = useT();
   const toast = useToast();
@@ -159,19 +165,26 @@ export function WeeklySwitch({
           aria-labelledby="vecka-knapp"
           onClick={toggle}
           disabled={busy}
-          className={cn(
-            "relative inline-flex h-11 w-[72px] shrink-0 items-center rounded-full border transition-[background-color,border-color] duration-base ease-instrument disabled:cursor-progress",
-            on ? "border-inverse bg-inverse" : "border-line-strong bg-hover",
-          )}
+          className={
+            switchClassName ??
+            cn(
+              "relative inline-flex h-11 w-[72px] shrink-0 items-center rounded-full border transition-[background-color,border-color] duration-base ease-instrument disabled:cursor-progress",
+              on ? "border-inverse bg-inverse" : "border-line-strong bg-hover",
+            )
+          }
         >
           <span className="sr-only">{on ? t.week.switchStateOn : t.week.switchStateOff}</span>
-          <span
-            aria-hidden
-            className={cn(
-              "shadow-sm absolute top-1 left-1 size-[34px] rounded-full transition-transform duration-base ease-instrument motion-reduce:transition-none",
-              on ? "translate-x-7 bg-on-inverse" : "translate-x-0 bg-surface",
-            )}
-          />
+          {switchClassName ? (
+            <i aria-hidden="true" />
+          ) : (
+            <span
+              aria-hidden
+              className={cn(
+                "shadow-sm absolute top-1 left-1 size-[34px] rounded-full transition-transform duration-base ease-instrument motion-reduce:transition-none",
+                on ? "translate-x-7 bg-on-inverse" : "translate-x-0 bg-surface",
+              )}
+            />
+          )}
         </button>
       </div>
       {note ? (

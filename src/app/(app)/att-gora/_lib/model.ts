@@ -789,9 +789,9 @@ export const SIGNAL_BUDGET = 3;
 const LEVEL_TEXT: Record<TodoLevel, string> = { now: "I dag", soon: "Snart", later: "Senare" };
 
 const GROUP_META: Record<TodoLevel, { id: string; eyebrow: string; title: string }> = {
-  now: { id: "i-dag", eyebrow: "I dag", title: "I dag." },
-  soon: { id: "snart", eyebrow: "Snart", title: "Snart." },
-  later: { id: "senare", eyebrow: "Senare", title: "Senare." },
+  now: { id: "i-dag", eyebrow: "I dag", title: "I dag" },
+  soon: { id: "snart", eyebrow: "Snart", title: "Snart" },
+  later: { id: "senare", eyebrow: "Senare", title: "Senare" },
 };
 
 const LEVELS: readonly TodoLevel[] = ["now", "soon", "later"];

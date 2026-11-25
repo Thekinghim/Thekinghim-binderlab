@@ -120,7 +120,8 @@ export default async function MachineTimelinePage({
               href={`/drift/automat/${data.machine.id}?dagar=${r}`}
               aria-current={r === days ? "page" : undefined}
             >
-              {r === 1 ? "1 dygn" : `${r} dagar`}
+              {/* Samma korta form som periodvalet i resten av appen ("7 d", "30 d"). */}
+              {r === 1 ? "24 h" : `${r} d`}
             </Link>
           ))}
         </nav>

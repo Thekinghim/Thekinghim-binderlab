@@ -51,6 +51,7 @@ import { goalsProgress } from "@/server/data/goals";
 import {
   clipToData,
   completeDataPeriod,
+  salesDeckPeriod,
   defaultInvestment,
   OPEN_STAGES,
   placementsFromData,
@@ -485,7 +486,8 @@ export interface SalesDeckPageData {
 export async function loadSalesDeckPage(sp: SearchParamsInput): Promise<SalesDeckPageData> {
   const ctx = await requireRoute("expansion");
   const p = await loadPeriod(sp);
-  const dp = dataPeriodOf(p);
+  // Arket följer inte ett kort periodval (I dag, 7 d): minst 90 hela dagar.
+  const dp = clipToData(salesDeckPeriod(p.period, ctx.today), p.dataStart);
   const input = await loadDomainInput({ period: dp.period });
   return {
     organizationName: ctx.organization.name,

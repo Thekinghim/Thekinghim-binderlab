@@ -293,7 +293,10 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
     href: lp(""),
   };
   // Marginalen: vinst ÷ intäkten ovan (Hems och Lönsamhets nyckeltal är samma tal).
-  const marginTile = fromKpi("margin", kpis.get("margin"), "Marginal", lp(""), compare, "bp");
+  const marginKpi = fromKpi("margin", kpis.get("margin"), "Marginal", lp(""), compare, "bp");
+  // Utan intäkt finns ingen marginal: "–" (inte "0,0 %").
+  const marginTile: KpiBandTile =
+    revenue > 0 ? marginKpi : { ...marginKpi, value: null, deltaBp: null, compare: null };
 
   // Vinst per automat och dag (automatdagar: dagar en automat var i drift).
   const md = machineDays(input.machines, p.period);

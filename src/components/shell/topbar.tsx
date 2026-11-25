@@ -336,7 +336,7 @@ function MobileContext({ stores, machines, earliest, hasScope, vmbUserKey }: Con
             aria-label="Stäng"
             tabIndex={-1}
             onClick={() => setOpen(null)}
-            className="fixed inset-x-0 top-14 bottom-0 z-0 cursor-default bg-overlay"
+            className="fixed inset-x-0 top-14 bottom-[calc(0px-var(--v2-vp-shift,0px))] z-0 cursor-default bg-overlay"
           />
           <div
             id={panelId}

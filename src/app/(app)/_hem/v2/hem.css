@@ -267,6 +267,11 @@
   font-weight: 550;
   margin-left: auto;
 }
+/* Länken står längst till höger (datorn) eller på egen rad (telefonen): pricken före den
+   blev hängande efter "9 i drift". */
+.hem2 .calm .sep-all {
+  display: none;
+}
 .hem2 .soon2 {
   display: flex;
   gap: 10px;
@@ -460,6 +465,7 @@
     margin-left: 0;
     flex-basis: 100%;
   }
+
   .hem2 .soon2 {
     padding: 0 16px 13px;
   }
@@ -1088,7 +1094,8 @@
 /* 4. most sold */
 .hem2 .x-tr {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px 78px 64px 74px;
+  /* Rubrikraden och raderna delar kolumnerna (titeln får det mesta av bredden). */
+  grid-template-columns: minmax(0, 1fr) 40px 72px 52px;
   gap: 8px;
   align-items: center;
   padding: 7px 0;
@@ -2001,7 +2008,7 @@
 }
 .hem2 .hh-empty {
   margin: auto 0;
-  padding: 40px 0;
+  padding: 16px 0;
   color: var(--v2-mute);
   text-align: center;
 }

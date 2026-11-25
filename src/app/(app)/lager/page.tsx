@@ -66,7 +66,7 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
 
   return (
     <V2Page
-      title="Lager"
+      title="Lager i automaterna"
       date={headerDate(new Date(ctx.now), ctx.timeZone)}
       sub={
         <>

@@ -70,7 +70,7 @@ export default async function QrPage({ params }: { params: Promise<{ machineId: 
   });
 
   return (
-    <div className="flex min-h-dvh flex-col items-center gap-6 px-4 pt-[calc(24px+env(safe-area-inset-top))] pb-10">
+    <div className="flex min-h-dvh flex-col items-center gap-6 px-4 pt-[max(24px,env(safe-area-inset-top))] pb-10">
       <div className="flex w-full items-center justify-between print:hidden">
         <Link href="/automater" className="v2-btn quiet touch -ml-2.5 text-v2-mute">
           ← Automater

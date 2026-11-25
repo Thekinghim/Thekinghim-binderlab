@@ -183,7 +183,7 @@ describe("Automat-ranking med tio automater (iPhone SE)", () => {
     expect(await weak.count()).toBe(1);
     expect(text(await weak.innerText())).toMatch(/BL-009[\s\S]*Tjänar dåligt: överväg att flytta/i);
     expect(text(await page.locator(`${section} a[data-verdict="new"]`).innerText())).toMatch(
-      /BL-010[\s\S]*För ny: 6 dagar/i,
+      /BL-010[\s\S]*För ny[\s\S]*6 dagar/i,
     );
     // Övriga sju: "Tjänar bra" över en vanlig automat, "Tjänar mindre än vanligt" under.
     expect(

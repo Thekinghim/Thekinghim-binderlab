@@ -100,7 +100,7 @@ describe("Vårt lagers hylla", () => {
     expect(wayBadge("2026-11-23", "2026-11-23", false)).toBe("i dag");
     expect(wayBadge("2026-11-24", "2026-11-23", false)).toBe("i morgon");
     expect(wayBadge("2026-11-26", "2026-11-23", false)).toBe("tors");
-    expect(wayHeadline("2026-11-19", "2026-11-23", true)).toBe("Skulle kommit tors · 4 d sen");
+    expect(wayHeadline("2026-11-19", "2026-11-23", true)).toBe("Skulle ha kommit tors · 4 d sen");
     expect(wayHeadline("2026-11-26", "2026-11-23", false)).toBe("Väntas tors");
   });
 });

@@ -53,7 +53,9 @@ export function PortalHeader({
             <span className="shrink-0">Butiksportal</span>
             {store && stores.length <= 1 ? (
               <span className="pt-store">
-                {store.name} · från {store.operator}
+                {store.name}
+                {/* Telefon: bara butiken (foten säger vem portalen kommer från). */}
+                <span className="max-sm:hidden"> · från {store.operator}</span>
               </span>
             ) : null}
           </Link>

@@ -119,12 +119,14 @@ export function wayBadge(expectedOn: string, today: string, late: boolean): stri
   return `om ${formatInt(d)}${NBSP}d`;
 }
 
-/** Rubrikens märke: "Skulle kommit tor · 4 d sen" eller "Väntas tor". */
+/** Rubrikens märke: "Skulle ha kommit tor · 4 d sen" eller "Väntas tor". */
 export function wayHeadline(expectedOn: string, today: string, late: boolean): string {
   const d = daysBetween(today, expectedOn);
   const day = weekdayShort(expectedOn);
   if (late || d < 0) {
-    return d < 0 ? `Skulle kommit ${day} · ${formatInt(-d)}${NBSP}d sen` : `Skulle kommit ${day}`;
+    return d < 0
+      ? `Skulle ha kommit ${day} · ${formatInt(-d)}${NBSP}d sen`
+      : `Skulle ha kommit ${day}`;
   }
   if (d === 0) return "Väntas i dag";
   if (d === 1) return "Väntas i morgon";

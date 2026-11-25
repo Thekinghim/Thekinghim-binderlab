@@ -222,7 +222,7 @@ export function AssistantPanelProvider({
         aria-hidden
         onClick={() => setIsOpen(false)}
         className={cn(
-          "fixed inset-0 z-40 bg-[var(--bl-overlay)] transition-opacity duration-300 sm:hidden",
+          "fixed inset-0 bottom-[calc(0px-var(--v2-vp-shift,0px))] z-40 bg-[var(--bl-overlay)] transition-opacity duration-300 sm:hidden",
           isOpen ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       />
@@ -275,6 +275,14 @@ function Panel({
   const ready = state?.status === "ready";
   const budgetLeft = last?.budgetLeft ?? state?.budgetLeft ?? null;
 
+  // Datorn: sidan ger plats åt panelen (v2.css, :root[data-ai-open]) i stället för att tabeller
+  // och kort hamnar under den.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.toggleAttribute("data-ai-open", open);
+    return () => root.removeAttribute("data-ai-open");
+  }, [open]);
+
   // Rulla bara panelen (inte sidan bakom) till det senaste.
   useEffect(() => {
     const el = scrollRef.current;
@@ -306,7 +314,7 @@ function Panel({
       className={cn(
         "shadow-2xl fixed z-50 flex flex-col border-line bg-bg transition-[transform,opacity] duration-300 ease-instrument",
         // Mobil: ark nerifrån. Från sm: panel från höger.
-        "rounded-t-lg inset-x-0 bottom-0 h-[88dvh] border-t sm:inset-x-auto sm:top-0 sm:right-0 sm:h-dvh sm:w-[420px] sm:rounded-none sm:border-t-0 sm:border-l",
+        "rounded-t-lg inset-x-0 bottom-[calc(0px-var(--v2-vp-shift,0px))] h-[88dvh] border-t sm:inset-x-auto sm:top-0 sm:right-0 sm:bottom-auto sm:h-dvh sm:w-[420px] sm:rounded-none sm:border-t-0 sm:border-l",
         open
           ? "translate-y-0 opacity-100 sm:translate-x-0"
           : "pointer-events-none translate-y-full opacity-0 sm:translate-x-full sm:translate-y-0",
@@ -375,7 +383,8 @@ function Panel({
         }}
         className="flex flex-col gap-2 border-t border-line px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]"
       >
-        {!busy && chips.length > 0 ? (
+        {/* Avstängd AI: inga förslag att trycka på (meddelandet står överst i panelen). */}
+        {!busy && chips.length > 0 && state?.status !== "off" ? (
           <ul className="flex flex-wrap gap-1.5" aria-label="Förslag">
             {chips.map((c, i) => (
               <li
@@ -408,7 +417,7 @@ function Panel({
             rows={1}
             maxLength={QUESTION_MAX_LENGTH}
             disabled={!ready}
-            placeholder={ready ? "Skriv en fråga" : (state?.message ?? "Laddar…")}
+            placeholder={ready ? "Skriv en fråga" : state ? "Går inte att fråga nu" : "Laddar…"}
             className="max-h-32 min-h-9 w-full min-w-0 resize-none rounded-sm border border-line-control bg-bg px-3 py-1.5 text-base text-fg placeholder:text-subtle disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:text-disabled max-md:min-h-11"
           />
           {busy ? (
@@ -588,7 +597,9 @@ function FloatingAskButton({
       aria-label="Fråga AI"
       data-testid="ai-fab"
       tabIndex={shown ? undefined : -1}
-      style={{ bottom: `calc(${layout.assistantBottom}px + env(safe-area-inset-bottom))` }}
+      style={{
+        bottom: `calc(${layout.assistantBottom}px + env(safe-area-inset-bottom) - var(--v2-vp-shift, 0px))`,
+      }}
       className={cn(
         "shadow-lg fixed right-4 z-30 flex size-11 items-center justify-center rounded-full border border-line-strong bg-inverse text-on-inverse transition-[transform,opacity] duration-300 ease-instrument active:scale-95 motion-reduce:transition-none max-md:hidden lg:hidden",
         shown ? "scale-100 opacity-100" : "pointer-events-none translate-y-4 scale-75 opacity-0",

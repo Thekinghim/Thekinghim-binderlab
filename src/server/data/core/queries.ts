@@ -15,6 +15,7 @@ import type { AlertRef, AnalyticsOrder, ReportDraftRef } from "@/analytics/todos
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/locale";
+import { storeNameLabel } from "@/lib/format";
 import { machineLookOf } from "@/lib/machine-look";
 import { toSafeInteger } from "@/db/types";
 import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
@@ -365,11 +366,22 @@ export async function queryStores(tx: Tx, orgId: string): Promise<StoreRecord[]>
       phone: s.stores.phone,
       isExample: s.stores.isExample,
       archivedAt: s.stores.archivedAt,
+      city: s.stores.city,
     })
     .from(s.stores)
     .where(eq(s.stores.organizationId, orgId))
     .orderBy(asc(s.stores.name), asc(s.stores.id));
-  return rows.map(({ archivedAt, ...r }) => ({ ...r, archived: archivedAt !== null }));
+  return rows.map(({ archivedAt, ...r }) => displayStore({ ...r, archived: archivedAt !== null }));
+}
+
+/**
+ * Butiken som den visas: orten i namnet med stor bokstav ("Söt och salt alingsås" i
+ * alingsås → "Söt och salt Alingsås", src/lib/format.ts). Orten används bara till det och
+ * följer inte med; det sparade namnet ändras inte.
+ */
+function displayStore<T extends { name: string; city?: string | null }>(r: T): Omit<T, "city"> {
+  const { city, ...rest } = r;
+  return { ...rest, name: storeNameLabel(r.name, city) };
 }
 
 interface MasterRow {
@@ -414,7 +426,7 @@ export async function queryMasterData(
       (select coalesce(json_agg(json_build_object(
           'id', st.id, 'name', st.name, 'address', st.address, 'contactName', st.contact_name,
           'email', st.email, 'phone', st.phone, 'isExample', st.is_example,
-          'archived', st.archived_at is not null, 'ownerId', st.owner_id
+          'archived', st.archived_at is not null, 'ownerId', st.owner_id, 'city', st.city
         ) order by st.name, st.id), '[]'::json)
         from public.stores st where st.organization_id = ${orgId}::uuid) as stores,
       (select coalesce(json_agg(json_build_object(
@@ -437,7 +449,7 @@ export async function queryMasterData(
   return {
     titles: row?.titles ?? [],
     placements,
-    stores: row?.stores ?? [],
+    stores: (row?.stores ?? []).map(displayStore),
     machines: (row?.machines ?? []).map((m) => ({ ...m, storeId: current.get(m.id) ?? null })),
     owners: row?.owners ?? [],
   };

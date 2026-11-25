@@ -23,6 +23,7 @@ export function deviceHint(d: NoticeDevice): string | null {
       ? "Uppdatera iPhone till iOS 16.4 eller senare."
       : "Den här webbläsaren kan inte visa notiser.";
   }
-  if (d.denied) return "Notiser är blockerade. Tillåt dem i inställningarna.";
+  // Brytaren gäller alla dina enheter; blockeringen bara den här: säg vilken.
+  if (d.denied) return "Notiser är blockerade på den här enheten. Tillåt dem i inställningarna.";
   return null;
 }

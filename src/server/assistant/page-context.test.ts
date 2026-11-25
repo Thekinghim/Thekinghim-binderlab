@@ -5,6 +5,7 @@ import {
   explainQuestion,
   PAGE_INFO,
   pageContextFromUrl,
+  pageInfo,
   pagePromptText,
   pageSummaryNote,
   parsePageContext,
@@ -114,6 +115,9 @@ describe("förslag (chips) per sida", () => {
     expect(at("/lonsamhet")).toContain("Varför gick vinsten ner?");
     expect(at("/automater")).toContain("Vilken automat ska jag fylla på först?");
     expect(at("/inkopspriser")).toContain("Vilka titlar går med förlust?");
+    // Pengar och Rutt har egna förslag (inte "Ser Binderlab").
+    expect(pageInfo(pageContextFromUrl("/pengar", "").route).name).toBe("Pengar");
+    expect(pageInfo(pageContextFromUrl("/rutt", "").route).name).toBe("Rutt");
     expect(at("/butiker")).toContain("Hur mycket får butikerna i månaden?");
     expect(
       suggestionsFor(pageContextFromUrl(`/butiker/${STORE}`, ""), "owner", "Sega gubben"),

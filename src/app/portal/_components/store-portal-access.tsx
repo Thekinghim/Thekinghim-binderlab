@@ -1,4 +1,3 @@
-import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt } from "@/lib/format";
 import { loadStorePortalAccessFor, type StorePortalAccess } from "@/server/portal/access";
@@ -42,6 +41,7 @@ export async function StorePortalAccess({
     throw error;
   }
   const { users, invitations } = access;
+  const empty = users.length === 0 && invitations.length === 0;
   const now = new Date();
 
   return (
@@ -63,20 +63,20 @@ export async function StorePortalAccess({
         </div>
         <div className="grid grid-cols-1 gap-x-6 gap-y-6 lg:grid-cols-12">
           <div className="flex flex-col gap-3 lg:col-span-7">
-            <p className="text-v2-sm font-[550] text-v2-ink">
-              Tillgång
-              <span className="ml-2 font-[450] text-v2-mute">
-                {formatInt(users.length)} {users.length === 1 ? "aktiv" : "aktiva"} ·{" "}
-                {formatInt(invitations.length)} väntande
-              </span>
-            </p>
-            {users.length === 0 && invitations.length === 0 ? (
-              <StateMessage
-                kind="empty"
-                compact
-                message="Ingen är inbjuden än."
-                detail="Bjud in butikens kontaktperson. Den som tar emot inbjudan ser bara den här butiken."
-              />
+            {/* Ingen inbjuden: rubriken säger det redan, så ingen räknare och inget tomläge till. */}
+            {empty ? null : (
+              <p className="text-v2-sm font-[550] text-v2-ink">
+                Tillgång
+                <span className="ml-2 font-[450] text-v2-mute">
+                  {formatInt(users.length)} {users.length === 1 ? "aktiv" : "aktiva"} ·{" "}
+                  {formatInt(invitations.length)} väntande
+                </span>
+              </p>
+            )}
+            {empty ? (
+              <p className="text-v2-sm text-pretty text-v2-ink">
+                Bjud in butikens kontaktperson. Den ser bara den här butiken.
+              </p>
             ) : (
               <ul className="flex flex-col border-t border-v2-line2">
                 {users.map((u) => (

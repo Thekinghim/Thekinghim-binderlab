@@ -31,7 +31,7 @@ describe("listan", () => {
   ];
 
   it("filtrerar och räknar", () => {
-    expect(filterCounts(rows)).toEqual({ alla: 4, betala: 1, natt: 1, alltid: 3, offline: 0 });
+    expect(filterCounts(rows)).toEqual({ alla: 4, betala: 1, natt: 1, offline: 0 });
     expect(rows.filter((r) => inFilter(r, "betala")).map((r) => r.id)).toEqual(["b"]);
   });
 

@@ -9,6 +9,13 @@ import type { AlertItem } from "../_components/alert-list";
 import { figureText, formatWhen } from "./display";
 import type { AlertView } from "./load";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Larmet sågs senast för mer än ett dygn sedan. */
+export function staleSince(lastSeenAt: string | Date, now: Date): boolean {
+  return now.getTime() - new Date(lastSeenAt).getTime() > DAY_MS;
+}
+
 export function toAlertItems(
   alerts: readonly AlertView[],
   timeZone: string,
@@ -19,7 +26,12 @@ export function toAlertItems(
     severity: a.severity,
     kindLabel: KIND_LABEL[a.kind as AlertKind] ?? a.kind,
     title: a.title,
-    detail: a.detail,
+    // Texten skrevs när larmet senast sågs ("tar slut i morgon", "62 timmar"): är det mer än
+    // ett dygn sedan står det när, så att "i morgon" inte läses som i morgon från i dag.
+    detail:
+      a.detail && staleSince(a.lastSeenAt, now)
+        ? `${formatWhen(a.lastSeenAt, timeZone, now)}: ${a.detail}`
+        : a.detail,
     rule: a.evidence.rule,
     figures: a.evidence.figures
       .map((f) => ({ label: f.label, value: figureText(f) }))

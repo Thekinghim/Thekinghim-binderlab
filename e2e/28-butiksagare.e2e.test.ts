@@ -190,7 +190,8 @@ describe("Butiksägare (dator)", () => {
     for (const name of ["Butik Alfa", "Butik Beta"]) {
       await page.goto(`/butiker/${storeIds.get(name)!}?vy=kontakt`);
       const select = page.getByLabel("Ägare", { exact: true });
-      await select.selectOption({ label: `${OWNER_NAME} (559900-1236)` });
+      // Bara bolagsnamnet (org.nr står redan på kortet).
+      await select.selectOption({ label: OWNER_NAME });
       await page.getByRole("button", { name: "Spara ägare", exact: true }).click();
       await page.getByText(`${name} har ägaren ${OWNER_NAME}`).waitFor();
       await page.locator("[data-store-owner]").getByText(OWNER_NAME).waitFor();

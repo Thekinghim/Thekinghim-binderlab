@@ -28,7 +28,7 @@ export default async function StaffLayout({ children }: { children: ReactNode })
   return (
     <div data-theme="light" data-ui="v2" className="min-h-dvh bg-v2-bg text-v2-ink">
       <PortalThemeScope theme="light" />
-      <header className="mx-auto flex w-full max-w-[560px] items-center justify-between px-4 pt-[calc(12px+env(safe-area-inset-top))] pb-2">
+      <header className="mx-auto flex w-full max-w-[560px] items-center justify-between px-4 pt-[max(12px,env(safe-area-inset-top))] pb-2">
         <span className="flex items-center gap-2 font-semibold">
           <V2Logo size={26} />
           Binderlab

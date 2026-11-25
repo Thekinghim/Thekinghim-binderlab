@@ -201,7 +201,11 @@ export function StaffFill({
           <b>1.</b> Öppna automaten.
         </li>
         <li>
-          <b>2.</b> Lägg i det antal pack som står vid varje pack nedan.
+          {/* Utan känd kapacitet står inget förslag vid packen (stegaren står på 0): räkna själv. */}
+          <b>2.</b>{" "}
+          {data.rows.some((r) => r.capacity === null)
+            ? "Fyll varje fack tills det är fullt och räkna hur många pack du lade i."
+            : "Lägg i det antal pack som står vid varje pack nedan."}
         </li>
         <li>
           <b>3.</b> Tryck <b>Klart</b> när du är färdig.
@@ -228,11 +232,6 @@ export function StaffFill({
                         ? `I automaten: ${r.units} av ${r.capacity}`
                         : `I automaten: ${r.units}`}
                     </span>
-                    {r.capacity === null ? (
-                      <span className="block text-v2-sm text-v2-mute">
-                        Fyll tills facket är fullt och räkna hur många du lade i.
-                      </span>
-                    ) : null}
                     {r.storeStock !== null ? (
                       <span className="block text-v2-sm text-v2-mute">
                         I butiken: {r.storeStock}
@@ -260,7 +259,7 @@ export function StaffFill({
         </ul>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-v2-line bg-v2-panel px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
+      <div className="fixed inset-x-0 bottom-0 translate-y-[var(--v2-vp-shift,0px)] border-t border-v2-line bg-v2-panel px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
         <div className="mx-auto flex max-w-[560px] flex-col gap-2">
           {error ? (
             <Notice tone="critical" live>

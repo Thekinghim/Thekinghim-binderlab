@@ -19,6 +19,7 @@ import {
   toAnalyticsLead,
   wholeMonths,
   type LeadRecord,
+  salesDeckPeriod,
 } from "./model";
 
 const lead = (over: Partial<LeadRecord> = {}): LeadRecord => ({
@@ -269,5 +270,16 @@ describe("completeDataPeriod: enhetsekonomins dagar", () => {
       { lastDataDay: dp.period.end },
     );
     expect(res.rows[0]).toMatchObject({ activeDays: 21, revenuePerDayOre: 4_900 });
+  });
+});
+
+describe("salesDeckPeriod", () => {
+  it("ett kort periodval ger de senaste 90 hela dagarna, ett långt står kvar", () => {
+    expect(salesDeckPeriod({ start: "2026-11-24", end: "2026-11-24" }, "2026-11-24")).toEqual({
+      start: "2026-08-26",
+      end: "2026-11-23",
+    });
+    const year = { start: "2025-11-25", end: "2026-11-24" } as const;
+    expect(salesDeckPeriod(year, "2026-11-24")).toEqual(year);
   });
 });

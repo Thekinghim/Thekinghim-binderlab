@@ -311,7 +311,7 @@ describe("flottans brådskande automater och tomt läge", () => {
       limits: DEFAULT_ROUTE_LIMITS,
       changes: [{ id: "c1", day: mon, machineId: "m1", change: "skip" }],
     });
-    expect(emptyRouteText(r).title).toBe("Du hoppade över alla stopp i dag");
+    expect(emptyRouteText(r).title).toBe("Alla dagens stopp är flyttade");
     const calm = buildDayRoute({
       date: mon,
       day: null,

@@ -96,6 +96,16 @@ describe("rubrik och räknare", () => {
     ]);
   });
 
+  it("en av en roll står i singular (1 administratör)", () => {
+    const members = [{ role: "owner" }, { role: "admin" }, { role: "refiller" }] as const;
+    expect(roleMeta(members).map((m) => `${m.value} ${m.label.toLowerCase()}`)).toEqual([
+      "1 ägare",
+      "1 administratör",
+      "0 läsare",
+      "1 påfyllare",
+    ]);
+  });
+
   it("namn: visningsnamn, annars delen före @", () => {
     expect(memberName({ displayName: " Delägare ", email: "d@x.se" })).toBe("Delägare");
     expect(memberName({ displayName: null, email: "anna.berg@x.se" })).toBe("anna.berg");

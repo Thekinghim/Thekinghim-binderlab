@@ -952,6 +952,11 @@ describe("planHeading", () => {
       aside: "Lägg till leverantör för pris och boxar.",
     });
     expect(sp(planHeading({ ...base, empty: true })).title).toBe("Inget att planera ännu.");
+    // Sena leveranser: inte "Inget att beställa. Lagret räcker." bredvid röda "Försenad".
+    expect(sp(planHeading({ ...base, overdueDeliveries: 4 }))).toEqual({
+      title: "4 leveranser är sena.",
+      aside: "Inget nytt att beställa. Hör av dig till leverantören.",
+    });
   });
   it("packQtyOf: förslaget, annars behovet", () => {
     expect(packQtyOf({ status: "order", orderQty: 24, rawQty: 17 })).toBe(24);

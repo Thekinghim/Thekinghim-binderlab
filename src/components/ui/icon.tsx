@@ -46,6 +46,8 @@ const paths = {
   print: "M4.5 5.5v-4h7v4M4.5 11.5H2v-6h12v6h-2.5M4.5 9h7v5.5h-7z",
   // Uppdatera: en båge nästan runt och en pilspets uppe till höger.
   refresh: "M13.5 8A5.5 5.5 0 1 1 11.9 4.1M12.5 1.5v3h-3",
+  // Klocka (notiser): kupa, kant och kläpp.
+  bell: "M4 11V7a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3",
 } as const;
 
 export type IconName = keyof typeof paths;

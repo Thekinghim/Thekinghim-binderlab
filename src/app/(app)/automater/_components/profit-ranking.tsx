@@ -42,6 +42,7 @@ export async function ProfitRanking({
     hrefOf: (code) => machineHref(code, query),
     storeShareDeducted: data.storeShareDeducted,
     down,
+    periodDays: data.days,
   });
   if (view.rows.length === 0) return null;
   return (

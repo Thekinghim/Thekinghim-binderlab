@@ -20,6 +20,9 @@ import { loadMembersPageFor } from "../../installningar/anvandare/members-data";
 export interface MoreCounts {
   readonly machines: number | null;
   readonly stores: number | null;
+  /** Exempelautomater och exempelbutiker (demo, onboarding): visas när inga riktiga finns. */
+  readonly exampleMachines: number;
+  readonly exampleStores: number;
   /** Personer i organisationen (ägare och admin ser dem). */
   readonly people: number | null;
   readonly suppliers: number | null;
@@ -67,6 +70,8 @@ export async function loadMoreCounts(ctx: AppContext): Promise<MoreCounts> {
   return {
     machines: master ? master.machines.filter((m) => !m.archived && !m.isExample).length : null,
     stores: master ? master.stores.filter((x) => !x.archived && !x.isExample).length : null,
+    exampleMachines: master ? master.machines.filter((m) => !m.archived && m.isExample).length : 0,
+    exampleStores: master ? master.stores.filter((x) => !x.archived && x.isExample).length : 0,
     people,
     suppliers,
     route,

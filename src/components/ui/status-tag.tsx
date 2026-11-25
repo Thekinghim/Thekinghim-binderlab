@@ -67,9 +67,19 @@ export function StatusTag({
         className,
       )}
     >
-      <span className={cn("inline-flex w-2 justify-center", quiet && "text-subtle")}>
+      <span
+        className={cn(
+          "inline-flex w-2 justify-center",
+          quiet && "text-subtle",
+          // V2: "I drift" med samma runda prick som Automater, inte en grå fyrkant.
+          status === "ok" && "v2:hidden",
+        )}
+      >
         <StatusGlyph status={status} size={status === "ok" ? 6 : 8} />
       </span>
+      {status === "ok" ? (
+        <span aria-hidden="true" className="v2-dot hidden v2:inline-block" />
+      ) : null}
       {children ?? labels[status]}
     </span>
   );

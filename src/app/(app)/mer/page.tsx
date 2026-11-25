@@ -70,8 +70,10 @@ function Row({
       <span className="mt">
         <b>{title}</b>
         {sub ? <small>{sub}</small> : null}
+        {/* Telefon: antalet under texten, så att texten får hela bredden. */}
+        {aside !== undefined ? <small className="cntm">{aside}</small> : null}
       </span>
-      {aside !== undefined ? <span className="cnt">{aside}</span> : null}
+      {aside !== undefined ? <span className="cnt side">{aside}</span> : null}
       <span className="cnt" aria-hidden="true">
         ›
       </span>
@@ -81,6 +83,10 @@ function Row({
 
 const n = (v: number | null, one: string, many: string) =>
   v === null ? undefined : `${formatInt(v)}${NBSP}${v === 1 ? one : many}`;
+
+/** Antalet riktiga, eller "3 exempel" när bara exemplen finns (så att 0 inte ser trasigt ut). */
+const nOrExamples = (v: number | null, examples: number, one: string, many: string) =>
+  v === 0 && examples > 0 ? `${formatInt(examples)}${NBSP}exempel` : n(v, one, many);
 
 /**
  * Mer (/mer, G4): Driften (lägg till automat och butik, personal och roller, leverantörer,
@@ -99,7 +105,12 @@ export default async function MorePage() {
   const allowed = new Set(routesForRole(ctx.role).map((r) => r.id));
   const top = v2NavForRole(ctx.role).filter((i) => i.id === "butiker" || i.id === "pengar");
   const pages = routesForRole(ctx.role).filter(
-    (r) => !IN_MENU.has(r.id) && r.id !== "pengar" && r.id !== "butiker",
+    (r) =>
+      !IN_MENU.has(r.id) &&
+      r.id !== "pengar" &&
+      r.id !== "butiker" &&
+      // Inställningar står redan under Driften för den som får ändra.
+      !(ctx.canEdit && r.id === "installningar"),
   );
   const sync = counts.sync;
   const time = (iso: string) =>
@@ -149,20 +160,20 @@ export default async function MorePage() {
           ) : null}
 
           {ctx.canEdit ? (
-            <Card title="Driften · det som gör att någon annan kan ta över">
+            <Card title="Driften">
               <Row
                 href="/automater"
                 icon={<Icon d={ICON.automat} />}
-                title="Lägg till automat"
-                sub="Serienummer, butik, fack och priser. Kopplas till Awish."
-                aside={n(counts.machines, "automat", "automater")}
+                title="Automater"
+                sub="Serienummer, butik, fack och priser. Nya hittas i Awish."
+                aside={nOrExamples(counts.machines, counts.exampleMachines, "automat", "automater")}
               />
               <Row
                 href="/butiker/ny"
                 icon={<Icon d={ICON.butik} />}
                 title="Lägg till butik och avtal"
                 sub="Adress, kontaktperson, telefon och hur stor andel butiken får."
-                aside={n(counts.stores, "butik", "butiker")}
+                aside={nOrExamples(counts.stores, counts.exampleStores, "butik", "butiker")}
               />
               <Row
                 href="/installningar/anvandare"
@@ -175,8 +186,8 @@ export default async function MorePage() {
                 <Row
                   href="/prognos#leverantorer"
                   icon={<Icon d={ICON.bil} />}
-                  title="Leverantörer och leveranstider"
-                  sub="Styr när Vårt lager säger till att beställa."
+                  title="Leverantörer"
+                  sub="Leveranstiderna styr när Vårt lager säger till att beställa."
                   aside={n(counts.suppliers, "leverantör", "leverantörer")}
                 />
               ) : null}
@@ -207,7 +218,7 @@ export default async function MorePage() {
                 href={ph(r.href)}
                 title={r.label}
                 sub={r.lead}
-                actions={<span aria-hidden="true">→</span>}
+                actions={<span aria-hidden="true">›</span>}
               />
             ))}
           </Card>

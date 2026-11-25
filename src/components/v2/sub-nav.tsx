@@ -44,7 +44,10 @@ function SubNavInner({ view, className }: { view: string | null; className?: str
     hit && role ? sectionsForRole(role).find((s) => s.id === hit.section.id) : undefined;
   const activeKey = hit?.tab.key;
   const navRef = useEdgeFade(activeKey);
+  // Sidans egen flik måste finnas bland rollens flikar: annars (Mitt konto för en läsare, som
+  // inte ser Inställningar) visades sektionens andra flikar utan någon vald.
   if (!hit || !section || section.tabs.length < 2) return null;
+  if (!section.tabs.some((t) => t.key === hit.tab.key)) return null;
   return (
     <WithCarriedQuery>
       {(query) => (
@@ -73,6 +76,20 @@ function SubNavInner({ view, className }: { view: string | null; className?: str
 }
 
 /**
+ * Var raden ska börja så att vänsterkanten visar en hel flik (inte "tällningar"): närmaste
+ * flikstart vid eller före det önskade läget, minus 6 px luft. Längst till höger står raden
+ * mot sitt slut. 0 om raden inte rullar.
+ */
+export function wholeItemLeft(wanted: number, max: number, starts: readonly number[]): number {
+  if (max <= 0) return 0;
+  const target = Math.max(0, Math.min(wanted, max));
+  if (target >= max) return max;
+  let best = 0;
+  for (const s of starts) if (s - 6 <= target) best = Math.max(0, s - 6);
+  return Math.min(best, max);
+}
+
+/**
  * Telefon: raden rullar i sidled. Vald flik rullas fram (utan att sidan hoppar i höjdled) och
  * kanterna tonas ut där det finns fler flikar (data-more-start / data-more-end, se v2.css).
  */
@@ -91,8 +108,10 @@ function useEdgeFade(activeKey: string | undefined) {
       const a = el.querySelector<HTMLElement>('a[aria-current="page"]');
       if (a && el.scrollWidth > el.clientWidth) {
         // Vald flik i mitten om det går; bara sidledes, så sidan inte hoppar.
-        const left = a.offsetLeft - (el.clientWidth - a.offsetWidth) / 2;
-        el.scrollLeft = Math.max(0, Math.min(left, el.scrollWidth - el.clientWidth));
+        const centred = a.offsetLeft - (el.clientWidth - a.offsetWidth) / 2;
+        const max = el.scrollWidth - el.clientWidth;
+        const starts = Array.from(el.querySelectorAll<HTMLElement>("a")).map((x) => x.offsetLeft);
+        el.scrollLeft = wholeItemLeft(centred, max, starts);
       }
       mark(el);
     },

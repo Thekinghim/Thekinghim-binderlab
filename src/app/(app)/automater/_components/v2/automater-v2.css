@@ -233,7 +233,8 @@
     color: var(--v2-mute);
     text-align: left;
     white-space: nowrap;
-    overflow: hidden;
+    /* Bara i sidled: i höjdled får raden växa (annars klipps 3 px av ortnamnet). */
+    overflow-x: clip;
   }
   .v2-auto .agh b {
     color: var(--v2-ink);
@@ -699,21 +700,18 @@
     .v2-auto .v2-search kbd {
       display: none;
     }
-    .v2-auto .v2-chips button {
-      white-space: nowrap;
-      flex: none;
-    }
+    /* Telefon: verktygen skrollar med listan. Klistrade tog de en tredjedel av skärmen, och
+       en klistrad rad med en sidledsrullande chiprad i klipptes av i WebKit. */
     .v2-auto .atools {
       padding: 10px 12px;
       gap: 8px;
+      position: static;
     }
+    /* Sidledsraden (v2.css, .v2-chips.scroll) går kant i kant i panelen. */
     .v2-auto .atools .v2-chips {
-      flex-basis: calc(100% + 24px);
-      margin: 0 -12px;
+      width: calc(100% + 24px);
+      margin: -4px -12px;
       padding: 0 12px;
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      scrollbar-width: none;
     }
     .v2-auto .grp {
       margin-left: 0;
@@ -725,7 +723,9 @@
     .v2-auto .arow.nomoney {
       grid-template-columns: minmax(0, 1fr) auto;
       min-height: 64px;
-      padding: 0 16px;
+      /* Nederkanten hålls fri för fyllnadsstrecket (.mbar, 7 + 3 px): en butik på två rader
+         går inte in i strecket. */
+      padding: 8px 16px 14px;
       gap: 10px;
       -webkit-user-select: none;
       user-select: none;

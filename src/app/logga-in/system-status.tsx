@@ -105,25 +105,28 @@ export async function SystemStatus({ locale = "sv" }: { locale?: Locale } = {}) 
     `${formatTime(now)} Stockholm`,
   ].filter((p): p is string => Boolean(p));
 
+  // Varje del bär sin punkt framför sig, och raden är förskjuten 16 px åt vänster bakom en
+  // klippt kant: en del som hamnar först på en ny rad tappar punkten (ingen rad börjar med "·").
   return (
-    <p
-      className="flex flex-wrap items-center gap-x-2 gap-y-1 text-v2-xs text-v2-faint"
-      role="status"
-    >
-      <span className="inline-flex items-center gap-1.5 font-[550] text-v2-mute">
-        <span
-          aria-hidden
-          className="inline-block size-1.5 rounded-full"
-          style={{ background: ms === null ? "var(--v2-crit-icon)" : "var(--v2-profit)" }}
-        />
-        {ms === null ? t.down : t.up}
-      </span>
-      {parts.map((p) => (
-        <span key={p} className="inline-flex items-center gap-2">
-          <span aria-hidden>·</span>
-          <span className="tnum">{p}</span>
+    <p className="overflow-hidden text-v2-xs text-v2-faint" role="status">
+      <span className="-ml-4 flex flex-wrap items-center gap-y-1">
+        <span className="inline-flex items-center gap-1.5 pl-4 font-[550] text-v2-mute">
+          <span
+            aria-hidden
+            className="inline-block size-1.5 rounded-full"
+            style={{ background: ms === null ? "var(--v2-crit-icon)" : "var(--v2-profit)" }}
+          />
+          {ms === null ? t.down : t.up}
         </span>
-      ))}
+        {parts.map((p) => (
+          <span key={p} className="inline-flex items-center">
+            <span aria-hidden className="w-4 text-center">
+              ·
+            </span>
+            <span className="tnum">{p}</span>
+          </span>
+        ))}
+      </span>
     </p>
   );
 }

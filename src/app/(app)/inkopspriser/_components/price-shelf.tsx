@@ -72,10 +72,13 @@ export function PriceShelf({
                       <small>{r.own ? "Kostnad" : "Vårt"}</small>
                       <b>{money(r.currentCostOre)}</b>
                     </span>
-                    <span>
-                      <small>Kund</small>
-                      <b>{money(r.customerPriceOre)}</b>
-                    </span>
+                    {/* Utan kundpris: ingen "Kund –"-ruta (raden under säger "Inget kundpris"). */}
+                    {typeof r.customerPriceOre === "number" ? (
+                      <span>
+                        <small>Kund</small>
+                        <b>{money(r.customerPriceOre)}</b>
+                      </span>
+                    ) : null}
                   </span>
                   {gap ? (
                     <span className={cn("ip-kvar", gap.ore < 0 && "neg")}>

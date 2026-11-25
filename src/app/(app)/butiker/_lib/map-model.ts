@@ -304,6 +304,20 @@ export function labelBox(x: number, y: number, r: number, tw: number, side: Labe
  * Som placeLabels men med flera lägen per etikett (i önskad ordning): varje etikett får det
  * första läget som inte krockar. Returnerar index → valt läge (index i kandidatlistan).
  */
+/**
+ * Vilka etiketter som får visas när flera har samma text (två butiker i Örebro på telefonen,
+ * där etiketten är orten): bara den första av varje text, utan hänsyn till stora bokstäver.
+ */
+export function firstOfEachText(texts: readonly string[]): boolean[] {
+  const seen = new Set<string>();
+  return texts.map((text) => {
+    const key = text.trim().toLocaleLowerCase("sv-SE");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function placeLabelsAround(
   candidates: readonly (readonly LabelBox[])[],
   blocked: readonly LabelBox[] = [],
