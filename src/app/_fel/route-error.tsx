@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { StateMessage, type StateDiagnostic } from "@/components/ui/state-message";
 import { useT } from "@/i18n/client";
+import { isTransientLoadError } from "@/lib/load-error";
 
 /** Klockan i Stockholm, som resten av appen (inte webbläsarens tidszon): "15:51". */
 const stockholmTime = new Intl.DateTimeFormat("sv-SE", {
@@ -21,6 +22,26 @@ export type RouteErrorProps = {
   /** Äldre namn i Next; används bara om `retry` saknas. */
   reset?: () => void;
 };
+
+const AUTO_RETRY_KEY = "binderlab-felrutan-omforsok";
+
+/** Får felrutan försöka igen av sig själv nu? Högst två gånger per minut (sessionStorage). */
+function takeAutoRetry(): boolean {
+  try {
+    const now = Date.now();
+    const raw = window.sessionStorage.getItem(AUTO_RETRY_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    const recent = (Array.isArray(parsed) ? parsed : []).filter(
+      (t): t is number => typeof t === "number" && t <= now && now - t < 60_000,
+    );
+    if (recent.length >= 2) return false;
+    window.sessionStorage.setItem(AUTO_RETRY_KEY, JSON.stringify([...recent, now]));
+    return true;
+  } catch {
+    // Utan lagring vet vi inte hur många försök som gjorts: inget automatiskt försök.
+    return false;
+  }
+}
 
 function digestOf(error: unknown): string | undefined {
   if (error && typeof error === "object" && "digest" in error) {
@@ -84,6 +105,30 @@ export function RouteError({
     console.error(error);
   }, [error]);
 
+  const again = retry ?? reset ?? (() => window.location.reload());
+
+  // En nedladdning som bröts (Safari: "TypeError: Load failed") är inget programfel: försök
+  // igen av sig själv, högst två gånger per minut, och när nätet kommer tillbaka eller appen
+  // visas igen. Felrutan syns bara om det inte hjälper.
+  useEffect(() => {
+    if (!isTransientLoadError(error)) return;
+    const run = () => {
+      if (navigator.onLine === false || document.visibilityState !== "visible") return;
+      if (!takeAutoRetry()) return;
+      again();
+    };
+    const t = window.setTimeout(run, 500);
+    window.addEventListener("online", run);
+    document.addEventListener("visibilitychange", run);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("online", run);
+      document.removeEventListener("visibilitychange", run);
+    };
+    // again ändras inte under felets livstid; felet styr.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error]);
+
   const t = useT();
   const digest = digestOf(error);
   const diagnostics: StateDiagnostic[] = [];
@@ -95,8 +140,6 @@ export function RouteError({
     );
     if (where.message) diagnostics.push({ label: t.state.diagMessage, value: where.message });
   }
-
-  const again = retry ?? reset ?? (() => window.location.reload());
 
   return (
     <div className="v2-card w-full max-w-xl">

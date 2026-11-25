@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 
 import { isSingleDay, periodNameInline, periodQuery } from "@/components/shell/period-state";
 import { simpleHomeFor } from "@/components/shell/simple-view";
 import { DaySalesCard } from "@/components/v2/day-sales";
 import { PeriodSegment } from "@/components/v2/period-segment";
+import { SafeSuspense } from "@/components/v2/safe-suspense";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { Skeleton, SkeletonCard } from "@/components/v2/skeleton";
 import { messages } from "@/i18n";
@@ -96,79 +96,79 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       period
       className="hem2"
       sub={
-        <Suspense fallback={<Skeleton width={320} height={16} />}>
+        <SafeSuspense fallback={<Skeleton width={320} height={16} />}>
           <TodaySub />
-        </Suspense>
+        </SafeSuspense>
       }
     >
       {/* Försäljningen har inte hämtats på 30 min (Awish svarar inte): orderlistan i
           Datakällor är reserven. Bara ägare och admin; ingenting när allt fungerar. */}
-      <Suspense fallback={null}>
+      <SafeSuspense fallback={null}>
         <AwishOrdersBanner className="mb-3" />
-      </Suspense>
+      </SafeSuspense>
 
       {/* Hjältekortet (visuellt/02): vinst, pallen och månadens mål, nyckeltalen kompakt under
           (ersätter KPI-bandet; _hem/v2/hero-card.tsx). Bara ekonomiroller. */}
       {economy ? (
-        <Suspense
+        <SafeSuspense
           fallback={<div className="v2-card h-[380px] max-md:h-[640px]" aria-busy="true" />}
         >
           <HemHero sp={sp} />
-        </Suspense>
+        </SafeSuspense>
       ) : null}
 
       {soldTop ? (
-        <Suspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
+        <SafeSuspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
           <Sold sp={sp} economy={economy} />
-        </Suspense>
+        </SafeSuspense>
       ) : null}
 
       <div className="work">
         <div className="col">
-          <Suspense fallback={<SkeletonCard rows={5} className="o-act" />}>
+          <SafeSuspense fallback={<SkeletonCard rows={5} className="o-act" />}>
             <Actions canRoute={canRoute} nowIso={ctx.now} />
-          </Suspense>
+          </SafeSuspense>
           {/* Påfyllaren (utan ekonomi) har ingen analys: Driftstatus bor då under Kräver åtgärd,
               så att den inte blir ett ensamt kort i en egen sektion och lämnar ett hål här. */}
           {!economy ? (
-            <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
+            <SafeSuspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
               <OpsCardView timeZone={ctx.timeZone} />
-            </Suspense>
+            </SafeSuspense>
           ) : null}
           {economy ? (
-            <Suspense fallback={<SkeletonCard rows={4} className="o-live" />}>
+            <SafeSuspense fallback={<SkeletonCard rows={4} className="o-live" />}>
               <Live nowIso={ctx.now} />
-            </Suspense>
+            </SafeSuspense>
           ) : null}
           {/* Resultat bor i vänsterkolumnen (under Senaste köp), så att den inte lämnar ett hål
               bredvid Att göra. Under 1240 px ligger den efter Senaste köp (hem.css). */}
           {economy ? (
-            <Suspense fallback={<SkeletonCard rows={6} className="x-c x-res" />}>
+            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c x-res" />}>
               <ResultCard sp={sp} />
-            </Suspense>
+            </SafeSuspense>
           ) : null}
           {/* "Få notis vid varje försäljning": sist i kolumnen (inte bråttom), så att rutan inte
               flyttar korten ovanför när den dyker upp. */}
           {ctx.role === "owner" ? (
-            <Suspense fallback={null}>
+            <SafeSuspense fallback={null}>
               <SalePromptSlot />
-            </Suspense>
+            </SafeSuspense>
           ) : null}
         </div>
         <div className="col">
-          <Suspense fallback={<SkeletonCard rows={5} className="o-rutt" />}>
+          <SafeSuspense fallback={<SkeletonCard rows={5} className="o-rutt" />}>
             <Route canRoute={canRoute} />
-          </Suspense>
-          <Suspense fallback={<SkeletonCard rows={3} className="o-todo" />}>
+          </SafeSuspense>
+          <SafeSuspense fallback={<SkeletonCard rows={3} className="o-todo" />}>
             <Todo />
-          </Suspense>
+          </SafeSuspense>
         </div>
       </div>
 
       {!economy ? (
-        <Suspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
+        <SafeSuspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
           <Sold sp={sp} economy={economy} />
-        </Suspense>
+        </SafeSuspense>
       ) : null}
 
       {economy ? (
@@ -181,30 +181,30 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
             </Link>
           </div>
           <div className="x-grid">
-            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <WhenCardView sp={sp} />
-            </Suspense>
-            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </SafeSuspense>
+            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <GeoCardView sp={sp} />
-            </Suspense>
-            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </SafeSuspense>
+            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <TopCardView sp={sp} />
-            </Suspense>
-            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </SafeSuspense>
+            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <WorstCardView />
-            </Suspense>
-            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </SafeSuspense>
+            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <StockCardView />
-            </Suspense>
-            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </SafeSuspense>
+            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <LossCardView sp={sp} />
-            </Suspense>
-            <Suspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </SafeSuspense>
+            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <ShopsCardView sp={sp} />
-            </Suspense>
-            <Suspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
+            </SafeSuspense>
+            <SafeSuspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
               <OpsCardView timeZone={ctx.timeZone} />
-            </Suspense>
+            </SafeSuspense>
           </div>
         </section>
       ) : null}
