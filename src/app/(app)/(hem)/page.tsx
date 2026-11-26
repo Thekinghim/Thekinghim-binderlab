@@ -103,8 +103,8 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       date={headerDate(new Date(ctx.now), ctx.timeZone)}
       period
       tools={<BriefButton />}
-      // hem-eco: ekonomirollernas telefonordning (hem.css): vinsten, Kräver åtgärd, Dagens rutt
-      // och Fördelning först.
+      // hem-eco: ekonomirollernas telefonordning (hem.css): vinsten, Fördelning, Kräver åtgärd
+      // och Dagens rutt först. Fördelning ligger direkt under vinsten på ägarens begäran.
       className={economy ? "hem2 hem-eco" : "hem2"}
       sub={
         <SafeSuspense fallback={<Skeleton width="min(320px, 85%)" height={16} />}>

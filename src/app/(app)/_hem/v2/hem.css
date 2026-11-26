@@ -2501,9 +2501,9 @@
 
 /* ==========================================================================
    Telefon, ekonomiroller (.hem-eco, ≤ 900 px): det viktiga först. Hjältekortet blir bara
-   vinsten med förändringen (pallen finns i Mest sålda), sedan Kräver åtgärd och Dagens rutt
-   (på första skärmen), Fördelning direkt efter dem (kortet är 650–900 px högt och skulle
-   annars trycka ner Kräver åtgärd till skärm två); nyckeltalen, målet och resten efter det. Resultat döljs (samma tal som
+   vinsten med förändringen (pallen finns i Mest sålda), sedan Fördelning (ägaren vill ha den
+   så tidigt som möjligt på Hem), Kräver åtgärd och Dagens rutt; nyckeltalen, målet och
+   resten efter det. Resultat döljs (samma tal som
    hjältekortet och nyckeltalen). Sidans kort blir en enda kolumn (.hh och .work som
    display: contents), så att ordningen kan sättas med order. Datorn påverkas inte.
    ========================================================================== */
@@ -2528,13 +2528,13 @@
   .hem2.hem-eco .hh-card {
     order: 1;
   }
-  .hem2.hem-eco .work .o-act {
+  .hem2.hem-eco .o-split {
     order: 2;
   }
-  .hem2.hem-eco .work .o-rutt {
+  .hem2.hem-eco .work .o-act {
     order: 3;
   }
-  .hem2.hem-eco .o-split {
+  .hem2.hem-eco .work .o-rutt {
     order: 4;
   }
   .hem2.hem-eco .o-sold {
