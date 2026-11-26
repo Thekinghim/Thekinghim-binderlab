@@ -2,8 +2,9 @@ import type { MetadataRoute } from "next";
 
 /**
  * Webbappsmanifest (/manifest.webmanifest): Binderlab kan installeras på hemskärmen och
- * öppnas utan webbläsarens ramar. Start i Fyll på (/fyll-pa, mobilsidan vid automaten);
- * fältsidorna (Fyll på, påfyllning, besöksplan) fungerar utan uppkoppling (public/sw.js). Ikonen är src/app/icon.svg; PNG-ikonerna i
+ * öppnas utan webbläsarens ramar. Start på / (Hem; påfyllare och butiker skickas vidare till
+ * sin egen sida av inloggningen och layouten). Färgerna är V2:s ljusa bakgrund (--v2-bg), så att
+ * startskärmen och statusraden har samma grå som appen. Fältsidorna (Fyll på, påfyllning, besöksplan) fungerar utan uppkoppling (public/sw.js). Ikonen är src/app/icon.svg; PNG-ikonerna i
  * public/icons är renderade ur den (192, 512 och en maskerbar 512).
  */
 export default function manifest(): MetadataRoute.Manifest {
@@ -14,12 +15,12 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Kontrollpanel för varuautomater med samlarkort.",
     lang: "sv",
     dir: "ltr",
-    start_url: "/fyll-pa",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#0a0a0b",
-    theme_color: "#0a0a0b",
+    background_color: "#f1f1f1",
+    theme_color: "#f1f1f1",
     categories: ["business", "productivity"],
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },

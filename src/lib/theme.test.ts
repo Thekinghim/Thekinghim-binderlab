@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { readCookie, THEME_COOKIE, themeCookie, themeFromCookie } from "./theme";
+import {
+  readCookie,
+  THEME_COOKIE,
+  themeColorFromCookie,
+  themeCookie,
+  themeFromCookie,
+} from "./theme";
 
 /** Temat renderas på servern ur cookien: rätt data-theme i första svaret, utan inline-skript. */
 describe("temats cookie", () => {
@@ -21,5 +27,12 @@ describe("temats cookie", () => {
   it("läses ur document.cookie", () => {
     expect(readCookie(`a=1; ${THEME_COOKIE}=light; b=2`, THEME_COOKIE)).toBe("light");
     expect(readCookie("a=1", THEME_COOKIE)).toBeNull();
+  });
+
+  it("statusradens färg är ljus som standard (samma grå som appen och manifestet)", () => {
+    expect(themeColorFromCookie(undefined)).toBe("#f1f1f1");
+    expect(themeColorFromCookie("<script>")).toBe("#f1f1f1");
+    expect(themeColorFromCookie("light")).toBe("#f4f3ef");
+    expect(themeColorFromCookie("dark")).toBe("#0a0a0b");
   });
 });

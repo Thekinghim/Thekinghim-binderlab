@@ -19,6 +19,17 @@ export function themeFromCookie(value: string | undefined | null): Theme {
   return value === "light" ? "light" : "dark";
 }
 
+/**
+ * Webbläsarens färg (theme-color: statusraden och adressfältet) ur cookiens värde. Standard
+ * (saknas eller okänt) är ljust: V2:s grå bakgrund (--v2-bg i src/styles/v2.css), samma som
+ * inloggningen, Hem och manifestets färger. Mörkt bara för den som valt mörkt.
+ */
+export function themeColorFromCookie(value: string | undefined | null): string {
+  if (value === "dark") return "#0a0a0b";
+  if (value === "light") return "#f4f3ef";
+  return "#f1f1f1";
+}
+
 /** `document.cookie`-raden som sparar valet. Secure på https. */
 export function themeCookie(theme: Theme, secure: boolean): string {
   return `${THEME_COOKIE}=${theme}; Path=/; Max-Age=${THEME_COOKIE_MAX_AGE}; SameSite=Lax${secure ? "; Secure" : ""}`;

@@ -24,6 +24,8 @@ export function MoreAccount({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  // Egen övergång för Logga ut: bara den knappen visar att något händer (inte Byt).
+  const [signingOut, startSignOut] = useTransition();
   return (
     <Card title="Konto">
       {organizations.length > 1
@@ -37,6 +39,7 @@ export function MoreAccount({
                   <Button
                     size="sm"
                     pending={pending}
+                    disabled={signingOut}
                     onClick={() =>
                       start(async () => {
                         const r = await switchOrganization(o.id);
@@ -64,9 +67,10 @@ export function MoreAccount({
         actions={
           <Button
             size="sm"
-            pending={pending}
+            pending={signingOut}
+            disabled={pending}
             onClick={() =>
-              start(async () => {
+              startSignOut(async () => {
                 clearAllRecent();
                 const r = await logout({ pushEndpoint: await pushEndpointForLogout() });
                 if (r.ok) router.replace("/logga-in");
