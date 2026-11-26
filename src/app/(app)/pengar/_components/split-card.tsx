@@ -152,7 +152,8 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
           {v.shareUnknownStoreIds.length > 0 ? (
             <>
               Andelen för {plural(v.shareUnknownStoreIds.length, "butik", "butiker")} kan inte
-              räknas än och räknas som 0 kr i summan.{" "}
+              räknas än. {v.shareUnknownStoreIds.length === 1 ? "Den står" : "De står"} som 0 kr i
+              summan.{" "}
               <Link href="/butiker" className="underline underline-offset-4">
                 Butiker
               </Link>
