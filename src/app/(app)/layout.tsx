@@ -23,6 +23,7 @@ import { AppUpdate } from "@/components/pwa/app-update";
 import { liveBuildId } from "@/server/build-id";
 import { AppFrameRoot } from "@/components/shell/frame-root";
 
+import { DailyBrief } from "./_hem/brief/dialog";
 import { AppFrame } from "./app-frame";
 import { NoOrganization } from "./no-organization";
 
@@ -136,6 +137,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       >
         {children}
       </AppFrame>
+      {/* Dagens brief: rutan första gången appen öppnas varje dag (hämtas efter laddningen). */}
+      <DailyBrief userKey={`${ctx.user.id}:${ctx.organization.id}`} timeZone={ctx.timeZone} />
     </AppFrameRoot>
   );
 }

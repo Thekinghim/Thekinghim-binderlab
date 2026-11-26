@@ -1,0 +1,225 @@
+/*
+ * Dagens brief (dialog.tsx): ett vitt kort mitt på en mörkare skärm, kort att svepa mellan
+ * (scroll-snap: webbläsarens egen fysik, följer fingret och går att fånga mitt i), prickar och
+ * två knappar. In: från 0,96 och genomskinlig, 220 ms ut-kurva. Ut: 150 ms. Minskad rörelse:
+ * bara toning.
+ */
+
+dialog.v2-brief {
+  position: fixed;
+  inset: 0;
+  /* Till skärmens nederkant även när iPhones vy fastnat för kort (ViewportPin). */
+  bottom: calc(0px - var(--v2-vp-shift, 0px));
+  width: 100%;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  /* Låg skärm (telefonen på tvären): rutan rullar i stället för att knapparna hamnar utanför. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgb(26 26 26 / 0);
+  color: var(--v2-ink);
+  font-family: var(--v2-sans);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 220ms var(--v2-ease);
+}
+dialog.v2-brief[open] {
+  display: grid;
+  justify-items: center;
+}
+dialog.v2-brief::backdrop {
+  background: transparent;
+}
+dialog.v2-brief[data-state="open"] {
+  background: rgb(26 26 26 / 0.36);
+}
+dialog.v2-brief[data-state="closing"] {
+  transition-duration: 150ms;
+}
+
+.v2-brief .bf-card {
+  /* margin auto: mitt på skärmen, men toppen klipps aldrig när rutan är högre än skärmen. */
+  margin: auto 0;
+  width: min(360px, 100%);
+  background: var(--v2-panel);
+  border-radius: 20px;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.04),
+    0 24px 60px rgb(0 0 0 / 0.18);
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 220ms var(--v2-ease),
+    transform 220ms var(--v2-ease);
+}
+.v2-brief[data-state="open"] .bf-card {
+  opacity: 1;
+  transform: none;
+}
+.v2-brief[data-state="closing"] .bf-card {
+  opacity: 0;
+  transform: scale(0.98);
+  transition-duration: 150ms;
+}
+
+/* Korten: ett i taget, ett per svep. */
+.v2-brief .bf-track {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* Sidled svep mellan korten; ett lodrätt drag går vidare till rutan (låg skärm). */
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+.v2-brief .bf-track::-webkit-scrollbar {
+  display: none;
+}
+.v2-brief .bf-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  padding: 28px 24px 4px;
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+  --brief-soft: var(--v2-info-soft);
+  --brief-accent: var(--v2-info-icon);
+}
+.v2-brief .bf-slide[data-tone="crit"] {
+  --brief-soft: var(--v2-crit-soft);
+  --brief-accent: var(--v2-crit-icon);
+}
+.v2-brief .bf-slide[data-tone="warn"] {
+  --brief-soft: var(--v2-warn-soft);
+  --brief-accent: var(--v2-warn);
+}
+.v2-brief .bf-slide[data-tone="profit"] {
+  --brief-soft: var(--v2-profit-soft);
+  --brief-accent: var(--v2-profit);
+}
+.v2-brief .bf-art {
+  display: grid;
+  place-items: center;
+  height: 120px;
+  margin-bottom: 12px;
+}
+.v2-brief .bf-art svg {
+  max-width: 100%;
+  height: auto;
+}
+.v2-brief .bf-title {
+  font-size: var(--v2-t-xl);
+  line-height: 26px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.v2-brief .bf-line {
+  margin-top: 6px;
+  min-height: 40px;
+  font-size: var(--v2-t-md);
+  line-height: 20px;
+  color: var(--v2-mute);
+  text-wrap: balance;
+}
+
+@media (max-height: 520px) {
+  .v2-brief .bf-art {
+    height: 72px;
+  }
+  .v2-brief .bf-art svg {
+    max-height: 72px;
+    width: auto;
+  }
+  .v2-brief .bf-slide {
+    padding-top: 18px;
+  }
+}
+
+/* Prickarna: visar var man är, och går att trycka på (24 × 32 px tryckyta). */
+.v2-brief .bf-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  padding: 2px 0 0;
+}
+.v2-brief .bf-dot {
+  position: relative;
+  width: 24px;
+  height: 32px;
+  touch-action: manipulation;
+}
+.v2-brief .bf-dot::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--v2-line3);
+  transition:
+    background-color 200ms var(--v2-ease),
+    transform 200ms var(--v2-ease);
+}
+.v2-brief .bf-dot[aria-current="true"]::before {
+  background: var(--v2-ink);
+  transform: scale(1.15);
+}
+
+.v2-brief .bf-foot {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+.v2-brief .bf-foot .v2-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-brief .bf-card,
+  .v2-brief[data-state="closing"] .bf-card {
+    transform: none;
+  }
+  .v2-brief .bf-dot::before {
+    transition: background-color 200ms ease;
+  }
+  .v2-brief .bf-track {
+    scroll-behavior: auto;
+  }
+}
+
+/* Knappen Dagens brief i Hems sidhuvud: ikon och text på datorn, bara ikonen på telefon. */
+.v2-btn.bf-open {
+  padding: 0 8px;
+}
+@media (max-width: 900px) {
+  .v2-btn.bf-open {
+    position: relative;
+    width: 32px;
+    padding: 0;
+  }
+  .v2-btn.bf-open .bf-open-label {
+    display: none;
+  }
+  .v2-btn.bf-open::after {
+    content: "";
+    position: absolute;
+    inset: -6px -4px;
+  }
+}
