@@ -128,4 +128,10 @@ describe("countedRows (Så räknade vi)", () => {
     const minus = rows.filter((r) => r.ore < 0 && !r.info);
     expect(solo.amountOre + minus.reduce((a, r) => a + r.ore, 0)).toBe(solo.profitOre);
   });
+
+  it("inköpet tillbaka till partnern utan partnerrad: raden står kvar, talen går ihop", () => {
+    const rows = countedRows(t, false);
+    expect(rows.map((r) => r.label)).toContain("Inköpet tillbaka till partnern");
+    expect(rows.at(-1)).toEqual({ label: "Vinst att dela", ore: 41_000 });
+  });
 });

@@ -268,6 +268,8 @@ export function countedRows(
   >,
   hasPartner: boolean,
 ): CountedRow[] {
+  // En återbetalning av inköpet till partnern betyder partner, även om raden saknas.
+  const partner = hasPartner || t.partnerReimbOre !== 0;
   const rows: CountedRow[] = [
     { label: "Försäljning", ore: t.grossOre },
     { label: "Återbetalt till kunder", ore: -t.refundsOre },
@@ -275,12 +277,12 @@ export function countedRows(
     { label: "Pengar in", ore: t.amountOre },
     { label: "Till butikerna", ore: -t.storesOre },
   ];
-  if (hasPartner) rows.push({ label: "Inköpet tillbaka till partnern", ore: -t.partnerReimbOre });
+  if (partner) rows.push({ label: "Inköpet tillbaka till partnern", ore: -t.partnerReimbOre });
   rows.push({ label: "Moms att spara", ore: -t.vatOre });
   if (t.refundsOutsideOre) {
     rows.push({ label: "Återbetalningar du gjort själv", ore: -t.refundsOutsideOre });
   }
-  if (hasPartner) {
+  if (partner) {
     rows.push({ label: "Vinst att dela", ore: t.profitOre });
   } else {
     rows.push({ label: "Kvar till dig, inköpet ingår", ore: t.profitOre });

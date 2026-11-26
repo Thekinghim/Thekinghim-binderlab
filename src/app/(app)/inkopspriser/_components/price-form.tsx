@@ -377,6 +377,7 @@ export function PriceForm({
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (pending) return;
+    setConfirmFix(false);
     if (primary === "today") saveFrom(today, "today");
     else askCorrect();
   };

@@ -548,9 +548,12 @@ const dueText = (iso: string) =>
 export async function ShopsCardView({
   sp,
   withSplit = false,
+  canEdit = false,
 }: {
   sp: SearchParamsInput;
   withSplit?: boolean;
+  /** Får skapa avräkningar (ägare och admin): annars bara en länk att titta. */
+  canEdit?: boolean;
 }) {
   const s = await loadShopsCard(sp);
   if (!s) return null;
@@ -589,7 +592,7 @@ export async function ShopsCardView({
         <Link className="x-lr" href={s.missing.href} data-testid="hem-missing-settlements">
           <span className="x-ln">
             <b>{s.missing.text}</b>
-            <small>Skapa dem på Utbetalning</small>
+            <small>{canEdit ? "Skapa dem på Utbetalning" : "Se Utbetalning"}</small>
           </span>
           <span className="x-num">→</span>
         </Link>
