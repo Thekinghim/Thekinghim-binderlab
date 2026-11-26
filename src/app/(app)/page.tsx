@@ -28,6 +28,7 @@ import { loadSalePushPref } from "@/server/sales-push/prefs";
 import { withUserDb } from "@/server/session";
 
 import { AwishOrdersBanner } from "./_vakt/data-age-line";
+import { BriefButton } from "./_hem/brief/button";
 import { SalesScreen } from "./forsaljning/_components/sales-screen";
 import {
   GeoCardView,
@@ -94,6 +95,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       title="Hem"
       date={headerDate(new Date(ctx.now), ctx.timeZone)}
       period
+      tools={<BriefButton />}
       className="hem2"
       sub={
         <SafeSuspense fallback={<Skeleton width={320} height={16} />}>

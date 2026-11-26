@@ -34,6 +34,17 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
   med **Spara pris mot kund** (då på priset som gäller i dag). Ett nytt inköpspris från en leverans eller
   mystery-kalkylen tar över periodens pris mot kund. Läsare ser båda priserna, påfyllare och butikernas portal ser
   inget av dem.
+- **Dagens brief:** första gången appen öppnas varje dag (per person och enhet, svensk tid)
+  kommer en ruta mitt på skärmen med 1–6 kort att svepa mellan, viktigast först: automater
+  offline och larm, påfyllning, dagens rutt, betala butikerna, priser med förlust, inköpspris
+  som saknas och **I går** (sålt i kronor och pack mot ett vanligt dygn). Varje kort har en bild,
+  en rubrik med talet, en grå rad och en knapp dit (Fyll på, Öppna rutt, Betala, Lägg in pris,
+  Se larm). **Stäng** stänger för i dag; knappen **Dagens brief** på Hem öppnar den igen. Inget
+  att göra ger kortet "Allt är klart i dag". Rutan väntar tills sidan laddats och tills inget
+  annat ark är öppet, och visas inte i Enkel vy, i butiksportalen eller i inloggningen. Ägare och
+  admin ser allt; läsaren ser allt men knappen bara visar (Visa); påfyllaren ser bara påfyllning
+  och rutt, utan kronor. Rollen avgörs på servern (`GET /dagens-brief`,
+  `src/app/(app)/_hem/brief/data.ts`), korten byggs av `src/analytics/brief`.
 - **Ägaren får veta när något går sönder:** överst på Hem och Drift står en rad för varje sak som gör att
   ägaren annars inte skulle märka ett fel: **"Ingen får larm just nu"** (ingen ägare eller admin har en kanal
   som fungerar: slå på notiser i telefonen), **"Kontrollen har inte körts sedan …"**, **"Försäljningen har
