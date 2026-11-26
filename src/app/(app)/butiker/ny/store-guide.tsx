@@ -1,12 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 
+import { createScopedStore, useScopedStore } from "@/app/fyll-pa/_lib/scoped-store";
 import { FormError } from "@/app/logga-in/form-error";
+import { useUnsavedWarning } from "@/components/pwa/unsaved-input";
 import { Input } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import { Button as V2Button, ButtonLink } from "@/components/v2/button";
+import { useUrlStep } from "@/components/v2/use-url-step";
+import { useHydrated } from "@/lib/use-hydrated";
 import { cn } from "@/lib/cn";
 import { contractHtml, type ContractParty } from "@/reports/contract-pdf";
 
@@ -45,6 +49,27 @@ export interface GuideLead {
 type MachineChoice = { kind: "awish"; id: string } | { kind: "new" } | { kind: "none" };
 
 const STEPS = ["Butik", "Villkor", "Automat", "Kontrakt", "Klart"] as const;
+
+/** Det man har fyllt i, och vad som redan är sparat (butiken, kontraktet). */
+interface GuideDraft {
+  readonly name: string;
+  readonly address: string;
+  readonly city: string;
+  readonly terms: TermsDraft;
+  readonly machine: MachineChoice;
+  readonly store: { storeId: string; code: string | null } | null;
+  readonly contract: { id: string; pdf: boolean } | null;
+  readonly signed: boolean;
+}
+
+/**
+ * Utkastet ligger i flikens sessionStorage: ett svep bakåt, ett byte av flik eller en
+ * omladdning tappar inte det man har skrivit. Glöms efter ett dygn och när fliken stängs.
+ */
+const draftStore = createScopedStore<GuideDraft>({
+  key: "binderlab:ny-butik",
+  maxAgeMs: 24 * 60 * 60_000,
+});
 
 /** En stor valknapp (radio) i guiden. */
 function Choice({
@@ -110,6 +135,7 @@ export function StoreGuide({
   lead,
   operator,
   today,
+  owner,
 }: {
   found: readonly GuideMachine[];
   preselected: string | null;
@@ -117,33 +143,87 @@ export function StoreGuide({
   lead: GuideLead | null;
   operator: ContractParty;
   today: string;
+  /** Organisation och användare: utkastet är personens eget (inte nästa inloggads). */
+  owner: string;
 }) {
   const toast = useToast();
-  const [step, setStep] = useState(0);
-  const [name, setName] = useState(lead?.name ?? "");
-  const [address, setAddress] = useState(lead?.address ?? "");
-  const [city, setCity] = useState(lead?.city ?? "");
-  const [terms, setTerms] = useState<TermsDraft>(() => leadTerms(lead));
+  // Steget i adressen (?steg=2 … 5; Butik utan steg): svepet bakåt backar ett steg.
+  const url = useUrlStep(STEPS.length);
+  const step = url.step ?? 0;
+  const toUrl = (s: number) => (s === 0 ? null : s);
+  const hydrated = useHydrated();
+  const scope = `${owner}|${lead?.id ?? ""}|${preselected ?? ""}`;
+  const [saved, setDraft] = useScopedStore(draftStore, scope);
+  const fresh = useMemo<GuideDraft>(
+    () => ({
+      name: lead?.name ?? "",
+      address: lead?.address ?? "",
+      city: lead?.city ?? "",
+      terms: leadTerms(lead),
+      machine: preselected
+        ? { kind: "awish", id: preselected }
+        : found[0]
+          ? { kind: "awish", id: found[0].id }
+          : { kind: "new" },
+      store: null,
+      contract: null,
+      signed: false,
+    }),
+    [lead, preselected, found],
+  );
+  const draft = saved ?? fresh;
+  const { name, address, city, terms, machine, store, contract, signed } = draft;
+  const update = (patch: Partial<GuideDraft>) => setDraft({ ...draft, ...patch });
   const [termsError, setTermsError] = useState<{
     message: string;
     field: "share" | "rent" | "special";
   }>();
-  const [machine, setMachine] = useState<MachineChoice>(
-    preselected
-      ? { kind: "awish", id: preselected }
-      : found[0]
-        ? { kind: "awish", id: found[0].id }
-        : { kind: "new" },
-  );
   const [error, setError] = useState<string>();
   const [fieldError, setFieldError] = useState<string>();
-  const [store, setStore] = useState<{ storeId: string; code: string | null } | null>(null);
-  const [contract, setContract] = useState<{ id: string; pdf: boolean } | null>(null);
-  const [signed, setSigned] = useState(false);
   const [pending, startTransition] = useTransition();
   const nameRef = useRef<HTMLInputElement>(null);
+  // Kontraktet är just sparat och Klart är på väg in i adressen.
+  const finishing = useRef(false);
+  // Klart har visats: ett steg bakåt därifrån lämnar guiden (butiken finns redan).
+  const shownDone = useRef(false);
 
   const checked = useMemo(() => checkTerms(terms), [terms]);
+  // Längsta steg som går att visa med det som är ifyllt (sidan kan öppnas mitt i guiden).
+  const reachable = contract && store ? 4 : name.trim() === "" ? 0 : checked.ok ? 3 : 1;
+  const dirty =
+    !contract &&
+    (name !== fresh.name ||
+      address !== fresh.address ||
+      city !== fresh.city ||
+      JSON.stringify(terms) !== JSON.stringify(fresh.terms));
+  useUnsavedWarning(dirty);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (finishing.current) {
+      // Klart står i adressen: härifrån lämnar ett steg bakåt guiden. (Det behövs ingen
+      // ny rendering efter den här för att det ska gälla.)
+      if (step === 4) {
+        finishing.current = false;
+        shownDone.current = true;
+      }
+      return;
+    }
+    if (contract) {
+      if (step === 4) {
+        shownDone.current = true;
+        return;
+      }
+      // Bakåt från Klart, eller en färdig guide från förut: börja om på en tom guide.
+      setDraft(null);
+      if (shownDone.current) {
+        shownDone.current = false;
+        url.leave();
+      }
+      return;
+    }
+    if (step > reachable) url.replace(toUrl(reachable));
+  });
   const preview = useMemo(() => {
     if (step !== 3 || !checked.ok) return "";
     return contractHtml({
@@ -160,8 +240,8 @@ export function StoreGuide({
   const save = () =>
     startTransition(async () => {
       setError(undefined);
-      let saved = store;
-      if (!saved) {
+      let savedStore = store;
+      if (!savedStore) {
         const result = await createStoreGuide({
           store: { name, address, city },
           terms: guideTerms(terms),
@@ -176,11 +256,11 @@ export function StoreGuide({
           setError(result.error);
           return;
         }
-        saved = { storeId: result.data!.storeId, code: result.data!.machineCode };
-        setStore(saved);
+        savedStore = { storeId: result.data!.storeId, code: result.data!.machineCode };
+        update({ store: savedStore });
       }
       const res = await finishStoreGuide({
-        storeId: saved.storeId,
+        storeId: savedStore.storeId,
         leadId: lead?.id ?? null,
         terms: termsPayload(terms),
       });
@@ -188,8 +268,15 @@ export function StoreGuide({
         setError(res.error);
         return;
       }
-      setContract({ id: res.data.contractId, pdf: res.data.pdf });
-      setStep(4);
+      // Utkastet först, sedan steget: Klart visas aldrig utan kontrakt.
+      finishing.current = true;
+      setDraft({
+        ...draft,
+        store: savedStore,
+        contract: { id: res.data.contractId, pdf: res.data.pdf },
+      });
+      // Klart ersätter Kontrakt i historiken: ett steg bakåt lämnar guiden.
+      url.replace(4);
     });
 
   const markSigned = () =>
@@ -197,7 +284,7 @@ export function StoreGuide({
       if (!contract) return;
       const res = await setContractStatus({ id: contract.id, status: "signed" });
       if (!res.ok) return setError(res.error);
-      setSigned(true);
+      update({ signed: true });
       toast({ title: "Signerat", tone: "ok" });
     });
 
@@ -214,7 +301,7 @@ export function StoreGuide({
       return;
     }
     if (step < 3) {
-      setStep(step + 1);
+      url.push(step + 1);
       return;
     }
     save();
@@ -290,7 +377,7 @@ export function StoreGuide({
                 ref={nameRef}
                 label="Butikens namn"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => update({ name: e.target.value })}
                 error={fieldError}
                 autoFocus
                 required
@@ -298,10 +385,10 @@ export function StoreGuide({
               <Input
                 label="Adress"
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                onChange={(e) => update({ address: e.target.value })}
                 hint="För rutten."
               />
-              <Input label="Ort" value={city} onChange={(e) => setCity(e.target.value)} />
+              <Input label="Ort" value={city} onChange={(e) => update({ city: e.target.value })} />
             </>
           ) : null}
 
@@ -309,7 +396,7 @@ export function StoreGuide({
             <TermsFields
               value={terms}
               onChange={(t) => {
-                setTerms(t);
+                update({ terms: t });
                 setTermsError(undefined);
               }}
               error={termsError}
@@ -322,20 +409,20 @@ export function StoreGuide({
                 <Choice
                   key={m.id}
                   checked={machine.kind === "awish" && machine.id === m.id}
-                  onSelect={() => setMachine({ kind: "awish", id: m.id })}
+                  onSelect={() => update({ machine: { kind: "awish", id: m.id } })}
                   title={`${m.title} (blir ${m.code})`}
                   hint={`Hittad i Awish · ${m.detail}`}
                 />
               ))}
               <Choice
                 checked={machine.kind === "new"}
-                onSelect={() => setMachine({ kind: "new" })}
+                onSelect={() => update({ machine: { kind: "new" } })}
                 title={`Ny automat (${newCode})`}
                 hint="Kopplas när den syns i Awish."
               />
               <Choice
                 checked={machine.kind === "none"}
-                onSelect={() => setMachine({ kind: "none" })}
+                onSelect={() => update({ machine: { kind: "none" } })}
                 title="Ingen automat än"
               />
             </div>
@@ -359,7 +446,7 @@ export function StoreGuide({
               <V2Button
                 type="button"
                 size="lg"
-                onClick={() => setStep(step - 1)}
+                onClick={() => url.back(toUrl(step - 1))}
                 disabled={pending}
               >
                 Tillbaka

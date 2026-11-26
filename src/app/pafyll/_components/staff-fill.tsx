@@ -143,7 +143,7 @@ export function StaffFill({
             </h1>
             <p className="text-v2-mute">
               {done.undone
-                ? "Borttaget. Tryck Klar och skriv rätt antal."
+                ? "Borttaget. Skriv rätt antal och tryck Klart igen."
                 : done.awish === "pushed"
                   ? "Automaten är uppdaterad."
                   : done.awish === "pending"
@@ -178,7 +178,7 @@ export function StaffFill({
             router.refresh();
           }}
         >
-          Klar
+          {done.undone ? "Skriv rätt antal" : "Klar"}
         </Button>
       </section>
     );
@@ -204,8 +204,8 @@ export function StaffFill({
           {/* Utan känd kapacitet står inget förslag vid packen (stegaren står på 0): räkna själv. */}
           <b>2.</b>{" "}
           {data.rows.some((r) => r.capacity === null)
-            ? "Fyll varje fack tills det är fullt och räkna hur många pack du lade i."
-            : "Lägg i det antal pack som står vid varje pack nedan."}
+            ? "Fyll varje fack tills det är fullt. Skriv hur många pack du lade i."
+            : "Lägg i antalet som står vid varje pack. Lade du i fler eller färre? Skriv det."}
         </li>
         <li>
           <b>3.</b> Tryck <b>Klart</b> när du är färdig.
@@ -238,7 +238,9 @@ export function StaffFill({
                       </span>
                     ) : null}
                   </div>
+                  {/* Ett fält att skriva i (inte bara − och +): 14 pack är ett tryck och två siffror. */}
                   <Stepper
+                    inputId={`fyll-${r.titleId}`}
                     value={q}
                     onChange={(v) => setQty((prev) => ({ ...prev, [r.titleId]: v }))}
                     min={0}

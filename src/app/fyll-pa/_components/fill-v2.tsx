@@ -562,7 +562,9 @@ export function SlotSheet({
             inputId={`antal-${r.titleId}`}
           />
           <span className={cn("gets", v.full && value > 0 && "full")} aria-live="polite">
-            {cap !== null ? `${formatInt(v.shown)}/${formatInt(cap)}` : formatInt(v.shown)}
+            {t.fill.becomes(
+              cap !== null ? `${formatInt(v.shown)}/${formatInt(cap)}` : formatInt(v.shown),
+            )}
             {v.full && value > 0 ? " · fullt" : ""}
           </span>
         </div>

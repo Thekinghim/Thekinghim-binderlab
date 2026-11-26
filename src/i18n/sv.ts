@@ -169,6 +169,9 @@ export const sv = {
       room === null ? `Förslag ${suggested}.` : `Förslag ${suggested}. Plats för ${room}.`,
     countLabel: "Så många pack är i automaten nu",
     wrongCount: "Fel antal i automaten?",
+    countInvalid: (max: number) => `Skriv ett heltal från 0 till ${f.int(max)}.`,
+    /** Talet bredvid stegaren i arket: så många blir det i automaten. */
+    becomes: (n: string) => `Blir ${n}`,
     needsNet: "Kräver nät",
     doneStillWorks: "Klar fungerar ändå.",
     countFailed: "Kunde inte räkna om",

@@ -103,3 +103,21 @@ export function hasUnsavedInput(doc: Document | undefined = globalThis.document)
   }
   return false;
 }
+
+/**
+ * Som useUnsavedInput, och dessutom frågar webbläsaren innan sidan stängs eller laddas om
+ * medan `active` är sant (en guide som är halvvägs ifylld).
+ */
+export function useUnsavedWarning(active: boolean): void {
+  useUnsavedInput(active);
+  useEffect(() => {
+    if (!active) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Äldre webbläsare kräver returnValue för att fråga.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [active]);
+}

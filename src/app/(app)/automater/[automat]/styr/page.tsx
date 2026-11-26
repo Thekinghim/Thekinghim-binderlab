@@ -48,7 +48,8 @@ export default async function StyrPage({ params }: { params: Params }) {
   const tz = viewer.organization.timezone;
 
   const crumb = (
-    <nav aria-label="Brödsmulor" className="ops-bar">
+    // Telefon: tillbaka-pilen före rubriken (V2Back) gör samma sak.
+    <nav aria-label="Brödsmulor" className="ops-bar max-[900px]:hidden">
       <Link href={back} className="ops-link text-v2-mute">
         <span aria-hidden>← </span>
         {machine.code}

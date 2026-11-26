@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 
+import { createScopedStore, useScopedStore } from "@/app/fyll-pa/_lib/scoped-store";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { useUnsavedWarning } from "@/components/pwa/unsaved-input";
+import { useUrlStep } from "@/components/v2/use-url-step";
 import { cn } from "@/lib/cn";
 import { contractHtml, type ContractParty } from "@/reports/contract-pdf";
 
@@ -43,10 +46,25 @@ const STEPS = ["Butik", "Villkor", "Kolla", "Klart"] as const;
 
 type TermsError = { message: string; field: "share" | "rent" | "special" };
 
+/** Det man har valt och skrivit. Ligger i flikens sessionStorage tills kontraktet är skapat. */
+interface ContractDraft {
+  readonly target: string;
+  readonly validFrom: string;
+  readonly terms: TermsDraft;
+}
+
+const draftStore = createScopedStore<ContractDraft>({
+  key: "binderlab:nytt-kontrakt",
+  maxAgeMs: 24 * 60 * 60_000,
+});
+
 /**
  * Skapa kontrakt i ett flöde: butik → villkor (snabbval) → se kontraktet (PDF:en som
  * förhandsvisning) → klart (ladda ner, signera på plats eller markera som signerat).
  * Kontraktet, villkoren och PDF:en sparas på servern i steg 3.
+ *
+ * Rutan och steget står i adressen (?steg=1 … 4): svepet bakåt backar ett steg, och från
+ * första steget stänger det rutan, i stället för att lämna sidan och tappa villkoren.
  */
 export function CreateContract({
   options,
@@ -60,6 +78,7 @@ export function CreateContract({
   variant = "primary",
   large = false,
   label = "Skapa kontrakt",
+  owner,
 }: {
   options: readonly CreateContractOption[];
   operator: ContractParty;
@@ -76,20 +95,35 @@ export function CreateContract({
   /** Stor knapp (sidans huvudåtgärd). */
   large?: boolean;
   label?: string;
+  /** Organisation och användare: utkastet är personens eget (inte nästa inloggads). */
+  owner: string;
 }) {
   const router = useRouter();
   const toast = useToast();
   const first = initialTarget && options.some((o) => o.value === initialTarget);
-  const [open, setOpen] = useState(autoOpen && Boolean(first));
+  const url = useUrlStep(STEPS.length);
+  const open = url.step !== null;
+  const step = url.step ?? 0;
   const startOf = (value: string) => options.find((o) => o.value === value)?.suggestedFrom ?? today;
-  const [step, setStep] = useState(0);
-  const [target, setTarget] = useState(first ? initialTarget! : (options[0]?.value ?? ""));
-  const [validFrom, setValidFrom] = useState(() => startOf(target));
-  const [terms, setTerms] = useState<TermsDraft>(DEFAULT_TERMS);
+  const firstTarget = first ? initialTarget! : (options[0]?.value ?? "");
+  const [saved, setDraft] = useScopedStore(draftStore, `${owner}|${initialTarget ?? ""}`);
+  // Ett sparat utkast för en butik som inte längre går att välja glöms.
+  const draft: ContractDraft =
+    saved && options.some((o) => o.value === saved.target)
+      ? saved
+      : { target: firstTarget, validFrom: startOf(firstTarget), terms: DEFAULT_TERMS };
+  const { target, validFrom, terms } = draft;
+  const update = (patch: Partial<ContractDraft>) => setDraft({ ...draft, ...patch });
   const [termsError, setTermsError] = useState<TermsError>();
   const [confirm, setConfirm] = useState<string>();
   const [error, setError] = useState<string>();
-  const [done, setDone] = useState<{ id: string; storeName: string; pdf: boolean } | null>(null);
+  const [done, setDone] = useState<{
+    id: string;
+    storeName: string;
+    pdf: boolean;
+    /** Villkoren i klartext (utkastet är tömt när kontraktet är skapat). */
+    plain: string | null;
+  } | null>(null);
   const [signed, setSigned] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -109,7 +143,6 @@ export function CreateContract({
   }, [step, checked, option, operator, validFrom, today]);
 
   const reset = () => {
-    setStep(0);
     setConfirm(undefined);
     setError(undefined);
     setTermsError(undefined);
@@ -118,9 +151,43 @@ export function CreateContract({
   };
 
   const close = () => {
-    setOpen(false);
+    if (url.step !== null) url.back(null);
     if (done) router.refresh();
   };
+
+  // ?skapa= öppnar rutan direkt (Att göra, butikssidan), utan ett extra steg i historiken.
+  const { replace } = url;
+  const openedAt = useRef(url.step);
+  useEffect(() => {
+    if (autoOpen && first && openedAt.current === null) replace(0);
+  }, [autoOpen, first, replace]);
+
+  // Klart (steg 4) utan kontrakt (sidan laddades om): tillbaka till Kolla.
+  useEffect(() => {
+    if (step === 3 && !done && !pending) replace(2);
+  }, [step, done, pending, replace]);
+
+  // Klart har visats: ett steg bakåt därifrån (svepet) stänger rutan, som Stäng. Flaggan
+  // sätts först när Klart står i adressen, så att renderingen mellan sparat kontrakt och
+  // bytt steg inte räknas som ett steg bakåt.
+  const shownDone = useRef(false);
+  useEffect(() => {
+    if (!done || !open) {
+      shownDone.current = false;
+      return;
+    }
+    if (step === 3) {
+      shownDone.current = true;
+      return;
+    }
+    if (shownDone.current) {
+      shownDone.current = false;
+      url.back(null);
+      router.refresh();
+    }
+  });
+
+  useUnsavedWarning(open && !done && JSON.stringify(terms) !== JSON.stringify(DEFAULT_TERMS));
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -128,12 +195,12 @@ export function CreateContract({
     if (step === 0) {
       if (!target) return setError("Välj en butik.");
       if (!validFrom) return setError("Ange startdag.");
-      return setStep(1);
+      return url.push(1);
     }
     if (step === 1) {
       if (!checked.ok) return setTermsError({ message: checked.message, field: checked.field });
       setTermsError(undefined);
-      return setStep(2);
+      return url.push(2);
     }
     startTransition(async () => {
       const res = await createContract({
@@ -147,8 +214,10 @@ export function CreateContract({
         else setError(res.error);
         return;
       }
-      setDone(res.data);
-      setStep(3);
+      setDone({ ...res.data, plain: checked.ok ? checked.plain : null });
+      setDraft(null);
+      // Klart ersätter Kolla i historiken: bakåt därifrån skapar inte kontraktet igen.
+      url.replace(3);
       toast({ title: `Klart! Kontrakt med ${res.data.storeName}.`, tone: "ok" });
     });
   };
@@ -181,7 +250,7 @@ export function CreateContract({
         className={large ? big : undefined}
         onClick={() => {
           reset();
-          setOpen(true);
+          url.push(0);
         }}
       >
         {label}
@@ -219,9 +288,7 @@ export function CreateContract({
                 <p className="text-v2-lg font-[650] text-v2-ink">
                   Klart! Kontrakt med {done.storeName}.
                 </p>
-                <p className="text-v2-md text-v2-mute">
-                  {signed ? "Signerat." : checked.ok ? checked.plain : null}
-                </p>
+                <p className="text-v2-md text-v2-mute">{signed ? "Signerat." : done.plain}</p>
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -259,8 +326,7 @@ export function CreateContract({
                   value={target}
                   options={[...options]}
                   onChange={(e) => {
-                    setTarget(e.target.value);
-                    setValidFrom(startOf(e.target.value));
+                    update({ target: e.target.value, validFrom: startOf(e.target.value) });
                     setConfirm(undefined);
                   }}
                 />
@@ -269,7 +335,7 @@ export function CreateContract({
                   type="date"
                   value={validFrom}
                   onChange={(e) => {
-                    setValidFrom(e.target.value);
+                    update({ validFrom: e.target.value });
                     setConfirm(undefined);
                   }}
                   hint={startHint(option?.firstSale ?? null, validFrom, today)}
@@ -279,7 +345,7 @@ export function CreateContract({
                     type="button"
                     data-use-first-sale
                     onClick={() => {
-                      setValidFrom(option.firstSale ?? validFrom);
+                      update({ validFrom: option.firstSale ?? validFrom });
                       setConfirm(undefined);
                     }}
                     className="-mt-2 w-fit rounded-v2-sm text-v2-sm font-[550] text-v2-ink underline underline-offset-4 max-md:min-h-11"
@@ -300,7 +366,7 @@ export function CreateContract({
               <TermsFields
                 value={terms}
                 onChange={(t) => {
-                  setTerms(t);
+                  update({ terms: t });
                   setTermsError(undefined);
                 }}
                 error={termsError}
@@ -342,7 +408,7 @@ export function CreateContract({
             <FormError message={error} />
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
               {step > 0 ? (
-                <Button type="button" onClick={() => setStep(step - 1)} disabled={pending}>
+                <Button type="button" onClick={() => url.back(step - 1)} disabled={pending}>
                   Tillbaka
                 </Button>
               ) : (

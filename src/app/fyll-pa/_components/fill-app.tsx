@@ -99,6 +99,7 @@ import { usePhone } from "@/components/v2/use-media";
 import { ConfirmSheet, MachineTop, MysterySheet, SayCard, SlotSheet, SlotTile } from "./fill-v2";
 import { Button } from "@/components/v2/button";
 import { RollingNumber } from "@/components/v2/rolling-number";
+import { selectAllSoon } from "@/components/v2/select-on-focus";
 
 export interface FillAppProps {
   /** Köns ägare: organisation och användare (samma som /drift/pafyllning). */
@@ -2473,9 +2474,13 @@ function RejectedList({
   );
 }
 
+/** Högsta antal man kan räkna in i ett fack (samma gräns som förut i formuläret). */
+const MAX_MACHINE_COUNT = 10_000;
+
 /**
  * "Fel antal i automaten?" (V2): räkna om en titel i automaten. Samma inventering som förut
- * (registerCount via MachineScreen); formuläret öppnas under raden.
+ * (registerCount via MachineScreen); formuläret öppnas under raden. Knappar 44 px, fältet
+ * 16 px (iPhone zoomar inte), och ett felskrivet tal ger ett fel under fältet.
  */
 function CountForm({
   row: r,
@@ -2491,13 +2496,16 @@ function CountForm({
   const t = useT();
   const [draft, setDraft] = useState(String(r.now));
   const [saving, setSaving] = useState(false);
+  const [invalid, setInvalid] = useState(false);
   const inputId = `raknat-${r.titleId}`;
+  const errorId = `${inputId}-fel`;
   if (!counting) {
     return (
       <button
         type="button"
         onClick={() => {
           setDraft(String(r.now));
+          setInvalid(false);
           onToggle();
         }}
         className="min-h-11 text-left text-v2-sm whitespace-nowrap text-v2-mute underline-offset-4 hover:text-v2-ink hover:underline"
@@ -2508,11 +2516,17 @@ function CountForm({
   }
   return (
     <form
+      noValidate
       className="flex flex-wrap items-center gap-2"
       onSubmit={async (e) => {
         e.preventDefault();
-        const n = Number(draft);
-        if (!Number.isInteger(n) || n < 0 || n > 10000) return;
+        const text = draft.trim();
+        const n = Number(text);
+        if (!/^\d+$/.test(text) || n > MAX_MACHINE_COUNT) {
+          setInvalid(true);
+          return;
+        }
+        setInvalid(false);
         setSaving(true);
         try {
           await onCount(n);
@@ -2526,22 +2540,36 @@ function CountForm({
       </label>
       <input
         id={inputId}
-        type="number"
+        type="text"
         inputMode="numeric"
         pattern="[0-9]*"
-        min={0}
-        max={10000}
+        autoComplete="off"
+        enterKeyHint="done"
         value={draft}
         autoFocus
-        onChange={(e) => setDraft(e.target.value)}
-        className="h-10 w-24 rounded-v2 border border-v2-line bg-v2-panel text-center"
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? errorId : undefined}
+        onFocus={(e) => selectAllSoon(e.currentTarget)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setInvalid(false);
+        }}
+        className={cn(
+          "h-11 w-24 rounded-v2 border bg-v2-panel text-center text-[16px]",
+          invalid ? "border-v2-crit-icon" : "border-v2-line",
+        )}
       />
-      <Button type="submit" variant="act" size="sm" pending={saving}>
+      <Button type="submit" variant="act" size="lg" pending={saving}>
         {saving ? t.common.saving : t.common.save}
       </Button>
-      <Button size="sm" variant="quiet" onClick={onToggle}>
+      <Button size="lg" variant="quiet" onClick={onToggle}>
         {t.common.cancel}
       </Button>
+      {invalid ? (
+        <p id={errorId} role="alert" className="w-full text-v2-sm text-v2-crit-text">
+          {t.fill.countInvalid(MAX_MACHINE_COUNT)}
+        </p>
+      ) : null}
     </form>
   );
 }

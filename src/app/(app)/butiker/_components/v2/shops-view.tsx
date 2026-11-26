@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { Badge } from "@/components/v2/badge";
 import { Button } from "@/components/v2/button";
@@ -147,7 +147,8 @@ function Spark({ values }: { values: readonly number[] | undefined }) {
  * kurva (sålda pack över perioden), och den valda butiken till höger (på telefon i ett ark) med
  * banner: butikens mest sålda pack och automater. Sök och filter (Att betala, Offline,
  * Nattstängt); en prick på kartan filtrerar listan. Vald butik står i adressen (?valj=) utan
- * att sidan laddas om.
+ * att sidan laddas om. På telefon är arket ett steg i historiken: svepet bakåt stänger arket
+ * (inte sidan), och ?valj försvinner när arket stängs.
  */
 export function ShopsView({
   rows,
@@ -211,17 +212,54 @@ export function ShopsView({
   );
   const face = (id: string) => visuals.faces[id] ?? { storeType: null, city: null };
 
+  // Arket öppnades med ett eget steg i historiken (pushState), som stängningen backar ur.
+  const sheetEntry = useRef(false);
+
   const choose = (id: string, openSheet = true) => {
     setSel(id);
+    const sheet = phone && openSheet;
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("valj", id);
-      window.history.replaceState(window.history.state, "", url);
+      if (sheet && !sheetOpen) {
+        window.history.pushState(null, "", url);
+        sheetEntry.current = true;
+      } else {
+        window.history.replaceState(window.history.state, "", url);
+      }
     } catch {
       // Adressen är bara ett bokmärke; valet fungerar ändå.
     }
-    if (phone && openSheet) setSheetOpen(true);
+    if (sheet) setSheetOpen(true);
   };
+
+  /** Stäng arket: backa ur arkets steg, annars ta bort ?valj ur adressen. */
+  const closeSheet = () => {
+    setSheetOpen(false);
+    if (sheetEntry.current) {
+      sheetEntry.current = false;
+      window.history.back();
+      return;
+    }
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("valj");
+      window.history.replaceState(window.history.state, "", url);
+    } catch {
+      // Se ovan.
+    }
+  };
+
+  // Svepet bakåt (eller webbläsarens bakåt) medan arket är öppet stänger arket.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onPop = () => {
+      sheetEntry.current = false;
+      setSheetOpen(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [sheetOpen]);
 
   const mapStores: MapStore[] = useMemo(
     () =>
@@ -452,7 +490,7 @@ export function ShopsView({
       {phone && selected ? (
         <Sheet
           open={sheetOpen}
-          onOpenChange={setSheetOpen}
+          onOpenChange={(open) => (open ? setSheetOpen(true) : closeSheet())}
           hideHead
           title={selected.name}
           description={[

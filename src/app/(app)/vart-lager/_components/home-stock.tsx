@@ -27,6 +27,9 @@ import {
   type VartLagerRow,
 } from "../_lib/model";
 import { PlaceBar } from "./place-bar";
+import { selectAllSoon } from "@/components/v2/select-on-focus";
+
+import { isBigCountChange } from "../_lib/count-change";
 import { ReceiptPriceNote, useReceiptPrice } from "./receipt-price";
 
 const GRID =
@@ -337,18 +340,55 @@ function StockRow({
       }
       return;
     }
-    start(async () => {
-      const res = await setHomeCount({
-        titleId: row.titleId,
-        counted: n,
-        ...(place ? { warehouseId: place.id } : {}),
+    const before = count;
+    // En nolla för mycket eller ett tömt lager: fråga först (fältet visar det gamla antalet).
+    if (isBigCountChange(before, n)) {
+      setDraft(null);
+      toast({
+        title: `Ändra ${row.name} från ${formatInt(before)} till ${formatInt(n)}?`,
+        description: "Stor ändring. Tryck Spara om det stämmer.",
+        tone: "neutral",
+        duration: 10_000,
+        action: { label: "Spara", onClick: () => store(n, before) },
       });
+      return;
+    }
+    store(n, before);
+  }
+
+  /** Spara antalet; toasten har Ångra (det förra antalet tillbaka). */
+  function store(n: number, before: number) {
+    const where = place ? { warehouseId: place.id } : {};
+    start(async () => {
+      const res = await setHomeCount({ titleId: row.titleId, counted: n, ...where }).catch(() => ({
+        ok: false as const,
+        error: "Ingen kontakt. Försök igen.",
+      }));
       setDraft(null);
       if (!res.ok) {
         toast({ title: "Sparades inte", description: res.error, tone: "critical" });
         return;
       }
       setSaved((k) => k + 1);
+      toast({
+        title: `Sparat. ${row.name}: ${formatInt(n)}${NBSP}pack`,
+        tone: "ok",
+        duration: 8_000,
+        action: {
+          label: "Ångra",
+          onClick: () => {
+            void setHomeCount({ titleId: row.titleId, counted: before, ...where })
+              .catch(() => ({ ok: false as const, error: "Ingen kontakt. Försök igen." }))
+              .then((u) =>
+                toast(
+                  u.ok
+                    ? { title: `Ångrat. ${formatInt(before)}${NBSP}pack igen`, tone: "neutral" }
+                    : { title: "Kunde inte ångra", description: u.error, tone: "critical" },
+                ),
+              );
+          },
+        },
+      });
     });
   }
 
@@ -525,7 +565,7 @@ function StockRow({
               )}
               value={value}
               disabled={pending}
-              onFocus={(e) => e.currentTarget.select()}
+              onFocus={(e) => selectAllSoon(e.currentTarget)}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={save}
               onKeyDown={(e) => {
@@ -811,15 +851,19 @@ function MoveSheet({
             </button>
             <input
               id={`flytta-${row.titleId}`}
-              type="number"
+              type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              min={1}
-              max={available}
+              autoComplete="off"
+              enterKeyHint="done"
               value={amount}
-              onFocus={(e) => e.currentTarget.select()}
-              onChange={(e) => setQty(Math.trunc(Number(e.target.value)) || 0)}
-              className="v2-input num h-14 [appearance:textfield] px-2 text-center text-[28px] font-[650] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              onFocus={(e) => selectAllSoon(e.currentTarget)}
+              onChange={(e) => {
+                // Bara siffror (inga ledande nollor, inget "e"); tomt = 0 tills man skriver.
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 5);
+                setQty(digits === "" ? 0 : Number(digits));
+              }}
+              className="v2-input num h-14 px-2 text-center text-[28px] font-[650]"
             />
             <button
               type="button"

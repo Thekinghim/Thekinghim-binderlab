@@ -9,8 +9,6 @@ import { currentViewer } from "../../lager/_lib/session";
 import { BackToStock, CountFlow } from "./_components/count-flow";
 import { loadStockCountFor } from "./_lib/data";
 
-type SearchParams = Promise<Record<string, string | string[] | undefined>>;
-
 /** Inventering; i Enkel vy på personens språk ("Count stock"). */
 export async function generateMetadata(): Promise<Metadata> {
   const ctx = await loadOptionalContextIfSignedIn().catch(() => null);
@@ -23,16 +21,13 @@ export async function generateMetadata(): Promise<Metadata> {
  * ligger kvar på telefonen tills det är sparat. Samma skärm i hela appen och i Enkel vy
  * (där under Lager, på personens språk). Ägare och admin räknar; läsaren ser bara.
  */
-export default async function InventeringPage({ searchParams }: { searchParams: SearchParams }) {
+// Lagret i länken (?lager=) läser CountFlow ur adressen (useSearchParams).
+export default async function InventeringPage() {
   const ctx = await requireRoute("vart-lager");
   const t = messages(ctx.locale);
   const simple = ctx.viewMode === "simple";
   const viewer = await currentViewer();
-  const [view, sp] = await Promise.all([
-    loadStockCountFor(viewer, new Date(ctx.now)),
-    searchParams,
-  ]);
-  const wanted = typeof sp.lager === "string" ? sp.lager : null;
+  const view = await loadStockCountFor(viewer, new Date(ctx.now));
 
   const body = (
     <>
@@ -55,7 +50,6 @@ export default async function InventeringPage({ searchParams }: { searchParams: 
           places={view.places}
           rows={view.rows}
           scope={`${viewer.organization.id}:${viewer.user.userId}`}
-          initialPlaceId={wanted}
           stockHref="/vart-lager"
         />
       )}

@@ -493,6 +493,31 @@
   .v2-top .mlogo {
     display: none;
   }
+  /* Tillbaka-pilen (V2Back): bara på telefon, där hemskärmsappen saknar webbläsarknapp.
+     44 px tryckyta, pilen i linje med sidans vänsterkant. */
+  .v2-back {
+    display: none;
+  }
+  @media (max-width: 900px) {
+    .v2-back {
+      display: inline-flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      margin: -8px -16px -8px -18px;
+      border-radius: 999px;
+      color: var(--v2-ink);
+      touch-action: manipulation;
+      -webkit-touch-callout: none;
+      user-select: none;
+      transition: background-color 120ms ease-out;
+    }
+    .v2-back:active {
+      background: var(--v2-sel);
+    }
+  }
   .v2-seg-period {
     display: inline-flex;
     align-items: center;
@@ -1284,6 +1309,25 @@
     font-size: 16px;
   }
   .v2-step output[data-zero] {
+    color: var(--v2-faint);
+    font-weight: 550;
+  }
+  /* Talet som fält (Stepper med inputId): ser ut som talet, 16 px så att iPhone inte zoomar. */
+  .v2-step input {
+    width: 52px;
+    min-width: 0;
+    height: 44px;
+    border: 0;
+    border-radius: var(--v2-r-md);
+    background: none;
+    text-align: center;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    color: var(--v2-ink);
+  }
+  .v2-step input[data-zero] {
     color: var(--v2-faint);
     font-weight: 550;
   }
