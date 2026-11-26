@@ -3,14 +3,13 @@ import { Suspense, type CSSProperties, type ReactNode } from "react";
 
 import {
   isSingleDay,
-  periodNameInline,
+  periodDaysText,
   periodQuery,
   withPeriodHref,
 } from "@/components/shell/period-state";
 import { DaySalesCard } from "@/components/v2/day-sales";
 import { SkeletonCard } from "@/components/v2/skeleton";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
-import { formatInt, NBSP } from "@/lib/format";
 import { loadPeriod, requireRoute } from "@/server/data/core";
 import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
 
@@ -52,9 +51,7 @@ function Slot({ o, rows = 3, children }: { o: number; rows?: number; children: R
 export default async function MoneyPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [ctx, sp] = await Promise.all([requireRoute("pengar"), searchParams]);
   const p = await loadPeriod(sp);
-  const days = isSingleDay(p.resolved)
-    ? periodNameInline(p.resolved)
-    : `${formatInt(p.days)}${NBSP}dagar`;
+  const days = periodDaysText(p.resolved, p.days);
   // "Vad sålde vi i går": en enskild dag får listan per titel och automat under resultatet.
   const singleDay = isSingleDay(p.resolved);
   return (

@@ -5,6 +5,7 @@ import {
   describePeriod,
   parseIsoDate,
   parsePeriod,
+  periodDaysText,
   parseScope,
   parseVmbView,
   todayIn,
@@ -222,5 +223,13 @@ describe("describePeriod", () => {
       comparisonLabel: null,
       days: null,
     });
+  });
+});
+
+describe("periodDaysText", () => {
+  it("en dag får sitt namn, annars antalet dagar", () => {
+    expect(periodDaysText(parsePeriod(sp("period=igar"), { now: NOW }), 1)).toBe("i går");
+    expect(periodDaysText(parsePeriod(sp("period=idag"), { now: NOW }), 1)).toBe("i dag");
+    expect(periodDaysText(parsePeriod(sp("period=30d"), { now: NOW }), 30)).toBe("30\u00a0dagar");
   });
 });

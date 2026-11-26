@@ -42,6 +42,13 @@ export interface SplitRowStore {
   readonly amountOre: number;
   /** I hela kronor; butikerna summerar till bolagets rad i kronor. */
   readonly displayOre: number;
+  /**
+   * Andelen gick inte att räkna (SHARE_UNKNOWN) för hela eller en del av perioden: den
+   * delen räknas som 0 i beloppet. Visas som "Kan inte räknas", inte som "0 kr".
+   */
+  readonly shareUnknown: boolean;
+  /** Orsaken är order utan inköpspris (rättas under Inköpspriser). */
+  readonly missingPrice: boolean;
 }
 
 export interface SplitRow {
@@ -56,6 +63,13 @@ export interface SplitRow {
   readonly shareBp: number | null;
   /** Bolagets butiker (bara store_owner), störst först. */
   readonly stores?: readonly SplitRowStore[];
+  /**
+   * Butiker på raden vars andel inte gick att räkna (bara store och store_owner, annars 0).
+   * De räknas som 0 i beloppet; raden finns kvar även när beloppet blir 0.
+   */
+  readonly unknownStores: number;
+  /** Någon av dem saknar inköpspris (länken "Lägg in priset"). */
+  readonly missingPrice: boolean;
   /** Partnern: inköpet tillbaka, andelen av vinsten och avtalets andel (bp). */
   readonly partner?: {
     readonly hasAgreement: boolean;
@@ -121,20 +135,42 @@ export function splitView(input: SplitViewInput): SplitView {
     refundsOutsideOre: inNayax ? 0 : refundsOre,
   });
   const refundsOutside = inNayax ? 0 : refundsOre;
+  const warnings = [...result.warnings, ...(input.extraWarnings ?? [])];
+  // Butiker vars andel inte gick att räkna, och om orsaken är ett saknat inköpspris.
+  const unknown = new Map<string, boolean>();
+  for (const w of warnings) {
+    if (w.code === "SHARE_UNKNOWN") {
+      unknown.set(w.storeId, (unknown.get(w.storeId) ?? false) || w.missingPrice === true);
+    }
+  }
 
-  type RawRow = Omit<SplitRow, "displayOre" | "shareBp" | "stores"> & {
+  type RawRow = Omit<
+    SplitRow,
+    "displayOre" | "shareBp" | "stores" | "unknownStores" | "missingPrice"
+  > & {
     stores?: Omit<SplitRowStore, "displayOre">[];
+    unknownStores?: number;
+    missingPrice?: boolean;
   };
   const raw: RawRow[] = [];
   let partnerLine: Extract<SplitLine, { kind: "partner" }> | null = null;
   for (const line of result.lines) {
     if (line.kind === "store" || line.kind === "store_owner") {
-      if (line.amountOre === 0) continue;
       const per = new Map<string, number>();
       for (const c of line.stores) per.set(c.storeId, (per.get(c.storeId) ?? 0) + c.shareOre);
       const stores = [...per.entries()]
-        .map(([storeId, ore]) => ({ storeId, name: input.storeName(storeId), amountOre: ore }))
+        .map(([storeId, ore]) => ({
+          storeId,
+          name: input.storeName(storeId),
+          amountOre: ore,
+          shareUnknown: unknown.has(storeId),
+          missingPrice: unknown.get(storeId) === true,
+        }))
         .sort((a, b) => b.amountOre - a.amountOre || a.name.localeCompare(b.name, "sv"));
+      const unknownHere = stores.filter((st) => st.shareUnknown);
+      // En rad på 0 kr visas inte, utom när en butiks andel inte gick att räkna: då står den
+      // kvar som "Kan inte räknas" (annars ser det ut som att butiken inte får något).
+      if (line.amountOre === 0 && unknownHere.length === 0) continue;
       raw.push({
         key: `${line.kind}:${line.payeeId}`,
         kind: line.kind,
@@ -144,6 +180,8 @@ export function splitView(input: SplitViewInput): SplitView {
             : input.storeName(line.payeeId),
         amountOre: line.amountOre,
         ...(line.kind === "store_owner" ? { stores } : {}),
+        unknownStores: unknownHere.length,
+        missingPrice: unknownHere.some((st) => st.missingPrice),
       });
     } else if (line.kind === "partner") {
       partnerLine = line;
@@ -212,13 +250,14 @@ export function splitView(input: SplitViewInput): SplitView {
     const { stores, ...rest } = r;
     return {
       ...rest,
+      unknownStores: r.unknownStores ?? 0,
+      missingPrice: r.missingPrice ?? false,
       displayOre,
       shareBp: grossOre > 0 ? ratioBp(Math.abs(r.amountOre), grossOre) : null,
       ...(stores ? { stores: storesInKr(stores, displayOre) } : {}),
     };
   });
 
-  const warnings = [...result.warnings, ...(input.extraWarnings ?? [])];
   const unpriced = warnings.find((w) => w.code === "UNPRICED");
   const live = warnings.find((w) => w.code === "LIVE_ESTIMATE");
   return {
@@ -229,9 +268,7 @@ export function splitView(input: SplitViewInput): SplitView {
     empty: ordered.every((r) => r.amountOre === 0),
     profitOre: result.totals.profitOre,
     unpricedOrders: unpriced && unpriced.code === "UNPRICED" ? unpriced.orders : 0,
-    shareUnknownStoreIds: [
-      ...new Set(warnings.flatMap((w) => (w.code === "SHARE_UNKNOWN" ? [w.storeId] : []))),
-    ],
+    shareUnknownStoreIds: [...unknown.keys()],
     liveMonths: live && live.code === "LIVE_ESTIMATE" ? live.months : [],
   };
 }

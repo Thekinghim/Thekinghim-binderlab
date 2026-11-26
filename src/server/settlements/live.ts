@@ -9,7 +9,7 @@
 import "server-only";
 
 import type { Tx } from "@/db/client";
-import { DomainError, type IsoMonth, type Period } from "@/domain";
+import { DomainError, type DomainErrorCode, type IsoMonth, type Period } from "@/domain";
 import { buildSnapshot } from "@/server/reports/snapshot";
 import { loadSnapshotInput, settlementOrderWindow } from "@/server/reports/sources";
 
@@ -37,7 +37,12 @@ export interface ComputedSettlement {
 /** Avräkningen för en butik räknad nu, eller varför den inte går att räkna (t.ex. saknat inköpspris). */
 export type LiveSettlement =
   | { readonly ok: true; readonly computed: ComputedSettlement }
-  | { readonly ok: false; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly message: string;
+      /** Varför (DomainError.code), t.ex. "missing_price" för order utan inköpspris. */
+      readonly code: DomainErrorCode;
+    };
 
 /**
  * Räknar månadens avräkning för flera butiker med EN laddning av underlaget (samma laddare
@@ -85,7 +90,7 @@ export async function computeSettlementsTx(
       });
     } catch (error) {
       if (!(error instanceof DomainError)) throw error;
-      out.set(storeId, { ok: false, message: error.message });
+      out.set(storeId, { ok: false, message: error.message, code: error.code });
     }
   }
   return out;

@@ -122,9 +122,24 @@ describe("splitView", () => {
     const co = v.rows.find((r) => r.kind === "store_owner")!;
     expect(co.label).toBe("Bolaget AB");
     expect(co.stores).toEqual([
-      { storeId: "s1", name: "Butik 1", amountOre: 20_000, displayOre: 20_000 },
-      { storeId: "s2", name: "Butik 2", amountOre: 5_000, displayOre: 5_000 },
+      {
+        storeId: "s1",
+        name: "Butik 1",
+        amountOre: 20_000,
+        displayOre: 20_000,
+        shareUnknown: false,
+        missingPrice: false,
+      },
+      {
+        storeId: "s2",
+        name: "Butik 2",
+        amountOre: 5_000,
+        displayOre: 5_000,
+        shareUnknown: false,
+        missingPrice: false,
+      },
     ]);
+    expect(co).toMatchObject({ unknownStores: 0, missingPrice: false });
     const own = v.rows.find((r) => r.kind === "store")!;
     expect(own.label).toBe("Butik 3");
     expect(own.stores).toBeUndefined();
@@ -220,6 +235,72 @@ describe("splitView", () => {
     );
     expect(v.unpricedOrders).toBe(3);
     expect(v.shareUnknownStoreIds).toEqual(["s2"]);
+  });
+
+  it("en butik i ett bolag som inte går att räkna: märkt, bolaget räknar den, summan stämmer", () => {
+    const base = example();
+    // s2:s andel gick inte att räkna: den kommer som 0 (som från avräkningen).
+    const slices = base.slices.map((s) => (s.storeId === "s2" ? { ...s, storeShareOre: 0 } : s));
+    const v = view(
+      { ...base, slices },
+      {
+        feesOre: 7_200,
+        extraWarnings: [
+          { code: "SHARE_UNKNOWN", storeId: "s2", message: "Saknar pris", missingPrice: true },
+        ],
+      },
+    );
+    const co = v.rows.find((r) => r.kind === "store_owner")!;
+    expect(co).toMatchObject({ amountOre: 20_000, unknownStores: 1, missingPrice: true });
+    expect(co.stores!.find((st) => st.storeId === "s2")).toMatchObject({
+      amountOre: 0,
+      displayOre: 0,
+      shareUnknown: true,
+      missingPrice: true,
+    });
+    expect(co.stores!.find((st) => st.storeId === "s1")).toMatchObject({ shareUnknown: false });
+    expect(v.rows.find((r) => r.kind === "store")).toMatchObject({ unknownStores: 0 });
+    expect(v.rows.reduce((a, r) => a + r.amountOre, 0)).toBe(v.basisOre);
+    expect(v.rows.reduce((a, r) => a + r.displayOre, 0)).toBe(v.basisDisplayOre);
+  });
+
+  it("en egen butik som inte går att räkna står kvar på 0 kr, märkt", () => {
+    const base = example();
+    const slices = base.slices.map((s) => (s.storeId === "s3" ? { ...s, storeShareOre: 0 } : s));
+    const v = view(
+      { ...base, slices },
+      { extraWarnings: [{ code: "SHARE_UNKNOWN", storeId: "s3", message: "Fel" }] },
+    );
+    const own = v.rows.find((r) => r.key === "store:s3")!;
+    expect(own).toMatchObject({
+      amountOre: 0,
+      displayOre: 0,
+      unknownStores: 1,
+      missingPrice: false,
+    });
+    expect(v.shareUnknownStoreIds).toEqual(["s3"]);
+    expect(v.rows.reduce((a, r) => a + r.amountOre, 0)).toBe(v.basisOre);
+  });
+
+  it("en egen butik på 0 kr som går att räkna visas inte (som förut)", () => {
+    const base = example();
+    const slices = base.slices.map((s) => (s.storeId === "s3" ? { ...s, storeShareOre: 0 } : s));
+    const v = view({ ...base, slices });
+    expect(v.rows.some((r) => r.key === "store:s3")).toBe(false);
+    expect(v.rows.every((r) => r.unknownStores === 0 && !r.missingPrice)).toBe(true);
+  });
+
+  it("samma butik i två månader räknas en gång, med prisorsaken om någon månad saknar pris", () => {
+    const v = view(example(), {
+      extraWarnings: [
+        { code: "SHARE_UNKNOWN", storeId: "s1", message: "Fel" },
+        { code: "SHARE_UNKNOWN", storeId: "s1", message: "Fel igen", missingPrice: true },
+      ],
+    });
+    const co = v.rows.find((r) => r.kind === "store_owner")!;
+    // Två månader, en av dem med saknat pris: butiken räknas en gång, med prisorsaken.
+    expect(co).toMatchObject({ unknownStores: 1, missingPrice: true });
+    expect(v.shareUnknownStoreIds).toEqual(["s1"]);
   });
 
   it("ingen försäljning: tomt, inga butiksrader", () => {

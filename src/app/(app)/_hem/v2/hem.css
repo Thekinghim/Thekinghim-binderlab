@@ -1841,6 +1841,19 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Vem pengarna är till (split-card.tsx): direkt under hjältekortet, i full bredd. Tom (kortet
+   gav inget) tar den ingen plats. */
+.hem2 .o-split {
+  margin-top: 14px;
+}
+.hem2 .o-split:empty {
+  display: none;
+}
+@media (max-width: 900px) {
+  .hem2 .o-split {
+    margin-top: 12px;
+  }
+}
 /* Sålt i går: under KPI-bandet, i full bredd (bara när perioden är en dag, och för påfyllaren). */
 .hem2 .o-sold {
   margin-top: 14px;

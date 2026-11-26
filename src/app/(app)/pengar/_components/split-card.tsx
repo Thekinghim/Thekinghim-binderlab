@@ -2,18 +2,24 @@
  * "Vem pengarna är till" (G4): periodens försäljning delad på Min andel, partnern, butikerna
  * (en rad per bolag), momsen att spara, kortavgiften och återbetalningarna. Serverkomponent;
  * talen kommer färdiga ur loadMoneySplit (split-model.ts), här formateras de bara. Bara
- * ägare och admin (laddaren ger null för andra).
+ * ägare och admin (laddaren ger null för andra). Visas på Hem (direkt under hjältekortet)
+ * och på Pengar; stilen följer med komponenten (split-card.css).
+ *
+ * En butik vars andel inte gick att räkna (SHARE_UNKNOWN) står som "Kan inte räknas" i
+ * stället för "0 kr" (den räknas som 0 i summan, så raderna summerar ändå till grunden).
  */
 
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 
+import { day, monthName } from "@/analytics/todos/text";
 import { Card } from "@/components/v2/card";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { loadMoneySplit } from "@/server/data/v2/analytics/split";
 import type { SplitRow } from "@/server/data/v2/analytics/split-model";
 
 import { kr, pct, plural } from "./fmt";
+import "./split-card.css";
 
 const PAY = { href: "/pengar/utbetalningar", label: "Betala ut" };
 
@@ -23,8 +29,8 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
   const title = `Vem pengarna är till · ${days}`;
   if (s.state !== "ok") {
     return (
-      <Card title={title} link={PAY} className="g4-split">
-        <div className="g4-bempty">
+      <Card title={title} link={PAY} className="g4-sp-card">
+        <div className="g4-sp-empty">
           {s.state === "too_long"
             ? "Välj en kortare period (högst ett år) för att se fördelningen."
             : "Fördelningen gick inte att räkna just nu."}
@@ -35,8 +41,8 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
   const v = s.view;
   if (v.empty) {
     return (
-      <Card title={title} link={PAY} className="g4-split">
-        <div className="g4-bempty" data-testid="split-empty">
+      <Card title={title} link={PAY} className="g4-sp-card">
+        <div className="g4-sp-empty" data-testid="split-empty">
           Ingen försäljning {days}, så det finns inget att dela.
         </div>
       </Card>
@@ -46,15 +52,27 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
   // Utan partneravtal får ägaren också tillbaka det korten kostade: säg det, så att andelen
   // inte läses som vinst.
   const noAgreement = v.rows.some((r) => r.kind === "partner" && !r.partner?.hasAgreement);
+  // Nästa utbetalning till butikerna (avtalen: senast den 15:e månaden efter).
+  const storesPaid = v.rows.some(
+    (r) => (r.kind === "store_owner" || r.kind === "store") && r.amountOre > 0,
+  );
   const max = Math.max(1, v.basisOre, ...v.rows.map((r) => Math.abs(r.amountOre)));
   return (
-    <Card title={title} link={PAY} className="g4-split">
+    <Card title={title} link={PAY} className="g4-sp-card">
       <div className="g4-sp" data-testid="pengar-fordelning">
         <p className="g4-sp-basis">
           Av försäljningen {days}, {kr(v.basisDisplayOre)} inkl. moms. Butikernas andel enligt
           avtalen.{s.filtered ? " Gäller alla butiker, inte filtret." : ""}
         </p>
+        {storesPaid ? (
+          <p className="g4-sp-pay" data-testid="split-store-pay">
+            Butikerna får betalt för {monthName(s.storePay.month)} senast{" "}
+            <b>{day(s.storePay.due)}</b>.
+          </p>
+        ) : null}
         {v.rows.map((row, i) => {
+          // Hela raden är en andel som inte gick att räkna (0 kr): säg det i stället för "0 kr".
+          const unknownRow = row.unknownStores > 0 && row.displayOre === 0;
           const line = (
             <>
               <span className="nm">
@@ -71,11 +89,17 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
                   }
                 />
               </span>
-              <span className="am">
-                {row.displayOre < 0 ? "−" : ""}
-                {kr(Math.abs(row.displayOre))}
+              {unknownRow ? (
+                <span className="am unk">Kan inte räknas</span>
+              ) : (
+                <span className="am">
+                  {row.displayOre < 0 ? "−" : ""}
+                  {kr(Math.abs(row.displayOre))}
+                </span>
+              )}
+              <span className="pc">
+                {row.shareBp !== null && !unknownRow ? pct(row.shareBp, 0) : ""}
               </span>
-              <span className="pc">{row.shareBp !== null ? pct(row.shareBp, 0) : ""}</span>
             </>
           );
           const cls = [
@@ -93,9 +117,22 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
                 <summary className={`${cls} grid`}>{line}</summary>
                 <div className="g4-sp-stores">
                   {row.stores.map((st) => (
-                    <div key={st.storeId}>
-                      <span>{st.name}</span>
-                      <span className="tnum">{kr(st.displayOre)}</span>
+                    <div
+                      key={st.storeId}
+                      className={st.shareUnknown ? "unk" : undefined}
+                      data-share-unknown={st.shareUnknown ? "" : undefined}
+                    >
+                      <span>
+                        {st.name}
+                        {st.shareUnknown ? (
+                          <small>{unknownReason(st.missingPrice, st.displayOre !== 0)}</small>
+                        ) : null}
+                      </span>
+                      {st.shareUnknown && st.displayOre === 0 ? (
+                        <span className="am">Kan inte räknas</span>
+                      ) : (
+                        <span className="tnum">{kr(st.displayOre)}</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -103,7 +140,12 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
             );
           }
           return (
-            <div key={row.key} className={cls} data-split-row={row.kind}>
+            <div
+              key={row.key}
+              className={cls}
+              data-split-row={row.kind}
+              data-share-unknown={row.unknownStores > 0 ? "" : undefined}
+            >
               {line}
             </div>
           );
@@ -120,8 +162,9 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
           ) : null}
           {v.shareUnknownStoreIds.length > 0 ? (
             <>
-              Andelen för {plural(v.shareUnknownStoreIds.length, "butik", "butiker")} gick inte att
-              räkna och räknas som 0 här.{" "}
+              Andelen för {plural(v.shareUnknownStoreIds.length, "butik", "butiker")} kan inte
+              räknas än. {v.shareUnknownStoreIds.length === 1 ? "Den står" : "De står"} som 0 kr i
+              summan.{" "}
               <Link href="/butiker" className="underline underline-offset-4">
                 Butiker
               </Link>
@@ -133,11 +176,28 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
   );
 }
 
+/**
+ * Varför en butiks andel saknas, kort: "Inköpspris saknas. Lägg in priset" (med länk) när
+ * orsaken är saknade inköpspriser. `partly`: en del av perioden gick att räkna (beloppet
+ * visas), annars står "Kan inte räknas" redan i beloppets ställe.
+ */
+function unknownReason(missingPrice: boolean, partly: boolean): ReactNode {
+  if (!missingPrice) return partly ? "En del kan inte räknas än." : "Andelen kan inte räknas än.";
+  return (
+    <>
+      {partly ? "En del kan inte räknas, inköpspris saknas." : "Inköpspris saknas."}{" "}
+      <Link href="/inkopspriser" className="underline underline-offset-4">
+        Lägg in priset
+      </Link>
+    </>
+  );
+}
+
 function Notes({ children }: { children: ReactNode[] }) {
   const items = children.filter(Boolean);
   if (items.length === 0) return null;
   return (
-    <div className="g4-foot g4-sp-notes" role="note">
+    <div className="g4-sp-notes" role="note">
       {items.map((c, i) => (
         <p key={i}>{c}</p>
       ))}
@@ -186,10 +246,16 @@ function subText(row: SplitRow, noAgreement: boolean): ReactNode {
     }
     case "store_owner": {
       const names = (row.stores ?? []).map((s) => s.name);
-      return `${plural(names.length, "butik", "butiker")}: ${names.join(", ")}`;
+      const base = `${plural(names.length, "butik", "butiker")}: ${names.join(", ")}`;
+      // Hela bolagets andel okänd: "Kan inte räknas" står redan i beloppets ställe.
+      return row.unknownStores > 0 && row.displayOre !== 0
+        ? `${base}. ${plural(row.unknownStores, "butik", "butiker")} kan inte räknas än.`
+        : base;
     }
     case "store":
-      return "Butikens andel enligt avtalet";
+      return row.unknownStores > 0
+        ? unknownReason(row.missingPrice, row.displayOre !== 0)
+        : "Butikens andel enligt avtalet";
     case "vat":
       return row.vatMode === "vmb" ? "Moms på vinsten (VMB)" : "Momsen i försäljningen";
     case "fees":
