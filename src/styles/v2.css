@@ -498,6 +498,20 @@
     align-items: center;
     gap: 8px;
   }
+  /* Två etiketter för samma sak, en för datorn och en för telefonen (samma brytpunkt som
+     PHONE_QUERY). Båda finns i HTML:en från servern, så inget byts ut efter hydreringen;
+     display: none tar bort den andra även för skärmläsaren. */
+  .v2-ph {
+    display: none;
+  }
+  @media (max-width: 900px) {
+    .v2-dt {
+      display: none;
+    }
+    .v2-ph {
+      display: inline;
+    }
+  }
   /* Periodvalet på telefon: full bredd under rubriken, 44 px högt (prototypen). */
   .v2-mperiod {
     display: none;
@@ -2582,6 +2596,10 @@
   .v2-ds-list details[open] summary {
     display: none;
   }
+  /* "Visa alla" som bara behövs på telefon (phoneTop, day-sales.tsx). */
+  .v2-ds-list details.ph {
+    display: none;
+  }
   .v2-ds-note {
     font-size: var(--v2-t-xs);
     color: var(--v2-faint);
@@ -2598,6 +2616,13 @@
     }
     .v2-ds-row .kr {
       min-width: 0;
+    }
+    /* Hem (phoneTop): tre rader per lista; "Visa alla" öppnar resten. */
+    .v2-ds-c .v2-ds-list:not(:has(> details[open])) > ul > li:nth-child(n + 4) {
+      display: none;
+    }
+    .v2-ds-c .v2-ds-list details.ph {
+      display: block;
     }
   }
 

@@ -20,11 +20,12 @@ import { cn } from "@/lib/cn";
 import { formatPeriodShort } from "@/lib/format";
 import { addDays, isSameDay } from "@/lib/period";
 
-import { V2_PERIODS, V2_PERIODS_SHORT, v2PeriodOf } from "./period";
+import { keepInPlace } from "./keep-in-place";
+import { V2_PERIODS, V2_PERIODS_SHORT, v2PeriodOf, type V2PeriodKey } from "./period";
 import { RangeCalendar, draftRange, type RangeDraft } from "./range-calendar";
-import { Segmented } from "./segmented";
+import { Segmented, type SegmentOption } from "./segmented";
 import { useV2Shell } from "./shell/shell-context";
-import { usePhone } from "./use-media";
+import { PHONE_QUERY } from "./use-media";
 
 /** Snabbvalen i panelen (Datum…), i den ordning de står. */
 const PANEL_PRESETS: ReadonlyArray<{ key: PresetKey; label: string }> = [
@@ -48,33 +49,67 @@ export function PeriodSegment({ className }: { className?: string }) {
   const period = usePeriod({ timeZone: shell?.timeZone });
   const { key, range, today, setPeriod } = period;
   const pending = useShellNavigation()?.pending ?? false;
-  const phone = usePhone();
+  // Ark (telefon) eller ruta (dator) avgörs när man trycker, inte vid ritningen: servern och
+  // hydreringen ritar samma sak på alla skärmar, så att inget byts ut efteråt och Datum
+  // fungerar direkt (usePhone är falskt på servern).
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"sheet" | "pop">("pop");
   const value = v2PeriodOf(key);
   const close = useCallback(() => setOpen(false), []);
+  const root = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const stopKeep = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopKeep.current?.(), []);
 
-  // setPeriod sparar också valet i kakan, så att nästa periodsida får samma period.
-  const choose = useCallback((selection: PeriodSelection) => setPeriod(selection), [setPeriod]);
+  // setPeriod sparar också valet i kakan, så att nästa periodsida får samma period. Valet
+  // håller periodvalet på samma plats på skärmen medan korten ovanför byts (Safari har ingen
+  // scroll anchoring; keep-in-place.ts).
+  const choose = useCallback(
+    (selection: PeriodSelection, keep = true) => {
+      stopKeep.current?.();
+      stopKeep.current = keep && root.current ? keepInPlace(root.current) : null;
+      setPeriod(selection);
+    },
+    [setPeriod],
+  );
 
   const name = periodName(period);
   // Telefonens smala knapp: ett eget intervall med siffror (28/12–3/1), så att slutet syns.
-  const shown = phone ? periodNameCompact(period) : name;
+  // Båda etiketterna ritas; CSS (.v2-dt/.v2-ph i v2.css) visar den som passar skärmen.
+  const compact = periodNameCompact(period);
   const triggerId = useId();
+  // Arket behåller sitt läge medan det glider ner (mode ändras bara vid nästa tryck).
+  const sheet = mode === "sheet";
 
   const trigger = (
     <button
+      ref={triggerRef}
       type="button"
       id={triggerId}
       className={cn("v2-pdate", value === null && "on")}
       aria-haspopup="dialog"
       aria-expanded={open}
       aria-label={value === null ? `Period: ${name}. Välj datum` : "Välj datum eller intervall"}
-      onClick={phone ? undefined : () => setOpen((o) => !o)}
+      onClick={() => {
+        if (open) {
+          setOpen(false);
+          return;
+        }
+        setMode(window.matchMedia(PHONE_QUERY).matches ? "sheet" : "pop");
+        setOpen(true);
+      }}
     >
       <CalendarIcon />
-      <span className="lbl" title={value === null && shown !== name ? name : undefined}>
-        {value === null ? shown : "Datum"}
-      </span>
+      {value === null ? (
+        <span className="lbl">
+          <span className="v2-dt">{name}</span>
+          <span className="v2-ph" title={compact !== name ? name : undefined}>
+            {compact}
+          </span>
+        </span>
+      ) : (
+        <span className="lbl">Datum</span>
+      )}
     </button>
   );
 
@@ -87,56 +122,72 @@ export function PeriodSegment({ className }: { className?: string }) {
       today={today}
       onPreset={(k) => {
         setOpen(false);
-        choose({ key: k });
+        choose({ key: k }, !sheet);
       }}
       onRange={(r) => {
         setOpen(false);
         // En enda dag som är i dag eller i går är förvalet (samma jämförelse och knapp).
-        if (isSameDay(r.start, r.end) && isSameDay(r.start, today)) choose({ key: "idag" });
+        if (isSameDay(r.start, r.end) && isSameDay(r.start, today)) choose({ key: "idag" }, !sheet);
         else if (isSameDay(r.start, r.end) && isSameDay(r.start, addDays(today, -1))) {
-          choose({ key: "igar" });
-        } else choose({ key: "eget", range: r });
+          choose({ key: "igar" }, !sheet);
+        } else choose({ key: "eget", range: r }, !sheet);
       }}
       onCancel={close}
-      phone={phone}
+      phone={sheet}
     />
   );
 
   return (
     <span
+      ref={root}
       className={cn("v2-seg-period", pending && "busy", className)}
       aria-busy={pending || undefined}
     >
       <Segmented
         ariaLabel="Period"
-        options={phone ? V2_PERIODS_SHORT : V2_PERIODS}
+        options={PERIOD_OPTIONS}
         value={value}
         onChange={(v) => choose({ key: v })}
       />
-      {phone ? (
-        <Drawer.Root open={open} onOpenChange={setOpen} direction="bottom" repositionInputs>
-          <Drawer.Trigger asChild>{trigger}</Drawer.Trigger>
-          <Drawer.Portal>
-            <Drawer.Overlay className="v2-scrim" />
-            <Drawer.Content className="v2-sheet v2-psheet" aria-describedby={undefined}>
-              <span className="grab" aria-hidden="true" />
-              <div className="sh">
-                <Drawer.Title asChild>
-                  <h2>Välj period</h2>
-                </Drawer.Title>
-              </div>
-              {panel}
-            </Drawer.Content>
-          </Drawer.Portal>
-        </Drawer.Root>
-      ) : (
-        <Popover open={open} onClose={close} trigger={trigger} labelledBy={triggerId}>
-          {panel}
-        </Popover>
-      )}
+      <Popover open={open && !sheet} onClose={close} trigger={trigger} labelledBy={triggerId}>
+        {panel}
+      </Popover>
+      <Drawer.Root open={open && sheet} onOpenChange={setOpen} direction="bottom" repositionInputs>
+        <Drawer.Portal>
+          <Drawer.Overlay className="v2-scrim" />
+          <Drawer.Content
+            className="v2-sheet v2-psheet"
+            aria-describedby={undefined}
+            onCloseAutoFocus={(e) => {
+              // Ingen Drawer.Trigger: fokus tillbaka till datumknappen för hand.
+              e.preventDefault();
+              triggerRef.current?.focus({ preventScroll: true });
+            }}
+          >
+            <span className="grab" aria-hidden="true" />
+            <div className="sh">
+              <Drawer.Title asChild>
+                <h2>Välj period</h2>
+              </Drawer.Title>
+            </div>
+            {panel}
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
     </span>
   );
 }
+
+/** Snabbknapparna med båda etiketterna ("30 dagar" på datorn, "30 d" på telefonen). */
+const PERIOD_OPTIONS: ReadonlyArray<SegmentOption<V2PeriodKey>> = V2_PERIODS.map((o, i) => ({
+  value: o.value,
+  label: (
+    <>
+      <span className="v2-dt">{o.label}</span>
+      <span className="v2-ph">{V2_PERIODS_SHORT[i]?.label ?? o.label}</span>
+    </>
+  ),
+}));
 
 /** Rutan under datumknappen på datorn: Escape och klick utanför stänger, fokus tillbaka. */
 function Popover({

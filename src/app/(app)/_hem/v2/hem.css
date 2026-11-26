@@ -1442,19 +1442,6 @@
   .hem2 .x-hd > .lk {
     display: none;
   }
-  /* Periodvalet i full bredd under rubriken (som i sidhuvudet), så att det ryms på 375 px. */
-  .hem2 .x-hd .v2-seg-period {
-    display: flex;
-    width: 100%;
-  }
-  .hem2 .x-hd .v2-seg-period .v2-seg {
-    display: flex;
-    flex: 1;
-    min-width: 0;
-  }
-  .hem2 .x-hd .v2-seg-period .v2-seg button {
-    flex: 1;
-  }
   .hem2 .x-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
@@ -1578,12 +1565,6 @@
 }
 .hem2 .x-hc.l5 {
   background: #035e4c;
-}
-/* Periodvalet i Analys-rubriken bara på telefon (i sidhuvudet på dator) */
-@media (min-width: 901px) {
-  .hem2 .x-hd .v2-seg-period {
-    display: none;
-  }
 }
 .hem2 .x-hd > .lk {
   white-space: nowrap;
@@ -2515,5 +2496,121 @@
   }
   .hem2 .hh-skel .hh-goalcard-b .sk-ring {
     margin: 0;
+  }
+}
+
+/* ==========================================================================
+   Telefon, ekonomiroller (.hem-eco, ≤ 900 px): det viktiga först. Hjältekortet blir bara
+   vinsten med förändringen (pallen finns i Mest sålda), sedan Fördelning (ägaren vill ha den
+   så tidigt som möjligt på Hem), Kräver åtgärd och Dagens rutt; nyckeltalen, målet och
+   resten efter det. Resultat döljs (samma tal som
+   hjältekortet och nyckeltalen). Sidans kort blir en enda kolumn (.hh och .work som
+   display: contents), så att ordningen kan sättas med order. Datorn påverkas inte.
+   ========================================================================== */
+@media (max-width: 900px) {
+  .hem2.hem-eco .v2-page-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .hem2.hem-eco .hh,
+  .hem2.hem-eco .work {
+    display: contents;
+  }
+  .hem2.hem-eco .o-split,
+  .hem2.hem-eco .o-sold {
+    margin-top: 0;
+  }
+  .hem2.hem-eco .hh-pod,
+  .hem2.hem-eco .work .x-res {
+    display: none;
+  }
+  .hem2.hem-eco .hh-card {
+    order: 1;
+  }
+  .hem2.hem-eco .o-split {
+    order: 2;
+  }
+  .hem2.hem-eco .work .o-act {
+    order: 3;
+  }
+  .hem2.hem-eco .work .o-rutt {
+    order: 4;
+  }
+  .hem2.hem-eco .o-sold {
+    order: 5;
+  }
+  .hem2.hem-eco .hh-kpis {
+    order: 6;
+  }
+  .hem2.hem-eco .hh-goalcard {
+    order: 7;
+  }
+  .hem2.hem-eco .work .o-todo {
+    order: 8;
+  }
+  .hem2.hem-eco .work .o-live {
+    order: 9;
+  }
+  .hem2.hem-eco .work .o-salj {
+    order: 10;
+  }
+  .hem2.hem-eco .x-an {
+    order: 11;
+  }
+}
+
+/* Kräver åtgärd och Vinst per stad: telefonen visar färre rader (3 och 5) än datorn (6 och 10).
+   Servern ritar datorns rader; telefonens extra rader (.ph-x) och knappen som bara behövs där
+   (.ph-only) styrs här, så att inget byts ut efter hydreringen (actions-card.tsx, geo-body.tsx). */
+@media (min-width: 901px) {
+  .hem2 :is(.amore, .x-more).ph-only {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .hem2 :is(.arow, .x-br).ph-x {
+    display: none;
+  }
+}
+
+/* Mest sålda på de smalaste telefonerna (under 360 px, t.ex. 320 px): titeln får hela raden
+   och talen står på en egen rad under namnet, i stället för att namnet kapas till två
+   bokstäver ("Sc…"). Rubrikraden följer samma kolumner. */
+@media (max-width: 359px) {
+  .hem2 .x-tr {
+    grid-template-columns: 46px repeat(3, minmax(0, 1fr));
+    row-gap: 2px;
+  }
+  .hem2 .x-tr > :first-child {
+    grid-column: 1 / -1;
+  }
+  .hem2 .x-tr > :nth-child(2) {
+    grid-column: 2;
+  }
+}
+
+/* Laddningsrutorna (SkeletonCard, aria-busy) får ungefär de färdiga kortens höjd, så att
+   sidan inte hoppar när korten kommer. Fördelning var 225 px medan kortet är 420–900 px.
+   Måtten är telefonens med verkliga data (ägaren och demon, 30 dagar). */
+.hem2 .g4-sp-skel[aria-busy="true"] {
+  min-height: 420px;
+}
+@media (max-width: 900px) {
+  .hem2 .o-act[aria-busy="true"],
+  .hem2 .o-rutt[aria-busy="true"] {
+    min-height: 200px;
+  }
+  .hem2 .o-todo[aria-busy="true"] {
+    min-height: 300px;
+  }
+  .hem2 .x-grid > .x-c[aria-busy="true"] {
+    min-height: 260px;
+  }
+  /* Analysens kort ligger långt ner: webbläsaren ritar dem först när de närmar sig skärmen
+     och minns sedan den verkliga höjden (auto), så att rullningen inte hoppar. */
+  .hem2 .x-grid > .x-c {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 280px;
   }
 }

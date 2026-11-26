@@ -996,10 +996,12 @@
       font-size: var(--v2-t-sm);
       color: var(--v2-mute);
     }
-    .g4-year:not([open]) .g4-xbtns {
+    /* data-auto: öppen i HTML:en men hopfälld tills man trycker (months-table.tsx). */
+    .g4-year[data-auto] > :not(summary),
+    .g4-year:is(:not([open]), [data-auto]) .g4-xbtns {
       display: none;
     }
-    .g4-year[open] .g4-xbtns {
+    .g4-year[open]:not([data-auto]) .g4-xbtns {
       flex-basis: 100%;
     }
   }

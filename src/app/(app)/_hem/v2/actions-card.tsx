@@ -12,12 +12,15 @@ import { Button, ButtonLink } from "@/components/v2/button";
 import { CallLink } from "@/components/v2/call-link";
 import { telHref } from "@/components/v2/links";
 import { toastUndo, toastV2 } from "@/components/v2/toast";
-import { usePhone } from "@/components/v2/use-media";
 import { formatInt, NBSP } from "@/lib/format";
 
 import { changeRoute, undoRouteChange } from "../../rutt/actions";
 
-/** Så många rader innan "Visa alla" (prototypen: 6 på dator, 3 på telefon). */
+/**
+ * Så många rader innan "Visa alla" (prototypen: 6 på dator, 3 på telefon). Telefonens gräns
+ * sätts i CSS (hem.css .arow.ph-x och .amore.ph-only), så att servern och telefonen ritar
+ * samma rader och inget hoppar efter hydreringen.
+ */
 const MAX_DESKTOP = 6;
 const MAX_PHONE = 3;
 
@@ -61,12 +64,10 @@ export function ActionsList({
   /** Automater som redan är med i dagens rutt. */
   inRoute: readonly string[];
 }) {
-  const phone = usePhone();
   const [all, setAll] = useState(false);
   const [added, setAdded] = useState<ReadonlySet<string>>(new Set());
   const [pending, start] = useTransition();
-  const max = phone ? MAX_PHONE : MAX_DESKTOP;
-  const shown = all ? rows : rows.slice(0, max);
+  const shown = all ? rows : rows.slice(0, MAX_DESKTOP);
   const nowMs = Date.parse(nowIso);
   const routeSet = new Set([...inRoute, ...added]);
 
@@ -105,11 +106,15 @@ export function ActionsList({
   return (
     <>
       <div>
-        {shown.map((r) => {
+        {shown.map((r, i) => {
           const hasCall = telHref(r.phone) !== null;
           return (
             <div
-              className={cn("arow", r.kind === "offline" && "off wide")}
+              className={cn(
+                "arow",
+                r.kind === "offline" && "off wide",
+                !all && i >= MAX_PHONE && "ph-x",
+              )}
               key={r.key}
               data-hem-action={r.kind}
             >
@@ -262,10 +267,11 @@ export function ActionsList({
           );
         })}
       </div>
-      {rows.length > max ? (
+      {rows.length > MAX_PHONE ? (
         <button
           type="button"
-          className="lk amore text-left"
+          // Bara telefonen har dolda rader när de är 4–6: på datorn syns då alla och knappen inte.
+          className={cn("lk amore text-left", rows.length <= MAX_DESKTOP && "ph-only")}
           aria-expanded={all}
           onClick={() => setAll((v) => !v)}
         >

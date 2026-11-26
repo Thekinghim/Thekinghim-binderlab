@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import { usePhone } from "@/components/v2/use-media";
+import { PHONE_QUERY } from "@/components/v2/use-media";
 
 import type { MonthTable } from "@/server/data/v2/analytics/money-model";
 import { monthShort } from "@/server/data/v2/analytics/money-model";
@@ -48,15 +48,27 @@ export function MonthsTable({ table }: { table: MonthTable }) {
   const ariaSort = (key: SortKey) =>
     sort.key === key ? (sort.dir === "desc" ? "descending" : "ascending") : undefined;
   const running = table.months.find((m) => m.running);
-  // Telefon: hopfälld under rubriken (prototypens "Visa"), dator: öppen.
-  const phone = usePhone();
+  // Telefon: hopfälld under rubriken (prototypens "Visa"), dator: öppen. Servern ritar den
+  // öppen för alla; före hydreringen (toggled === null) döljer CSS innehållet på telefonen
+  // (data-auto, money.css). Då hoppar inget efter hydreringen och tabellen öppnas aldrig
+  // först för att sedan fällas ihop.
   const [toggled, setToggled] = useState<boolean | null>(null);
-  const open = toggled ?? !phone;
+  const open = toggled ?? true;
+  // Efter hydreringen på telefon: stäng den på riktigt (ser likadan ut, CSS döljde redan
+  // innehållet), så att skärmläsaren säger "hopfälld" och "Visa" öppnar den som vanligt.
+  // Stängningen ger ett toggle-event, och onToggle sparar läget (toggled = false).
+  const ref = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && window.matchMedia(PHONE_QUERY).matches) el.open = false;
+  }, []);
 
   return (
     <details
+      ref={ref}
       className="v2-card g4-year"
       open={open}
+      data-auto={toggled === null ? "" : undefined}
       onToggle={(e) => {
         if (e.currentTarget.open !== open) setToggled(e.currentTarget.open);
       }}

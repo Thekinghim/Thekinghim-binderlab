@@ -10,7 +10,6 @@ import {
 } from "@/components/shell/period-state";
 import { simpleHomeFor } from "@/components/shell/simple-view";
 import { DaySalesCard } from "@/components/v2/day-sales";
-import { PeriodSegment } from "@/components/v2/period-segment";
 import { SafeSuspense } from "@/components/v2/safe-suspense";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { Skeleton, SkeletonCard } from "@/components/v2/skeleton";
@@ -104,7 +103,9 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       date={headerDate(new Date(ctx.now), ctx.timeZone)}
       period
       tools={<BriefButton />}
-      className="hem2"
+      // hem-eco: ekonomirollernas telefonordning (hem.css): vinsten, Fördelning, Kräver åtgärd
+      // och Dagens rutt först. Fördelning ligger direkt under vinsten på ägarens begäran.
+      className={economy ? "hem2 hem-eco" : "hem2"}
       sub={
         <SafeSuspense fallback={<Skeleton width="min(320px, 85%)" height={16} />}>
           <TodaySub />
@@ -131,7 +132,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           hjältekortet. Samma kort som på Pengar. */}
       {economy && ctx.canEdit ? (
         <div className="o-split">
-          <SafeSuspense fallback={<SkeletonCard rows={6} />}>
+          <SafeSuspense fallback={<SkeletonCard rows={6} className="g4-sp-skel" />}>
             <SplitCard sp={sp} days={periodDaysText(p.resolved, p.days)} />
           </SafeSuspense>
         </div>
@@ -195,7 +196,6 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         <section className="x-an" aria-labelledby="hem-analys">
           <div className="x-hd">
             <h2 id="hem-analys">Analys{periodName ? <span> · {periodName}</span> : null}</h2>
-            <PeriodSegment className="aseg" />
             <Link prefetch={false} className="lk text-v2-sm text-v2-mute" href="/pengar">
               Allt i Pengar →
             </Link>
@@ -245,6 +245,7 @@ async function Sold({ sp, economy }: { sp: SearchParams; economy: boolean }) {
       inline={v.inline}
       link={economy ? { href: `/pengar${periodQuery(sp)}`, label: "Pengar" } : undefined}
       className="v2-ds o-sold"
+      phoneTop
     />
   );
 }
