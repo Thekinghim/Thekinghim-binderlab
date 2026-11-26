@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Drawer } from "vaul";
 
 import { usePhone } from "./use-media";
@@ -25,7 +25,6 @@ export function Sheet({
   eyebrow,
   closeLabel = "Stäng",
   wide = false,
-  flush = false,
 }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -46,10 +45,17 @@ export function Sheet({
   closeLabel?: string;
   /** Bredare låda på datorn (560 px i stället för 420). */
   wide?: boolean;
-  /** Innehållet sätter sin egen luft (äldre ark med px-5 pb-5). */
-  flush?: boolean;
 }) {
   const phone = usePhone();
+  // Kontrollerat ark utan `trigger`: Radix lämnar fokus till sin (tomma) trigger när arket
+  // stängs, och fokus hamnar på body. Kom ihåg vad som hade fokus när arket öppnades (innan
+  // innehållet monteras och tar fokus) och lämna tillbaka det, som <dialog> gjorde.
+  const returnTo = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (open && document.activeElement instanceof HTMLElement) {
+      returnTo.current = document.activeElement;
+    }
+  }, [open]);
   return (
     <Drawer.Root
       open={open}
@@ -69,6 +75,13 @@ export function Sheet({
           className={wide ? "v2-sheet wide" : "v2-sheet"}
           // Utan beskrivning: säg det uttryckligen (annars varnar Radix).
           {...(description ? {} : { "aria-describedby": undefined })}
+          onCloseAutoFocus={(e) => {
+            const el = returnTo.current;
+            returnTo.current = null;
+            if (trigger || !el?.isConnected || el === document.body) return;
+            e.preventDefault();
+            el.focus({ preventScroll: true });
+          }}
         >
           {phone ? <span className="grab" aria-hidden="true" /> : null}
           <div className={hideHead ? "sr-only" : "sh"}>
@@ -98,7 +111,7 @@ export function Sheet({
               </Drawer.Close>
             ) : null}
           </div>
-          {children ? <div className={flush ? "sb flush" : "sb"}>{children}</div> : null}
+          {children ? <div className="sb">{children}</div> : null}
           {footer ? <div className="ft">{footer}</div> : null}
         </Drawer.Content>
       </Drawer.Portal>

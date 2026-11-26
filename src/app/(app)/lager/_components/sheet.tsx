@@ -39,8 +39,6 @@ function VaulSheet({ open, onClose, title, eyebrow, children, footer, closeLabel
       eyebrow={eyebrow}
       footer={footer}
       closeLabel={closeLabel}
-      // Innehållet har egen luft (px-5 pb-5), som i <dialog>-arket.
-      flush
     >
       {children}
     </V2Sheet>
