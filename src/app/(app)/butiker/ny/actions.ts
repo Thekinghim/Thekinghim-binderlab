@@ -89,7 +89,7 @@ export async function finishStoreGuide(raw: unknown): Promise<FinishResult> {
       },
     );
     if (!result.ok) return { ok: false, error: result.message };
-    revalidateAppData();
+    await revalidateAppData();
     return {
       ok: true,
       data: { contractId: result.contractId, storeName: result.storeName, pdf: result.pdf },

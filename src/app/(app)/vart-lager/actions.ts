@@ -66,7 +66,7 @@ export async function setHomeCount(raw: unknown): Promise<VartLagerActionResult>
     await requireContextRole(EDIT_ROLES);
     const viewer = await currentViewer();
     const data = await setHomeCountFor(viewer, homeCountSchema.parse(raw));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -88,7 +88,7 @@ export async function addReceipt(
     if ("doubt" in data) return data;
     // Ett nytt pris ändrar vinsten: samma omräkning som Inköpspriser gör.
     if (data.price.status === "saved") await revalidateSettlementData();
-    else revalidateAppData();
+    else await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -99,7 +99,7 @@ async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
   try {
     await requireContextRole(EDIT_ROLES);
     const data = await fn();
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);

@@ -30,7 +30,7 @@ async function run<T>(fn: (viewer: Viewer) => Promise<ActionResult<T>>): Promise
   }
   if (!viewer) return { ok: false, error: NEW_MACHINE_MESSAGES.forbidden };
   const result = await fn(viewer);
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateAppData();
   return result;
 }
 

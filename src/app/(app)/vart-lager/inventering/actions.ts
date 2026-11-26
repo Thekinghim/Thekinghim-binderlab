@@ -28,7 +28,7 @@ export async function saveStockCount(raw: unknown): Promise<StockCountActionResu
   try {
     await requireContextRole(EDIT_ROLES);
     const data = await saveStockCountFor(await currentViewer(), stockCountSchema.parse(raw));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     unstable_rethrow(error);

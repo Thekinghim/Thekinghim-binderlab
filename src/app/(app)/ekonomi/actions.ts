@@ -99,12 +99,12 @@ export async function uploadPayoutFile(form: FormData): Promise<ActionResult<Pay
       );
       if (data.status === "manual_clash")
         return { ok: true, data: { kind: "nayax_clash", ...data } };
-      revalidateAppData();
+      await revalidateAppData();
       return { ok: true, data: { kind: "nayax", ...data } };
     }
     // Underlaget sparas där orderimporten sparar sina filer (IMPORT_FILE_STORE).
     const data = await importPayoutFileFor(viewer, { name: file.name, bytes });
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: { kind: "csv", ...data } };
   } catch (error) {
     return failure(error);
@@ -142,7 +142,7 @@ export async function applyStatementCardFee(
       fiscalYearStartMonth: settings.fiscalYearStartMonth,
     });
     if (!result.ok) return { ok: false, error: result.error };
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: { cardFeeBp, from: result.data?.cardFeeFrom ?? null } };
   } catch (error) {
     return failure(error);
@@ -174,7 +174,7 @@ export async function addManualPayout(raw: unknown): Promise<ActionResult<Manual
       },
       today,
     );
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -229,7 +229,7 @@ export async function reviewDeviation(raw: unknown): Promise<ActionResult<{ id: 
       action: input.action,
       note: input.note ?? null,
     });
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -245,7 +245,7 @@ export async function deliverVouchers(
     const { month } = z.object({ month: monthSchema }).parse(raw);
     const today = businessToday(new Date(), viewer.organization.timezone);
     const result = await deliverVouchersFor(viewer, month, today);
-    revalidateAppData();
+    await revalidateAppData();
     return {
       ok: true,
       data: {
@@ -274,7 +274,7 @@ export async function archivePayout(raw: unknown): Promise<ActionResult<{ refere
       })
       .parse(raw);
     const data = await archivePayoutFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -287,7 +287,7 @@ export async function saveFixedCost(raw: unknown): Promise<ActionResult<{ id: st
     const viewer = await operator();
     const input = fixedCostSchema.parse(raw);
     const data = await saveFixedCostFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -300,7 +300,7 @@ export async function archiveFixedCost(raw: unknown): Promise<ActionResult> {
     const viewer = await operator();
     const input = z.object({ id: z.uuid(), archived: z.boolean() }).parse(raw);
     await archiveFixedCostFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);

@@ -29,6 +29,6 @@ export async function setTargetMargin(input: {
   const result = await setTargetMarginFor(viewer, {
     targetMarginBp: Number(input?.targetMarginBp),
   });
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateAppData();
   return result;
 }

@@ -36,7 +36,7 @@ export async function previewGoodCategory(raw: unknown) {
 export async function setGoodCategory(raw: unknown) {
   return catalogAction("varor-api", async () => {
     const r = await setGoodCategoryFor(await operator(), raw);
-    revalidateAppData();
+    await revalidateAppData();
     return r;
   });
 }
@@ -48,7 +48,7 @@ export async function previewDeleteGood(raw: unknown) {
 export async function deleteGood(raw: unknown) {
   return catalogAction("varor-api", async () => {
     const r = await deleteGoodFor(await operator(), raw);
-    revalidateAppData();
+    await revalidateAppData();
     return r;
   });
 }

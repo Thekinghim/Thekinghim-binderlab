@@ -19,7 +19,7 @@ export async function saveInvestment(raw: unknown): Promise<ActionResult<{ id: s
     const ctx = await requireContextRole(OPERATOR_ROLES);
     const viewer = await currentViewer();
     const id = await saveInvestmentFor(viewer, investmentSchemaAt(ctx.today).parse(raw));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: { id } };
   } catch (error) {
     return failure(error, "enhetsekonomi");

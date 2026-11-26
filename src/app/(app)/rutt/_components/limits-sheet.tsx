@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/v2/button";
@@ -28,7 +27,6 @@ const DAYS = [
  * rutten körs. Samma gräns för Rutt, Hem, Att göra, Lager och Drift (en plan överallt).
  */
 export function LimitsSheet({ limits }: { limits: RouteLimits }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [stops, setStops] = useState(limits.maxStops);
   const [packs, setPacks] = useState(limits.maxPacks);
@@ -57,7 +55,6 @@ export function LimitsSheet({ limits }: { limits: RouteLimits }) {
       toastV2("Dagens gräns sparad", {
         detail: `Max ${stops} stopp och ${formatInt(packs)} pack per dag.`,
       });
-      router.refresh();
     });
   }
 

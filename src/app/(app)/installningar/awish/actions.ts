@@ -26,7 +26,7 @@ export async function previewTimezone() {
 export async function applyTimezone(raw: unknown) {
   return catalogAction("awish-konto", async () => {
     const r = await applyTimezoneFor(await operator(), raw);
-    revalidateAppData();
+    await revalidateAppData();
     return r;
   });
 }

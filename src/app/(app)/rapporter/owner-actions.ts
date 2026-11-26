@@ -60,7 +60,7 @@ export async function createOwnerReports(raw: unknown): Promise<OwnerReportsActi
     });
     if (result.created.length > 0) {
       revalidatePath("/rapporter");
-      revalidateAppData();
+      await revalidateAppData();
     }
     const summary = ownerReportsSummary(result);
     if (result.created.length === 0) {

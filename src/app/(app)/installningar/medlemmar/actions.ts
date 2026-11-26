@@ -37,7 +37,7 @@ export async function applyMember(raw: unknown) {
     "medlemmar",
     async () => {
       const r = await applyMemberFor(await operator(), raw);
-      revalidateAppData();
+      await revalidateAppData();
       return r;
     },
     MEMBERS_FORBIDDEN,

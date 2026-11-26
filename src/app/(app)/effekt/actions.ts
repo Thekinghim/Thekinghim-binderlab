@@ -59,7 +59,7 @@ export async function saveBaseline(raw: unknown): Promise<ActionResult<{ id: str
     const input = baselineSchema.parse(raw);
     await checkLimit({ ...input, month: null });
     const id = await saveBaselineFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: { id } };
   } catch (error) {
     return failure(error, "effekt");
@@ -69,7 +69,7 @@ export async function saveBaseline(raw: unknown): Promise<ActionResult<{ id: str
 export async function deleteBaseline(raw: unknown): Promise<ActionResult> {
   try {
     await deleteBaselineFor(await operator(), idSchema.parse(raw).id);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error, "effekt");
@@ -82,7 +82,7 @@ export async function saveMeasurement(raw: unknown): Promise<ActionResult<{ id: 
     const input = measurementSchema.parse(raw);
     await checkLimit(input);
     const id = await saveMeasurementFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: { id } };
   } catch (error) {
     return failure(error, "effekt");
@@ -92,7 +92,7 @@ export async function saveMeasurement(raw: unknown): Promise<ActionResult<{ id: 
 export async function deleteMeasurement(raw: unknown): Promise<ActionResult> {
   try {
     await deleteMeasurementFor(await operator(), idSchema.parse(raw).id);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error, "effekt");
@@ -102,7 +102,7 @@ export async function deleteMeasurement(raw: unknown): Promise<ActionResult> {
 export async function saveEffectSettings(raw: unknown): Promise<ActionResult> {
   try {
     await saveEffectSettingsFor(await operator(), effectSettingsSchema.parse(raw));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error, "effekt");

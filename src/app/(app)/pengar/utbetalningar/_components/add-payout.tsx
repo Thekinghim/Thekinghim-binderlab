@@ -174,7 +174,6 @@ export function AddPayout({
       const data = res.data as Upload;
       if (data.kind === "imported") {
         setOpen(false);
-        router.refresh();
         toastV2(data.message);
         return;
       }
@@ -272,15 +271,14 @@ export function AddPayout({
         setNote("");
         setExpected(null);
         setStep({ at, total });
-        router.refresh();
         return;
       }
       setOpen(false);
       toastV2("Utbetalningen är sparad", {
         detail: res.data.note ?? "Här är vem som ska ha vad.",
       });
+      // Den nya sidan läses ny; åtgärden har redan räknat om (revalidateSettlementData).
       router.push(`/pengar/utbetalningar/${res.data.payoutId}`);
-      router.refresh();
     });
   };
 

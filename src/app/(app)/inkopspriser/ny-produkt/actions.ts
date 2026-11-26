@@ -115,7 +115,7 @@ export async function createNewProduct(form: FormData): Promise<ActionResult<New
     );
     const { input, image } = await readForm(form);
     const data = await createNewProductFor(viewer, input, image, fingerprint);
-    if (data.status !== "nothing") revalidateAppData();
+    if (data.status !== "nothing") await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -159,7 +159,7 @@ export async function applySlotChange(raw: unknown): Promise<ActionResult<{ mess
     const r = (raw ?? {}) as { fingerprint?: unknown; confirmed?: unknown };
     const fingerprint = fingerprintSchema.parse(r.fingerprint);
     const data = await applySlotChangeFor(viewer, raw, fingerprint, r.confirmed === true);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -216,7 +216,7 @@ export async function saveEditGood(form: FormData): Promise<ActionResult<EditGoo
     );
     const { input, image } = await readForm(form);
     const data = await saveEditGoodFor(viewer, input, image, fingerprint, await editDeps(input));
-    if (data.status !== "nothing") revalidateAppData();
+    if (data.status !== "nothing") await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -230,7 +230,7 @@ export async function linkGoodToTitle(
   try {
     const viewer = await operator();
     const data = await linkGoodToTitleFor(viewer, raw);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);

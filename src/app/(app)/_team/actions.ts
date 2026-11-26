@@ -26,7 +26,7 @@ async function run<T>(fn: (viewer: Viewer) => Promise<ActionResult<T>>): Promise
   const viewer = await currentViewer();
   if (!viewer) return { ok: false, error: TEAM_MESSAGES.forbidden };
   const result = await fn(viewer);
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateAppData();
   return result;
 }
 

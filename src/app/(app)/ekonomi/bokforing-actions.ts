@@ -56,7 +56,7 @@ export async function saveBokforingSettings(raw: BokforingSettingsInput): Promis
   try {
     const { viewer } = await operator();
     await saveBokforingSettingsFor(viewer, raw);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -84,7 +84,7 @@ export async function setBokforingVmb(raw: { enabled: boolean }): Promise<Bokfor
         console.error("[bokforing] paketen togs inte fram på nytt", error);
       }
     });
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -112,7 +112,7 @@ export async function setMonthSent(raw: {
     } else {
       periodText = undoOutcomeText(await unmarkMonthSentFor(viewer, input.month), input.month);
     }
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: { periodText } };
   } catch (error) {
     return failure(error);
@@ -146,7 +146,7 @@ export async function uploadReceipts(
         throw error;
       }
     }
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: { saved, duplicates } };
   } catch (error) {
     return failure(error);
@@ -157,7 +157,7 @@ export async function archiveReceipt(raw: { id: string }): Promise<BokforingResu
   try {
     const { viewer } = await operator();
     await archiveReceiptFor(viewer, z.object({ id: z.string() }).parse(raw).id);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);

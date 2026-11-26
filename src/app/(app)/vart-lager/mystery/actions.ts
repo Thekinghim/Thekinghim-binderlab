@@ -59,7 +59,7 @@ export async function saveMysteryRecipe(
   try {
     await requireContextRole(RECIPE_ROLES);
     const data = await saveRecipeFor(await currentViewer(), recipeSchema.parse(raw));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -71,7 +71,7 @@ export async function packMystery(raw: unknown): Promise<MysteryActionResult<Pac
   try {
     await requireContextRole(PACK_ROLES);
     const data = await packFor(await currentViewer(), packSchema.parse(raw));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -85,7 +85,7 @@ export async function undoMysteryPack(
   try {
     await requireContextRole(PACK_ROLES);
     const data = await undoPackFor(await currentViewer(), undoPackSchema.parse(raw));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);

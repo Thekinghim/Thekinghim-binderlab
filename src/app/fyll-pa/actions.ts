@@ -29,7 +29,7 @@ export async function refreshFill(): Promise<
   try {
     const data = await refreshFillStockFor(await currentViewer());
     // Nya antal i automaterna syns överallt (Lager, Drift, Att göra), inte bara här.
-    if (data.status === "read" || data.status === "partial") revalidateAppData();
+    if (data.status === "read" || data.status === "partial") await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     unstable_rethrow(error);
@@ -50,7 +50,7 @@ export async function retryAwishPush(
   try {
     const data = await retryAwishPushFor(await currentViewer(), raw);
     // Raden på automaten (och saldot efter nästa läsning) ändras: hämta om överallt.
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     unstable_rethrow(error);

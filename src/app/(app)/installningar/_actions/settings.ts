@@ -44,7 +44,7 @@ export async function updateSettings(input: {
     fiscalYearStartMonth: Number(input?.fiscalYearStartMonth),
     ...(input?.vatLimitOre === undefined ? {} : { vatLimitOre: Number(input.vatLimitOre) }),
   });
-  if (result.ok && result.data?.changed) revalidateAppData();
+  if (result.ok && result.data?.changed) await revalidateAppData();
   return result;
 }
 
@@ -59,7 +59,7 @@ export async function setVatAcknowledged(
     acknowledged: acknowledged === true,
     today: businessToday(new Date(), organization.timezone),
   });
-  if (result.ok && result.data?.changed) revalidateAppData();
+  if (result.ok && result.data?.changed) await revalidateAppData();
   return result;
 }
 
@@ -100,7 +100,7 @@ export async function updateCompanyDetails(input: {
     reportOwnsMachines:
       typeof input?.reportOwnsMachines === "boolean" ? input.reportOwnsMachines : undefined,
   });
-  if (result.ok && result.data?.changed) revalidateAppData();
+  if (result.ok && result.data?.changed) await revalidateAppData();
   return result;
 }
 
@@ -121,6 +121,6 @@ export async function saveOwnerShares(input: {
       memberUserId: typeof s?.memberUserId === "string" && s.memberUserId ? s.memberUserId : null,
     })),
   });
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateAppData();
   return result;
 }
