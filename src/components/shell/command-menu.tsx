@@ -12,7 +12,6 @@ import { machineLabel, withCarried } from "./command-links";
 import { useCopyView } from "./copy-view";
 import {
   isInternalHref,
-  purgeForeignRecent,
   pushRecent,
   readRecent,
   recentKey,
@@ -131,11 +130,8 @@ export function CommandMenu({
 
   const storageKey = recentKey({ organizationId, user: userEmail, role });
   const [recent, setRecent] = useState<RecentEntry[]>([]);
-  // Andra användares sparade val (och egna för en annan roll) tas bort direkt, även
-  // om paletten aldrig öppnas: localStorage kan läsas av den som sitter vid datorn.
-  useEffect(() => {
-    if (organizationId) purgeForeignRecent({ organizationId, user: userEmail, role });
-  }, [organizationId, userEmail, role]);
+  // Andra användares sparade val tas bort redan när appen laddas (AppFrame), även om
+  // paletten aldrig öppnas.
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => setRecent(readRecent(storageKey)), 0);

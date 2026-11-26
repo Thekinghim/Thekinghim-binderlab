@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -13,10 +14,12 @@ import { getConfigStatus } from "@/server/config-status";
 import { getT } from "@/i18n/server";
 import { routeById } from "@/components/shell/nav";
 import { formatInt } from "@/lib/format";
+import { isPhoneRequest } from "@/lib/phone-hint";
 import { loadMachineCounts, loadOptionalContext } from "@/server/data/core";
 import { loadHemMenuCount, loadRouteMenuCount } from "@/app/(app)/_hem/v2/menu-counts";
 
 import { FillShell } from "./_components/fill-shell";
+import { redirectStoreUserToPortal } from "@/server/portal/session";
 import { requireUser } from "@/server/session";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -38,7 +41,12 @@ export default async function FillLayout({ children }: { children: ReactNode }) 
   if (!config.ok) return <ConfigMissing issues={config.issues} />;
   await requireUser();
   const ctx = await loadOptionalContext();
-  if (!ctx) redirect("/");
+  if (!ctx) {
+    // Påfyllare i butiken och butiksanvändare direkt till sin sida (inte via / och appens
+    // layout, som annars skickar vidare en gång till).
+    await redirectStoreUserToPortal();
+    redirect("/");
+  }
   const scope = createHash("sha256")
     .update(`${ctx.organization.id}:${ctx.user.id}`)
     .digest("hex")
@@ -85,9 +93,11 @@ export default async function FillLayout({ children }: { children: ReactNode }) 
   const routeCount = routeById("rutt").roles.includes(ctx.role)
     ? loadRouteMenuCount().catch(() => undefined)
     : undefined;
+  const head = await headers();
   return (
     <AppFrameRoot locale={ctx.locale} simple={null} topBar={false}>
       <FillShell
+        phoneHint={isPhoneRequest(head.get("user-agent"), head.get("sec-ch-ua-mobile"))}
         role={ctx.role}
         user={{ name: ctx.user.displayName ?? ctx.user.email, email: ctx.user.email }}
         organizations={ctx.organizations.map((o) => {

@@ -116,11 +116,21 @@ function lockScroll(): () => void {
  * Hem. Monteras en gång i skalet (layouten). Underlaget hämtas efter att sidan laddats
  * (GET /dagens-brief); går något fel visas ingenting.
  */
-export function DailyBrief({ userKey, timeZone }: { userKey: string; timeZone: string }) {
+export function DailyBrief({
+  userKey,
+  timeZone,
+  openNow = false,
+}: {
+  userKey: string;
+  timeZone: string;
+  /** Öppna direkt (knappen trycktes innan rutans kod hade laddats, ./lazy.tsx). */
+  openNow?: boolean;
+}) {
   const pathname = usePathname();
   const [cards, setCards] = useState<readonly BriefCard[] | null>(null);
   const [open, setOpen] = useState(false);
   const cache = useRef<{ at: number; data: Payload } | null>(null);
+  const openNowPending = useRef(openNow);
 
   const show = useCallback(
     (data: Payload) => {
@@ -195,6 +205,10 @@ export function DailyBrief({ userKey, timeZone }: { userKey: string; timeZone: s
       show(data);
     };
     window.addEventListener(BRIEF_OPEN_EVENT, onOpen);
+    if (openNowPending.current) {
+      openNowPending.current = false;
+      void onOpen();
+    }
     return () => window.removeEventListener(BRIEF_OPEN_EVENT, onOpen);
   }, [show]);
 

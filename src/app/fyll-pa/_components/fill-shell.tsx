@@ -7,7 +7,7 @@ import { pushEndpointForLogout } from "@/components/pwa/push-device";
 import { clearAllRecent } from "@/components/shell/command-recent";
 import type { Role } from "@/components/shell/nav";
 import type { ShellOrganization, ShellUser, TodoCountSource } from "@/components/shell/side-nav";
-import { V2SideNav } from "@/components/v2/shell/side-nav";
+import { V2SideNavSlot } from "@/components/v2/shell/side-nav";
 import { useToast } from "@/components/ui/toast";
 import { logout, switchOrganization } from "@/server/actions/auth";
 
@@ -23,6 +23,7 @@ export function FillShell({
   activeOrganizationId,
   todoCount,
   routeCount,
+  phoneHint = false,
   children,
 }: {
   role: Role;
@@ -31,6 +32,8 @@ export function FillShell({
   activeOrganizationId: string;
   todoCount?: TodoCountSource;
   routeCount?: TodoCountSource;
+  /** Servern tror att det är en telefon: sidomenyn renderas inte i första svaret. */
+  phoneHint?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -50,7 +53,8 @@ export function FillShell({
 
   return (
     <div className="v2-app v2-fill-shell" data-ui="v2">
-      <V2SideNav
+      <V2SideNavSlot
+        ssr={!phoneHint}
         role={role}
         todoCount={todoCount}
         routeCount={routeCount}
