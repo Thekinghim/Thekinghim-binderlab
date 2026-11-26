@@ -2453,6 +2453,11 @@
 .hem2 .hh-skel .sk-spark {
   margin-top: auto;
 }
+/* Axeln och förklaringen under kurvan (som .hh-axis och .hh-legend), så att kortet får
+   samma höjd som det färdiga på dator. */
+.hem2 .hh-skel .sk-legend {
+  margin-top: 6px;
+}
 .hem2 .hh-skel .sk-pod {
   align-self: center;
   margin-top: 8px;
@@ -2470,6 +2475,14 @@
 @media (max-width: 900px) {
   .hem2 .hh-skel {
     --hh-sk-spark: 58px;
+  }
+  /* Målet står i ett eget kort på telefon (.hh-goalcard); .hh-skel .hh-sec ovan vinner annars
+     över .hh-goal { display: none } och skelettet blir ~180 px för högt. Axeln och
+     förklaringen syns inte heller på telefon. */
+  .hem2 .hh-skel .hh-goal,
+  .hem2 .hh-skel .sk-axis,
+  .hem2 .hh-skel .sk-legend {
+    display: none;
   }
   .hem2 .hh-skel .hh-profit {
     display: grid;

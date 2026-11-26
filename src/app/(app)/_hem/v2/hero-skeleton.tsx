@@ -14,6 +14,8 @@ export function HemHeroSkeleton() {
           <Skeleton className="sk-big" width={150} height={38} />
           <Skeleton className="sk-dl" width={120} height={18} />
           <Skeleton className="sk-spark" width="100%" height="var(--hh-sk-spark, 96px)" />
+          <Skeleton className="sk-axis" width="100%" height={12} />
+          <Skeleton className="sk-legend" width={180} height={12} />
         </div>
         <div className="hh-sec hh-pod">
           <Skeleton width={150} />
