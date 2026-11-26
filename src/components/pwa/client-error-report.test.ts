@@ -50,6 +50,32 @@ describe("klientfel: rapporten från webbläsaren", () => {
     expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
+  it("ViewportPin: mått skickas högst en gång per tio minuter, även utan sessionStorage", async () => {
+    const { reportViewportSample } = await import("./client-error-report");
+    const { reportDue } = await import("@/components/v2/shell/viewport-pin-telemetry");
+    const vp = { cols: "ev,inner", screen: 852, rows: ["visible,793"] };
+    reportViewportSample("shift", vp, reportDue);
+    reportViewportSample("shift", vp, reportDue);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(body).toMatchObject({
+      path: "/drift",
+      message: "ViewportPin: shift",
+      stack: "ev,inner\nvisible,793",
+      extra: { source: "viewport", vp },
+    });
+    // sessionStorage som kastar: tiden i minnet gäller, och inget kastas.
+    Object.assign(window, {
+      sessionStorage: {
+        getItem: () => {
+          throw new Error("nej");
+        },
+      },
+    });
+    expect(() => reportViewportSample("shift", vp, reportDue)).not.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("kastar aldrig, inte ens när fetch kastar eller nätet är nere", async () => {
     vi.stubGlobal("fetch", () => {
       throw new Error("offline");

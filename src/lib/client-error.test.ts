@@ -86,6 +86,29 @@ describe("klientfel: det som får skickas och sparas", () => {
     ).toEqual({ source: "boundary" });
   });
 
+  it("ViewportPins mått sparas bara med rätt form och bara för source viewport", () => {
+    const vp = { cols: "ev,inner", screen: 852, rows: ["visible,793", "t400,793"] };
+    expect(
+      clampClientError({ message: "ViewportPin: x", extra: { source: "viewport", vp } })?.extra,
+    ).toEqual({ source: "viewport", vp });
+    // Fel källa, fel form, text i raderna eller för stort: vp försvinner.
+    expect(clampClientError({ message: "x", extra: { source: "error", vp } })?.extra).toEqual({
+      source: "error",
+    });
+    for (const bad of [
+      { ...vp, rows: ["a@b.se,1"] },
+      { ...vp, rows: Array.from({ length: 13 }, () => "a,1") },
+      { ...vp, cols: "ev inner" },
+      { ...vp, screen: "852" },
+      { ...vp, rows: Array.from({ length: 12 }, () => "a".repeat(80)) },
+      "vp",
+    ]) {
+      expect(
+        clampClientError({ message: "x", extra: { source: "viewport", vp: bad } })?.extra,
+      ).toEqual({ source: "viewport" });
+    }
+  });
+
   it("describeThrown: Error, sträng, null och objekt som kastar", () => {
     const e = Object.assign(new TypeError("boom"), { digest: "123" });
     expect(describeThrown(e)).toMatchObject({ message: "TypeError: boom", digest: "123" });
