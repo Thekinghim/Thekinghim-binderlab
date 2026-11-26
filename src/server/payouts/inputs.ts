@@ -429,7 +429,12 @@ export async function loadAllocationInputsTx(
             share = l.computed.amountOre;
             source = "live";
           } else if (l && !l.ok) {
-            shareUnknown.push({ code: "SHARE_UNKNOWN", storeId, message: l.message.slice(0, 300) });
+            shareUnknown.push({
+              code: "SHARE_UNKNOWN",
+              storeId,
+              message: l.message.slice(0, 300),
+              ...(l.code === "missing_price" ? { missingPrice: true } : {}),
+            });
           }
         }
       }

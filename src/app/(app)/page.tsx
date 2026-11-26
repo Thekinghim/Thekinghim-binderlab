@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { isSingleDay, periodNameInline, periodQuery } from "@/components/shell/period-state";
+import {
+  isSingleDay,
+  periodDaysText,
+  periodNameInline,
+  periodQuery,
+} from "@/components/shell/period-state";
 import { simpleHomeFor } from "@/components/shell/simple-view";
 import { DaySalesCard } from "@/components/v2/day-sales";
 import { PeriodSegment } from "@/components/v2/period-segment";
@@ -29,6 +34,7 @@ import { withUserDb } from "@/server/session";
 
 import { AwishOrdersBanner } from "./_vakt/data-age-line";
 import { SalesScreen } from "./forsaljning/_components/sales-screen";
+import { SplitCard } from "./pengar/_components/split-card";
 import {
   GeoCardView,
   LossCardView,
@@ -60,7 +66,8 @@ type SearchParams = Record<string, string | string[] | undefined>;
 const ROUTE_ROLES = new Set(["owner", "admin", "refiller"]);
 
 /**
- * Hem i V2 (docs/design/v2/byggplan.md 2.2, prototypen #hem): dagens rad, KPI-bandet, Kräver
+ * Hem i V2 (docs/design/v2/byggplan.md 2.2, prototypen #hem): dagens rad, hjältekortet, "Vem
+ * pengarna är till" (bara ägare och admin, direkt under hjältekortet), Kräver
  * åtgärd (störst förlorad vinst först), Senaste köp, Dagens rutt, Att göra och tio analyskort
  * för vald period (?period=30d|7d|idag). Varje kort strömmar för sig (Suspense) men läser
  * samma memoiserade underlag.
@@ -115,6 +122,18 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         >
           <HemHero sp={sp} />
         </SafeSuspense>
+      ) : null}
+
+      {/* "Vem pengarna är till" (Min andel, partnern, butikernas bolag): högt upp, direkt under
+          hjältekortet, för vald period. Bara ägare och admin (canEdit; laddaren kontrollerar
+          rollen igen). Eget Suspense, så att avräkningarna per månad aldrig håller upp
+          hjältekortet. Samma kort som på Pengar. */}
+      {economy && ctx.canEdit ? (
+        <div className="o-split">
+          <SafeSuspense fallback={<SkeletonCard rows={6} />}>
+            <SplitCard sp={sp} days={periodDaysText(p.resolved, p.days)} />
+          </SafeSuspense>
+        </div>
       ) : null}
 
       {soldTop ? (

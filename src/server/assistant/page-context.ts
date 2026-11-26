@@ -44,7 +44,7 @@ export const PAGE_INFO: Partial<Record<RouteId, PageInfo>> = {
   hem: {
     name: "Hem",
     about:
-      "intäkt, vinst och marginal för perioden mot perioden före, dagsgrafen och det viktigaste att göra",
+      "intäkt, vinst och marginal för perioden mot perioden före, vem pengarna är till (min andel, partnerns och butikernas bolag, bara för ägare och admin), dagsgrafen och det viktigaste att göra",
     chips: ["Varför ändrades vinsten?", "Vad ska jag göra i dag?", "Vilken automat tjänar mest?"],
   },
   "att-gora": {

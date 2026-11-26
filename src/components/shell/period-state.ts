@@ -27,7 +27,7 @@ import {
   startOfMonth,
   type Period as DateRange,
 } from "@/lib/period";
-import { formatPeriodShort } from "@/lib/format";
+import { formatInt, formatPeriodShort, NBSP } from "@/lib/format";
 
 export type { DateRange };
 
@@ -554,6 +554,14 @@ export function periodName(p: PeriodLike): string {
 export function periodNameInline(p: PeriodLike): string {
   const name = periodName(p);
   return p.key === "eget" && !/^I (dag|går)$/.test(name) ? name : lowerFirst(name);
+}
+
+/**
+ * Periodens längd i kortrubriker ("Vem pengarna är till · i går", "… · 30 dagar"): en dag får
+ * sitt namn, annars antalet dagar (`days`, PeriodView.days). Samma på Hem och Pengar.
+ */
+export function periodDaysText(p: PeriodLike, days: number): string {
+  return isSingleDay(p) ? periodNameInline(p) : `${formatInt(days)}${NBSP}dagar`;
 }
 
 function lowerFirst(s: string): string {

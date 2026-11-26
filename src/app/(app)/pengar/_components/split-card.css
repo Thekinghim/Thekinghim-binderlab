@@ -1,0 +1,199 @@
+/*
+ * "Vem pengarna är till" (split-card.tsx). Kortet visas på Hem och på Pengar, så reglerna bor
+ * här (importeras av komponenten) i stället för i money.css. Allt under .g4-sp*. Rörelse:
+ * staplarna växer in en gång, inget vid reducerad rörelse.
+ */
+
+@layer components {
+  .g4-sp-empty {
+    padding: 20px 18px;
+    color: var(--v2-mute);
+  }
+  .g4-sp {
+    padding: 2px 0 4px;
+  }
+  .g4-sp-basis {
+    margin: 0;
+    padding: 4px 18px 8px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .g4-sp-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 230px) minmax(40px, 1fr) 112px 44px;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 18px;
+    border-top: 1px solid var(--v2-line2);
+  }
+  .g4-sp-row .nm {
+    min-width: 0;
+  }
+  .g4-sp-row .nm b {
+    display: block;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .g4-sp-row .nm small {
+    display: block;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+    overflow-wrap: anywhere;
+  }
+  .g4-sp-row .bar {
+    height: 8px;
+    background: var(--v2-track);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .g4-sp-row .bar i {
+    display: block;
+    height: 100%;
+    background: var(--v2-ink);
+    border-radius: 6px;
+    transform-origin: left;
+    animation: g4-sp-grow 0.5s var(--v2-ease) backwards;
+    animation-delay: calc(var(--i, 0) * 40ms);
+  }
+  .g4-sp-row.ded .bar i {
+    background: var(--g4-cost, #d4d4d4);
+  }
+  .g4-sp-row .am {
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 550;
+    font-variant-numeric: tabular-nums;
+  }
+  .g4-sp-row.ded .am {
+    color: var(--v2-body2);
+    font-weight: 400;
+  }
+  .g4-sp-row .pc {
+    text-align: right;
+    white-space: nowrap;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .g4-sp-row.me {
+    background: var(--v2-hover);
+    border-top: 0;
+  }
+  .g4-sp-row.me .nm b,
+  .g4-sp-row.me .am {
+    color: var(--v2-profit);
+    font-weight: 650;
+  }
+  .g4-sp-row.me .am {
+    font-size: var(--v2-t-lg);
+  }
+  .g4-sp-row.me .bar i {
+    background: var(--v2-profit);
+  }
+  .g4-sp-row.me.neg .nm b,
+  .g4-sp-row.me.neg .am,
+  .g4-sp-row.me.neg .nm small {
+    color: var(--v2-crit-text);
+  }
+  .g4-sp-row.me.neg .bar i {
+    background: var(--v2-crit-text);
+  }
+  .g4-sp-co > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .g4-sp-co > summary::-webkit-details-marker {
+    display: none;
+  }
+  .g4-sp-co .nm b::before {
+    content: "›";
+    display: inline-block;
+    margin-right: 6px;
+    color: var(--v2-faint);
+    transition: transform 0.15s var(--v2-ease);
+  }
+  .g4-sp-co[open] .nm b::before {
+    transform: rotate(90deg);
+  }
+  .g4-sp-stores {
+    padding: 2px 18px 8px 34px;
+    background: var(--v2-hover);
+  }
+  .g4-sp-stores > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 0;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-body2);
+  }
+  /* Andelen kan inte räknas (SHARE_UNKNOWN): dämpad text i beloppets ställe, inte "0 kr". */
+  .g4-sp-row .am.unk,
+  .g4-sp-stores > div.unk .am {
+    color: var(--v2-mute);
+    font-weight: 400;
+    font-size: var(--v2-t-sm);
+    white-space: nowrap;
+  }
+  .g4-sp-stores > div > span:first-child {
+    min-width: 0;
+  }
+  .g4-sp-stores > div small {
+    display: block;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
+    overflow-wrap: anywhere;
+  }
+  .g4-sp-notes p {
+    margin: 0;
+  }
+  .g4-sp-notes p + p {
+    margin-top: 4px;
+  }
+  @media (max-width: 900px) {
+    .g4-sp-basis {
+      padding: 4px 16px 8px;
+    }
+    .g4-sp-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: "n a" "b p";
+      row-gap: 6px;
+      column-gap: 12px;
+      padding: 10px 16px;
+    }
+    .g4-sp-row .nm {
+      grid-area: n;
+    }
+    .g4-sp-row .am {
+      grid-area: a;
+      align-self: start;
+    }
+    .g4-sp-row .bar {
+      grid-area: b;
+      height: 6px;
+    }
+    .g4-sp-row .pc {
+      grid-area: p;
+    }
+    .g4-sp-stores {
+      padding: 2px 16px 8px 30px;
+    }
+  }
+  .g4-sp-notes {
+    padding: 11px 18px;
+    border-top: 1px solid var(--v2-line);
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  @keyframes g4-sp-grow {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .g4-sp * {
+      animation: none !important;
+    }
+  }
+}

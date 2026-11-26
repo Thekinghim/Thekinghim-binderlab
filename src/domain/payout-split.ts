@@ -156,7 +156,13 @@ export type SplitWarning =
     }
   | { readonly code: "UNMAPPED_DEVICE"; readonly serial: string }
   /** Butikens andel gick inte att räkna (t.ex. saknat inköpspris i vinstdelning). */
-  | { readonly code: "SHARE_UNKNOWN"; readonly storeId: string; readonly message: string }
+  | {
+      readonly code: "SHARE_UNKNOWN";
+      readonly storeId: string;
+      readonly message: string;
+      /** Orsaken är order utan inköpspris (rättas under Inköpspriser). */
+      readonly missingPrice?: boolean;
+    }
   /** Butiken har fått mer än avräkningen för en månad (rättas under Butiker). */
   | {
       readonly code: "STORE_OVERPAID";
