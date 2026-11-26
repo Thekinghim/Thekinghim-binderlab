@@ -63,7 +63,7 @@ export function PaySheet({
         return;
       }
       setOpen(false);
-      router.refresh();
+      // Åtgärden räknar om sidan i samma svar (revalidateSettlementData): ingen extra refresh.
       if (res.data.paidFromPayments) {
         toastV2(`Avräkningen för ${item.storeName} är betald med betalningarna.`, {
           detail: res.data.closedText ?? undefined,
@@ -86,7 +86,6 @@ export function PaySheet({
         detail || `Butikens andel för ${monthName(item.month)}`,
         () => {
           void undoSettlementPaid(item.id).then((undo) => {
-            router.refresh();
             if (!undo.ok) toastV2(undo.error, { tone: "critical" });
             else if (undo.data.periodText) toastV2(undo.data.periodText, { tone: "neutral" });
           });

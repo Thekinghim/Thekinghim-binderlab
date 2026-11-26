@@ -137,7 +137,7 @@ export async function changeMemberRole(input: {
     role: input?.role,
   });
   if (result.ok) {
-    if (result.data?.self) revalidateAppData();
+    if (result.data?.self) await revalidateAppData();
     else revalidatePath(PAGE);
   }
   return result;
@@ -153,7 +153,7 @@ export async function removeMember(input: {
     membershipId: input?.membershipId,
   });
   if (result.ok) {
-    if (result.data?.self) revalidateAppData();
+    if (result.data?.self) await revalidateAppData();
     else revalidatePath(PAGE);
   }
   return result;

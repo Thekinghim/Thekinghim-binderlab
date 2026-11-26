@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  countedRows,
   oreToField,
   parseKr,
   payoutBadge,
@@ -89,5 +90,48 @@ describe("periodsText", () => {
     expect(periodsText(["1–15 sep", "16–30 sep", "1–15 okt", "16–31 okt"])).toBe(
       "Nayax 1–15 sep … 16–31 okt (4 perioder)",
     );
+  });
+});
+
+describe("countedRows (Så räknade vi)", () => {
+  const t = {
+    grossOre: 100_000,
+    refundsOre: 0,
+    expectedNetOre: 96_000,
+    amountOre: 96_000,
+    storesOre: 20_000,
+    partnerReimbOre: 30_000,
+    vatOre: 5_000,
+    refundsOutsideOre: 0,
+    profitOre: 41_000,
+    partnerAdjustOre: 0,
+    costOre: 30_000,
+  };
+
+  it("med partner: inköpet tillbaka och vinsten att dela", () => {
+    const rows = countedRows(t, true);
+    expect(rows.map((r) => r.label)).toContain("Inköpet tillbaka till partnern");
+    expect(rows.at(-1)).toEqual({ label: "Vinst att dela", ore: 41_000 });
+    // Pengar in − raderna = vinsten.
+    const minus = rows.filter((r) => r.ore < 0 && r.label !== "Återbetalt till kunder");
+    expect(t.amountOre + minus.reduce((a, r) => a + r.ore, 0)).toBe(t.profitOre);
+  });
+
+  it("utan partner: inte 'Vinst att dela', inköpet står som varav", () => {
+    const solo = { ...t, partnerReimbOre: 0, profitOre: 71_000 };
+    const rows = countedRows(solo, false);
+    const labels = rows.map((r) => r.label);
+    expect(labels).not.toContain("Vinst att dela");
+    expect(labels).not.toContain("Inköpet tillbaka till partnern");
+    expect(rows.find((r) => r.label === "Kvar till dig, inköpet ingår")!.ore).toBe(71_000);
+    expect(rows.at(-1)).toEqual({ label: "Varav inköpet av packen", ore: 30_000, info: true });
+    const minus = rows.filter((r) => r.ore < 0 && !r.info);
+    expect(solo.amountOre + minus.reduce((a, r) => a + r.ore, 0)).toBe(solo.profitOre);
+  });
+
+  it("inköpet tillbaka till partnern utan partnerrad: raden står kvar, talen går ihop", () => {
+    const rows = countedRows(t, false);
+    expect(rows.map((r) => r.label)).toContain("Inköpet tillbaka till partnern");
+    expect(rows.at(-1)).toEqual({ label: "Vinst att dela", ore: 41_000 });
   });
 });

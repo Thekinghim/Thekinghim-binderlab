@@ -220,7 +220,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
               <LossCardView sp={sp} />
             </SafeSuspense>
             <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
-              <ShopsCardView sp={sp} />
+              <ShopsCardView sp={sp} withSplit={ctx.canEdit} canEdit={ctx.canEdit} />
             </SafeSuspense>
             <SafeSuspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
               <OpsCardView timeZone={ctx.timeZone} />

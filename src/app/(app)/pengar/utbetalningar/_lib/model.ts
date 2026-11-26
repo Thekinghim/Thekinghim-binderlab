@@ -4,7 +4,7 @@
  * (inte "allokering", "VMB" eller "bp").
  */
 
-import { coverageRangeText, type SplitWarning } from "@/domain";
+import { coverageRangeText, type SplitTotals, type SplitWarning } from "@/domain";
 
 import { kr, krExact, monthName } from "../../_components/fmt";
 
@@ -236,4 +236,62 @@ export function periodsText(texts: readonly string[]): string {
   const list = [...new Set(texts)];
   if (list.length <= 2) return `Nayax ${list.join(", ")}`;
   return `Nayax ${list[0]} … ${list[list.length - 1]} (${list.length} perioder)`;
+}
+
+/** En rad i "Så räknade vi". `info`: står för sig ("varav"), räknas inte bort ovanför. */
+export interface CountedRow {
+  readonly label: string;
+  readonly ore: number;
+  readonly info?: boolean;
+}
+
+/**
+ * Raderna i "Så räknade vi" för en utbetalning. Med partner: inköpet går tillbaka till
+ * partnern och det som blir kvar är vinsten att dela. Utan partner dras inköpet inte här
+ * (du har redan betalat packen), så det som blir kvar är inte vinst: "Kvar till dig, inköpet
+ * ingår", och inköpet står under som "varav".
+ */
+export function countedRows(
+  t: Pick<
+    SplitTotals,
+    | "grossOre"
+    | "refundsOre"
+    | "expectedNetOre"
+    | "amountOre"
+    | "storesOre"
+    | "partnerReimbOre"
+    | "vatOre"
+    | "refundsOutsideOre"
+    | "profitOre"
+    | "partnerAdjustOre"
+    | "costOre"
+  >,
+  hasPartner: boolean,
+): CountedRow[] {
+  // En återbetalning av inköpet till partnern betyder partner, även om raden saknas.
+  const partner = hasPartner || t.partnerReimbOre !== 0;
+  const rows: CountedRow[] = [
+    { label: "Försäljning", ore: t.grossOre },
+    { label: "Återbetalt till kunder", ore: -t.refundsOre },
+    { label: "Väntat från Nayax efter avgift", ore: t.expectedNetOre },
+    { label: "Pengar in", ore: t.amountOre },
+    { label: "Till butikerna", ore: -t.storesOre },
+  ];
+  if (partner) rows.push({ label: "Inköpet tillbaka till partnern", ore: -t.partnerReimbOre });
+  rows.push({ label: "Moms att spara", ore: -t.vatOre });
+  if (t.refundsOutsideOre) {
+    rows.push({ label: "Återbetalningar du gjort själv", ore: -t.refundsOutsideOre });
+  }
+  if (partner) {
+    rows.push({ label: "Vinst att dela", ore: t.profitOre });
+  } else {
+    rows.push({ label: "Kvar till dig, inköpet ingår", ore: t.profitOre });
+    if (typeof t.costOre === "number" && t.costOre > 0) {
+      rows.push({ label: "Varav inköpet av packen", ore: t.costOre, info: true });
+    }
+  }
+  if (t.partnerAdjustOre) {
+    rows.push({ label: "Rättelse till partnern från tidigare", ore: -t.partnerAdjustOre });
+  }
+  return rows;
 }

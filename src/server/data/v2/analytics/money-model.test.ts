@@ -49,6 +49,17 @@ describe("waterfallRows", () => {
     expect(rows.find((r) => r.key === "cost")!.shareBp).toBe(5_000);
   });
 
+  it("butikernas andel säger samma grund som intäkten (order med inköpspris)", () => {
+    expect(waterfallRows(base).find((r) => r.key === "share")!.sub).toBe(
+      "3 butiker, enligt avtalen",
+    );
+    const rows = waterfallRows({ ...base, unpricedRevenueOre: 7_000 });
+    expect(rows.find((r) => r.key === "revenue")!.sub).toBe("Order med inköpspris, utan moms");
+    expect(rows.find((r) => r.key === "share")!.sub).toBe(
+      "3 butiker, enligt avtalen, order med inköpspris",
+    );
+  });
+
   it("ritar varje kostnad där den förra slutade", () => {
     const rows = waterfallRows(base);
     const cost = rows.find((r) => r.key === "cost")!;

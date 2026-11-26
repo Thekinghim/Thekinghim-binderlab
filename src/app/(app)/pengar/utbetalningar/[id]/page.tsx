@@ -10,7 +10,7 @@ import { requireRoute, requireViewer } from "@/server/data/core";
 import { loadPayoutsPageFor } from "@/server/payouts/service";
 
 import { dayMonth, krExact } from "../../_components/fmt";
-import { payoutBadge, warningViews } from "../_lib/model";
+import { countedRows, payoutBadge, warningViews } from "../_lib/model";
 import { PayoutLines, Warnings } from "../_components/lines";
 import "../_components/utbetalningar.css";
 
@@ -99,25 +99,13 @@ export default async function PayoutPage({ params }: { params: Promise<{ id: str
         {t ? (
           <Card title="Så räknade vi">
             <div className="ut-rows">
-              {[
-                ["Försäljning", t.grossOre],
-                ["Återbetalt till kunder", -t.refundsOre],
-                ["Väntat från Nayax efter avgift", t.expectedNetOre],
-                ["Pengar in", t.amountOre],
-                ["Till butikerna", -t.storesOre],
-                ["Inköpet tillbaka till partnern", -t.partnerReimbOre],
-                ["Moms att spara", -t.vatOre],
-                ...(t.refundsOutsideOre
-                  ? [["Återbetalningar du gjort själv", -t.refundsOutsideOre] as const]
-                  : []),
-                ["Vinst att dela", t.profitOre],
-                ...(t.partnerAdjustOre
-                  ? [["Rättelse till partnern från tidigare", -t.partnerAdjustOre] as const]
-                  : []),
-              ].map(([label, ore]) => (
-                <div key={label as string} className="ut-row">
-                  <div className="nm">{label}</div>
-                  <div className="am">{krExact(ore as number)}</div>
+              {countedRows(
+                t,
+                p.lines.some((l) => l.kind === "partner"),
+              ).map((r) => (
+                <div key={r.label} className={r.info ? "ut-row info" : "ut-row"}>
+                  <div className="nm">{r.label}</div>
+                  <div className="am">{krExact(r.ore)}</div>
                 </div>
               ))}
             </div>

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/v2/button";
@@ -36,7 +35,6 @@ export function RegisterPaymentSheet({
   defaultStoreId?: string | null;
   label?: string;
 }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [storeId, setStoreId] = useState(defaultStoreId ?? stores[0]?.id ?? "");
   const [paidOn, setPaidOn] = useState(today);
@@ -95,7 +93,6 @@ export function RegisterPaymentSheet({
         return;
       }
       setOpen(false);
-      router.refresh();
       toastV2(`${krExact(i.value.amountOre)} till ${res.data.storeName} är registrerad`, {
         detail:
           [res.data.settledText, res.data.closedText].filter(Boolean).join(" ") ||

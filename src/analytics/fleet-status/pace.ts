@@ -97,6 +97,34 @@ export function machineFill(
   );
 }
 
+/**
+ * Titlarna i en automat som är slut: 0 pack (fillUnitsOf: lagret i appen, annars Awish) bland
+ * titlarna Awish läste, titlarna i sortimentet i dag och titlarna som sålt i automaten i
+ * fönstret, utom de som gått ur sortimentet. Kapaciteten behövs inte: en titel som är slut
+ * ska fyllas på även när Awish inte har läst automaten. Samma regel som Fyll på (en rad med
+ * 0 pack är "slut", src/app/fyll-pa/_lib/model.ts), så att Automater, Rutt och Fyll på säger
+ * samma sak (src/server/data/v2/refill-need.test.ts).
+ */
+export function outTitleIdsOf(args: {
+  readonly awish: readonly AwishFillRow[] | null | undefined;
+  readonly ledger: ReadonlyMap<string, number> | null | undefined;
+  /** Titlar som sålt i automaten i fönstret. */
+  readonly sold: ReadonlySet<string>;
+  /** Titlar i automatens sortiment i dag. */
+  readonly current: ReadonlySet<string>;
+  /** Titlar som gått ur automatens sortiment. */
+  readonly retired: ReadonlySet<string>;
+}): string[] {
+  const awish = new Map((args.awish ?? []).map((r) => [r.title_id, r.units]));
+  const ids = new Set<string>([...awish.keys(), ...args.current, ...args.sold]);
+  const out: string[] = [];
+  for (const id of ids) {
+    if (args.retired.has(id)) continue;
+    if (fillUnitsOf(awish.get(id), args.ledger?.get(id)) === 0) out.push(id);
+  }
+  return out.sort();
+}
+
 /** Sålda pack per dag i tusendelar (1 500 = 1,5 pack per dag). 0 utan dagar. */
 export function unitsPerDayMilli(sold: number, days: number = PACE_WINDOW_DAYS): number {
   if (!(days > 0) || !(sold > 0)) return 0;

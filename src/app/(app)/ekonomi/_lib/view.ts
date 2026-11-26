@@ -39,6 +39,15 @@ export function amount(ore: number | null | undefined): string {
   return formatKronor(ore / 100, { decimals: ore % 100 === 0 ? 0 : 2 });
 }
 
+/**
+ * Belopp som står bredvid varandra (en månads siffror i Bokföring) i samma form: har något av
+ * dem ören får alla två decimaler ("30 000,00 kr" bredvid "81 645,20 kr"), annars hela kronor.
+ */
+export function amountsAlike(ores: readonly number[]): string[] {
+  const decimals = ores.some((o) => o % 100 !== 0) ? 2 : 0;
+  return ores.map((o) => formatKronor(o / 100, { decimals }));
+}
+
 /** Öre → "1 235 kr" (hela kronor, rubriker och KPI). */
 export function sek(ore: number | null | undefined): string {
   return ore === null || ore === undefined ? MISSING : formatSek(ore / 100);

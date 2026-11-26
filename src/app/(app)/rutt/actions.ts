@@ -37,7 +37,7 @@ export async function changeRoute(
   const viewer = await viewerOrNull();
   if (!viewer) return { ok: false, error: ROUTE_MESSAGES.forbidden };
   const result = await changeRouteFor(viewer, String(machineId ?? ""), change);
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateAppData();
   return result;
 }
 
@@ -49,7 +49,7 @@ export async function undoRouteChange(
   const viewer = await viewerOrNull();
   if (!viewer) return { ok: false, error: ROUTE_MESSAGES.forbidden };
   const result = await undoRouteChangeFor(viewer, String(id ?? ""), restore);
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateAppData();
   return result;
 }
 
@@ -62,6 +62,6 @@ export async function saveRouteLimits(input: RouteLimitsInput): Promise<ActionRe
     maxPacks: Number(input?.maxPacks),
     weekdays: Array.isArray(input?.weekdays) ? input.weekdays.map(Number) : [],
   });
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateAppData();
   return result;
 }

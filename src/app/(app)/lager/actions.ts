@@ -56,7 +56,7 @@ export async function registerRefill(raw: unknown): Promise<LagerActionResult> {
     const viewer = await registrar();
     const input = refillSchema.parse(raw);
     const data = await registerRefillFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -69,7 +69,7 @@ export async function registerCount(raw: unknown): Promise<LagerActionResult> {
     const viewer = await registrar();
     const input = countSchema.parse(raw);
     const data = await registerCountFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -82,7 +82,7 @@ export async function registerWaste(raw: unknown): Promise<LagerActionResult> {
     const viewer = await registrar();
     const input = wasteSchema.parse(raw);
     const data = await registerWasteFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -99,7 +99,7 @@ export async function setSlotAlert(raw: unknown): Promise<AlertActionResult> {
     const viewer = await currentViewer();
     const input = alertSchema.parse(raw);
     const alertAtUnits = await setSlotAlertFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, alertAtUnits };
   } catch (error) {
     return failure(error);

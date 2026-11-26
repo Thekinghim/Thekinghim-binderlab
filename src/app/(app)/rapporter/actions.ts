@@ -56,9 +56,9 @@ async function operator() {
   return currentReportViewer();
 }
 
-function refresh(): void {
+async function refresh(): Promise<void> {
   revalidatePath("/rapporter");
-  revalidateAppData();
+  await revalidateAppData();
 }
 
 const uuid = z.uuid({ error: "Ogiltigt id." });
@@ -96,7 +96,7 @@ export async function createReport(raw: unknown): Promise<ActionResult<{ id: str
       greeting: input.greeting ?? null,
       comment: input.comment ?? null,
     });
-    refresh();
+    await refresh();
     return { ok: true, data: { id } };
   } catch (error) {
     return failure(error);
@@ -131,7 +131,7 @@ export async function approveReport(raw: unknown): Promise<ActionResult> {
       };
     }
     await approveReportFor(viewer, input.reportId, input.note ?? null);
-    refresh();
+    await refresh();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -163,7 +163,7 @@ export async function sendReport(raw: unknown): Promise<ActionResult<SendResult>
       },
       await sendDeps(viewer.organization.name),
     );
-    refresh();
+    await refresh();
     return { ok: true, data: result };
   } catch (error) {
     return failure(error);
@@ -181,7 +181,7 @@ export async function markReportShared(raw: unknown): Promise<ActionResult<{ add
     const viewer = await operator();
     const input = sharedSchema.parse(raw);
     const added = await markReportSharedFor(viewer, input.reportId);
-    refresh();
+    await refresh();
     return { ok: true, data: { added } };
   } catch (error) {
     return failure(error);
@@ -211,7 +211,7 @@ export async function createRecipient(raw: unknown): Promise<ActionResult<{ id: 
       kind: input.kind,
       storeId: input.storeId ?? null,
     });
-    refresh();
+    await refresh();
     return { ok: true, data: { id } };
   } catch (error) {
     return failure(error);
@@ -226,7 +226,7 @@ export async function setRecipientActive(raw: unknown): Promise<ActionResult> {
     const viewer = await operator();
     const input = activeSchema.parse(raw);
     await setRecipientActiveFor(viewer, input.recipientId, input.active);
-    refresh();
+    await refresh();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);

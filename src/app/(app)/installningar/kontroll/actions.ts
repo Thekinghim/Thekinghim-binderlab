@@ -22,7 +22,7 @@ export async function runSelfCheckNow(): Promise<
   }
   try {
     const r = await runSelfCheckNowFor({ user, organization });
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data: { status: r.status, failed: r.failed, warnings: r.warnings } };
   } catch (error) {
     if (error instanceof AuthorizationError) {

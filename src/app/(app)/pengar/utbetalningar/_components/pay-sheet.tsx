@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactElement } from "react";
 
 import { Button } from "@/components/v2/button";
@@ -34,7 +33,6 @@ export function PaySheet({
   verb?: "betald" | "uttaget" | "sparad";
   hint?: string;
 }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState(oreToField(leftOre));
@@ -58,14 +56,13 @@ export function PaySheet({
         return;
       }
       setOpen(false);
-      router.refresh();
+      // Åtgärden räknar om sidan i samma svar (revalidateSettlementData): ingen extra refresh.
       const refs = res.data.refs;
       toastUndo(
         `${krExact(res.data.paidOre)} till ${name} är markerat som ${verb}`,
         ore < leftOre ? `${krExact(leftOre - ore)} är kvar.` : undefined,
         () => {
           void undoPaid(refs).then((u) => {
-            router.refresh();
             if (!u.ok) toastV2(u.error, { tone: "critical" });
           });
         },

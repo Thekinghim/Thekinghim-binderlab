@@ -32,7 +32,7 @@ export async function previewCategory(raw: unknown) {
 export async function applyCategory(raw: unknown) {
   return catalogAction("kategorier", async () => {
     const r = await applyCategoryFor(await operator(), raw);
-    revalidateAppData();
+    await revalidateAppData();
     return r;
   });
 }
@@ -48,7 +48,7 @@ export async function previewBatchCategory(raw: unknown) {
 export async function applyBatchCategory(raw: unknown) {
   return catalogAction("kategorier", async () => {
     const r = await applyBatchCategoryFor(await operator(), raw);
-    revalidateAppData();
+    await revalidateAppData();
     return r;
   });
 }

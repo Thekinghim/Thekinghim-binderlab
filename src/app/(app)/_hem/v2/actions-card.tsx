@@ -180,7 +180,10 @@ export function ActionsList({
                             ? "Tom"
                             : r.kind === "startklar"
                               ? "Ny automat"
-                              : r.badge}
+                              : r.packs !== null
+                                ? r.badge
+                                : // Utan antal (okänd kapacitet): inte märket en gång till.
+                                  "Se Fyll på"}
                           {r.packs !== null ? (
                             <>
                               {" "}

@@ -30,7 +30,7 @@ export const IMPORT_THIS_TEXT =
   "Det här paketet är det bokhållaren ska importera. SIE-filen under Rapporter → Bokföringsunderlag är bara ett underlag: importera inte båda.";
 
 import { bookkeepingTitle } from "../_lib/headline";
-import { amount, capitalize, isoToDate, monthText, plural } from "../_lib/view";
+import { amountsAlike, capitalize, isoToDate, monthText, plural } from "../_lib/view";
 import { OpenMoreOnHash } from "./open-more";
 import {
   ArchiveReceiptButton,
@@ -79,7 +79,9 @@ export async function BokforingSection({
     );
   }
   const todo = view.months.filter((m) => m.status === "closed");
-  const next = todo[0] ?? null;
+  // Månaderna står nyast först, men de skickas i ordning: den äldsta som inte är skickad är
+  // nästa (VMB-underskottet förs vidare från månaden före).
+  const next = todo.at(-1) ?? null;
   const nextMissing = next ? missingCostReason(next.book) : null;
   const planRows = PLAN_KEYS.map((k) => ({
     key: k,
@@ -187,6 +189,9 @@ function MonthItem({
     ["Butikernas andel", b.storeShareOre],
     ["Resultat", b.resultOre],
   ];
+  // Samma form på alla siffror i raden (inte "30 000 kr" bredvid "81 645,20 kr").
+  const shown = amountsAlike(figures.map(([, v]) => v));
+  const resultShown = shown[shown.length - 1]!;
   const version = row.stored && row.stored.version > 1 ? ` · v${row.stored.version}` : "";
   // Räknat nu: saknas kostnader är månaden aldrig "klar", även om ett äldre sparat paket
   // sa det (nästa paket blir preliminärt tills kostnaderna finns).
@@ -199,8 +204,9 @@ function MonthItem({
         ? `${final ? "klar att ladda ner" : "preliminär"}${row.stored ? version : ""}`
         : STATUS_LABEL[row.status];
   const tag: Status = row.status === "closed" && final ? "ok" : TAG[row.status];
-  // Mobil: månaden som ska skickas härnäst (eller är klar att skicka) står först med
-  // siffrorna öppna; de andra visar bara namn, läge och resultat tills man öppnar dem.
+  // Mobil: månaden som ska skickas härnäst står först; den och de som är klara att skicka
+  // har siffrorna öppna, de andra visar bara namn, läge och resultat tills man öppnar dem.
+  // Bara den ena flyttas upp, så att resten står kvar i månadsordning (nyast först).
   const ready = next || (row.status === "closed" && final);
   const dl = (
     <dl
@@ -209,11 +215,11 @@ function MonthItem({
         b.vmbEnabled ? "sm:grid-cols-5" : "sm:grid-cols-4",
       )}
     >
-      {figures.map(([label, v]) => (
+      {figures.map(([label], i) => (
         <div key={label} className="flex min-w-0 flex-col">
           <dt className="text-v2-xs text-v2-mute">{label}</dt>
           <dd className={cn("tnum text-v2-md text-v2-ink", label === "Resultat" && "font-[650]")}>
-            {amount(v)}
+            {shown[i]}
           </dd>
         </div>
       ))}
@@ -221,7 +227,7 @@ function MonthItem({
   );
   return (
     <li
-      className={cn("v2-card", ready && "max-md:order-first")}
+      className={cn("v2-card", next && "max-md:order-first")}
       data-keep={next ? "" : undefined}
       data-index={index}
     >
@@ -233,7 +239,7 @@ function MonthItem({
         {ready ? (
           dl
         ) : (
-          <MobileFold summary="Resultat" meta={amount(b.resultOre)} className="flex-1">
+          <MobileFold summary="Resultat" meta={resultShown} className="flex-1">
             {dl}
           </MobileFold>
         )}
@@ -315,26 +321,23 @@ function MonthItem({
             {canEdit ? <ReceiptDrop month={row.month} maxBytes={UPLOAD_MAX_BYTES} /> : null}
           </div>
           {b.vmbEnabled ? (
-            <table className="w-full self-start text-v2-sm">
-              <tbody>
-                <Step label="Försäljning inkl. moms" ore={b.salesInclVatOre} />
-                {b.refundsOre !== 0 ? (
-                  <Step label="− Återbetalningar till kunder" ore={b.refundsOre} />
-                ) : null}
-                <Step
-                  label={`− ${PURCHASE_BASIS_LABEL[b.purchaseBasis]}`}
-                  ore={b.vmb.purchasesOre}
-                />
-                {b.vmb.carryInOre > 0 ? (
-                  <Step label="− Underskott från förra månaden" ore={b.vmb.carryInOre} />
-                ) : null}
-                <Step label="= Marginal" ore={b.vmb.marginOre} strong />
-                <Step label="VMB-moms 20 % av positiv marginal" ore={b.vmb.vatOre} strong />
-                {b.vmb.carryOutOre > 0 ? (
-                  <Step label="Underskott till nästa månad" ore={b.vmb.carryOutOre} />
-                ) : null}
-              </tbody>
-            </table>
+            <VmbSteps
+              steps={[
+                { label: "Försäljning inkl. moms", ore: b.salesInclVatOre },
+                ...(b.refundsOre !== 0
+                  ? [{ label: "− Återbetalningar till kunder", ore: b.refundsOre }]
+                  : []),
+                { label: `− ${PURCHASE_BASIS_LABEL[b.purchaseBasis]}`, ore: b.vmb.purchasesOre },
+                ...(b.vmb.carryInOre > 0
+                  ? [{ label: "− Underskott från förra månaden", ore: b.vmb.carryInOre }]
+                  : []),
+                { label: "= Marginal", ore: b.vmb.marginOre, strong: true },
+                { label: "VMB-moms 20 % av positiv marginal", ore: b.vmb.vatOre, strong: true },
+                ...(b.vmb.carryOutOre > 0
+                  ? [{ label: "Underskott till nästa månad", ore: b.vmb.carryOutOre }]
+                  : []),
+              ]}
+            />
           ) : (
             <p className="self-start text-v2-sm text-v2-mute">
               {row.status === "sent" ? "Skickad utan VMB." : "Utan VMB."}
@@ -346,11 +349,28 @@ function MonthItem({
   );
 }
 
-function Step({ label, ore, strong }: { label: string; ore: number; strong?: boolean }) {
+interface VmbStep {
+  readonly label: string;
+  readonly ore: number;
+  readonly strong?: boolean;
+}
+
+/** VMB-uträkningen steg för steg, alla belopp i samma form (amountsAlike). */
+function VmbSteps({ steps }: { steps: readonly VmbStep[] }) {
+  const shown = amountsAlike(steps.map((st) => st.ore));
   return (
-    <tr className={cn("border-b border-v2-line2", strong && "font-[550] text-v2-ink")}>
-      <td className="py-1.5 pr-3 text-v2-mute">{label}</td>
-      <td className="tnum py-1.5 text-right text-v2-ink">{amount(ore)}</td>
-    </tr>
+    <table className="w-full self-start text-v2-sm">
+      <tbody>
+        {steps.map((st, i) => (
+          <tr
+            key={st.label}
+            className={cn("border-b border-v2-line2", st.strong && "font-[550] text-v2-ink")}
+          >
+            <td className="py-1.5 pr-3 text-v2-mute">{st.label}</td>
+            <td className="tnum py-1.5 text-right text-v2-ink">{shown[i]}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

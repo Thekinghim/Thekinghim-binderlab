@@ -143,6 +143,35 @@ describe("missingSettlementTodos (månaden är slut, avräkningarna saknas)", ()
     expect(one.title).toBe("Skapa oktober-avräkningen");
   });
 
+  it("säger att dagen har passerat och skriver aldrig dubbel punkt efter datumet", () => {
+    const plain = (s: string) => s.replace(/\u00a0|\u202f/g, " ");
+    const detail = (today: string) =>
+      plain(
+        missingSettlementTodos(
+          createTodoContext(
+            { ...base, missingSettlements: { month: "2026-10", storeIds: ["s1"] } },
+            at(today),
+          ),
+        )[0]!.detail,
+      );
+    expect(detail("2026-11-03")).toMatch(/Betala senast 15 nov\.$/);
+    expect(detail("2026-11-15")).toMatch(/Betala i dag\.$/);
+    expect(detail("2026-11-26")).toMatch(/Skulle ha betalats senast 15 nov\.$/);
+    for (const d of ["2026-11-03", "2026-11-26"]) expect(detail(d)).not.toContain("..");
+    const late = settlementTodos(
+      createTodoContext(
+        {
+          ...base,
+          unpaidSettlements: [
+            { id: "a", storeId: "s1", month: "2026-10-01", amountOre: 10_000, blocked: false },
+          ],
+        },
+        at("2026-11-26"),
+      ),
+    )[0]!;
+    expect(late.detail).not.toContain("..");
+  });
+
   it("inget saknas: ingen punkt; finns i computeTodos", () => {
     expect(
       missingSettlementTodos(

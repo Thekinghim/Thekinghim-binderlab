@@ -7,6 +7,7 @@ import {
   goalPace,
   monthDay,
   resample,
+  revenueBasisNote,
   sparkGeometry,
   splitKpis,
 } from "./hero-model";
@@ -107,5 +108,17 @@ describe("firandet", () => {
     expect(aheadText(7)).toBe("7 dagar före månadens slut");
     expect(aheadText(1)).toBe("1 dag före månadens slut");
     expect(aheadText(0)).toBe("på månadens sista dag");
+  });
+});
+
+describe("revenueBasisNote (en grund för intäkten, eller en fotnot)", () => {
+  const plain = (s: string | null) => s?.replace(/ | /g, " ") ?? null;
+  it("fotnot med beloppet utan inköpspris", () => {
+    expect(plain(revenueBasisNote(387_000))).toBe(
+      "Intäkt och marginal räknas på order med inköpspris. 3 870 kr sålt utan pris räknas inte in.",
+    );
+  });
+  it("alla order har inköpspris: ingen fotnot", () => {
+    expect(revenueBasisNote(0)).toBeNull();
   });
 });

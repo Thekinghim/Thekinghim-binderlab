@@ -21,8 +21,10 @@ import {
 import {
   CUSTOMER_PRICE_TEXT,
   PRICE_MESSAGES,
+  correctionRewrites,
   correctionText,
   correctionToast,
+  defaultPriceAction,
   dayDate,
   formatDayShort,
   kr,
@@ -134,6 +136,8 @@ export function PriceForm({
   const [otherDate, setOtherDate] = useState(false);
   // Servern vill ha ett extra tryck (priset ser fel ut): frågan och hur man sparar ändå.
   const [doubt, setDoubt] = useState<{ text: string; again: () => void } | null>(null);
+  // "Rätta priset" skriver om priset för order som redan har ett: frågas först (inte Retur).
+  const [confirmFix, setConfirmFix] = useState(false);
   // Före hydreringen skulle knappen skicka formuläret som en vanlig sidladdning: priset
   // försvann utan fel. Knapparna är därför avstängda tills sidans skript har laddats.
   const ready = useHydrated();
@@ -369,9 +373,22 @@ export function PriceForm({
     });
   };
 
+  /** "Rätta priset": frågar först när det skriver om priset för order som redan har ett. */
+  const askCorrect = () => {
+    if (readAmount() === null || readCustomer() === undefined) return;
+    if (correctionRewrites(correction) > 0) setConfirmFix(true);
+    else correct();
+  };
+
+  // Retur gör det framhävda valet: "Nytt inköpspris från i dag" när titeln har ett pris,
+  // aldrig att rätta bakåt (det ändrar historiken och frågas för sig).
+  const primary = defaultPriceAction(hasCurrentPrice);
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!pending) correct();
+    if (pending) return;
+    setConfirmFix(false);
+    if (primary === "today") saveFrom(today, "today");
+    else askCorrect();
   };
 
   const lines = [
@@ -380,6 +397,32 @@ export function PriceForm({
   ];
   const correctBlocked = correction !== null && correction.start === null;
   const otherBusy = (kind: Busy) => pending && busy !== kind;
+
+  // Den framhävda knappen är formulärets (Retur); den andra är ett eget tryck.
+  const todayButton = (
+    <Button
+      type={primary === "today" ? "submit" : "button"}
+      variant={primary === "today" ? "primary" : "secondary"}
+      className={CHOICE_CLS}
+      loading={pending && busy === "today"}
+      disabled={!ready || otherBusy("today")}
+      onClick={primary === "today" ? undefined : () => saveFrom(today, "today")}
+    >
+      <Choice title="Nytt inköpspris från i dag" sub="Äldre försäljning behåller sitt pris" />
+    </Button>
+  );
+  const correctButton = (
+    <Button
+      type={primary === "correct" ? "submit" : "button"}
+      variant={primary === "correct" ? "primary" : "secondary"}
+      className={CHOICE_CLS}
+      loading={pending && busy === "correct" && !confirmFix}
+      disabled={!ready || correctBlocked || otherBusy("correct")}
+      onClick={primary === "correct" ? undefined : askCorrect}
+    >
+      <Choice title="Rätta priset" sub="Gäller all försäljning" />
+    </Button>
+  );
 
   return (
     <form
@@ -403,6 +446,7 @@ export function PriceForm({
           setAmountError(undefined);
           setError(undefined);
           setDoubt(null);
+          setConfirmFix(false);
         }}
         onBlur={() => {
           if (amount.trim() !== "") {
@@ -466,25 +510,50 @@ export function PriceForm({
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Button
-          type="submit"
-          variant="primary"
-          className={CHOICE_CLS}
-          loading={pending && busy === "correct"}
-          disabled={!ready || correctBlocked || otherBusy("correct")}
-        >
-          <Choice title="Rätta priset" sub="Gäller all försäljning" />
-        </Button>
-        <Button
-          type="button"
-          className={CHOICE_CLS}
-          loading={pending && busy === "today"}
-          disabled={!ready || otherBusy("today")}
-          onClick={() => saveFrom(today, "today")}
-        >
-          <Choice title="Nytt inköpspris från i dag" sub="Äldre försäljning behåller sitt pris" />
-        </Button>
+        {primary === "today" ? (
+          <>
+            {todayButton}
+            {correctButton}
+          </>
+        ) : (
+          <>
+            {correctButton}
+            {todayButton}
+          </>
+        )}
       </div>
+      {confirmFix ? (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-md border border-signal-line bg-signal-soft px-4 py-3"
+        >
+          <p className="flex items-start gap-2 text-sm text-fg">
+            <Icon name="alert" size={14} className="mt-0.5 shrink-0" />
+            <span>
+              Rätta priset bakåt? {formatInt(correctionRewrites(correction))} sålda order får ett
+              annat inköp, och vinsten hittills räknas om.
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="primary"
+              className="max-md:min-h-11"
+              loading={pending && busy === "correct"}
+              disabled={otherBusy("correct")}
+              onClick={() => {
+                setConfirmFix(false);
+                correct();
+              }}
+            >
+              Ja, rätta priset
+            </Button>
+            <Button type="button" className="max-md:min-h-11" onClick={() => setConfirmFix(false)}>
+              Avbryt
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <FormError message={error} />
       {doubt ? (

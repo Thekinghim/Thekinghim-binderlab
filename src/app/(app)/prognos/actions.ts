@@ -81,7 +81,7 @@ async function operator() {
 async function run<T>(fn: () => Promise<T>, revalidate = true): Promise<ActionResult<T>> {
   try {
     const data = await fn();
-    if (revalidate) revalidateAppData();
+    if (revalidate) await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -192,7 +192,7 @@ export async function markArrived(
     );
     if ("doubt" in data) return data;
     if (data.price.status === "saved") await revalidateSettlementData();
-    else revalidateAppData();
+    else await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);

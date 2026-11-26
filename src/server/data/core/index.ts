@@ -16,7 +16,7 @@
 
 import "server-only";
 
-import { revalidatePath, unstable_cache } from "next/cache";
+import { revalidatePath, revalidateTag, unstable_cache, updateTag } from "next/cache";
 import { headers } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { cache } from "react";
@@ -483,13 +483,40 @@ export async function cachedForViewer<T>(
 }
 
 /**
- * Efter en ändring som påverkar siffror (priser, inställningar, lager, avtal …): alla
- * sidor under appens layout räknas om vid nästa visning, även skalets räknare för Att
- * göra och synkstatus. Anropa sist i server actions, efter att ändringen sparats.
+ * Efter en ändring som påverkar siffror (priser, inställningar, lager, avtal …): bara den
+ * egna organisationens sparade tal rensas (taggen appDataTag: menyns räknare för Att göra,
+ * de obetalda avräkningarna), inte hela appens alla sidor för alla organisationer. Sidorna
+ * läser annars alltid nytt (de är dynamiska), och sidan man står på räknas om i samma svar
+ * som åtgärden: klienten behöver ingen egen router.refresh() efteråt. Anropa sist i server
+ * actions, efter att ändringen sparats.
  */
-export function revalidateAppData(): void {
-  // Rensar också det som cachedForViewer sparat under sidorna (Next:s implicita taggar).
-  revalidatePath("/", "layout");
+export async function revalidateAppData(): Promise<void> {
+  const ctx = await loadOptionalContext().catch(() => null);
+  if (!ctx) {
+    // Ingen organisation (t.ex. utloggad): som förut, allt under layouten.
+    revalidatePath("/", "layout");
+    return;
+  }
+  expireTag(appDataTag(ctx.organization.id));
+}
+
+/**
+ * Taggen rensas så att nästa läsning väntar på nya tal: i en server action med updateTag
+ * (svaret har då sidan med de nya talen), annars (Route Handler, jobb) med revalidateTag
+ * utan gammalt innehåll. Utanför Next (tester, skript) finns inget sparat att rensa.
+ */
+function expireTag(tag: string): void {
+  try {
+    updateTag(tag);
+    return;
+  } catch {
+    // Inte i en server action.
+  }
+  try {
+    revalidateTag(tag, { expire: 0 });
+  } catch {
+    // Inte i Next.
+  }
 }
 
 /**
@@ -498,7 +525,7 @@ export function revalidateAppData(): void {
  * inköpspriser, avtal, butiker eller avräkningar. Anropa sist, efter att ändringen sparats.
  */
 export async function revalidateSettlementData(): Promise<void> {
-  revalidateAppData();
+  await revalidateAppData();
   const ctx = await loadOptionalContext().catch(() => null);
   if (ctx) invalidateUnpaidSettlements(ctx.organization.id);
 }

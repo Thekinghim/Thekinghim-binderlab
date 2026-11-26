@@ -2176,6 +2176,16 @@
 .hem2 .hh-more {
   display: none;
 }
+/* Fotnoten om intäktens grund, över hela raden under talen. */
+.hem2 .hh-foot {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--v2-line2);
+  color: var(--v2-mute);
+  font-size: var(--v2-t-xs);
+  line-height: 1.4;
+}
 
 /* Målet nått! (engångs) */
 .hh-cele {

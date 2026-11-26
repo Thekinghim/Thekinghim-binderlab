@@ -19,12 +19,14 @@ import {
   fleetStatusOf,
   lossProfitPerDayOre,
   machineFill,
+  outTitleIdsOf,
   PACE_WINDOW_DAYS,
   unitsPerDayMilli,
   type AwishFillRow,
   type FleetStatus,
 } from "@/analytics/fleet-status";
 import { isPowerOffAt, type PowerHours } from "@/analytics/health/power";
+import { assortmentKey, retiredPairs, type SlotPeriod } from "@/analytics/todos/assortment";
 import { isMachineActive } from "@/analytics/todos/common";
 import { addDays, type IsoDate } from "@/domain";
 import { DEFAULT_MACHINE_LOOK, type MachineLook } from "@/lib/machine-look";
@@ -85,6 +87,11 @@ export interface FleetInput {
   readonly startklar: ReadonlySet<string>;
   /** null för roller utan ekonomi: inga öre i svaret. */
   readonly economy: FleetEconomyInput | null;
+  /**
+   * Sortimentet (lager_slot_periods): titlarna i automaten i dag och de som gått ur, för
+   * regeln om slut titlar (outTitleIdsOf). Utelämnat = inget känt sortiment.
+   */
+  readonly slotPeriods?: readonly SlotPeriod[];
 }
 
 const STATUSES: readonly FleetStatus[] = [
@@ -129,6 +136,30 @@ export function buildFleetState(input: FleetInput): FleetState {
     ledger.set(s.machineId, m);
   }
   const days30: IsoDate[] = Array.from({ length: 30 }, (_, i) => addDays(sparkStart, i));
+  // Sortimentet per automat: i dag och utgånget (samma som Fyll på).
+  const periods = input.slotPeriods ?? [];
+  const retired = retiredPairs(periods, today);
+  const current = new Map<string, Set<string>>();
+  const retiredBy = new Map<string, Set<string>>();
+  for (const p of periods) {
+    if (retired.has(assortmentKey(p.machineId, p.titleId))) {
+      const r = retiredBy.get(p.machineId) ?? new Set<string>();
+      r.add(p.titleId);
+      retiredBy.set(p.machineId, r);
+    } else if (p.validFrom <= today && (p.validTo === null || p.validTo >= today)) {
+      const c = current.get(p.machineId) ?? new Set<string>();
+      c.add(p.titleId);
+      current.set(p.machineId, c);
+    }
+  }
+  const soldBy = new Map<string, Set<string>>();
+  for (const k of soldTitle.keys()) {
+    const [machineId, titleId] = k.split(":") as [string, string];
+    const set = soldBy.get(machineId) ?? new Set<string>();
+    set.add(titleId);
+    soldBy.set(machineId, set);
+  }
+  const none: ReadonlySet<string> = new Set();
 
   const machines: FleetMachine[] = input.machines
     .filter((m) => isMachineActive({ ...m, archived: m.archived ?? false }, today))
@@ -142,6 +173,14 @@ export function buildFleetState(input: FleetInput): FleetState {
       const powerOffNow = isPowerOffAt(power, now.getTime());
       const health = input.health.get(m.id);
       const offline = health?.status === "offline";
+      // Slut titlar (0 pack), även utan Awish-läsning: samma regel som Fyll på.
+      const outTitleIds = outTitleIdsOf({
+        awish: input.fills.get(m.id) ?? null,
+        ledger: ledger.get(m.id),
+        sold: soldBy.get(m.id) ?? none,
+        current: current.get(m.id) ?? none,
+        retired: retiredBy.get(m.id) ?? none,
+      });
       const status = fleetStatusOf({
         offline,
         powerOff: powerOffNow,
@@ -149,9 +188,11 @@ export function buildFleetState(input: FleetInput): FleetState {
         units,
         fillBp: fill?.fillBp ?? null,
         emptyChannels: fill?.emptyChannels ?? 0,
+        outTitles: outTitleIds.length,
         daysLeft,
       });
-      const emptyTitleIds = fill?.emptyTitleIds ?? [];
+      // Titlar med tomt fack (Awish) eller slut (0 pack).
+      const emptyTitleIds = [...new Set([...(fill?.emptyTitleIds ?? []), ...outTitleIds])].sort();
       const eco = input.economy;
       const row = eco?.rows.get(m.id);
       const economy = eco

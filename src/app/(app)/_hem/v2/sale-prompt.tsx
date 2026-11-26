@@ -10,7 +10,6 @@
  * korten när den dyker upp efter hydreringen.
  */
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { enableSalePush, isPhone, thisDeviceHint } from "@/components/sales-push/enable";
@@ -37,7 +36,6 @@ export function SalePrompt({
   /** Personen har redan en telefon med notiser (då behövs inget lov). */
   hasDevice: boolean;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const hydrated = useHydrated();
   const [hidden, setHidden] = useState(false);
@@ -66,7 +64,6 @@ export function SalePrompt({
       }
       setHidden(true);
       toast({ title: "Klart! Du får en notis vid varje försäljning.", tone: "ok" });
-      router.refresh();
     });
 
   return (

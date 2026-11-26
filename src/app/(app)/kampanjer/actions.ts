@@ -85,7 +85,7 @@ export async function createCampaign(form: FormData): Promise<ActionResult<Creat
       bytes = new Uint8Array(await file.arrayBuffer());
     }
     const data = await createCampaignFor(viewer, input, bytes);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     if (error instanceof SyntaxError) return { ok: false, error: "Ogiltiga uppgifter." };
@@ -99,7 +99,7 @@ export async function stopCampaign(
   try {
     const viewer = await operator();
     const data = await stopCampaignFor(viewer, idSchema.parse(id));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -113,7 +113,7 @@ export async function removeFromScreen(
   try {
     const viewer = await operator();
     const data = await removeCampaignFromScreenFor(viewer, idSchema.parse(id));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -126,7 +126,7 @@ export async function retryCampaign(
   try {
     const viewer = await operator();
     const data = await retryCampaignFor(viewer, idSchema.parse(id));
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -151,11 +151,11 @@ export async function createFreePacks(raw: unknown): Promise<ActionResult<Create
     const viewer = await operator();
     const input = freePackInputSchema.parse(raw);
     const data = await createFreePacksFor(viewer, input);
-    revalidateAppData();
+    await revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     // Ett misslyckat försök finns i listan: räkna om sidan även då.
-    if (error instanceof FreePackError) revalidateAppData();
+    if (error instanceof FreePackError) await revalidateAppData();
     return failure(error);
   }
 }

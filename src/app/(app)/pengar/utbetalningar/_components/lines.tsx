@@ -59,7 +59,7 @@ export function RecipientList({
             <div className="sm">
               {ownerLeftOre < 0
                 ? "Pengarna från Nayax räckte inte till allt."
-                : "Din del av vinsten. Dina egna kostnader betalas härifrån."}
+                : "Det som är kvar till dig. Dina egna kostnader betalas härifrån."}
             </div>
           </div>
           <div className={ownerLeftOre < 0 ? "am neg" : "am"}>
@@ -155,11 +155,22 @@ function Why({ line, payout }: { line: LineView; payout: PayoutView }) {
     }
   }
   if (line.owner) {
-    items.push({
-      label: "Vinsten",
-      detail: "Pengar in − butikerna − inköpet − momsen − det du betalat tillbaka till kunder",
-      amount: krExact(line.owner.profitOre),
-    });
+    // Utan partner dras inköpet inte i utbetalningen: det som blir kvar är inte vinst.
+    const hasPartner = payout.lines.some((l) => l.kind === "partner");
+    items.push(
+      hasPartner
+        ? {
+            label: "Vinsten",
+            detail:
+              "Pengar in − butikerna − inköpet − momsen − det du betalat tillbaka till kunder",
+            amount: krExact(line.owner.profitOre),
+          }
+        : {
+            label: "Kvar till dig, inköpet ingår",
+            detail: "Pengar in − butikerna − momsen − det du betalat tillbaka till kunder",
+            amount: krExact(line.owner.profitOre),
+          },
+    );
     if (line.owner.partnerShareOre !== 0) {
       items.push({
         label: "Partnerns del av vinsten",
@@ -202,7 +213,10 @@ export function PayoutLines({ payout, today }: { payout: PayoutView; today: stri
               : l.kind === "owner"
                 ? l.amountOre < 0
                   ? "Nayax räckte inte till allt"
-                  : "Din del av vinsten"
+                  : payout.lines.some((x) => x.kind === "partner")
+                    ? "Din del av vinsten"
+                    : // Radens namn är redan "Kvar till dig".
+                      "Inköpet ingår"
                 : l.kind === "store_owner"
                   ? `${new Set(l.stores.map((c) => c.storeId)).size} butiker`
                   : "Butikens andel";

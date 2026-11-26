@@ -15,6 +15,7 @@ import {
 } from "./display";
 import {
   headlineOf,
+  minDaysLeft,
   machineList,
   packListAside,
   visitsText,
@@ -526,6 +527,32 @@ describe("headlineOf", () => {
     };
     expect(visitsTodayShort(two)).toBe(`57${NBSP}pack till 3 automater`);
     expect(visitsTodayShort(view)).toBe(`16${NBSP}pack till ${codeText("BL-003")}`);
+  });
+});
+
+describe("headlineOf: allt räcker", () => {
+  it("skriver den kortaste tiden en titel räcker, inte gränsen för Låg", () => {
+    const model = buildLagerModel({
+      now: NOW,
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      master,
+      // 30 kvar och 1 om dagen, 40 kvar och 2 om dagen: den kortaste är cellens egen siffra.
+      stock: [row(M2, T1, 30), row(M1, T2, 40)],
+      sales: [...daily(M2, T1, 1), ...daily(M1, T2, 2)],
+      scope: { storeId: null, machineId: null },
+      hasCentral: true,
+    });
+    const view = viewOf(model as ReturnType<typeof build>);
+    expect(view.counts.critical + view.counts.low).toBe(0);
+    const days = [
+      cellOf(model as ReturnType<typeof build>, M2, T1)!.daysLeft!,
+      cellOf(model as ReturnType<typeof build>, M1, T2)!.daysLeft!,
+    ];
+    const min = Math.min(...days);
+    expect(minDaysLeft(view)).toBe(min);
+    expect(headlineOf(view).title).toBe(`Alla titlar räcker minst ${min}${NBSP}dagar till.`);
+    expect(headlineOf(view).title).not.toContain(",");
   });
 });
 

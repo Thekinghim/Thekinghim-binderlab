@@ -17,6 +17,7 @@ import { cityLabel, storeNameLabel } from "@/lib/format";
 import type { AwishFillRow } from "@/analytics/fleet-status";
 import { loadFleetRanking } from "@/app/(app)/automater/_lib/ranking-data";
 import { withUserDbFor } from "@/server/access";
+import { querySlotPeriods } from "@/server/data/assortment";
 import { healthOf, loadMachinePower } from "@/server/alerts/inputs";
 
 import { loadContext, requireViewer } from "../core";
@@ -93,7 +94,7 @@ export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<Fleet
   const dataP = healthDataInRequest(viewer, today, now);
   dataP.catch(() => {});
   const db = await withUserDbFor(viewer.user, async (tx) => {
-    const [data, power, storeRows, fillRows, refillRows] = await Promise.all([
+    const [data, power, storeRows, fillRows, refillRows, slotPeriods] = await Promise.all([
       dataP,
       loadMachinePower(tx, orgId, today),
       tx.execute(
@@ -124,8 +125,10 @@ export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<Fleet
               and l.machine_id is not null
             group by l.machine_id`,
       ),
+      // Sortimentet: en slut titel i automaten (0 pack) räknas som "Fyll på", som i Fyll på.
+      querySlotPeriods(tx, orgId),
     ]);
-    return { data, power, storeRows, fillRows, refillRows };
+    return { data, power, storeRows, fillRows, refillRows, slotPeriods };
   });
 
   const stores = new Map<string, FleetStore>();
@@ -190,6 +193,7 @@ export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<Fleet
     sales: db.data.orders,
     lastRefill,
     startklar,
+    slotPeriods: db.slotPeriods,
   };
 }
 

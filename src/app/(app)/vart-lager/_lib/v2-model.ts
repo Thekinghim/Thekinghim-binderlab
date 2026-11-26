@@ -242,3 +242,15 @@ export function recentEvents(
       packTitle: [...g.titles][0],
     }));
 }
+
+/**
+ * Lagrets id → senaste sparade inventering (ISO) ur stock_counts (queryStockCountRefs),
+ * samma källa som inventeringssidan och Att göra. Lager som aldrig räknats saknas.
+ */
+export function lastCountedByPlace(
+  refs: readonly { readonly placeId: string; readonly lastCountedAt: string | null }[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of refs) if (r.lastCountedAt) out[r.placeId] = r.lastCountedAt;
+  return out;
+}

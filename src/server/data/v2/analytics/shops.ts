@@ -36,6 +36,9 @@ import { correctionsTotal, payoutDueDate } from "@/server/settlements/model";
 import { loadPaymentListFor, type PaymentListItem } from "@/server/settlements/payments";
 import { loadSettlementPageFor, type SettlementRow } from "@/server/settlements/service";
 import { loadFleetState } from "@/server/data/v2/fleet";
+import type { PayOverview } from "@/server/payouts/balances";
+import { loadPayoutsPageFor } from "@/server/payouts/service";
+import { OPERATOR_ROLES } from "@/server/data/core/types";
 import type { FleetStatus, FleetStatusTone } from "@/analytics/fleet-status";
 import type { MachineLook } from "@/lib/machine-look";
 
@@ -47,6 +50,8 @@ import { loadStoresFor } from "@/app/(app)/butiker/_lib/service";
 /* ------------------------------------------------------------------ */
 /* Att betala                                                          */
 /* ------------------------------------------------------------------ */
+
+const PAYOUT_ROLES: ReadonlySet<string> = new Set(OPERATOR_ROLES);
 
 export interface PayItem {
   readonly id: string;
@@ -75,6 +80,8 @@ export interface MoneyPay {
   readonly storeOptions: readonly { readonly id: string; readonly name: string }[];
   /** Alla avräkningar (12 månader), för butikens historik. */
   readonly settlements: readonly SettlementRow[];
+  /** Butiker och månader utan avräkning (samma som "Saknas" på Utbetalning), äldst först. */
+  readonly missing: readonly { readonly storeName: string; readonly month: string }[];
 }
 
 /** Obetalda avräkningar som går att betala nu (samma urval som Utbetalning). */
@@ -115,7 +122,25 @@ export const loadMoneyPay = cache(async (): Promise<MoneyPay | null> => {
     today: ctx.today,
     storeOptions: page.stores,
     settlements: page.rows,
+    missing: [...page.missing]
+      .map((m) => ({ storeName: m.storeName, month: m.month }))
+      .sort(
+        (a, b) => a.month.localeCompare(b.month) || a.storeName.localeCompare(b.storeName, "sv"),
+      ),
   };
+});
+
+/**
+ * "Att betala just nu" ur utbetalningarna från Nayax: samma saldon och samma summa som
+ * /pengar/utbetalningar (loadPayoutsPageFor). null när organisationen inte har lagt in någon
+ * utbetalning (då gäller avräkningarna, loadMoneyPay) eller personen inte får se sidan
+ * (bara ägare och admin).
+ */
+export const loadMoneyPayouts = cache(async (): Promise<PayOverview | null> => {
+  const ctx = await loadContext();
+  if (!ctx.canSeeEconomy || !PAYOUT_ROLES.has(ctx.role)) return null;
+  const page = await loadPayoutsPageFor(await requireViewer(), new Date(ctx.now));
+  return page.payouts.length > 0 ? page : null;
 });
 
 /* ------------------------------------------------------------------ */

@@ -36,7 +36,7 @@ async function run<R extends { ok: boolean }>(
     throw error;
   }
   const result = await fn(viewer);
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateAppData();
   return result;
 }
 

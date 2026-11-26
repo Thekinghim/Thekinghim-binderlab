@@ -25,7 +25,14 @@ import { loadMoneyGoal } from "@/server/data/v2/analytics/goal";
 import { loadKpiBand, type KpiBandTile } from "@/server/data/v2/analytics/kpi-band";
 
 import { loadTopCard } from "./cards-data";
-import { aheadText, axisLabels, goalPace, monthDay, splitKpis } from "./hero-model";
+import {
+  aheadText,
+  axisLabels,
+  goalPace,
+  monthDay,
+  revenueBasisNote,
+  splitKpis,
+} from "./hero-model";
 
 export interface HeroProfit {
   readonly label: string;
@@ -75,6 +82,8 @@ export interface HemHeroData {
   readonly topHref: string;
   readonly goal: HeroGoal | null;
   readonly kpis: readonly KpiBandTile[];
+  /** Fotnot under nyckeltalen (intäktens grund), eller null. */
+  readonly kpiNote: string | null;
 }
 
 /**
@@ -183,6 +192,8 @@ export async function loadHemHero(sp: SearchParamsInput): Promise<HemHeroData | 
     topHref: "/lonsamhet?vy=titel",
     goal: heroGoal,
     kpis: rest,
+    // Intäkten i nyckeltalen är Lönsamhets (order med inköpspris); resten räknar alla order.
+    kpiNote: revenueBasisNote(money?.model.bridge.unpricedRevenueOre ?? 0),
   };
 }
 

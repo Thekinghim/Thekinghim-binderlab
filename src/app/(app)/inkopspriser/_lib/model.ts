@@ -1236,3 +1236,25 @@ export function priceTodos(rows: readonly TitleRow[]): PriceTodo[] {
 export function marginText(r: Pick<TitleRow, "marginBeforeShare">): string {
   return r.marginBeforeShare === null ? MISSING : formatPercent(r.marginBeforeShare);
 }
+
+/**
+ * Order som redan har ett inköpspris och som "Rätta priset" skulle skriva om (prishistoriken
+ * ändras bakåt). 0 = inget skrivs om (bara order utan pris får ett, eller inga order alls):
+ * då behövs ingen fråga innan.
+ */
+export function correctionRewrites(
+  c: Pick<PriceCorrection, "start" | "affectedOrders" | "ordersGainingPrice"> | null,
+): number {
+  if (!c || c.start === null) return 0;
+  return Math.max(0, c.affectedOrders - c.ordersGainingPrice);
+}
+
+/**
+ * Valet som Retur och den framhävda knappen gör i prisrutan. Har titeln ett pris är det
+ * "Nytt inköpspris från i dag" (äldre försäljning behåller sitt pris); att rätta bakåt är ett
+ * eget, frågat val. Har titeln inget pris än är det att lägga in priset för all försäljning
+ * (ingen historik skrivs om, de sålda packen får ett pris).
+ */
+export function defaultPriceAction(hasCurrentPrice: boolean): "today" | "correct" {
+  return hasCurrentPrice ? "today" : "correct";
+}
