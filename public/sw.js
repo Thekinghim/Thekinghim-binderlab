@@ -173,7 +173,8 @@ function isFieldPage(url) {
 }
 
 function offlinePage(path) {
-  const retry = PAGES.includes(path) || MACHINE_PAGE.test(path) ? path : "/fyll-pa";
+  // "Försök igen" laddar samma sida; startsidan (/) också, inte Fyll på.
+  const retry = path === "/" || PAGES.includes(path) || MACHINE_PAGE.test(path) ? path : "/fyll-pa";
   const html = `<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ingen uppkoppling · Binderlab</title>
 <style>body{margin:0;background:#0a0a0b;color:#edeae4;font:14px/20px system-ui,sans-serif;padding:32px 16px}main{max-width:480px;margin:0 auto}p{color:#a6a39d}.l{font:11px/16px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f8c86}a{color:#edeae4}</style></head>
 <body><main><p class="l">Ur drift · ingen uppkoppling</p><h1 style="font-size:24px;line-height:32px;font-weight:500">Sidan finns inte sparad i telefonen.</h1>
@@ -243,7 +244,7 @@ async function networkFirst(request, url, clientId) {
 /**
  * Startsidan (/, manifestets start_url): alltid nätet. Utan nät och med en sparad Fyll på för
  * personen: dit i stället (appen på hemskärmen öppnas då som förut, mitt i fältet). Annars
- * sidan "ingen uppkoppling" med länk till Fyll på.
+ * sidan "ingen uppkoppling", där "Försök igen" laddar / på nytt.
  */
 async function startPage(request) {
   try {
