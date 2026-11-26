@@ -7,7 +7,9 @@
  *   1. offline    maskinhälsan säger offline (aldrig när strömmen är av enligt butikens tider:
  *                 hälsan räknar det som "strömmen av", src/analytics/health/power.ts)
  *   2. tom        Σ pack i automaten = 0
- *   3. fyll-pa    något fack tomt, eller fyllnaden ≤ LOW_FILL_BP (25 %)
+ *   3. fyll-pa    något fack tomt, en titel i automaten är slut (0 pack, även utan känd
+ *                 kapacitet: outTitleIdsOf, samma regel som Fyll på), eller fyllnaden ≤
+ *                 LOW_FILL_BP (25 %)
  *   4. startklar  ny automat med steg kvar (loadStartklarFor / machineReadiness)
  *   5. strom-av   strömmen är av just nu enligt butikens tider
  *   6. tom-snart  tom inom SOON_DAYS (3) dagar med nuvarande takt ("Tom om 2 d")
@@ -66,6 +68,8 @@ export interface FleetStatusInput {
   readonly fillBp: number | null;
   /** Tomma fack enligt Awish. */
   readonly emptyChannels: number;
+  /** Titlar i automaten med 0 pack (outTitleIdsOf). Utelämnat = 0. */
+  readonly outTitles?: number;
   /** Hela dagar tills tom med nuvarande takt. null = säljer inte / okänt. */
   readonly daysLeft: number | null;
 }
@@ -74,7 +78,11 @@ export interface FleetStatusInput {
 export function fleetStatusOf(input: FleetStatusInput): FleetStatus {
   if (input.offline) return "offline";
   if (input.units !== null && input.units <= 0) return "tom";
-  if (input.emptyChannels > 0 || (input.fillBp !== null && input.fillBp <= LOW_FILL_BP)) {
+  if (
+    input.emptyChannels > 0 ||
+    (input.outTitles ?? 0) > 0 ||
+    (input.fillBp !== null && input.fillBp <= LOW_FILL_BP)
+  ) {
     return "fyll-pa";
   }
   if (input.startklar) return "startklar";
