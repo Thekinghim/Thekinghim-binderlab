@@ -188,7 +188,10 @@ export default async function DriftPage() {
             {ctx.canSeeEconomy && !overview.lastRun ? (
               <div className="p-3">
                 <Notice tone="info" title="Larm är inte igång än.">
-                  Jobbet GET /api/cron/larm kräver CRON_SECRET och schemaläggning (Vercel Cron).
+                  {/* Miljövariabelns namn bara under utveckling: ägaren kan inte göra något med den. */}
+                  {process.env.NODE_ENV === "production"
+                    ? "Larmkollen har inte körts än."
+                    : "Jobbet GET /api/cron/larm kräver CRON_SECRET och schemaläggning (Vercel Cron)."}
                 </Notice>
               </div>
             ) : null}

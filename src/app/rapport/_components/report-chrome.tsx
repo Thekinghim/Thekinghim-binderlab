@@ -14,6 +14,7 @@ export function ReportChrome({
   back,
   crumb,
   actions,
+  reflow = false,
   children,
 }: {
   /** Vägen tillbaka, t.ex. { href: "/rapporter?…", label: "Rapporter" }. */
@@ -22,10 +23,16 @@ export function ReportChrome({
   crumb: ReactNode;
   /** Knappar till höger; Skriv ut läggs till sist om `print` inte är false. */
   actions?: ReactNode;
+  /**
+   * Under 600 px: arket flödar i skärmens bredd i stället för att krympas till ett A4 i
+   * frimärksstorlek. Bara där utskriften inte erbjuds på telefonen (arken mäts för skärmen,
+   * och en utskrift därifrån skulle klippas); servern skriver PDF:en med print-media.
+   */
+  reflow?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="bl-desk rp-chrome min-h-dvh">
+    <div className="bl-desk rp-chrome min-h-dvh" data-reflow={reflow ? "" : undefined}>
       <div data-print="hide" className="rp-chrome-bar">
         <div className="rp-chrome-in">
           <nav aria-label="Sökväg" className="rp-crumb">

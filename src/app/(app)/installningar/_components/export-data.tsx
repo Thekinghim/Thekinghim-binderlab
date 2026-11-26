@@ -5,17 +5,12 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-
-/** Filnamnet ur Content-Disposition, annars ett standardnamn. */
-function fileNameOf(response: Response): string {
-  const header = response.headers.get("content-disposition") ?? "";
-  const match = /filename="([^"]+)"/.exec(header);
-  return match?.[1] ?? "binderlab-export.zip";
-}
+import { fileNameFrom, saveFile } from "@/components/v2/save-file";
 
 /**
- * "Exportera all data": hämtar ZIP-filen (POST, samma ursprung) och sparar den. Fel
- * (inte ägaren, för många exporter) visas på svenska i stället för en tom sida.
+ * "Exportera all data": hämtar ZIP-filen (POST, samma ursprung) och sparar den (på telefonen
+ * via delningsarket, saveFile). Fel (inte ägaren, för många exporter) visas på svenska i
+ * stället för en tom sida.
  */
 export function ExportDataButton() {
   const router = useRouter();
@@ -37,17 +32,12 @@ export function ExportDataButton() {
         setError((await response.text()) || "Exporten misslyckades.");
         return;
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileNameOf(response);
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Safari på iPhone behöver länken en stund efter klicket.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      toast({ title: "Exporten är klar", description: a.download, tone: "ok" });
+      const name = fileNameFrom(
+        response.headers.get("content-disposition"),
+        "binderlab-export.zip",
+      );
+      const saved = await saveFile(await response.blob(), name);
+      if (saved === "saved") toast({ title: "Exporten är klar", description: name, tone: "ok" });
       router.refresh();
     });
 

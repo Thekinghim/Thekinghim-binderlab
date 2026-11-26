@@ -17,11 +17,21 @@ export function PowerCard({
   machineId,
   code,
   online,
+  blocked,
   versionBlocked,
 }: {
   machineId: string;
   code: string;
   online: boolean | null;
+  /**
+   * Inget kan skickas (inloggningen saknas eller signeringen godkänns inte, styrBlocked): båda
+   * knapparna är avstängda. Varför står överst på sidan, en gång, med vägen till Datakällor.
+   */
+  blocked: boolean;
+  /**
+   * Awish bytte version (inte bekräftat): bara Stäng av är pausad. Omstart kräver inget
+   * versionsbyte (guard.ts: den behövs ibland just när något är fel).
+   */
   versionBlocked: boolean;
 }) {
   // Förhandsvisningen läses från servern: den ger beviset som bekräftelsen kräver.
@@ -37,7 +47,7 @@ export function PowerCard({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             touch
-            disabled={offline}
+            disabled={offline || blocked}
             onClick={() => reboot.start(() => previewPowerAction({ machineId, method: "REBOOT" }))}
           >
             Starta om automaten
@@ -63,18 +73,13 @@ export function PowerCard({
             <Button
               touch
               className="styr-danger-outline"
-              disabled={offline || versionBlocked}
+              disabled={offline || blocked || versionBlocked}
               onClick={() =>
                 shutdown.start(() => previewPowerAction({ machineId, method: "SHUTDOWN" }))
               }
             >
               Stäng av…
             </Button>
-            {versionBlocked ? (
-              <span className="text-v2-sm text-v2-mute">
-                Pausat tills versionsbytet är bekräftat.
-              </span>
-            ) : null}
           </div>
         ) : null}
       </div>

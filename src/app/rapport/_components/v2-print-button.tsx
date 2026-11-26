@@ -2,18 +2,24 @@
 
 import { Icon } from "@/components/ui/icon";
 
-/** Skriv ut i V2 (öppnar webbläsarens utskrift, där även "Spara som PDF" finns). */
+/**
+ * Skriv ut i V2 (öppnar webbläsarens utskrift, där även "Spara som PDF" finns).
+ * `desktopOnly`: dold på telefonen, där sidan redan har en PDF-knapp (en färdig fil): annars
+ * stod två knappar som båda hette PDF bredvid varandra.
+ */
 export function V2PrintButton({
   children = "Skriv ut / spara PDF",
   disabled = false,
+  desktopOnly = false,
 }: {
   children?: string;
   disabled?: boolean;
+  desktopOnly?: boolean;
 }) {
   return (
     <button
       type="button"
-      className="v2-btn act touch"
+      className={desktopOnly ? "v2-btn act touch max-[900px]:hidden" : "v2-btn act touch"}
       disabled={disabled}
       onClick={() => window.print()}
       aria-label={children}

@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
+import { DownloadLink } from "@/components/v2/download-link";
 import { PHONE_QUERY } from "@/components/v2/use-media";
 
 import type { MonthTable } from "@/server/data/v2/analytics/money-model";
@@ -77,9 +77,9 @@ export function MonthsTable({ table }: { table: MonthTable }) {
         <h2>Vinst per automat · kr per dag i tjänst, {table.months.length} mån</h2>
         <span className="g4-ysh">Visa</span>
         <div className="g4-xbtns">
-          <Link className="v2-btn sm" href="/pengar/export" prefetch={false}>
+          <DownloadLink className="v2-btn sm" href="/pengar/export" fallbackName="vinst-12-man.csv">
             Exportera (CSV)
-          </Link>
+          </DownloadLink>
         </div>
       </summary>
       <div className="g4-ywrap">

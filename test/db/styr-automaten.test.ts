@@ -35,7 +35,7 @@ import { asUser, createMember, createOrg, createUser, db, type TestUser } from "
 
 vi.mock("server-only", () => ({}));
 
-const { loadStyrPage } = await import("../../src/server/machine-control/load");
+const { loadStyrPage, styrBlocked } = await import("../../src/server/machine-control/load");
 const { controlPowerFor, previewPowerFor } = await import("../../src/server/machine-control/power");
 const { executeShipmentFor, previewShipmentFor } =
   await import("../../src/server/machine-control/shipment");
@@ -334,6 +334,7 @@ describe("behörighet och demo", () => {
     expect(page.slots.map((x) => x.name)).toEqual(["12", "A3"]);
     expect(page.store).toEqual({ storeName: "Ica Kvantum", on: "10:00", off: "21:00" });
     expect(page.errors).toEqual([]);
+    expect(page.missingCredentials).toBeNull();
     expect(st.writes).toEqual([]);
   });
 });
@@ -853,5 +854,16 @@ describe("skärm och reklam", () => {
       ),
     ).rejects.toThrow("Inget att ändra.");
     expect(st.writes).toEqual([]);
+  });
+});
+
+describe("styrBlocked (knapparna på Styr)", () => {
+  it("inloggning eller signering stoppar allt; ett versionsbyte stoppar inte omstarten", () => {
+    expect(styrBlocked({ missingCredentials: null, signFailed: false })).toBe(false);
+    expect(styrBlocked({ missingCredentials: "Saknas", signFailed: false })).toBe(true);
+    expect(styrBlocked({ missingCredentials: null, signFailed: true })).toBe(true);
+    // versionBlocked räknas inte: guard.ts släpper omstarten (bara Stäng av väntar).
+    const versionOnly = { missingCredentials: null, signFailed: false, versionBlocked: true };
+    expect(styrBlocked(versionOnly)).toBe(false);
   });
 });

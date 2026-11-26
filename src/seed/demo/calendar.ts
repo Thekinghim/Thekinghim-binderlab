@@ -56,6 +56,40 @@ export const DEMO_DEFAULT_CLOCK: DemoClock = {
   hour: DEMO_LAST_DAY_CUTOFF_HOUR,
 };
 
+/**
+ * Demons "nu" när den seedas från kommandoraden (npm run db:seed-demo), så att demon inte
+ * ser död ut veckor senare (originalet slutar 2 nov 2026):
+ *
+ * - `original`: originalets 2 nov kl. 12 (de lokala testerna och skärmdumparna).
+ * - `date`: ett valt datum (--datum ÅÅÅÅ-MM-DD), kl. 12.
+ * - `existingLastDay`: demon finns redan (och raderas inte): samma "nu" som när den
+ *   seedades (sista dagen med försäljning), så att en andra körning inte skapar något nytt.
+ * - annars seedningsdagen: i dag kl. 12, eller i går om klockan inte har hunnit bli 12 (då
+ *   säljer demon aldrig efter klockan just nu).
+ */
+export function demoSeedClock(input: {
+  now: Date;
+  original?: boolean;
+  date?: IsoDate | null;
+  existingLastDay?: IsoDate | null;
+}): DemoClock {
+  const hour = DEMO_LAST_DAY_CUTOFF_HOUR;
+  if (input.original) return DEMO_DEFAULT_CLOCK;
+  if (input.date) return { date: input.date, hour };
+  if (input.existingLastDay) return { date: input.existingLastDay, hour };
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Stockholm",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(input.now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const today = `${get("year")}-${get("month")}-${get("day")}` as IsoDate;
+  return { date: Number(get("hour")) >= hour ? today : addDays(today, -1), hour };
+}
+
 /** Katalogen för ett visst "nu". Fälten motsvarar DEMO_* i catalog.ts. */
 export interface DemoCatalog {
   clock: DemoClock;

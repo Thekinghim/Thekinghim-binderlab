@@ -30,6 +30,7 @@ import { sql, type SQL } from "drizzle-orm";
 
 import type { Db, Tx } from "@/db/client";
 import { allocateLargestRemainder } from "@/domain/money";
+import type { IsoDate } from "@/domain/types";
 import { normalizeText } from "@/import/adapter";
 import type { FileStore } from "@/import/file-store";
 import { sha256Hex } from "@/import/hash";
@@ -1066,6 +1067,21 @@ async function ensureIncidents(
       sections.add("incidents", true);
     }
   });
+}
+
+/**
+ * Sista dagen med försäljning i en redan seedad demo (organisationen med `slug`), eller null.
+ * Demons "nu" vid nästa körning (demoSeedClock), så att den inte flyttas och krockar.
+ */
+export async function existingDemoLastDay(db: Db, slug: string): Promise<IsoDate | null> {
+  const row = await first<{ day: string | null }>(
+    db,
+    sql`select max(o.business_date)::text as day
+          from public.orders o
+          join public.organizations org on org.id = o.organization_id
+         where org.slug = ${slug} and org.is_demo`,
+  );
+  return (row?.day as IsoDate | null | undefined) ?? null;
 }
 
 /** Kör hela demoseeden (eller så mycket som hinns före deadlineMs). Se filhuvudet. */

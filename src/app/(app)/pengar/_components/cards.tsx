@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 
 import { DeltaBadge } from "@/components/v2/badge";
+import { DownloadLink } from "@/components/v2/download-link";
 import { AxisTick } from "@/components/v2/axis-tick";
 import { Button } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
@@ -71,14 +72,14 @@ export async function ResultCard({ sp }: { sp: SearchParamsInput }) {
     <Card
       title={`Resultat · ${r.periodLabel}`}
       actions={
-        <a
+        <DownloadLink
           className="lk"
           href={`/pengar/export${periodQuery(sp) || "?period=30d"}`}
-          download
+          fallbackName="vinst.csv"
           title="Perioden per titel och automat som CSV"
         >
           CSV <span aria-hidden="true">↓</span>
-        </a>
+        </DownloadLink>
       }
     >
       <div className="g4-res">

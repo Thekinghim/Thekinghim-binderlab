@@ -66,7 +66,7 @@ export function V2Page({
           <PeriodSegment />
         </div>
       ) : null}
-      {filters ? <PageFilters /> : null}
+      {filters ? <PageFilters fold /> : null}
       <div className="v2-page-body">{children}</div>
     </div>
   );

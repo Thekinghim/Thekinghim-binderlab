@@ -1063,7 +1063,8 @@ export function homeStaleImport(
   now: Date | string,
   timeZone: string,
 ): HomeStaleImport | null {
-  if (!sync?.syncedAt) return null;
+  // En demo hämtar aldrig ny data: ingen rad om gammal import.
+  if (!sync?.syncedAt || sync.demo) return null;
   const at = new Date(sync.syncedAt);
   if (Number.isNaN(at.getTime())) return null;
   if (new Date(now).getTime() - at.getTime() <= HOME_STALE_IMPORT_HOURS * 3_600_000) return null;

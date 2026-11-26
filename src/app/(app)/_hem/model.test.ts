@@ -852,6 +852,11 @@ describe("homeStaleImport", () => {
     });
   });
 
+  it("är null i en demo (den hämtar aldrig ny data)", () => {
+    const old = { ...sync("2026-10-28T23:30:00Z"), demo: true };
+    expect(homeStaleImport(old, TODAY, NOW, TZ)).toBeNull();
+  });
+
   it("är null när perioden slutade före importen (perioden är komplett)", () => {
     expect(homeStaleImport(sync("2026-10-28T10:00:00Z"), "2026-10-27", NOW, TZ)).toBeNull();
     expect(homeStaleImport(sync("2026-10-28T10:00:00Z"), "2026-10-28", NOW, TZ)).toEqual({

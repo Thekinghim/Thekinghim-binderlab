@@ -574,7 +574,7 @@ export async function awishFreshnessFor(
 ): Promise<AwishFreshness> {
   const [org] = Array.from(
     await db.execute(
-      sql`select o.timezone,
+      sql`select o.timezone, o.is_demo,
                  -- Den automat som lästes längst sedan bestämmer: en automat som inte
                  -- läses får inte gömmas bakom de färska.
                  (select min(l.awish_synced_at) from public.stock_locations l
@@ -590,8 +590,10 @@ export async function awishFreshnessFor(
                          and ds.provider = 'awish_grpc' and ds.archived_at is null)) as stock_at
           from public.organizations o where o.id = ${orgId}::uuid`,
     ),
-  ) as { timezone: string; stock_at: unknown }[];
+  ) as { timezone: string; is_demo: boolean | null; stock_at: unknown }[];
   if (!org) return { text: null, banner: null, status: [] };
+  // En demo hämtar aldrig från Awish (avstängt): ingen varning om gammal data.
+  if (org.is_demo === true) return { text: null, banner: null, status: [] };
   const [sync, awish] = await Promise.all([
     loadSyncFacts(db, orgId),
     loadAwishWatchFacts(db, orgId),

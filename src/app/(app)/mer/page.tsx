@@ -14,6 +14,7 @@ import { requireRoute } from "@/server/data/core";
 
 import { awishLinkStatus } from "./_lib/awish-status";
 import { loadMoreCounts } from "./_lib/data";
+import { moreGroups } from "./_lib/groups";
 import { MoreAccount } from "./more-account";
 import "../pengar/_components/money.css";
 
@@ -91,7 +92,8 @@ const nOrExamples = (v: number | null, examples: number, one: string, many: stri
 /**
  * Mer (/mer, G4): Driften (lägg till automat och butik, personal och roller, leverantörer,
  * dagens gräns för rutten, inställningar) med länkar till sidorna som redan gör det, Kopplingar
- * (Awish, bokföring, export), alla sidor rollen får se och kontot. På telefonen står Pengar och
+ * (Awish, bokföring, export), rollens övriga sidor grupperade efter flik (varje sida en gång) och
+ * kontot (Mitt konto och Notiser för alla roller). På telefonen står Pengar och
  * Butiker överst (de finns inte i bottenraden). "Visa som påfyllare" byggs inte (byggplanen 2.9).
  */
 export default async function MorePage() {
@@ -104,14 +106,12 @@ export default async function MorePage() {
   const ph = (href: string) => withPeriodHref(href, periodQs);
   const allowed = new Set(routesForRole(ctx.role).map((r) => r.id));
   const top = v2NavForRole(ctx.role).filter((i) => i.id === "butiker" || i.id === "pengar");
-  const pages = routesForRole(ctx.role).filter(
-    (r) =>
-      !IN_MENU.has(r.id) &&
-      r.id !== "pengar" &&
-      r.id !== "butiker" &&
-      // Inställningar står redan under Driften för den som får ändra.
-      !(ctx.canEdit && r.id === "installningar"),
-  );
+  // Sidorna som redan står på Mer får ingen rad till: Inställningar under Driften, Datakällor
+  // under Kopplingar (Awish-raden).
+  const shown = new Set<RouteId>([...IN_MENU, "pengar", "butiker"]);
+  if (ctx.canEdit) shown.add("installningar");
+  if (ctx.canSeeEconomy && allowed.has("datakallor")) shown.add("datakallor");
+  const groups = moreGroups(ctx.role, shown);
   const sync = counts.sync;
   const time = (iso: string) =>
     new Intl.DateTimeFormat("sv-SE", {
@@ -211,17 +211,19 @@ export default async function MorePage() {
             </Card>
           ) : null}
 
-          <Card title="Alla sidor">
-            {pages.map((r) => (
-              <ListRow
-                key={r.id}
-                href={ph(r.href)}
-                title={r.label}
-                sub={r.lead}
-                actions={<span aria-hidden="true">›</span>}
-              />
-            ))}
-          </Card>
+          {groups.map((g) => (
+            <Card key={g.id} title={g.title}>
+              {g.links.map((r) => (
+                <ListRow
+                  key={r.id}
+                  href={ph(r.href)}
+                  title={r.label}
+                  sub={r.lead}
+                  actions={<span aria-hidden="true">›</span>}
+                />
+              ))}
+            </Card>
+          ))}
         </div>
 
         <div className="flex min-w-0 flex-col gap-3.5">
@@ -258,7 +260,13 @@ export default async function MorePage() {
             email={ctx.user.email}
             organizations={ctx.organizations.map((o) => ({ id: o.id, name: o.name }))}
             activeOrganizationId={ctx.organization.id}
-          />
+          >
+            {/* Alla roller: påfyllare och läsare har ingen annan väg hit på telefonen. */}
+            <Row href="/installningar/konto" title="Mitt konto" sub="E-post, roll och lösenord" />
+            {allowed.has("drift") ? (
+              <Row href="/drift/larm" title="Notiser" sub="Vilka larm du får, och på telefonen" />
+            ) : null}
+          </MoreAccount>
         </div>
       </div>
     </V2Page>

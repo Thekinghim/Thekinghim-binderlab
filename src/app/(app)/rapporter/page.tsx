@@ -65,7 +65,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
   const [sync, master] = await Promise.all([loadSyncInfo(), loadMasterData()]);
   const staleDay = staleImportDay(
     data.range?.end ?? monthEnd(data.month),
-    sync?.syncedAt,
+    sync?.demo ? null : sync?.syncedAt,
     viewer.organization.timezone,
   );
 

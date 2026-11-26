@@ -70,7 +70,8 @@ export async function prepareDatabase(url: string, log: (m: string) => void): Pr
   const tsx = path.resolve("node_modules/.bin/tsx");
   run(tsx, ["scripts/db/reset.ts", "dev"], env, log);
   run(tsx, ["scripts/db/seed.ts", "--url", url], env, log);
-  run(tsx, ["scripts/db/seed-demo.ts", "--url", url], env, log);
+  // Originalets "nu" (2 nov 2026): samma skärmdumpar varje gång.
+  run(tsx, ["scripts/db/seed-demo.ts", "--url", url, "--original"], env, log);
   await addStoreUser(url);
 }
 

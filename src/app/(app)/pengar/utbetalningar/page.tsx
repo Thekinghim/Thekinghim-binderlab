@@ -6,11 +6,13 @@ import { Button, ButtonLink } from "@/components/v2/button";
 import { Card } from "@/components/v2/card";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { requireRoute, requireViewer } from "@/server/data/core";
+import { bankRows } from "@/server/payouts/balances";
 import { loadPayoutsPageFor } from "@/server/payouts/service";
 
 import { dayMonth, krExact } from "../_components/fmt";
 import { payoutBadge, warningViews } from "./_lib/model";
 import { AddPayout } from "./_components/add-payout";
+import { BankList } from "./_components/bank-list";
 import { RecipientList, Warnings } from "./_components/lines";
 import "./_components/utbetalningar.css";
 
@@ -56,6 +58,13 @@ export default async function PayoutsPage({
     .filter((l) => l.kind === "owner" && l.leftOre > 0)
     .map((l) => l.id);
   const allPaid = page.recipients.length === 0;
+  const bank = bankRows(page).map((r) => ({
+    name: r.name,
+    orgNumber: r.orgNumber,
+    bankgiro: r.bankgiro,
+    amountOre: Math.round(r.amountKr * 100),
+    message: r.message,
+  }));
   const add = (
     <AddPayout
       today={page.today}
@@ -81,10 +90,21 @@ export default async function PayoutsPage({
             </div>
             <div className="acts">
               {add}
-              {!allPaid ? (
-                <ButtonLink href="/pengar/utbetalningar/export" size="lg" prefetch={false}>
-                  Ladda ner betallista
-                </ButtonLink>
+              {!allPaid && bank.length > 0 ? (
+                <>
+                  {/* Telefon: listan i appen med kopieraknappar; dator: CSV-filen till banken. */}
+                  <span className="ut-phone">
+                    <BankList rows={bank} />
+                  </span>
+                  <ButtonLink
+                    href="/pengar/utbetalningar/export"
+                    size="lg"
+                    prefetch={false}
+                    className="ut-desk"
+                  >
+                    Ladda ner betallista
+                  </ButtonLink>
+                </>
               ) : null}
             </div>
           </div>

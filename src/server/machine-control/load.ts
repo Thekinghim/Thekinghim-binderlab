@@ -65,6 +65,12 @@ export type StyrPageData =
       versionBlocked: boolean;
       version: string | null;
       signFailed: boolean;
+      /**
+       * Inloggningen till Awish saknas (AppId, AppSecret, AppKey): inget kan skickas. Texten
+       * står i `missingCredentials` (inte i `errors`), så att sidan visar den en gång, med
+       * vägen till Datakällor.
+       */
+      missingCredentials: string | null;
       slotVia: "web" | "api" | "api_then_web";
       config: AwishMachineConfig | null;
       slots: StyrSlot[];
@@ -122,6 +128,19 @@ async function machineByCode(viewer: Viewer, code: string): Promise<StyrMachine 
   });
 }
 
+/**
+ * Kan inget skickas till automaten just nu? Inloggningen saknas eller signeringen godkänns
+ * inte (guard.ts stoppar då allt). Sidan säger varför överst (en gång); knapparna är då
+ * avstängda. Ett obekräftat versionsbyte stoppar inte omstarten (bara Stäng av), så det
+ * räknas inte här.
+ */
+export function styrBlocked(data: {
+  readonly missingCredentials: string | null;
+  readonly signFailed: boolean;
+}): boolean {
+  return data.missingCredentials !== null || data.signFailed;
+}
+
 export async function loadStyrPage(
   viewer: Viewer,
   code: string,
@@ -175,6 +194,7 @@ export async function loadStyrPage(
     versionBlocked: false,
     version: null,
     signFailed: false,
+    missingCredentials: null,
     slotVia: "web",
     config: null,
     slots: [],
@@ -222,8 +242,12 @@ export async function loadStyrPage(
       api.close();
     }
   } catch (error) {
-    console.error("[styr]", safeErrorForLog(error));
-    errors.push(readError(error));
+    if (error instanceof AwishNotConnectedError) {
+      base = { ...base, missingCredentials: error.message };
+    } else {
+      console.error("[styr]", safeErrorForLog(error));
+      errors.push(readError(error));
+    }
   }
 
   return {

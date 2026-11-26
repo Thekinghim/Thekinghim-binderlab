@@ -55,6 +55,7 @@ import {
 import { todayIn, toIsoDate } from "@/components/shell/period-state";
 import { costLinesFrom, type CostLines } from "@/lib/cost-lines";
 import { loadCoverage } from "@/server/alerts/inputs";
+import { isDemoOrganization } from "@/server/demo/guard";
 import { queryPeriodRefunds } from "@/server/data/core/queries";
 import { weekShapesInRequest } from "@/server/data/week-shapes";
 
@@ -700,9 +701,10 @@ export async function loadSyncInfoFor(
 ): Promise<SyncInfo | null> {
   if (!canSeeEconomy(viewer.organization.role)) return null;
   return asViewer(viewer, ECONOMY_ROLES, async (tx) => {
-    const [ds, firstOrder] = await Promise.all([
+    const [ds, firstOrder, demo] = await Promise.all([
       queryDataSources(tx, viewer.organization.id),
       queryFirstOrderDate(tx, viewer.organization.id),
+      isDemoOrganization(tx, viewer.organization.id),
     ]);
     // Ett hjärtslag eller en lyckad synk utan rader sätter last_synced_at. Utan en enda
     // importerad order: "Ansluten · inga order än" när en källa har synkat, annars
@@ -714,13 +716,16 @@ export async function loadSyncInfoFor(
         sources: ds.sources,
       };
     }
+    // En demo hämtar aldrig från Awish: dess data är alltid "gammal" och det är meningen.
     const stale =
-      ds.lastSyncedAt === null ||
-      now.getTime() - ds.lastSyncedAt.getTime() > STALE_SYNC_HOURS * 3_600_000;
+      !demo &&
+      (ds.lastSyncedAt === null ||
+        now.getTime() - ds.lastSyncedAt.getTime() > STALE_SYNC_HOURS * 3_600_000);
     return {
       syncedAt: ds.lastSyncedAt ? ds.lastSyncedAt.toISOString() : null,
       state: ds.failing > 0 ? "failed" : stale ? "stale" : "ok",
       sources: ds.sources,
+      ...(demo ? { demo: true } : {}),
     };
   });
 }

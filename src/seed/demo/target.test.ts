@@ -25,6 +25,19 @@ describe("demo: mål för seeden", () => {
     expect(() => resolveDemoSeedTarget(["--aterstall", "--radera"], env)).toThrow(/inte båda/);
   });
 
+  it("--datum och --original (demons nu)", () => {
+    expect(resolveDemoSeedTarget([], env)).toMatchObject({ date: null, original: false });
+    expect(resolveDemoSeedTarget(["test", "--datum", "2026-12-01"], env)).toMatchObject({
+      database: "binderlab_test",
+      date: "2026-12-01",
+    });
+    expect(resolveDemoSeedTarget(["--original"], env).original).toBe(true);
+    expect(() => resolveDemoSeedTarget(["--datum", "1 dec"], env)).toThrow(/ÅÅÅÅ-MM-DD/);
+    expect(() => resolveDemoSeedTarget(["--datum", "2026-12-01", "--original"], env)).toThrow(
+      /inte båda/,
+    );
+  });
+
   it("vägrar fjärrvärd utan --allow-remote och okända argument", () => {
     const remote = ["--url", "postgres://u@db.example.supabase.co:5432/postgres"];
     expect(() => resolveDemoSeedTarget(remote, env)).toThrow(/Vägrar/);
