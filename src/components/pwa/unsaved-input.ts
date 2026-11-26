@@ -97,7 +97,7 @@ export function hasUnsavedInput(doc: Document | undefined = globalThis.document)
   if (holders.size > 0) return true;
   if (!doc) return false;
   if (isTypingIn(doc.activeElement as FieldLike | null)) return true;
-  if (doc.querySelector("dialog[open]")) return true;
+  if (doc.querySelector('dialog[open], .v2-sheet[data-state="open"]')) return true;
   for (const el of Array.from(doc.querySelectorAll("form input, form textarea, form select"))) {
     if (changedField(el as unknown as FormFieldLike)) return true;
   }

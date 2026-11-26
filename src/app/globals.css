@@ -473,6 +473,14 @@ dialog::backdrop {
   bottom: calc(0px - var(--v2-vp-shift, 0px));
 }
 
+/*
+ * Sidan bakom en modal <dialog> rullar inte (ark och rutor utanför V2-skalet: Enkel vy, Fyll på).
+ * Annars drar fingret i iPhone-appen sidan under arket. V2:s ark (vaul) låser själva.
+ */
+html:has(dialog:modal) {
+  overflow: hidden;
+}
+
 dialog::backdrop {
   background: var(--bl-overlay);
   animation: bl-fade var(--bl-dur-slow) var(--bl-ease);

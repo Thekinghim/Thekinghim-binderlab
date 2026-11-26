@@ -74,7 +74,7 @@ type DetailState =
 function restoreFocus(orderId: string, frames = 0): void {
   requestAnimationFrame(() => {
     // Vänta tills dialogen faktiskt stängts (den lämnar själv tillbaka fokus först).
-    if (document.querySelector("dialog[open]") && frames < 30) {
+    if (document.querySelector("dialog[open], .v2-sheet") && frames < 30) {
       restoreFocus(orderId, frames + 1);
       return;
     }

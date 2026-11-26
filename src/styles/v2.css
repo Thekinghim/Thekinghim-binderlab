@@ -1685,6 +1685,15 @@
     color: var(--v2-mute);
     margin-top: 4px;
   }
+  .v2-sheet .sh .eb {
+    margin: 0 0 2px;
+  }
+  .v2-sheet[data-vaul-drawer-direction="right"].wide {
+    width: 560px;
+  }
+  .v2-sheet .sb.flush {
+    padding: 10px 0 0;
+  }
   .v2-sheet .x {
     position: absolute;
     top: 10px;

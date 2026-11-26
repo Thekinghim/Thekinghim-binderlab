@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useV2Shell } from "@/components/v2/shell/shell-context";
+import { Sheet } from "@/components/v2/sheet";
 import { cn } from "@/lib/cn";
 import { IconButton } from "./button";
 
@@ -17,10 +19,43 @@ type ModalProps = {
 };
 
 /**
- * Modal byggd på <dialog>: fokusfälla, Esc och inert bakgrund ingår.
- * På mobil glider den upp som ett ark från botten.
+ * Modal. I appens V2-skal: V2:s ark (vaul), samma som övriga ark: nerifrån på telefonen
+ * (följer fingret, låser sidan bakom, fält i fokus rullas fram över tangentbordet) och en
+ * låda från höger på datorn. Utanför skalet (Enkel vy, Fyll på, designsidan): <dialog> med
+ * fokusfälla, Esc och inert bakgrund, ett ark från botten på mobilen.
  */
-export function Modal({
+export function Modal(props: ModalProps) {
+  return useV2Shell() ? <SheetModal {...props} /> : <DialogModal {...props} />;
+}
+
+function SheetModal({
+  open,
+  onClose,
+  title,
+  eyebrow,
+  description,
+  children,
+  footer,
+  size = "md",
+}: ModalProps) {
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={title}
+      eyebrow={eyebrow}
+      description={description}
+      footer={footer}
+      wide={size === "md"}
+    >
+      {children}
+    </Sheet>
+  );
+}
+
+function DialogModal({
   open,
   onClose,
   title,

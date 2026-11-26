@@ -22,6 +22,10 @@ export function Sheet({
   footer,
   dismissible = true,
   hideHead = false,
+  eyebrow,
+  closeLabel = "Stäng",
+  wide = false,
+  flush = false,
 }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -36,6 +40,14 @@ export function Sheet({
   dismissible?: boolean;
   /** Rubriken bara för skärmläsare: innehållet börjar med samma namn (t.ex. butikens kort). */
   hideHead?: boolean;
+  /** Liten rad ovanför rubriken (t.ex. titeln arket gäller). */
+  eyebrow?: ReactNode;
+  /** Stängknappens etikett (standard "Stäng"). */
+  closeLabel?: string;
+  /** Bredare låda på datorn (560 px i stället för 420). */
+  wide?: boolean;
+  /** Innehållet sätter sin egen luft (äldre ark med px-5 pb-5). */
+  flush?: boolean;
 }) {
   const phone = usePhone();
   return (
@@ -50,12 +62,13 @@ export function Sheet({
       <Drawer.Portal>
         <Drawer.Overlay className="v2-scrim" />
         <Drawer.Content
-          className="v2-sheet"
+          className={wide ? "v2-sheet wide" : "v2-sheet"}
           // Utan beskrivning: säg det uttryckligen (annars varnar Radix).
           {...(description ? {} : { "aria-describedby": undefined })}
         >
           {phone ? <span className="grab" aria-hidden="true" /> : null}
           <div className={hideHead ? "sr-only" : "sh"}>
+            {eyebrow ? <p className="eb">{eyebrow}</p> : null}
             <Drawer.Title asChild>
               <h2>{title}</h2>
             </Drawer.Title>
@@ -65,7 +78,7 @@ export function Sheet({
               </Drawer.Description>
             ) : null}
             {!phone ? (
-              <Drawer.Close className="x" aria-label="Stäng">
+              <Drawer.Close className="x" aria-label={closeLabel}>
                 <svg
                   width="18"
                   height="18"
@@ -81,7 +94,7 @@ export function Sheet({
               </Drawer.Close>
             ) : null}
           </div>
-          {children ? <div className="sb">{children}</div> : null}
+          {children ? <div className={flush ? "sb flush" : "sb"}>{children}</div> : null}
           {footer ? <div className="ft">{footer}</div> : null}
         </Drawer.Content>
       </Drawer.Portal>
