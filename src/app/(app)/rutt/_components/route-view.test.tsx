@@ -87,6 +87,8 @@ describe("RouteView", () => {
     expect(out).not.toContain("Starta rutt");
     // Kommande dagar står kvar.
     expect(out).toContain("Kommande dagar");
+    // Dator: utan packlistan tar stoppkolumnen hela bredden (ingen tom kolumn till höger).
+    expect(out).toContain('class="work one"');
   });
 
   it("offline-stopp utan packlista: en rad för packlistan, checklistan och Starta rutt", () => {
@@ -100,6 +102,7 @@ describe("RouteView", () => {
     });
     expect(out).toContain("Inget att packa i dag.");
     expect(out).toContain('class="col pack-empty"');
+    expect(out).toContain('class="work"');
     expect(out).not.toContain("Allt är fullt");
     expect(out).toContain("Offline · kolla på plats");
     expect(out).toContain("Har automaten ström?");

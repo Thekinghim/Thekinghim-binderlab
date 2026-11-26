@@ -36,6 +36,9 @@
   align-items: start;
   margin-top: 14px;
 }
+.v2-rutt .work.one {
+  grid-template-columns: minmax(0, 1fr);
+}
 .v2-rutt .col {
   display: flex;
   flex-direction: column;

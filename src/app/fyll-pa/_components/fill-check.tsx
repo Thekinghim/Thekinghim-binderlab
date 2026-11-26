@@ -30,6 +30,8 @@ export function CheckStopScreen({
   tools,
   onBack,
   onLeave,
+  onFill,
+  onSkip,
 }: {
   machine: FillMachine;
   store: FillStore | null;
@@ -43,6 +45,10 @@ export function CheckStopScreen({
   onBack: () => void;
   /** Till nästa stopp (eller tillbaka till Rutt efter det sista). */
   onLeave: () => void;
+  /** Automaten är i gång igen: visa facken som vanligt. */
+  onFill?: () => void;
+  /** Hoppa över pågår (true) eller gick inte fram (false). */
+  onSkip?: (on: boolean) => void;
 }) {
   const keys = dayKeys(scope, date);
   const [checks, toggleCheck] = useDayChecks(keys.check);
@@ -53,9 +59,11 @@ export function CheckStopScreen({
 
   const skip = async () => {
     setSkipping(true);
+    onSkip?.(true);
     const r = await reach(() => changeRoute(m.id, "skip"));
     setSkipping(false);
     if (!r.ok) {
+      onSkip?.(false);
       toastV2(r.error, { tone: "critical" });
       return;
     }
@@ -105,6 +113,11 @@ export function CheckStopScreen({
                 );
               })}
             </ul>
+            {onFill ? (
+              <Button variant="plain" touch className="chkfill" onClick={onFill}>
+                I gång igen? Fyll på
+              </Button>
+            ) : null}
           </section>
         </div>
         <div className="side2">

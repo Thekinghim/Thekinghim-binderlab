@@ -701,6 +701,9 @@
     accent-color: var(--v2-ink);
     flex: none;
   }
+  .v2-fill-check .chkfill {
+    margin: 4px 0 10px;
+  }
   .v2-fill-check .chkfoot {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);

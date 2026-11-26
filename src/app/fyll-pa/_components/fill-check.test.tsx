@@ -52,5 +52,24 @@ describe("CheckStopScreen", () => {
     expect(out).toContain("Stoppet klart");
     expect(out).not.toContain("Klar ·");
     expect(out).not.toMatch(/\d\s?kr\b/);
+    // Utan onFill: ingen väg till facken.
+    expect(out).not.toContain("I gång igen?");
+  });
+
+  it("automaten i gång igen: en knapp till facken", () => {
+    const out = renderToString(
+      <CheckStopScreen
+        machine={machine}
+        store={null}
+        scope="org:user"
+        date="2026-11-26"
+        link="offline"
+        route={{ index: 0, total: 2 }}
+        onBack={() => {}}
+        onLeave={() => {}}
+        onFill={() => {}}
+      />,
+    ).replace(/<!-- -->/g, "");
+    expect(out).toContain("I gång igen? Fyll på");
   });
 });

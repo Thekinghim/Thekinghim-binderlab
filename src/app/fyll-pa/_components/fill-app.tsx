@@ -256,6 +256,11 @@ export function FillApp({
   const [lastSource, setLastSource] = useRemembered(rememberKey(scope, "fyll-lager"));
   // Lager valt med "Från: … ▾" för en automat (gäller tills sidan laddas om).
   const [override, setOverride] = useState<Record<string, string>>({});
+  // Ruttläget: offline-stopp där man ändå vill fylla (automaten startade om på plats).
+  const [fillAnyway, setFillAnyway] = useState<ReadonlySet<string>>(new Set());
+  // Ruttläget: offline-stopp som hoppas över. Servern svarar med rutten utan stoppet; skärmen
+  // står kvar tills nästa stopp öppnas (inte facken en kort stund).
+  const [skippingStop, setSkippingStop] = useState<string | null>(null);
   const placeName = useCallback(
     (id: string | null) => sources.places.find((p) => p.id === id)?.name ?? t.common.homeFallback,
     [sources.places, t],
@@ -686,7 +691,13 @@ export function FillApp({
     if (id) go(`${BASE}/${id}${routeSuffix}`);
   };
 
-  if (selectedId && selected && route?.date && route.check?.includes(selected.id)) {
+  if (
+    selectedId &&
+    selected &&
+    route?.date &&
+    (route.check?.includes(selected.id) || skippingStop === selected.id) &&
+    !fillAnyway.has(selected.id)
+  ) {
     // Ruttläget, offline-stopp: inget att fylla (automaten svarar inte). Checklistan, Stoppet
     // klart och Hoppa över, som på Rutt; fungerar utan nät utom Hoppa över (servern).
     const nextId = stopIndex >= 0 ? (stops[stopIndex + 1] ?? null) : null;
@@ -711,6 +722,8 @@ export function FillApp({
         }
         onBack={() => router.push("/rutt")}
         onLeave={() => (nextId ? goStop(stopIndex + 1) : router.push("/rutt"))}
+        onFill={() => setFillAnyway((cur) => new Set(cur).add(selected.id))}
+        onSkip={(on) => setSkippingStop(on ? selected.id : null)}
       />
     );
   }

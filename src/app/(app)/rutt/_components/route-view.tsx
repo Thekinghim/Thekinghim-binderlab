@@ -246,7 +246,8 @@ export function RouteView({
         </div>
       )}
 
-      <div className="work">
+      {/* Inga stopp: ingen packlista, så stoppkolumnen tar hela bredden (dator). */}
+      <div className={cn("work", nothing && "one")}>
         <div className="col">
           {nothing ? (
             <Card className="o-empty">
