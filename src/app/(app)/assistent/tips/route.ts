@@ -8,9 +8,8 @@
 
 import type { NextRequest } from "next/server";
 
-import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
-import { tipsByRoute, type PageTip, type TipRoute } from "@/server/assistant/page-tips";
-import { getActiveOrganization, getSessionUser, requireUser } from "@/server/session";
+import { pageTipsForUser } from "@/server/assistant/page-tips-for-user";
+import { getSessionUser } from "@/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -23,19 +22,5 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
   const user = await getSessionUser().catch(() => null);
   if (!user) return Response.json({}, { status: 401, headers: HEADERS });
-  return Response.json(await pageTips(), { headers: HEADERS });
-}
-
-/** Rådgivarens öppna förslag, högst ett per sida. Tomt för roller utan förslag. */
-async function pageTips(): Promise<Partial<Record<TipRoute, PageTip>>> {
-  try {
-    const user = await requireUser();
-    const organization = await getActiveOrganization();
-    if (!organization) return {};
-    const state = await loadAdvisorStateFor({ user, organization });
-    return state ? tipsByRoute(state.suggestions) : {};
-  } catch (error) {
-    console.error("[assistent] förslagen kunde inte läsas:", error);
-    return {};
-  }
+  return Response.json(await pageTipsForUser(), { headers: HEADERS });
 }
