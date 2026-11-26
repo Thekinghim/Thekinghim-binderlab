@@ -17,7 +17,13 @@ import { cache } from "react";
 import { addDays, type IsoDate } from "@/domain";
 import { withUserDbFor } from "@/server/access";
 
-import { loadContext, loadMasterData, requireViewer } from "../core";
+import {
+  cachedViewState,
+  loadContext,
+  loadMasterData,
+  markViewStateDegraded,
+  requireViewer,
+} from "../core";
 import type { Viewer } from "../core/loaders";
 import { stockRowsInRequest } from "../core/loaders";
 import { ownStockTotals } from "../core/own-stock";
@@ -46,6 +52,7 @@ export async function loadRouteLimitsFor(viewer: Viewer): Promise<RouteLimits> {
     });
   } catch (error) {
     console.error("[v2/route] Gränsen kunde inte läsas:", error);
+    markViewStateDegraded();
     return ROUTE_LIMIT_DEFAULTS;
   }
 }
@@ -91,14 +98,21 @@ const loadDayRouteInputs = cache(async (): Promise<Omit<DayRouteInput, "fleet">>
     loadTodoVisitPlan(),
     // Gränsen och ruttens start i en transaktion (vid fel: standarden och ingen start).
     withUserDbFor(viewer.user, (tx) => queryRoutePlanSettings(tx, viewer.organization.id)).catch(
-      () => ({ limits: ROUTE_LIMIT_DEFAULTS, depot: null }),
+      () => {
+        markViewStateDegraded();
+        return { limits: ROUTE_LIMIT_DEFAULTS, depot: null };
+      },
     ),
     // En vecka bakåt: modellen tar "till i morgon" från förra ruttdagen (route-model.ts).
     loadRouteChangesFor(viewer, ctx.today, addDays(ctx.today, -7)).catch((error: unknown) => {
       console.error("[v2/route] Ändringarna kunde inte läsas:", error);
+      markViewStateDegraded();
       return [];
     }),
-    stockRowsInRequest(viewer).catch(() => null),
+    stockRowsInRequest(viewer).catch(() => {
+      markViewStateDegraded();
+      return null;
+    }),
     loadMasterData(),
   ]);
   const { limits, depot } = settings;
@@ -125,10 +139,13 @@ const loadDayRouteInputs = cache(async (): Promise<Omit<DayRouteInput, "fleet">>
  * Dagens rutt för den inloggade, en gång per förfrågan. Utan besök i dag (eller när planen inte
  * gick att räkna): en rutt utan stopp.
  */
-export const loadDayRoute = cache(async (): Promise<DayRoute> => {
-  const [inputs, fleet] = await Promise.all([loadDayRouteInputs(), loadFleetState()]);
-  return buildDayRoute({ ...inputs, fleet });
-});
+export const loadDayRoute = cache(async (): Promise<DayRoute> =>
+  // Beror inte på vald period: sparad mellan förfrågningar (core/cachedViewState).
+  cachedViewState("day-route", async () => {
+    const [inputs, fleet] = await Promise.all([loadDayRouteInputs(), loadFleetState()]);
+    return buildDayRoute({ ...inputs, fleet });
+  }),
+);
 
 /**
  * Dagens rutt byggd på flottans läge utan ekonomi (inga belopp, "räddar" saknas), en gång per

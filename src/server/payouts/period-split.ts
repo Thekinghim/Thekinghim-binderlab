@@ -15,8 +15,8 @@ import { eq } from "drizzle-orm";
 import * as s from "@/db/schema";
 import type { Period } from "@/domain";
 import { storeNameLabel } from "@/lib/format";
-import { requireRoleFor, withUserDbFor } from "@/server/access";
-import type { Viewer } from "@/server/data/core/loaders";
+import { withUserDbFor } from "@/server/access";
+import { requireViewerRole, type Viewer } from "@/server/data/core/loaders";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
 import { splitView, type SplitView } from "@/server/data/v2/analytics/split-model";
 
@@ -38,7 +38,8 @@ export async function loadPeriodSplitFor(
   now: Date,
 ): Promise<SplitView> {
   const orgId = viewer.organization.id;
-  await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
+  // Rollen är redan läst ur databasen i förfrågan (verifiedViewer), annars läses den här.
+  await requireViewerRole(viewer, OPERATOR_ROLES);
   return withUserDbFor(viewer.user, async (tx) => {
     const ctx = await loadOrgPayoutContextTx(tx, orgId);
     const [inputs, stores, owners] = await Promise.all([

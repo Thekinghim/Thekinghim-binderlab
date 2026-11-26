@@ -25,6 +25,7 @@ import { runSaleNotifications, SALE_PUSH_BUDGET_MS } from "@/server/sales-push/j
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
 import { syncWatchAlertsForAll } from "@/server/monitoring/watch";
 import { invalidateUnpaidSettlements } from "@/server/settlements/cache";
+import { expireAppData } from "@/server/data/core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -159,6 +160,14 @@ export async function GET(request: Request): Promise<Response> {
     result.sources.filter((s) => (s.summary?.new ?? 0) > 0).map((s) => s.organizationId),
   )) {
     invalidateUnpaidSettlements(org);
+  }
+  // Det sparade läget på Hem (flottan, rutten, Att göra, Vårt lager; cachedViewState) gäller
+  // fram till nästa hämtning: varje organisation som hämtades räknas om vid nästa sida (även
+  // utan nya order kan en automat ha gått offline eller ett fack ändrats).
+  for (const org of new Set(
+    result.sources.filter((s) => s.skipped === null).map((s) => s.organizationId),
+  )) {
+    expireAppData(org);
   }
   // Notis vid varje försäljning till dem som har slagit på den: nya köp i den här synken (och
   // i en Synka nu sedan förra körningen). Med en egen tidsgräns. Ett fel här stoppar inte

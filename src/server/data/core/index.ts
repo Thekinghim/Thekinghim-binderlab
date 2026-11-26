@@ -30,6 +30,8 @@ import {
 } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
+import { BUILD_ID } from "@/lib/build-id";
+import { NotCacheableError, decodeFromCache, encodeForCache } from "@/lib/cache-codec";
 import type { CostLines } from "@/lib/cost-lines";
 import { ACTIVE_ORG_COOKIE } from "@/server/auth/flows";
 import { nextCookieJar } from "@/server/auth/next-cookies";
@@ -480,6 +482,137 @@ export async function cachedForViewer<T>(
     revalidate: seconds,
     tags: [appDataTag(orgId)],
   })();
+}
+
+/**
+ * Hur länge (sekunder) ett sparat läge (cachedViewState) används innan det läses om i
+ * bakgrunden, och längsta ålder (nytt tidsfack i nyckeln var VIEW_STATE_BUCKET_SECONDS).
+ * Awish-synken (var 5:e minut) och ändringarna i appen rensar det ändå direkt (appDataTag),
+ * så det som kan bli äldre än en minut är bara det som enbart beror på klockan.
+ */
+export const VIEW_STATE_REVALIDATE_SECONDS = 60;
+export const VIEW_STATE_BUCKET_SECONDS = 300;
+
+const notCacheableWarned = new Set<string>();
+
+/**
+ * Förfrågans markering att ett fel har fångats och ersatts med ett reservvärde (null, [],
+ * standardgränsen …), en gång per förfrågan (React cache). Ett sparat läge (cachedViewState)
+ * som blir klart efter det sparas inte: annars skulle ett tillfälligt fel (en timeout) visas
+ * i minuter i stället för på en sida.
+ */
+const requestDegraded = cache((): { degraded: boolean } => ({ degraded: false }));
+
+/**
+ * Anropas där ett fel fångas och ersätts med ett reservvärde i det som cachedViewState
+ * sparar, så att reservvärdet inte sparas mellan förfrågningar (bara den här sidan får det).
+ */
+export function markViewStateDegraded(): void {
+  try {
+    requestDegraded().degraded = true;
+  } catch {
+    // Utanför en förfrågan: inget sparas ändå.
+  }
+}
+
+/** Kastas ur unstable_cache när läsningen bar ett reservvärde: då sparas inget. */
+class DegradedRead extends Error {
+  constructor() {
+    super("Läsningen bar ett reservvärde och sparas inte.");
+    this.name = "DegradedRead";
+  }
+}
+
+/**
+ * Ett läge som inte beror på vald period (flottan, dagens rutt, Att göra, Vårt lager …),
+ * sparat mellan förfrågningar för den inloggade, så att ett periodbyte på Hem inte läser
+ * om det.
+ *
+ * Nyckeln är användaren, organisationen, rollen, dagens datum, språket, vyknapparna (VMB,
+ * butikernas andel) och ett tidsfack på VIEW_STATE_BUCKET_SECONDS: inget delas mellan
+ * användare eller roller och inget lever kvar över ett dygnsskifte. Taggen är appDataTag:
+ * varje ändring i appen (revalidateAppData) och varje Awish-synk (cron) rensar den, så att
+ * nästa sida räknar om. Värdet kodas (Map, Set, Date …, @/lib/cache-codec) så att en träff
+ * ger samma värde som en ny läsning. Utanför Next (tester, skript): fn direkt.
+ *
+ * fn läser som vanligt via de memoiserade laddarna. Vem som tittar och vyknapparna läses här
+ * först, så att inget i fn behöver kakor eller headers (som unstable_cache inte tillåter).
+ */
+export async function cachedViewState<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  const [viewer, ctx, vmb, storeShare] = await Promise.all([
+    requireViewer(),
+    loadContext(),
+    requestVmbView(),
+    requestStoreShareView(),
+  ]);
+  const { userId } = viewer.user;
+  const { id: orgId, role } = viewer.organization;
+  const bucket = Math.floor(requestNow().getTime() / (VIEW_STATE_BUCKET_SECONDS * 1000));
+  // Läst i den här förfrågan men inte sparbart (t.ex. en klassinstans): ges tillbaka som det är.
+  let fresh: { value: T } | null = null;
+  let ran = false;
+  type Entry = { ok: true; v: ReturnType<typeof encodeForCache> } | { ok: false };
+  let entry: Entry;
+  try {
+    const load = unstable_cache(
+      async () => {
+        ran = true;
+        const value = await fn();
+        if (requestDegraded().degraded) {
+          fresh = { value };
+          throw new DegradedRead();
+        }
+        try {
+          return { ok: true as const, v: encodeForCache(value) };
+        } catch (error) {
+          if (!(error instanceof NotCacheableError)) throw error;
+          if (!notCacheableWarned.has(name)) {
+            notCacheableWarned.add(name);
+            console.warn(`[cache] ${name} sparas inte mellan förfrågningar: ${error.message}`);
+          }
+          fresh = { value };
+          return { ok: false as const };
+        }
+      },
+      [
+        "view-state:v1",
+        // Bygget: datacachen lever kvar över en driftsättning, och ett läge som ett äldre
+        // bygge sparade kan ha en annan form eller räkning än den här koden.
+        BUILD_ID,
+        name,
+        userId,
+        orgId,
+        role,
+        ctx.today,
+        ctx.locale,
+        vmb ? "vmb" : "-",
+        storeShare ? "andel" : "-",
+        String(bucket),
+      ],
+      { revalidate: VIEW_STATE_REVALIDATE_SECONDS, tags: [appDataTag(orgId)] },
+    );
+    entry = await load();
+  } catch (error) {
+    // Läsningen bar ett reservvärde: den här sidan får det, men det sparas inte.
+    const degraded = fresh as { value: T } | null;
+    if (error instanceof DegradedRead && degraded) return degraded.value;
+    // Ingen datacache (utanför en Next-förfrågan, eller i tester utan den): läs som vanligt.
+    // Bara när fn inte hann köras, så att ett fel i själva läsningen inte läses en gång till.
+    if (!ran) return fn();
+    throw error;
+  }
+  const kept = fresh as { value: T } | null;
+  if (kept) return kept.value;
+  if (!entry.ok) return fn();
+  return decodeFromCache(entry.v) as T;
+}
+
+/**
+ * Rensar organisationens sparade tal (appDataTag) utan inloggad kontext: efter Awish-synken
+ * och personalens påfyllning, som inte har någon app-kontext.
+ */
+export function expireAppData(organizationId: string): void {
+  expireTag(appDataTag(organizationId));
 }
 
 /**

@@ -12,12 +12,18 @@ import "server-only";
 
 import { cache } from "react";
 
-import { loadContext, requireViewer } from "@/server/data/core";
+import {
+  cachedViewState,
+  loadContext,
+  markViewStateDegraded,
+  requireViewer,
+} from "@/server/data/core";
 
 import { loadMoneyProfit, moneyKey, parseMoneyKey } from "./money-base";
 
-import { loadHome } from "@/app/(app)/_hem/load";
+import { loadHome, loadHomeLostSales } from "@/app/(app)/_hem/load";
 import type { HomeData } from "@/app/(app)/_hem/data";
+import type { HomeLostSales } from "@/app/(app)/_hem/model";
 import { loadVartLagerFor, type VartLagerView } from "@/app/(app)/vart-lager/_lib/data";
 
 /**
@@ -35,6 +41,16 @@ export const loadHemCore = cache(async (key: string): Promise<HomeData | null> =
   return loadHome(parse(key));
 });
 
+/**
+ * "Slutsålt kostade …" för perioden (HomeData.lostSales), eller null. För sig, så att Hems
+ * modell (och hjältekortet) inte väntar på den.
+ */
+export const loadHemLostSales = cache(async (key: string): Promise<HomeLostSales | null> => {
+  const home = await loadHemCore(key);
+  if (!home) return null;
+  return loadHomeLostSales(parse(key), home.model.spanText);
+});
+
 /** Lönsamhets modell för samma period (vecka/dag, per automat och titel), eller null. */
 export const loadHemProfit = loadMoneyProfit;
 
@@ -43,9 +59,13 @@ export const loadHemStock = cache(async (): Promise<VartLagerView | null> => {
   const ctx = await loadContext();
   if (!ctx.canSeeEconomy) return null;
   try {
-    return await loadVartLagerFor(await requireViewer(), new Date(ctx.now));
+    // Beror inte på vald period: sparat mellan förfrågningar (core/cachedViewState).
+    return await cachedViewState("hem-stock", async () =>
+      loadVartLagerFor(await requireViewer(), new Date(ctx.now)),
+    );
   } catch (error) {
     console.error("[hem] Vårt lager kunde inte läsas:", error);
+    markViewStateDegraded();
     return null;
   }
 });

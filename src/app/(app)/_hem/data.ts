@@ -244,6 +244,34 @@ export async function loadHomeWith(
 }
 
 /**
+ * Förlorad försäljning för Hem (HomeData.lostSales) för sig: samma uträkning som i
+ * loadHomeWith, för den som läser modellen utan `lostSales` (Hem i V2, så att hjältekortets
+ * nyckeltal inte väntar på den). `spanText` är modellens (HomeModel.spanText).
+ */
+export async function loadHomeLostSalesWith(
+  loaders: Pick<HomeLoaders, "context" | "period" | "domainInput" | "todos" | "lostSales">,
+  searchParams: SearchParamsInput,
+  spanText: string | null,
+): Promise<HomeLostSales | null> {
+  const ctx = await loaders.context();
+  if (!ctx.canSeeEconomy) throw new AuthorizationError("forbidden");
+  if (!loaders.lostSales) return null;
+  const p = await loaders.period(searchParams);
+  const hasTodos = routeById("att-gora").roles.includes(ctx.role);
+  const [input, todos, lost] = await Promise.all([
+    loaders.domainInput({ period: p.period, compare: p.compare, ...p.scope }),
+    hasTodos ? loaders.todos() : Promise.resolve(null),
+    loaders.lostSales(p.period, p.scope),
+  ]);
+  return homeLostSales(
+    lost,
+    ctx.today,
+    todos ? emptyRefillsInScope(todos, p.scope, input.machines) : null,
+    spanText,
+  );
+}
+
+/**
  * Klockslaget är det tidigaste av nu och senaste lyckade synk (senare order finns inte än).
  * Utan någon synk alls (bara manuell import) visas inget: dagens order kommer inte löpande.
  */

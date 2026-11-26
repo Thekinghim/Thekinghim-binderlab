@@ -12,7 +12,7 @@ import { cache } from "react";
 import { toIsoDate, type SearchParamsInput } from "@/components/shell/period-state";
 import { settlementDue } from "@/analytics/todos";
 import { daysBetween, monthOf, type IsoDate, type IsoMonth } from "@/domain";
-import { loadContext, loadPeriod, requireViewer } from "@/server/data/core";
+import { cachedViewState, loadContext, loadPeriod, requireViewer } from "@/server/data/core";
 import { loadPeriodSplitFor } from "@/server/payouts/period-split";
 
 import { moneyKey, parseMoneyKey } from "./money-base";
@@ -40,7 +40,11 @@ const loadCached = cache(async (key: string): Promise<MoneySplit | null> => {
   if (daysBetween(p.period.start, p.period.end) > SPLIT_MAX_DAYS) return { state: "too_long" };
   try {
     const payMonth = monthOf(toIsoDate(p.resolved.today));
-    const view = await loadPeriodSplitFor(viewer, p.period, new Date(ctx.now));
+    // Sparad mellan förfrågningar per period och filter (cachedViewState; ändringar och
+    // Awish-synken rensar den): tillbaka till en period man nyss såg räknas inte om.
+    const view = await cachedViewState(`money-split:${p.period.start}:${p.period.end}:${key}`, () =>
+      loadPeriodSplitFor(viewer, p.period, new Date(ctx.now)),
+    );
     return {
       state: "ok",
       view,

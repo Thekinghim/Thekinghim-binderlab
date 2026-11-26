@@ -10,16 +10,18 @@ import {
 } from "@/components/shell/period-state";
 import { simpleHomeFor } from "@/components/shell/simple-view";
 import { DaySalesCard } from "@/components/v2/day-sales";
+import { PeriodCard } from "@/components/v2/period-card";
 import { SafeSuspense } from "@/components/v2/safe-suspense";
 import { V2Page, headerDate } from "@/components/v2/shell/page";
 import { Skeleton, SkeletonCard } from "@/components/v2/skeleton";
 import { messages } from "@/i18n";
 import {
+  cachedViewState,
   loadContext,
+  markViewStateDegraded,
   loadOptionalContextIfSignedIn,
   loadPeriod,
   requireRoute,
-  requireViewer,
 } from "@/server/data/core";
 import { loadDaySales } from "@/server/data/v2/analytics/day-sales";
 import { loadLiveOrders } from "@/server/data/v2/analytics/live";
@@ -27,11 +29,10 @@ import { loadFleetState } from "@/server/data/v2/fleet";
 import { loadDayRoute } from "@/server/data/v2/route";
 import { isDemoFor } from "@/server/demo/guard";
 import { pushStatus } from "@/server/notify/push";
-import { loadAwishFreshnessFor } from "@/server/monitoring/watch";
 import { loadSalePushPref } from "@/server/sales-push/prefs";
 import { withUserDb } from "@/server/session";
 
-import { AwishOrdersBanner } from "../_vakt/data-age-line";
+import { AwishOrdersBanner, loadAwishFreshness } from "../_vakt/data-age-line";
 import { BriefButton } from "../_hem/brief/button";
 import { SalesScreen } from "../forsaljning/_components/sales-screen";
 import { SplitCard } from "../pengar/_components/split-card";
@@ -96,6 +97,11 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
   // och automat direkt under bandet. Påfyllaren får listan för alla perioder (bara antal),
   // under det som är att göra.
   const soldTop = economy && isSingleDay(p.resolved);
+  // Periodkorten har vald period och filter som nyckel (PeriodCard): vid ett byte visar de
+  // direkt sin laddningsruta och kommer var för sig, i stället för att hela sidan väntar på
+  // det långsammaste kortet. Korten som inte beror på perioden behåller sin gräns och läses
+  // ur det sparade läget (cachedViewState), så att de inte håller upp bytet.
+  const pk = periodCardKey(p, sp);
 
   return (
     <V2Page
@@ -120,6 +126,9 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
 
       {/* Hjältekortet (visuellt/02): vinst, pallen och månadens mål, nyckeltalen kompakt under
           (ersätter KPI-bandet; _hem/v2/hero-card.tsx). Bara ekonomiroller. */}
+      {/* Hjältekortet har ingen periodnyckel: vid ett byte väntar sidan på den nya vinsten
+          (sparad per period, oftast kort) och visar den direkt, i stället för en laddningsruta
+          som React sedan håller kvar i minst 300 ms innan siffran får visas. */}
       {economy ? (
         <SafeSuspense fallback={<HemHeroSkeleton />}>
           <HemHero sp={sp} />
@@ -131,17 +140,24 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           rollen igen). Eget Suspense, så att avräkningarna per månad aldrig håller upp
           hjältekortet. Samma kort som på Pengar. */}
       {economy && ctx.canEdit ? (
-        <div className="o-split">
-          <SafeSuspense fallback={<SkeletonCard rows={6} className="g4-sp-skel" />}>
+        <PeriodCard
+          periodKey={pk}
+          fallback={
+            <div className="o-split">
+              <SkeletonCard rows={6} className="g4-sp-skel" />
+            </div>
+          }
+        >
+          <div className="o-split">
             <SplitCard sp={sp} days={periodDaysText(p.resolved, p.days)} />
-          </SafeSuspense>
-        </div>
+          </div>
+        </PeriodCard>
       ) : null}
 
       {soldTop ? (
-        <SafeSuspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
+        <PeriodCard periodKey={pk} fallback={<SkeletonCard rows={6} className="o-sold" />}>
           <Sold sp={sp} economy={economy} />
-        </SafeSuspense>
+        </PeriodCard>
       ) : null}
 
       <div className="work">
@@ -164,9 +180,9 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           {/* Resultat bor i vänsterkolumnen (under Senaste köp), så att den inte lämnar ett hål
               bredvid Att göra. Under 1240 px ligger den efter Senaste köp (hem.css). */}
           {economy ? (
-            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c x-res" />}>
+            <PeriodCard periodKey={pk} fallback={<SkeletonCard rows={6} className="x-c x-res" />}>
               <ResultCard sp={sp} />
-            </SafeSuspense>
+            </PeriodCard>
           ) : null}
           {/* "Få notis vid varje försäljning": sist i kolumnen (inte bråttom), så att rutan inte
               flyttar korten ovanför när den dyker upp. */}
@@ -187,9 +203,9 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       </div>
 
       {!economy ? (
-        <SafeSuspense fallback={<SkeletonCard rows={6} className="o-sold" />}>
+        <PeriodCard periodKey={pk} fallback={<SkeletonCard rows={6} className="o-sold" />}>
           <Sold sp={sp} economy={economy} />
-        </SafeSuspense>
+        </PeriodCard>
       ) : null}
 
       {economy ? (
@@ -201,27 +217,27 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
             </Link>
           </div>
           <div className="x-grid">
-            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            <PeriodCard periodKey={pk} fallback={<SkeletonCard rows={6} className="x-c" />}>
               <WhenCardView sp={sp} />
-            </SafeSuspense>
-            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </PeriodCard>
+            <PeriodCard periodKey={pk} fallback={<SkeletonCard rows={6} className="x-c" />}>
               <GeoCardView sp={sp} />
-            </SafeSuspense>
-            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </PeriodCard>
+            <PeriodCard periodKey={pk} fallback={<SkeletonCard rows={6} className="x-c" />}>
               <TopCardView sp={sp} />
-            </SafeSuspense>
+            </PeriodCard>
             <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <WorstCardView />
             </SafeSuspense>
             <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
               <StockCardView />
             </SafeSuspense>
-            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            <PeriodCard periodKey={pk} fallback={<SkeletonCard rows={6} className="x-c" />}>
               <LossCardView sp={sp} />
-            </SafeSuspense>
-            <SafeSuspense fallback={<SkeletonCard rows={6} className="x-c" />}>
+            </PeriodCard>
+            <PeriodCard periodKey={pk} fallback={<SkeletonCard rows={6} className="x-c" />}>
               <ShopsCardView sp={sp} withSplit={ctx.canEdit} canEdit={ctx.canEdit} />
-            </SafeSuspense>
+            </PeriodCard>
             <SafeSuspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
               <OpsCardView timeZone={ctx.timeZone} />
             </SafeSuspense>
@@ -230,6 +246,22 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       ) : null}
     </V2Page>
   );
+}
+
+/**
+ * Nyckeln för periodkorten: den tolkade perioden (samma period kan stå olika i adressen) och
+ * alla sökparametrar (filter och vyknappar), i fast ordning.
+ */
+function periodCardKey(
+  p: { key: string; period: { start: string; end: string } },
+  sp: SearchParams,
+) {
+  const params = Object.entries(sp)
+    .flatMap(([k, v]) =>
+      Array.isArray(v) ? v.map((x) => [k, x]) : v === undefined ? [] : [[k, v]],
+    )
+    .sort(([a = "", x = ""], [b = "", y = ""]) => a.localeCompare(b) || x.localeCompare(y));
+  return [p.key, p.period.start, p.period.end, new URLSearchParams(params).toString()].join("|");
 }
 
 async function Sold({ sp, economy }: { sp: SearchParams; economy: boolean }) {
@@ -255,10 +287,13 @@ async function Sold({ sp, economy }: { sp: SearchParams; economy: boolean }) {
  * skickas inget). Ett fel här döljer bara rutan.
  */
 async function SalePromptSlot() {
-  const props = await salePromptProps().catch((error: unknown) => {
-    console.error("[hem] Notisrutan kunde inte läsas:", error);
-    return null;
-  });
+  // Beror inte på vald period: sparad mellan förfrågningar (Inställningen rensar den).
+  const props = await cachedViewState("hem-sale-prompt", salePromptProps).catch(
+    (error: unknown) => {
+      console.error("[hem] Notisrutan kunde inte läsas:", error);
+      return null;
+    },
+  );
   return props ? <SalePrompt {...props} /> : null;
 }
 
@@ -299,18 +334,28 @@ async function Actions({ canRoute, nowIso }: { canRoute: boolean; nowIso: string
   );
 }
 
+/**
+ * Senaste köp och hur färsk Awish-datan är. Beror inte på vald period: sparat mellan
+ * förfrågningar (cachedViewState; nya köp kommer bara med Awish-synken och importerna, som
+ * rensar det).
+ */
 async function Live({ nowIso }: { nowIso: string }) {
-  const [orders, fresh] = await Promise.all([
-    loadLiveOrders().catch((error: unknown) => {
-      console.error("[hem] Senaste köp kunde inte läsas:", error);
-      return null;
-    }),
-    // Riktig ålder i stället för "ungefär var 5:e minut" (null vid fel: raden blir neutral).
-    requireViewer()
-      .then((viewer) => loadAwishFreshnessFor(viewer))
-      .catch(() => null),
-  ]);
-  return orders ? <LiveCard orders={orders} nowIso={nowIso} freshness={fresh?.text} /> : null;
+  const { orders, freshness } = await cachedViewState("hem-live", async () => {
+    const [orders, fresh] = await Promise.all([
+      loadLiveOrders().catch((error: unknown) => {
+        console.error("[hem] Senaste köp kunde inte läsas:", error);
+        markViewStateDegraded();
+        return null;
+      }),
+      // Riktig ålder i stället för "ungefär var 5:e minut" (null vid fel: raden blir neutral).
+      loadAwishFreshness().catch(() => {
+        markViewStateDegraded();
+        return null;
+      }),
+    ]);
+    return { orders, freshness: fresh?.text };
+  });
+  return orders ? <LiveCard orders={orders} nowIso={nowIso} freshness={freshness} /> : null;
 }
 
 async function Route({ canRoute }: { canRoute: boolean }) {

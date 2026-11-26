@@ -27,7 +27,12 @@ import {
   type FieldErrors,
   type SubscriptionInput,
 } from "@/server/alerts/subscriptions";
-import { ALL_ROLES, OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
+import {
+  ALL_ROLES,
+  OPERATOR_ROLES,
+  requireContextRole,
+  revalidateAppData,
+} from "@/server/data/core";
 import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { dispatchDelivery, type Channel, type ChannelResult } from "@/server/notify";
 import { recordPushOutcome } from "@/server/notify/record";
@@ -89,6 +94,8 @@ export async function acknowledgeAlert(alertId: string): Promise<{ ok: boolean; 
       .returning({ id: s.alerts.id }),
   );
   revalidatePath("/drift", "layout");
+  // Hems sparade läge (Kräver åtgärd, Att göra) räknas om direkt.
+  await revalidateAppData();
   return updated.length > 0
     ? { ok: true }
     : { ok: false, error: "Någon tar redan det här larmet, eller så är det borta." };
@@ -353,6 +360,8 @@ export async function syncRefills(
   let awish: AwishPushStatus | undefined;
   if (result.savedMachineIds.length > 0) {
     revalidatePath("/", "layout");
+    // Hems sparade läge (flottan, rutten, lagret) räknas om direkt.
+    await revalidateAppData();
     // Skicka de påfyllda automaternas antal till Awish. Bäst-möjligt: påfyllningen är
     // redan sparad i Binderlab, så ett fel här får aldrig fälla hela inskicket.
     // Automater som väntar sedan en tidigare sändning inte gick fram följer med (nytt försök).

@@ -22,6 +22,7 @@
 import "server-only";
 
 import { sql } from "drizzle-orm";
+import { cache } from "react";
 
 import {
   changeBp,
@@ -40,10 +41,12 @@ import {
 import { addDays, profitability, type IsoDate } from "@/domain";
 import { withUserDbFor } from "@/server/access";
 import {
+  cachedViewState,
   loadContext,
   loadDomainInput,
   loadPeriod,
   loadSyncInfo,
+  markViewStateDegraded,
   requireViewer,
 } from "@/server/data/core";
 import type { DomainInput } from "@/server/data/core/types";
@@ -210,23 +213,50 @@ function profitOf(
     .profitOre;
 }
 
+/**
+ * Lagervärdet nu och vid dagens slut de senaste 7 dagarna (rutan Lagervärde). Beror inte på
+ * vald period: sparat mellan förfrågningar (core/cachedViewState), så att ett periodbyte inte
+ * läser Vårt lager och historiken igen. null: Vårt lager kunde inte läsas (rutan visar 0).
+ */
+const loadHemStockValue = cache(async (): Promise<{ now: number; history: number[] } | null> =>
+  cachedViewState("hem-stock-value", async () => {
+    const [ctx, stock] = await Promise.all([loadContext(), loadHemStock()]);
+    if (!stock) return null;
+    const unitCost = new Map(stock.rows.map((r) => [r.titleId, r.unitCostOre]));
+    const history = await loadStockValueHistory(ctx.today, ctx.timeZone, unitCost).catch(
+      (error: unknown) => {
+        console.error("[hem] Lagervärdets historik kunde inte räknas:", error);
+        markViewStateDegraded();
+        return [];
+      },
+    );
+    return { now: stockValueOre(stock.rows) ?? 0, history };
+  }),
+);
+
 export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] | null> {
   const key = hemKey(sp);
-  const [ctx, home] = await Promise.all([loadContext(), loadHemCore(key)]);
-  if (!ctx.canSeeEconomy || !home) return null;
-  const p = await loadPeriod(sp);
+  const [ctx, p] = await Promise.all([loadContext(), loadPeriod(sp)]);
+  if (!ctx.canSeeEconomy) return null;
   const isToday = p.key === "idag";
   const yesterday = addDays(ctx.today, -1);
   // Med perioden "I dag" visar andra rutan de senaste 30 dagarna (samma filter).
   const key30 = JSON.stringify({ ...(JSON.parse(key) as Record<string, string>), period: "30d" });
-  const [input, money, money30, stock, twoDays, sync] = await Promise.all([
+  // Allt läses samtidigt (förut väntade bandet först in hela Hems modell, och lagrets historik
+  // lästes sist, efter allt annat).
+  const [home, input, money, money30, stockValue, twoDays, sync] = await Promise.all([
+    loadHemCore(key),
     loadDomainInput({ period: p.period, compare: p.compare, ...p.scope }),
     loadHemProfit(key),
     isToday ? loadHemProfit(key30) : Promise.resolve(null),
-    loadHemStock(),
+    loadHemStockValue(),
     loadDomainInput({ period: { start: yesterday, end: ctx.today }, compare: null, ...p.scope }),
-    loadSyncInfo().catch(() => null),
+    loadSyncInfo().catch(() => {
+      markViewStateDegraded();
+      return null;
+    }),
   ]);
+  if (!home) return null;
   const kpis = new Map(home.model.kpis.map((k) => [k.id, k]));
   const compare = compareTextShort(p.resolved) ?? "mot förra";
   // Rutornas länkar bär periodvalet, så att sidan bakom visar samma period som Hem.
@@ -307,14 +337,8 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
   const perMachineDelta = isToday ? null : changeBp(perMachine, perMachinePrev);
 
   // Lagervärdet nu och vid dagens slut de senaste 7 dagarna (mot förra veckan).
-  const unitCost = new Map((stock?.rows ?? []).map((r) => [r.titleId, r.unitCostOre]));
-  const history = stock
-    ? await loadStockValueHistory(ctx.today, ctx.timeZone, unitCost).catch((error: unknown) => {
-        console.error("[hem] Lagervärdets historik kunde inte räknas:", error);
-        return [];
-      })
-    : [];
-  const stockNow = stock ? (stockValueOre(stock.rows) ?? 0) : 0;
+  const history = stockValue?.history ?? [];
+  const stockNow = stockValue?.now ?? 0;
   const weekAgo = history.length === 8 ? (history[0] ?? null) : null;
   const stockDelta = changeBp(stockNow, weekAgo);
 

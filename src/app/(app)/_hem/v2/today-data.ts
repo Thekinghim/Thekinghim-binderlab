@@ -23,8 +23,15 @@ import {
   type HemTodo,
 } from "@/analytics/home-v2";
 import { addDays, PRICE_ADVICE_WINDOW_DAYS, unitMargin } from "@/domain";
-import { loadContext, loadMasterData, loadSalesCounts, requireViewer } from "@/server/data/core";
-import { loadRankedTodoState, loadTodoExtrasFor } from "@/server/data/todos";
+import {
+  cachedViewState,
+  loadContext,
+  loadMasterData,
+  loadSalesCounts,
+  markViewStateDegraded,
+  requireViewer,
+} from "@/server/data/core";
+import { loadRankedTodoState, loadTodoExtras } from "@/server/data/todos";
 import { loadFleetState } from "@/server/data/v2/fleet";
 import { loadDayRoute } from "@/server/data/v2/route";
 
@@ -43,6 +50,7 @@ const loadLossAdvice = cache(async () => {
     return advice.rows.filter((r) => r.profitOre < 0);
   } catch (error) {
     console.error("[hem] Prisråden kunde inte läsas:", error);
+    markViewStateDegraded();
     return [];
   }
 });
@@ -87,16 +95,19 @@ async function loadLossPrices(): Promise<ActionPriceInput[]> {
     });
   } catch (error) {
     console.error("[hem] Prisråden kunde inte läsas:", error);
+    markViewStateDegraded();
     return [];
   }
 }
 
 /** Att göras egna rader (bokföringen, nya automater, Awish, startklar), en gång per förfrågan. */
 export const loadHemExtras = cache(async (): Promise<ReturnType<typeof homeExtraTodos>> =>
-  requireViewer()
-    .then((v) => loadTodoExtrasFor(v))
+  loadTodoExtras()
     .then(homeExtraTodos)
-    .catch(() => []),
+    .catch(() => {
+      markViewStateDegraded();
+      return [];
+    }),
 );
 
 export interface HemRouteCard {
@@ -138,7 +149,13 @@ export interface HemToday {
 }
 
 /** En gång per förfrågan (dagens rad, korten och menyns räknare läser samma). */
-export const loadHemToday = cache(async (): Promise<HemToday> => {
+export const loadHemToday = cache(async (): Promise<HemToday> =>
+  // Beror inte på vald period: sparad mellan förfrågningar (core/cachedViewState), så att
+  // ett periodbyte inte räknar om Kräver åtgärd, Dagens rutt och Att göra.
+  cachedViewState("hem-today", loadHemTodayNow),
+);
+
+async function loadHemTodayNow(): Promise<HemToday> {
   const ctx = await loadContext();
   const economy = ctx.canSeeEconomy;
   const [fleet, route, prices, todoState, extras, master] = await Promise.all([
@@ -147,6 +164,7 @@ export const loadHemToday = cache(async (): Promise<HemToday> => {
     loadLossPrices(),
     loadRankedTodoState().catch((error: unknown) => {
       console.error("[hem] Att göra kunde inte läsas:", error);
+      markViewStateDegraded();
       return { items: [], dismissed: [] };
     }),
     loadHemExtras(),
@@ -185,7 +203,7 @@ export const loadHemToday = cache(async (): Promise<HemToday> => {
   };
   const installed = fleet.machines.filter((m) => m.status !== "startklar").length;
   return { economy, actions, route: routeCard, todos, installed };
-});
+}
 
 /**
  * Antal till räknaren vid Hem i menyn ur hela Hem (Kräver åtgärd + Att göra). Menyn läser
