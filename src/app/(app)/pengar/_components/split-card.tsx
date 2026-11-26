@@ -236,7 +236,8 @@ function subText(row: SplitRow, noAgreement: boolean): ReactNode {
     case "store_owner": {
       const names = (row.stores ?? []).map((s) => s.name);
       const base = `${plural(names.length, "butik", "butiker")}: ${names.join(", ")}`;
-      return row.unknownStores > 0
+      // Hela bolagets andel okänd: "Kan inte räknas" står redan i beloppets ställe.
+      return row.unknownStores > 0 && row.displayOre !== 0
         ? `${base}. ${plural(row.unknownStores, "butik", "butiker")} kan inte räknas än.`
         : base;
     }
