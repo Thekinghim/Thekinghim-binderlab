@@ -323,6 +323,7 @@ export function MembersView({
       <Modal
         open={dialog?.kind === "role"}
         onClose={close}
+        dismissible={!pending}
         eyebrow={dialog?.kind === "role" ? dialog.member.email : undefined}
         title={dialog?.kind === "role" ? `Byt roll för ${dialog.member.name}` : "Byt roll"}
         description="Gäller direkt."
@@ -373,6 +374,7 @@ export function MembersView({
         size="sm"
         open={dialog?.kind === "remove"}
         onClose={close}
+        dismissible={!pending}
         eyebrow={dialog?.kind === "remove" ? dialog.member.email : undefined}
         title={
           dialog?.kind === "remove"
@@ -410,6 +412,7 @@ export function MembersView({
         size="sm"
         open={dialog?.kind === "revoke"}
         onClose={close}
+        dismissible={!pending}
         eyebrow={dialog?.kind === "revoke" ? ROLE_LABEL[dialog.invitation.role] : undefined}
         title={
           dialog?.kind === "revoke"

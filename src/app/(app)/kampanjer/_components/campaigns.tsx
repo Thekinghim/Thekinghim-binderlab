@@ -287,6 +287,7 @@ function CampaignDialog({
     <Modal
       open
       onClose={pending ? () => {} : onClose}
+      dismissible={!pending}
       eyebrow="Kampanj på skärmen"
       title={step === "fill" ? "Ny kampanj" : "Visa på skärmen?"}
       footer={
@@ -571,6 +572,7 @@ export function CampaignActions({
       <Modal
         open={confirm}
         onClose={() => (pending ? undefined : setConfirm(false))}
+        dismissible={!pending}
         size="sm"
         title="Stäng av kampanjen?"
         description={`"${title}" försvinner från skärmen.`}
@@ -622,6 +624,7 @@ export function RemoveFromScreen({ id, title }: { id: string; title: string }) {
       <Modal
         open={confirm}
         onClose={() => (pending ? undefined : setConfirm(false))}
+        dismissible={!pending}
         size="sm"
         title="Ta bort från skärmen?"
         description={`"${title}" tas bort i Awish. Det går inte att ångra.`}

@@ -309,6 +309,7 @@ export function OwnerActions({ owner }: { owner: OwnerView }) {
       <Modal
         open={confirm}
         onClose={closeConfirm}
+        dismissible={!pending}
         size="sm"
         eyebrow={`Butiksägare / ${owner.legalName}`}
         title={owner.archived ? `Återställ ${owner.legalName}?` : `Arkivera ${owner.legalName}?`}

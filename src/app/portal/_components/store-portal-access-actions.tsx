@@ -65,6 +65,7 @@ export function RemoveStoreAccess({
       <Modal
         open={open}
         onClose={() => (pending ? undefined : setOpen(false))}
+        dismissible={!pending}
         eyebrow="Butiker / Butiksportal"
         title={isUser ? `Ta bort ${target.email}?` : `Återkalla inbjudan till ${target.email}?`}
         description={

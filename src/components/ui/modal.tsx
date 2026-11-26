@@ -16,6 +16,12 @@ type ModalProps = {
   children?: ReactNode;
   footer?: ReactNode;
   size?: "sm" | "md";
+  /**
+   * false (t.ex. medan något sparas): arket går inte att dra ner eller stänga med Esc eller
+   * ett tryck utanför. Behövs när `onClose` struntar i stängningen: annars blir V2:s ark
+   * kvar halvvägs nerdraget. Knapparna i arket styr själva.
+   */
+  dismissible?: boolean;
 };
 
 /**
@@ -37,6 +43,7 @@ function SheetModal({
   children,
   footer,
   size = "md",
+  dismissible = true,
 }: ModalProps) {
   return (
     <Sheet
@@ -49,6 +56,7 @@ function SheetModal({
       description={description}
       footer={footer}
       wide={size === "md"}
+      dismissible={dismissible}
     >
       {children}
     </Sheet>

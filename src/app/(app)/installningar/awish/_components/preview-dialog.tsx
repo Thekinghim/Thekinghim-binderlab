@@ -141,6 +141,7 @@ export function PreviewDialog({
     <Modal
       open={p !== null}
       onClose={onClose}
+      dismissible={!flow.pending}
       size="sm"
       title={title}
       description={p?.confirm ?? undefined}

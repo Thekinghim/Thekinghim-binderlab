@@ -82,6 +82,7 @@ export function CardFeeFix({
       <Modal
         open={open}
         onClose={() => (pending ? undefined : setOpen(false))}
+        dismissible={!pending}
         eyebrow="Kortavgift"
         title={confirm.title}
         description={confirm.text}

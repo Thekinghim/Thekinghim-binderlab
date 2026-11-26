@@ -205,6 +205,7 @@ export function SettingsForm({
       <Modal
         open={ask !== null}
         onClose={() => (pending ? undefined : setAsk(null))}
+        dismissible={!pending}
         eyebrow="Kortavgift"
         title={confirmText?.title ?? ""}
         description={confirmText?.text}

@@ -86,6 +86,7 @@ export function ActionButton<T>({
         <Modal
           open={open}
           onClose={() => (pending ? undefined : setOpen(false))}
+          dismissible={!pending}
           title={confirm.title}
           eyebrow={confirm.eyebrow}
           description={confirm.description}

@@ -146,6 +146,7 @@ export function MarkPaidButton({
       <Modal
         open={open}
         onClose={() => (pending ? undefined : setOpen(false))}
+        dismissible={!pending}
         eyebrow="Avräkning"
         title={
           covered
@@ -298,6 +299,7 @@ export function CarryDifferenceButton({
       <Modal
         open={open}
         onClose={() => (pending ? undefined : setOpen(false))}
+        dismissible={!pending}
         eyebrow="Rättelse"
         title={
           differenceOre > 0
@@ -441,6 +443,7 @@ export function CreateSettlementsButton({
       <Modal
         open={ask !== null}
         onClose={() => (pending ? undefined : setAsk(null))}
+        dismissible={!pending}
         eyebrow="Utbetalning"
         title={
           ask && ask.length === 1
@@ -555,6 +558,7 @@ export function InviteStoreButton({
       <Modal
         open={open}
         onClose={() => (pending ? undefined : setOpen(false))}
+        dismissible={!pending}
         eyebrow="Butiksportal"
         title={`Bjud in ${storeName}`}
         description="De får en länk i mejlet och ser bara sin butik."

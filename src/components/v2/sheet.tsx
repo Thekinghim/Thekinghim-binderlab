@@ -57,6 +57,10 @@ export function Sheet({
       direction={phone ? "bottom" : "right"}
       dismissible={dismissible}
       repositionInputs
+      // Dator: fokus flyttas in i arket när det öppnas (som <dialog>), så att tangentbordet
+      // inte står kvar på knappen bakom. Inte på telefonen: där skulle ett fält i fokus fälla
+      // upp tangentbordet direkt.
+      autoFocus={!phone}
     >
       {trigger ? <Drawer.Trigger asChild>{trigger}</Drawer.Trigger> : null}
       <Drawer.Portal>

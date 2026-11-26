@@ -175,6 +175,7 @@ function GiverDialog({
     <Modal
       open
       onClose={pending ? () => {} : onClose}
+      dismissible={!pending}
       eyebrow="Ge bort ett pack"
       title={titles[step]}
       footer={
