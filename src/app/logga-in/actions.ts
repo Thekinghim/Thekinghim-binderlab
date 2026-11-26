@@ -25,6 +25,7 @@ import { getServerEnv } from "@/lib/env";
 import { getAuthProvider } from "@/server/auth";
 import { login } from "@/server/actions/auth";
 import { LINK_JWT, LINK_REFRESH, MESSAGES, setPasswordFromLinkFlow } from "@/server/auth/flows";
+import { landingAfterLogin } from "@/server/auth/landing";
 import { safeRedirectPath } from "@/server/auth/paths";
 import { createRateLimiter } from "@/server/rate-limit";
 import { clientIp, resolveAppBaseUrl } from "@/server/request-info";
@@ -56,7 +57,8 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
   if (!result.ok) {
     return { error: result.error, email };
   }
-  redirect(safeRedirectPath(field(formData, "next")));
+  // Påfyllare och butiksanvändare direkt till sin sida (src/server/auth/landing.ts).
+  redirect(await landingAfterLogin(safeRedirectPath(field(formData, "next"))));
 }
 
 // 5 länkar per 15 minuter per IP och per adress (per serverinstans; Supabase
@@ -191,7 +193,7 @@ export async function confirmMagicLink(
   const jar = await cookies();
   const pending = jar.get(MAGIC_COOKIE)?.value;
   jar.delete({ name: MAGIC_COOKIE, path: "/logga-in" });
-  redirect(safeRedirectPath(pending));
+  redirect(await landingAfterLogin(safeRedirectPath(pending)));
 }
 
 /** Nytt lösenord från länken i "Glömt lösenord?"-mejlet. Loggar in och går till startsidan. */
@@ -211,5 +213,5 @@ export async function setNewPassword(
   if (!result.ok) {
     return { error: result.error, failed: result.error === MESSAGES.linkFailed };
   }
-  redirect("/");
+  redirect(await landingAfterLogin("/"));
 }

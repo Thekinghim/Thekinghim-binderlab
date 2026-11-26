@@ -168,7 +168,6 @@ const SPECIAL = new Set([
   "@/server/onboarding/actions#createOrganization",
   // AI-panelens läsningar svarar mjukt (status/tomt) i stället för att neka; eget block nedan.
   "@/app/(app)/assistent/panel-actions#assistantPanelState",
-  "@/app/(app)/assistent/panel-actions#pageTips",
 ]);
 
 describe("katalogen", () => {
@@ -759,7 +758,11 @@ describe("AI-panelens läsningar", () => {
 
   it("personer utan assistent får status forbidden och inga förslag; inget ändras", async () => {
     const state = await load({ module: MODULE, name: "assistantPanelState" });
-    const tips = await load({ module: MODULE, name: "pageTips" });
+    // Förslagen hämtas med GET /assistent/tips (inte en server action); samma läsning.
+    const tips = await load({
+      module: "@/server/assistant/page-tips-for-user",
+      name: "pageTipsForUser",
+    });
     const problems: string[] = [];
     for (const p of ALL_PERSONAS) {
       const before = await fingerprint(cast.A.orgId);

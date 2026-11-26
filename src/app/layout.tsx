@@ -7,7 +7,7 @@ import { ThemeSync } from "@/components/shell/theme-sync";
 import { ViewportPin } from "@/components/v2/shell/viewport-pin-mount";
 import { ToastProvider } from "@/components/ui/toast";
 import { getRequestLocale } from "@/i18n/request";
-import { THEME_COOKIE, themeFromCookie } from "@/lib/theme";
+import { THEME_COOKIE, themeColorFromCookie, themeFromCookie } from "@/lib/theme";
 import "./globals.css";
 
 /**
@@ -43,11 +43,13 @@ export const metadata: Metadata = {
   other: { "apple-mobile-web-app-capable": "yes" },
 };
 
-/** Webbläsarens färg (adressfältet på mobilen) följer temat: --bl-bg i src/styles/tokens.css. */
+/**
+ * Webbläsarens färg (adressfältet på mobilen): ljust som standard (src/lib/theme.ts), mörkt
+ * bara för den som valt mörkt. Layouterna under kan sätta en egen (appen, portalen).
+ */
 export async function generateViewport(): Promise<Viewport> {
-  const theme = themeFromCookie((await cookies()).get(THEME_COOKIE)?.value);
   return {
-    themeColor: theme === "light" ? "#f4f3ef" : "#0a0a0b",
+    themeColor: themeColorFromCookie((await cookies()).get(THEME_COOKIE)?.value),
     width: "device-width",
     initialScale: 1,
     // Hela skärmen på iPhone med notch och hemindikator; sidorna lägger till

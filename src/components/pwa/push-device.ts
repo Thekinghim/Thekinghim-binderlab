@@ -62,15 +62,40 @@ export async function currentPushEndpoint(): Promise<string | null> {
   }
 }
 
+function browserContainer(): ServiceWorkerContainer | null {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+  return navigator.serviceWorker;
+}
+
 /**
- * Den här telefonens push-adress att glömma vid utloggningen, eller null. Väntar högst en
- * och en halv sekund (utloggningen ska aldrig hänga på service workern).
+ * Den här telefonens push-adress att glömma vid utloggningen, eller null. Läser den
+ * registrerade service workern direkt (getRegistration) i stället för att vänta på `.ready`:
+ * på sidor utan service worker blir `.ready` aldrig klar, och utloggningen väntade då hela
+ * tidsgränsen. Väntar ändå högst en halv sekund (utloggningen ska aldrig hänga på workern).
  */
-export async function pushEndpointForLogout(): Promise<string | null> {
-  return Promise.race([
-    currentPushEndpoint(),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
-  ]);
+export async function pushEndpointForLogout(
+  container: Pick<ServiceWorkerContainer, "getRegistration"> | null = browserContainer(),
+  timeoutMs = 500,
+): Promise<string | null> {
+  if (!container) return null;
+  const read = (async () => {
+    try {
+      const reg = await container.getRegistration();
+      const sub = await reg?.pushManager.getSubscription();
+      return sub?.endpoint ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), timeoutMs);
+  });
+  try {
+    return await Promise.race([read, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export type SubscribeResult =

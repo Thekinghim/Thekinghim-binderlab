@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { activeV2NavId, roleLabel, v2NavForRole, type Role } from "@/components/shell/nav";
 import type { ShellOrganization, ShellUser, TodoCountSource } from "@/components/shell/side-nav";
 
+import { useMedia } from "../use-media";
+
 import { NavCount } from "./count";
 import { PeriodLink } from "./period-link";
 import { NavIcon, V2Logo } from "./nav-icon";
@@ -189,4 +191,21 @@ function WhoMenu({
       </button>
     </div>
   );
+}
+
+/** Bredare än telefonens brytpunkt (PHONE_QUERY i ../use-media): sidomenyn visas. */
+const SIDE_QUERY = "(min-width: 901px)";
+
+/**
+ * Sidomenyn, eller ingenting på telefonen. `ssr={false}` (servern tror att det är en telefon,
+ * src/lib/phone-hint.ts): menyn finns inte i första HTML-svaret och hydreras inte, utan ritas
+ * först om skärmen visar sig vara bred nog. På telefonen döljs den ändå av v2.css.
+ */
+export function V2SideNavSlot({
+  ssr = true,
+  ...props
+}: Parameters<typeof V2SideNav>[0] & { ssr?: boolean }) {
+  const wide = useMedia(SIDE_QUERY);
+  if (!ssr && !wide) return null;
+  return <V2SideNav {...props} />;
 }

@@ -8,6 +8,7 @@
  *    (/_next/static) hämtas också från nätet först och sparas för läget utan nät.
  * 2. Push: larm från /api/cron/larm visas som notiser. Ett klick öppnar sidan som förklarar
  *    larmet (eller fokuserar ett öppet fönster).
+ * 3. Startsidan (/, appen på hemskärmen) utan nät: till den sparade Fyll på-sidan om den finns.
  *
  * Bara fältsidorna sparas (inga belopp). Andra sidor och alla anrop går alltid till nätet.
  *
@@ -172,7 +173,8 @@ function isFieldPage(url) {
 }
 
 function offlinePage(path) {
-  const retry = PAGES.includes(path) || MACHINE_PAGE.test(path) ? path : "/fyll-pa";
+  // "Försök igen" laddar samma sida; startsidan (/) också, inte Fyll på.
+  const retry = path === "/" || PAGES.includes(path) || MACHINE_PAGE.test(path) ? path : "/fyll-pa";
   const html = `<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ingen uppkoppling · Binderlab</title>
 <style>body{margin:0;background:#0a0a0b;color:#edeae4;font:14px/20px system-ui,sans-serif;padding:32px 16px}main{max-width:480px;margin:0 auto}p{color:#a6a39d}.l{font:11px/16px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f8c86}a{color:#edeae4}</style></head>
 <body><main><p class="l">Ur drift · ingen uppkoppling</p><h1 style="font-size:24px;line-height:32px;font-weight:500">Sidan finns inte sparad i telefonen.</h1>
@@ -239,6 +241,24 @@ async function networkFirst(request, url, clientId) {
   }
 }
 
+/**
+ * Startsidan (/, manifestets start_url): alltid nätet. Utan nät och med en sparad Fyll på för
+ * personen: dit i stället (appen på hemskärmen öppnas då som förut, mitt i fältet). Annars
+ * sidan "ingen uppkoppling", där "Försök igen" laddar / på nytt.
+ */
+async function startPage(request) {
+  try {
+    return await fetch(request);
+  } catch {
+    const scope = await currentScope();
+    const cache = scope ? await caches.open(pageCacheName(scope)) : null;
+    if (cache && (await cache.match("/fyll-pa"))) {
+      return Response.redirect(new URL("/fyll-pa", self.location.origin).href, 302);
+    }
+    return offlinePage("/");
+  }
+}
+
 // Statiska filer: nätet först (webbläsarens egen cache gör det snabbt), den sparade kopian
 // bara utan nät. Så kan en gammal kopia aldrig blandas med en ny sida. Filerna är samma för
 // alla användare.
@@ -280,6 +300,10 @@ self.addEventListener("fetch", (event) => {
   if (request.headers.get("RSC") === "1" || url.searchParams.has("_rsc")) return;
   if (request.mode === "navigate" && isFieldPage(url)) {
     event.respondWith(networkFirst(request, url, event.resultingClientId || event.clientId));
+    return;
+  }
+  if (request.mode === "navigate" && url.pathname === "/") {
+    event.respondWith(startPage(request));
     return;
   }
   if (url.pathname.startsWith("/_next/static/")) {

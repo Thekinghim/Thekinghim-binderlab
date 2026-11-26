@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Drawer } from "vaul";
 
 import {
   MAX_RANGE_DAYS,
@@ -18,6 +17,7 @@ import { useShellNavigation } from "@/components/shell/shell-navigation";
 import { usePeriod } from "@/components/shell/use-period";
 import { cn } from "@/lib/cn";
 import { formatPeriodShort } from "@/lib/format";
+import { lazyPart } from "@/lib/lazy-part";
 import { addDays, isSameDay } from "@/lib/period";
 
 import { keepInPlace } from "./keep-in-place";
@@ -26,6 +26,10 @@ import { RangeCalendar, draftRange, type RangeDraft } from "./range-calendar";
 import { Segmented, type SegmentOption } from "./segmented";
 import { useV2Shell } from "./shell/shell-context";
 import { PHONE_QUERY } from "./use-media";
+
+/** Arket på telefonen: laddas när det behövs första gången (./period-sheet.tsx). */
+const periodSheet = lazyPart(() => import("./period-sheet").then((m) => m.PeriodSheet));
+const PeriodSheet = periodSheet.Component;
 
 /** Snabbvalen i panelen (Datum…), i den ordning de står. */
 const PANEL_PRESETS: ReadonlyArray<{ key: PresetKey; label: string }> = [
@@ -54,6 +58,9 @@ export function PeriodSegment({ className }: { className?: string }) {
   // fungerar direkt (usePhone är falskt på servern).
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"sheet" | "pop">("pop");
+  // Arket monteras (stängt) när fingret landar på Datum eller vid första öppningen på telefonen
+  // och ligger sedan kvar (det glider ner). Koden hämtas då, inte i sidans start.
+  const [sheetUsed, setSheetUsed] = useState(false);
   const value = v2PeriodOf(key);
   const close = useCallback(() => setOpen(false), []);
   const root = useRef<HTMLSpanElement>(null);
@@ -95,8 +102,16 @@ export function PeriodSegment({ className }: { className?: string }) {
           setOpen(false);
           return;
         }
-        setMode(window.matchMedia(PHONE_QUERY).matches ? "sheet" : "pop");
+        const phone = window.matchMedia(PHONE_QUERY).matches;
+        setMode(phone ? "sheet" : "pop");
+        if (phone) setSheetUsed(true);
         setOpen(true);
+      }}
+      onPointerDown={(e) => {
+        if (e.pointerType !== "mouse") {
+          void periodSheet.load().catch(() => {});
+          setSheetUsed(true);
+        }
       }}
     >
       <CalendarIcon />
@@ -152,28 +167,16 @@ export function PeriodSegment({ className }: { className?: string }) {
       <Popover open={open && !sheet} onClose={close} trigger={trigger} labelledBy={triggerId}>
         {panel}
       </Popover>
-      <Drawer.Root open={open && sheet} onOpenChange={setOpen} direction="bottom" repositionInputs>
-        <Drawer.Portal>
-          <Drawer.Overlay className="v2-scrim" />
-          <Drawer.Content
-            className="v2-sheet v2-psheet"
-            aria-describedby={undefined}
-            onCloseAutoFocus={(e) => {
-              // Ingen Drawer.Trigger: fokus tillbaka till datumknappen för hand.
-              e.preventDefault();
-              triggerRef.current?.focus({ preventScroll: true });
-            }}
-          >
-            <span className="grab" aria-hidden="true" />
-            <div className="sh">
-              <Drawer.Title asChild>
-                <h2>Välj period</h2>
-              </Drawer.Title>
-            </div>
-            {panel}
-          </Drawer.Content>
-        </Drawer.Portal>
-      </Drawer.Root>
+      {/* Arket (vaul) laddas och byggs först när det öppnas första gången (telefonen). */}
+      {sheetUsed ? (
+        <PeriodSheet
+          open={open && sheet}
+          onOpenChange={setOpen}
+          onCloseAutoFocus={() => triggerRef.current?.focus({ preventScroll: true })}
+        >
+          {panel}
+        </PeriodSheet>
+      ) : null}
     </span>
   );
 }

@@ -1,12 +1,14 @@
 import { ConfigMissing } from "@/components/ui/config-missing";
 import { getConfigStatus } from "@/server/config-status";
 import type { Viewport } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
 import { ownerChoices } from "@/components/shell/owner-filter";
 import { routeById } from "@/components/shell/nav";
 import { getCookieLocale, getRequestLocale } from "@/i18n/request";
 import { formatInt } from "@/lib/format";
+import { isPhoneRequest } from "@/lib/phone-hint";
 import {
   isoDateToShellDate,
   loadDataStart,
@@ -23,7 +25,7 @@ import { AppUpdate } from "@/components/pwa/app-update";
 import { liveBuildId } from "@/server/build-id";
 import { AppFrameRoot } from "@/components/shell/frame-root";
 
-import { DailyBrief } from "./_hem/brief/dialog";
+import { DailyBrief } from "./_hem/brief/lazy";
 import { AppFrame } from "./app-frame";
 import { NoOrganization } from "./no-organization";
 
@@ -97,6 +99,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const routeCount = routeById("rutt").roles.includes(ctx.role) ? countRouteStops() : undefined;
   const [master, sync, dataStart, machineCounts] = await shellP;
   const buildId = await liveBuildId();
+  const head = await headers();
+  // Telefonen: ingen sidomeny i första svaret (v2.css döljer den ändå under 900 px).
+  const phoneHint = isPhoneRequest(head.get("user-agent"), head.get("sec-ch-ua-mobile"));
 
   const stores: ShellStore[] = master.stores
     .filter((s) => !s.archived)
@@ -126,6 +131,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         activeOrganizationId={ctx.organization.id}
         vmbUserKey={ctx.canSeeEconomy ? ctx.user.id : null}
         timeZone={ctx.timeZone}
+        phoneHint={phoneHint}
         todoCount={todoCount}
         routeCount={routeCount}
         syncedAt={sync?.syncedAt ?? undefined}

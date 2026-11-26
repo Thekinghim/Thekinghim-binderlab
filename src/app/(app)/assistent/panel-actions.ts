@@ -2,21 +2,15 @@
 
 /**
  * Server actions för AI-panelen i skalet (src/components/assistant): om assistenten kan
- * svara just nu (nyckel, månadstak, roll) och rådgivarens förslag per sida. Bara läsning;
+ * svara just nu (nyckel, månadstak, roll). Rådgivarens förslag per sida: GET /assistent/tips. Bara läsning;
  * frågorna går till POST /assistent/fraga som på sidan Assistent.
  */
 
 import { routeById } from "@/components/shell/nav";
-import {
-  budgetState,
-  isDemoBlocked,
-  loadAdvisorStateFor,
-} from "@/server/assistant/advisor/service";
+import { budgetState, isDemoBlocked } from "@/server/assistant/advisor/service";
 import { getAssistantConfig } from "@/server/assistant/config";
-import { tipsByRoute, type PageTip, type TipRoute } from "@/server/assistant/page-tips";
 import { budgetLeftShare } from "@/server/assistant/service";
 import { loadOptionalContext } from "@/server/data/core";
-import { getActiveOrganization, requireUser } from "@/server/session";
 
 export interface PanelState {
   /** ready: frågor går att ställa. off: ingen nyckel/fel inställning. budget: taket nått. */
@@ -68,19 +62,5 @@ export async function assistantPanelState(): Promise<PanelState> {
   } catch (error) {
     console.error("[assistent] AI-budgeten kunde inte läsas:", error);
     return { status: "off", message: "AI svarar inte just nu.", local: false, budgetLeft: null };
-  }
-}
-
-/** Rådgivarens öppna förslag, högst ett per sida. Tomt för roller utan förslag. */
-export async function pageTips(): Promise<Partial<Record<TipRoute, PageTip>>> {
-  try {
-    const user = await requireUser();
-    const organization = await getActiveOrganization();
-    if (!organization) return {};
-    const state = await loadAdvisorStateFor({ user, organization });
-    return state ? tipsByRoute(state.suggestions) : {};
-  } catch (error) {
-    console.error("[assistent] förslagen kunde inte läsas:", error);
-    return {};
   }
 }
