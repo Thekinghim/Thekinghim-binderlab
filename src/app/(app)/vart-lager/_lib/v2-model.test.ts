@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { VartLagerRow } from "./model";
 import {
+  lastCountedByPlace,
   buyLines,
   filterRows,
   gapText,
@@ -157,5 +158,16 @@ describe("Vårt lager V2", () => {
       ["Räknat Hemma", "2 titlar"],
       ["Inköp Black Bolt", "+120 pack · Hemma"],
     ]);
+  });
+});
+
+describe("lastCountedByPlace (samma datum som inventeringssidan)", () => {
+  it("tar stock_counts datum per lager; aldrig räknat saknas", () => {
+    expect(
+      lastCountedByPlace([
+        { placeId: "hemma", lastCountedAt: "2026-11-20T09:00:00.000Z" },
+        { placeId: "kontoret", lastCountedAt: null },
+      ]),
+    ).toEqual({ hemma: "2026-11-20T09:00:00.000Z" });
   });
 });

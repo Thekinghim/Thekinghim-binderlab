@@ -5,6 +5,8 @@
  * nyckeln för det engångsfirande när månadens mål nås.
  */
 
+import { formatKronor } from "@/lib/format";
+
 /**
  * Klassen som stoppar intro-rörelsen när Hem visas igen (HeroIntro). Ett eget namn med
  * hh-prefix: hem.css har redan `.hem2 .calm` (raden "Allt rullar" i Kräver åtgärd, en flexrad
@@ -24,6 +26,17 @@ export const COMPACT_ORDER = [
   "per-machine",
   "stock-value",
 ] as const;
+
+/**
+ * Fotnoten under nyckeltalen när intäkten inte är alla order: Intäkt och Marginal räknas
+ * (som på Pengar och Lönsamhet) bara på order med inköpspris, medan Sålda pack, Snittköp och
+ * Mest sålda räknar alla order. null när alla order har inköpspris.
+ */
+export function revenueBasisNote(unpricedRevenueOre: number): string | null {
+  if (unpricedRevenueOre <= 0) return null;
+  const kr = formatKronor(unpricedRevenueOre / 100, { decimals: 0 });
+  return `Intäkt och marginal räknas på order med inköpspris. ${kr} sålt utan pris räknas inte in.`;
+}
 
 /** Antal nyckeltal som syns på telefon innan "Visa alla nyckeltal". */
 export const PHONE_KPIS = 4;

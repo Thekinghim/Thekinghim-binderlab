@@ -314,7 +314,7 @@ export async function HemHero({ sp }: { sp: SearchParamsInput }) {
       </Card>
 
       {h.kpis.length > 0 ? (
-        <KpiRow count={h.kpis.length} label="Nyckeltal för perioden">
+        <KpiRow count={h.kpis.length} label="Nyckeltal för perioden" note={h.kpiNote}>
           {h.kpis.map((t) => (
             <CompactKpi key={t.id} t={t} />
           ))}

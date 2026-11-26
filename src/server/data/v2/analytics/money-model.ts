@@ -126,10 +126,15 @@ export function waterfallRows(input: WaterfallInput): WaterfallRow[] {
     to: scale(input.profitBeforeShareOre),
   });
   level = input.profitBeforeShareOre;
+  // Samma grund som Intäkt ovan: med order utan inköpspris räknas andelen bara på order med
+  // pris, så att den inte läses som "Vem pengarna är till" (alla order, med moms).
+  const priced = (input.unpricedRevenueOre ?? 0) > 0 ? ", order med inköpspris" : "";
   cost(
     "share",
     "Butikernas andel",
-    input.stores === 1 ? "1 butik, enligt avtalet" : `${input.stores} butiker, enligt avtalen`,
+    input.stores === 1
+      ? `1 butik, enligt avtalet${priced}`
+      : `${input.stores} butiker, enligt avtalen${priced}`,
     input.compensationOre,
     true,
   );

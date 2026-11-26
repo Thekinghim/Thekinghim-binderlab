@@ -4,7 +4,8 @@
  *
  * - Senaste händelser: de senaste 300 händelserna (inte försäljning) i aktiva egna lager de
  *   senaste 60 dagarna, med titel och lager (./v2-model.ts slår ihop dem).
- * - Senast räknat: senaste inventeringen per eget lager (stock_events kind = 'count').
+ * - Senast räknat: senaste sparade inventeringen per eget lager (stock_counts, samma som
+ *   inventeringssidan och Att göra).
  */
 
 import "server-only";
@@ -12,9 +13,10 @@ import "server-only";
 import { sql } from "drizzle-orm";
 
 import { withUserDbFor } from "@/server/access";
+import { queryStockCountRefs } from "@/server/data/core/stock-counts";
 import type { Viewer } from "@/server/data/core/loaders";
 
-import type { StockEventRow } from "./v2-model";
+import { lastCountedByPlace, type StockEventRow } from "./v2-model";
 
 export interface VartLagerExtras {
   readonly events: StockEventRow[];
@@ -54,16 +56,10 @@ export async function loadVartLagerExtrasFor(viewer: Viewer): Promise<VartLagerE
       place_name: string;
       counterpart: string | null;
     }[];
-    const counted = Array.from(
-      await tx.execute(sql`
-        select e.location_id::text as id, max(e.occurred_at) as at
-        from public.stock_events e
-        join public.stock_locations l
-          on l.organization_id = e.organization_id and l.id = e.location_id
-        where e.organization_id = ${orgId}::uuid and l.kind = 'warehouse'
-          and l.archived_at is null and e.kind = 'count'
-        group by e.location_id`),
-    ) as { id: string; at: Date | string }[];
+    // Samma källa som inventeringssidan och "Inventera Hemma" i Att göra (stock_counts), så
+    // att "Senast räknat" här aldrig säger något annat än där. En ändring av ett antal (en
+    // händelse 'count' för en titel) är ingen inventering.
+    const counted = await queryStockCountRefs(tx, orgId);
     return {
       events: events.map((r) => ({
         kind: r.kind,
@@ -74,7 +70,7 @@ export async function loadVartLagerExtrasFor(viewer: Viewer): Promise<VartLagerE
         placeName: r.place_name,
         counterpart: r.counterpart,
       })),
-      lastCounted: Object.fromEntries(counted.map((r) => [r.id, new Date(r.at).toISOString()])),
+      lastCounted: lastCountedByPlace(counted),
     };
   });
 }

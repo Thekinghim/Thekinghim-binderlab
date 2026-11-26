@@ -88,6 +88,17 @@
   .ut-row .am.neg {
     color: var(--v2-crit-text);
   }
+  /* "Varav": står för sig, räknas inte bort ovanför (Så räknade vi). */
+  .ut-row.info {
+    min-height: 44px;
+    border-top: 0;
+    padding-top: 0;
+  }
+  .ut-row.info .nm,
+  .ut-row.info .am {
+    font-weight: 500;
+    color: var(--v2-mute);
+  }
   .ut-row > div:first-child {
     align-self: center;
   }

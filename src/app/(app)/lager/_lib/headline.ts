@@ -8,7 +8,7 @@
 
 import { formatInt, NBSP } from "@/lib/format";
 
-import { codeText, packs, relativeDay, tenthsText } from "./display";
+import { codeText, packs, relativeDay } from "./display";
 import type { LagerView, PackList, StockCell } from "./types";
 
 export interface Headline {
@@ -142,9 +142,31 @@ export function headlineOf(view: LagerView): Headline {
     };
   }
   return {
-    title: `Alla titlar räcker ${tenthsText(view.lowThresholdTenths)}${NBSP}dagar till.`,
+    title: allLastTitle(view),
     aside: visitsText(view),
   };
+}
+
+/**
+ * Den kortaste tiden en titel räcker (hela dagar, samma tal som cellernas "4 d"), bland
+ * titlar i sortimentet som säljer. null när ingen säljer.
+ */
+export function minDaysLeft(view: Pick<LagerView, "cells">): number | null {
+  let min: number | null = null;
+  for (const row of view.cells) {
+    for (const c of row) {
+      if (!c.stocked || !c.known || c.retired || c.daysLeft === null) continue;
+      if (min === null || c.daysLeft < min) min = c.daysLeft;
+    }
+  }
+  return min;
+}
+
+/** "Alla titlar räcker minst 9 dagar till." med det verkliga talet, inte gränsen för Låg. */
+function allLastTitle(view: Pick<LagerView, "cells">): string {
+  const min = minDaysLeft(view);
+  if (min === null) return "Alla titlar räcker, inget säljer just nu.";
+  return `Alla titlar räcker minst ${formatInt(min)}${NBSP}${min === 1 ? "dag" : "dagar"} till.`;
 }
 
 /** Avslutar med punkt, men inte efter en förkortning som redan har en ("6 nov."). */

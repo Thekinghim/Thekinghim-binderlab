@@ -61,8 +61,8 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
     <Card title={title} link={PAY} className="g4-sp-card">
       <div className="g4-sp" data-testid="pengar-fordelning">
         <p className="g4-sp-basis">
-          Av försäljningen {days}, {kr(v.basisDisplayOre)} inkl. moms. Butikernas andel enligt
-          avtalen.{s.filtered ? " Gäller alla butiker, inte filtret." : ""}
+          Av allt kunderna betalat {days}: {kr(v.basisDisplayOre)} med moms, alla order. Butikernas
+          andel enligt avtalen.{s.filtered ? " Gäller alla butiker, inte filtret." : ""}
         </p>
         {storesPaid ? (
           <p className="g4-sp-pay" data-testid="split-store-pay">
@@ -257,7 +257,8 @@ function subText(row: SplitRow, noAgreement: boolean): ReactNode {
         ? unknownReason(row.missingPrice, row.displayOre !== 0)
         : "Butikens andel enligt avtalet";
     case "vat":
-      return row.vatMode === "vmb" ? "Moms på vinsten (VMB)" : "Momsen i försäljningen";
+      // Samma ord som VMB-raden i "Från intäkt till vinst".
+      return row.vatMode === "vmb" ? "VMB-moms, moms på vinstmarginalen" : "Momsen i försäljningen";
     case "fees":
       return "Nayax drar den innan pengarna kommer";
     case "refunds":

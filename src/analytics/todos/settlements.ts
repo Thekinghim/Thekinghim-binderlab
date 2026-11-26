@@ -24,7 +24,7 @@ import {
 
 import { evidence, nameLookup } from "./common";
 import { urgencyOf, type TodoContext } from "./context";
-import { day, kr, krAuto, monthName, plural } from "./text";
+import { day, kr, krAuto, monthName, plural, sentence } from "./text";
 import type { PaidDriftRef, SettlementRef, TodoItem, TodoLevel } from "./types";
 
 /** Dag i månaden efter avräkningsmånaden då butiken ska ha fått pengarna (samma som avtalet). */
@@ -41,6 +41,16 @@ export function settlementDue(month: IsoMonth): IsoDate {
 /** Sidan där avräkningarna betalas och skapas (Butiker → Utbetalning). */
 export function settlementLink(month: IsoMonth): string {
   return `/butiker?vy=utbetalning&manad=${month}`;
+}
+
+/**
+ * "Betala senast 15 nov." eller, när dagen har passerat, "Skulle ha betalats senast 15 nov."
+ * (aldrig "senast" om en dag som redan varit, och aldrig dubbel punkt efter "nov.").
+ */
+export function payByText(daysLeft: number, due: IsoDate): string {
+  if (daysLeft < 0) return sentence(`Skulle ha betalats senast ${day(due)}`);
+  if (daysLeft === 0) return "Betala i dag.";
+  return sentence(`Betala senast ${day(due)}`);
 }
 
 function capitalize(text: string): string {
@@ -92,10 +102,10 @@ export function settlementTodos(ctx: TodoContext): TodoItem[] {
           : " Inköpspris saknas, så beloppet är inte klart.";
     const when =
       daysLeft < 0
-        ? `Skulle ha betalats ${day(due)}.`
+        ? sentence(`Skulle ha betalats ${day(due)}`)
         : daysLeft === 0
           ? "Betala i dag."
-          : `Senast ${day(due)}.`;
+          : sentence(`Senast ${day(due)}`);
     out.push({
       key: `settlement:${month}`,
       fingerprint: `${list.length}|${total}${blocked.length ? `|${blocked.length}` : ""}`,
@@ -153,7 +163,7 @@ export function missingSettlementTodos(ctx: TodoContext): TodoItem[] {
       atStakeOre: null,
       daysLeft,
       title: `Skapa ${monthName(month)}-avräkning${n === 1 ? "en" : "arna"}`,
-      detail: `${capitalize(monthName(month))} är slut. ${names.join(", ")} saknar avräkning. Betala senast ${day(due)}.`,
+      detail: `${capitalize(monthName(month))} är slut. ${names.join(", ")} saknar avräkning. ${payByText(daysLeft, due)}`,
       evidence: evidence({
         rule: "Varje butik som hade en automat under månaden får en avräkning när månaden är slut.",
         period: monthPeriod(month),
@@ -236,7 +246,7 @@ export function olderMissingSettlementTodos(ctx: TodoContext): TodoItem[] {
       atStakeOre: null,
       daysLeft: daysBetween(ctx.today, due),
       title: `Skapa ${monthName(month)}-avräkning${n === 1 ? "en" : "arna"}`,
-      detail: `${names.join(", ")} sålde i ${monthName(month)} men har ingen avräkning. Skulle ha betalats ${day(due)}.`,
+      detail: `${names.join(", ")} sålde i ${monthName(month)} men har ingen avräkning. ${sentence(`Skulle ha betalats ${day(due)}`)}`,
       evidence: evidence({
         rule: "Varje butik som sålde under en månad får en avräkning, också när månaden inte kunde räknas i tid.",
         period: monthPeriod(month),

@@ -27,6 +27,8 @@ import { loadMoneyPay } from "@/server/data/v2/analytics/shops";
 import { loadMoneyWorst } from "@/server/data/v2/analytics/worst";
 import { loadFleetState } from "@/server/data/v2/fleet";
 
+import { missingSettlements, previousProfitOre, type MissingSettlements } from "./cards-model";
+
 /* ------------------------------------------------------------------ */
 /* Resultat                                                            */
 /* ------------------------------------------------------------------ */
@@ -71,10 +73,9 @@ export async function loadResultCard(sp: SearchParamsInput): Promise<ResultCard 
   if (!home || !profit) return null;
   const kpi = new Map(home.model.kpis.map((k) => [k.id, k]));
   const profitKpi = kpi.get("profit");
-  const prevProfit =
-    profitKpi?.value != null && profitKpi.delta !== null
-      ? Math.round(profitKpi.value / (1 + profitKpi.delta))
-      : null;
+  // Jämförelseperiodens vinst som den är (samma tal som hjältekortets "mot förra"), inte
+  // räknad baklänges ur den avrundade förändringen.
+  const prevProfit = previousProfitOre(profitKpi);
 
   let unit: ResultCard["unit"];
   let bars: ResultBar[];
@@ -324,6 +325,12 @@ export interface ShopsCard {
     readonly storesOre: number;
     readonly ourOre: number;
   } | null;
+  /**
+   * Butiker utan avräkning (samma som "Saknas" på Utbetalning och "Skapa
+   * oktober-avräkningarna" i Att göra): texten, äldsta månadens sista dag och länken. null
+   * när inget saknas.
+   */
+  readonly missing: MissingSettlements | null;
 }
 
 export async function loadShopsCard(sp: SearchParamsInput): Promise<ShopsCard | null> {
@@ -359,6 +366,7 @@ export async function loadShopsCard(sp: SearchParamsInput): Promise<ShopsCard | 
     split: split
       ? { totalOre: split.totalOre, storesOre: split.storesOre, ourOre: split.ourOre }
       : null,
+    missing: missingSettlements(pay?.missing ?? []),
   };
 }
 

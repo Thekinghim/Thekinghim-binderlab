@@ -541,10 +541,27 @@ const dueText = (iso: string) =>
     new Date(`${iso}T12:00:00Z`),
   );
 
-export async function ShopsCardView({ sp }: { sp: SearchParamsInput }) {
+/**
+ * `withSplit`: "Vem pengarna är till" står redan på Hem (ägare och admin). Butikernas andel
+ * står då bara där, med samma tal som på Pengar; här bara för läsaren.
+ */
+export async function ShopsCardView({
+  sp,
+  withSplit = false,
+}: {
+  sp: SearchParamsInput;
+  withSplit?: boolean;
+}) {
   const s = await loadShopsCard(sp);
   if (!s) return null;
-  const split = s.split && s.split.totalOre > 0 ? s.split : null;
+  const split = !withSplit && s.split && s.split.totalOre > 0 ? s.split : null;
+  // En saknad avräkning förfaller också (den 15:e månaden efter): den äldsta av de två.
+  const oldestDue =
+    s.oldestDue && s.missing
+      ? s.oldestDue < s.missing.due
+        ? s.oldestDue
+        : s.missing.due
+      : (s.oldestDue ?? s.missing?.due ?? null);
   return (
     <XCard title="Butiker" link={{ href: "/butiker", label: "Butiker" }} className="x-shops">
       <div className="x-st3 two">
@@ -553,14 +570,30 @@ export async function ShopsCardView({ sp }: { sp: SearchParamsInput }) {
           <b>{kr(s.unpaidOre)}</b>
           <small>
             {formatInt(s.stores)} {s.stores === 1 ? "butik" : "butiker"}
+            {s.missing ? ` · ${formatInt(s.missing.stores)} saknar avräkning` : ""}
           </small>
         </div>
         <div>
           <span className="x-l">Äldsta förfaller</span>
-          <b>{s.oldestDue ? dueText(s.oldestDue) : "–"}</b>
-          <small>{s.oldestStore ?? "Inget obetalt"}</small>
+          <b>{oldestDue ? dueText(oldestDue) : "–"}</b>
+          <small>
+            {oldestDue === s.oldestDue && s.oldestStore
+              ? s.oldestStore
+              : s.missing
+                ? "Avräkning saknas"
+                : "Inget obetalt"}
+          </small>
         </div>
       </div>
+      {s.missing ? (
+        <Link className="x-lr" href={s.missing.href} data-testid="hem-missing-settlements">
+          <span className="x-ln">
+            <b>{s.missing.text}</b>
+            <small>Skapa dem på Utbetalning</small>
+          </span>
+          <span className="x-num">→</span>
+        </Link>
+      ) : null}
       {s.rows.slice(0, 3).map((r) => (
         <Link
           className="x-lr"

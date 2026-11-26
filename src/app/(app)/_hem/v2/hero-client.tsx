@@ -46,15 +46,19 @@ export function KpiRow({
   count,
   children,
   label,
+  note = null,
 }: {
   count: number;
   children: ReactNode;
   label: string;
+  /** Fotnot under talen (t.ex. intäktens grund), över hela bredden. */
+  note?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <div role="group" className={cn("v2-card hh-kpis", open && "open")} aria-label={label}>
       {children}
+      {note ? <p className="hh-foot">{note}</p> : null}
       {count > 4 ? (
         <button
           type="button"

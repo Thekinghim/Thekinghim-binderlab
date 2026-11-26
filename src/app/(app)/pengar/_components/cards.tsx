@@ -22,11 +22,17 @@ import { loadMoneyGeo } from "@/server/data/v2/analytics/geo";
 import { loadMoneyMonths } from "@/server/data/v2/analytics/months12";
 import { axisKr, chartScale, goalShortOre } from "@/server/data/v2/analytics/money-model";
 import { loadMoneyResult, loadMoneyWaterfall } from "@/server/data/v2/analytics/result";
-import { loadMoneyPay } from "@/server/data/v2/analytics/shops";
+import { loadMoneyPay, loadMoneyPayouts } from "@/server/data/v2/analytics/shops";
 import { loadMoneyTop } from "@/server/data/v2/analytics/top";
 import { loadMoneyWorst } from "@/server/data/v2/analytics/worst";
 
 import { PaySheet } from "../../butiker/_components/v2/pay-sheet";
+import { PaySheet as PayoutPaySheet } from "../utbetalningar/_components/pay-sheet";
+import {
+  missingSettlementsText as missingText,
+  payoutPayCard,
+  type PayoutPayCard,
+} from "./pay-card-model";
 import { CityList } from "./city-list";
 import { kr, krExact, dayMonth, dayMonthShort, monthName, pct, plural, signedPct } from "./fmt";
 import { MonthsTable } from "./months-table";
@@ -343,8 +349,10 @@ export async function WorstCard() {
 /* ------------------------------------------------------------------ */
 
 export async function PayCard() {
-  const pay = await loadMoneyPay();
+  const [pay, payouts] = await Promise.all([loadMoneyPay(), loadMoneyPayouts()]);
   if (!pay) return null;
+  // Med utbetalningar från Nayax gäller saldona där (samma summa som Utbetalningar).
+  if (payouts) return <PayoutPayCardView card={payoutPayCard(payouts)} today={pay.today} />;
   return (
     <Card
       title="Att betala"
@@ -353,7 +361,11 @@ export async function PayCard() {
       className="g4-pay"
     >
       {pay.items.length === 0 ? (
-        <div className="empty">Inget att betala till butikerna just nu.</div>
+        <div className="empty">
+          {pay.missing.length > 0
+            ? missingText(pay.missing)
+            : "Inget att betala till butikerna just nu."}
+        </div>
       ) : (
         <>
           {pay.items.slice(0, 4).map((i, n) => (
@@ -389,6 +401,11 @@ export async function PayCard() {
             <span>{plural(pay.stores, "butik", "butiker")}</span>
             <b>{kr(pay.totalOre)} totalt</b>
           </div>
+          {pay.missing.length > 0 ? (
+            <div className="psum">
+              <span>{missingText(pay.missing)}</span>
+            </div>
+          ) : null}
         </>
       )}
       {pay.canEdit ? (
@@ -398,6 +415,59 @@ export async function PayCard() {
           </Link>
         </div>
       ) : null}
+    </Card>
+  );
+}
+
+function PayoutPayCardView({ card, today }: { card: PayoutPayCard; today: string }) {
+  return (
+    <Card
+      title="Att betala"
+      count={card.rows.length > 0 ? card.rows.length : null}
+      link={{ href: "/pengar/utbetalningar", label: "Utbetalningar" }}
+      className="g4-pay"
+    >
+      {card.rows.length === 0 ? (
+        <div className="empty">Allt från Nayax är betalt.</div>
+      ) : (
+        <>
+          {card.rows.slice(0, 4).map((r, n) => (
+            <div key={r.key} className={n === 0 ? "it hot" : "it"} data-pay-item>
+              <div className="body">
+                <div className="t">
+                  {r.kind === "vat_reserve" ? "Lägg undan till momsen." : `Betala ${r.name}.`}
+                </div>
+                <div className="d">
+                  <b>{krExact(r.leftOre)}</b>
+                </div>
+              </div>
+              <div className="go">
+                <PayoutPaySheet
+                  name={r.name}
+                  lineIds={r.lineIds}
+                  leftOre={r.leftOre}
+                  today={today}
+                  verb={r.kind === "vat_reserve" ? "sparad" : "betald"}
+                  trigger={
+                    <Button variant={n === 0 ? "act" : "default"} size="lg">
+                      {r.kind === "vat_reserve" ? "Lagt undan" : "Betala"}
+                    </Button>
+                  }
+                />
+              </div>
+            </div>
+          ))}
+          <div className="psum">
+            <span>{plural(card.rows.length, "mottagare", "mottagare")}</span>
+            <b data-testid="pay-total">{krExact(card.totalOre)} totalt</b>
+          </div>
+        </>
+      )}
+      <div className="psum">
+        <Link href="/pengar/utbetalningar" className="lk" data-testid="pay-all-link">
+          Se allt att betala från Nayax <span aria-hidden="true">→</span>
+        </Link>
+      </div>
     </Card>
   );
 }
