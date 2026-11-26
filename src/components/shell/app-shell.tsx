@@ -37,6 +37,7 @@ import { useAutoRefresh } from "./use-auto-refresh";
 import { useCarriedQuery, usePeriod, useScope } from "./use-period";
 import { V2ShellProvider } from "@/components/v2/shell/shell-context";
 import { V2SideNav } from "@/components/v2/shell/side-nav";
+import { BackHistory } from "@/components/v2/shell/back";
 import { V2TabBar } from "@/components/v2/shell/tab-bar";
 import { FillReturnToast } from "@/components/v2/fill-return-toast";
 import { V2Toaster } from "@/components/v2/toast";
@@ -215,6 +216,7 @@ export function AppShell(props: AppShellProps) {
               <div key={pathname}>{children}</div>
             </ShellMain>
             <V2TabBar role={role} todoCount={props.todoCount} />
+            <BackHistory />
             <V2Toaster />
             <FillReturnToast />
             {onOpenCommand ? null : (

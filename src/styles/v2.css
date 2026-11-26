@@ -493,6 +493,31 @@
   .v2-top .mlogo {
     display: none;
   }
+  /* Tillbaka-pilen (V2Back): bara på telefon, där hemskärmsappen saknar webbläsarknapp.
+     44 px tryckyta, pilen i linje med sidans vänsterkant. */
+  .v2-back {
+    display: none;
+  }
+  @media (max-width: 900px) {
+    .v2-back {
+      display: inline-flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      margin: -8px -16px -8px -18px;
+      border-radius: 999px;
+      color: var(--v2-ink);
+      touch-action: manipulation;
+      -webkit-touch-callout: none;
+      user-select: none;
+      transition: background-color 120ms ease-out;
+    }
+    .v2-back:active {
+      background: var(--v2-sel);
+    }
+  }
   .v2-seg-period {
     display: inline-flex;
     align-items: center;

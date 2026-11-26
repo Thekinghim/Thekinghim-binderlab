@@ -293,9 +293,15 @@ export default async function MysteryPackPage({
       date={headerDate(now, ctx.timeZone)}
       sub={aside}
       tools={
-        <ButtonLink href="/vart-lager/mystery" touch aria-label="Tillbaka till Mystery packs">
+        // Telefon: tillbaka-pilen före rubriken (V2Back) gör samma sak.
+        <ButtonLink
+          href="/vart-lager/mystery"
+          touch
+          aria-label="Tillbaka till Mystery packs"
+          className="max-[900px]:hidden"
+        >
           <span aria-hidden="true">←</span>
-          <span className="max-[900px]:hidden">Mystery packs</span>
+          <span>Mystery packs</span>
         </ButtonLink>
       }
     >

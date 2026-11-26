@@ -4,7 +4,7 @@
  * underfliken som huvudfliken skrivs den en gång. Ren funktion, testas i crumbs.test.ts.
  */
 
-import { activeSubTab, routeById } from "@/components/shell/nav";
+import { activeSubTab, activeV2NavId, routeById, shellRoutes } from "@/components/shell/nav";
 
 /** Undersidor med eget namn. Dynamiska delar ([id]) skrivs som `*`. */
 const SUBPAGES: ReadonlyArray<readonly [pattern: string, label: string]> = [
@@ -63,4 +63,45 @@ export function crumbsFor(
   const isView = hit.tab.view && clean === `${routeById(hit.tab.route).href}/${hit.tab.view}`;
   const sub = isView ? null : subpageLabel(path);
   return [orgName, main, tab, sub].filter((c): c is string => !!c);
+}
+
+/** Tillbaka-pilens mål: föräldersidans adress och namn. */
+export type BackTarget = { href: string; label: string };
+
+/**
+ * Vart tillbaka-pilen leder när det inte finns någon historik i appen att backa i (sidan
+ * öppnades direkt, från en länk eller efter omladdning). Null på flikarnas egna sidor
+ * (`tabs`, bottenraden): där finns inget att backa till.
+ *
+ * Undersidor går upp en nivå till närmaste sida med namn (/automater/bl-001/styr →
+ * /automater/bl-001, /drift/pafyllning → /drift). Sidor direkt under roten går till sin
+ * flik i bottenraden, eller till Mer när fliken inte står där (Butiker, Pengar, Inställningar).
+ */
+export function backTargetFor(
+  pathname: string | null,
+  tabs: ReadonlyArray<{ id: string; href: string; label: string }>,
+): BackTarget | null {
+  const path = !pathname || pathname === "/" ? "/" : pathname.replace(/\/+$/, "") || "/";
+  if (tabs.some((t) => t.href === path)) return null;
+  // Besöksplanen hör till Rutt (som i bottenraden).
+  if (path === "/drift/besok" || path.startsWith("/drift/besok/")) {
+    const rutt = tabs.find((t) => t.id === "rutt");
+    if (rutt) return { href: rutt.href, label: rutt.label };
+  }
+  const parts = path.split("/").filter(Boolean);
+  for (let n = parts.length - 1; n >= 1; n--) {
+    const parent = `/${parts.slice(0, n).join("/")}`;
+    const route = shellRoutes.find((r) => r.href === parent);
+    if (route) return { href: route.href, label: route.label };
+    const label = subpageLabel(parent);
+    if (label) return { href: parent, label };
+  }
+  const nav = activeV2NavId(path);
+  const own = tabs.find((t) => t.id === nav);
+  if (own) return { href: own.href, label: own.label };
+  // Sidor utan egen flik (Kom igång, Veckan) går till Hem, resten nås från Mer.
+  const fallback =
+    nav === null ? tabs.find((t) => t.id === "hem") : tabs.find((t) => t.id === "mer");
+  const target = fallback ?? tabs[0];
+  return target && target.href !== path ? { href: target.href, label: target.label } : null;
 }
