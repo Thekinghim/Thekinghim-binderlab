@@ -13,7 +13,13 @@ import "server-only";
 import { unstable_rethrow } from "next/navigation";
 
 import { monthOf, unitMargin } from "@/domain";
-import { loadContext, loadMasterData, requireViewer } from "@/server/data/core";
+import {
+  cachedViewState,
+  loadContext,
+  loadMasterData,
+  requireViewer,
+  type AppContext,
+} from "@/server/data/core";
 import { goalsProgress } from "@/server/data/goals";
 
 import { loadGoalsFor } from "@/app/(app)/expansion/_lib/service";
@@ -46,6 +52,11 @@ const MONTHS = [
 export async function loadMoneyGoal(): Promise<MoneyGoal | null> {
   const ctx = await loadContext();
   if (!ctx.canSeeEconomy) return null;
+  // Beror inte på vald period: sparad mellan förfrågningar (core/cachedViewState).
+  return cachedViewState("money-goal", () => moneyGoalNow(ctx));
+}
+
+async function moneyGoalNow(ctx: AppContext): Promise<MoneyGoal | null> {
   const month = monthOf(ctx.today);
   const [records, master] = await Promise.all([
     loadGoalsFor(await requireViewer()),

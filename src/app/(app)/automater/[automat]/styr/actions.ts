@@ -15,7 +15,12 @@ import { AuthorizationError } from "@/server/access";
 import { AwishApiError } from "@/server/awish/grpc-client";
 import { NewProductError } from "@/server/awish/goods";
 import { AwishNotConnectedError } from "@/server/awish/marketing";
-import { OPERATOR_ROLES, requireContextRole, requireViewer } from "@/server/data/core";
+import {
+  OPERATOR_ROLES,
+  requireContextRole,
+  requireViewer,
+  revalidateAppData,
+} from "@/server/data/core";
 import { safeErrorForLog } from "@/server/errors";
 import {
   FORBIDDEN_MESSAGE,
@@ -87,6 +92,8 @@ async function write(
   try {
     const r = await fn();
     revalidatePath("/automater/[automat]/styr", "page");
+    // Ström och fack syns på Hem (sparat läge): räknas om direkt.
+    await revalidateAppData();
     return r.ok ? { ok: true, data: { message: r.message } } : { ok: false, error: r.message };
   } catch (error) {
     return failure(error);

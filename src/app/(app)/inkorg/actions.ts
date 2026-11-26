@@ -16,7 +16,7 @@ import { z } from "zod";
 import { getServiceDb } from "@/db/client";
 import * as s from "@/db/schema";
 import { resolveOrderAttention } from "@/server/awish/order-attention";
-import { OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
+import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
 import { withUserDb } from "@/server/session";
 
 import { ASSIGNEE_ROLES } from "./_lib/load";
@@ -150,6 +150,8 @@ export async function saveIncident(input: IncidentInput): Promise<SaveIncidentRe
     revalidatePath("/inkorg", "layout");
     revalidatePath("/att-gora", "layout");
     revalidatePath("/drift", "layout");
+    // Hems sparade läge (Att göra, Kräver åtgärd) räknas om direkt.
+    await revalidateAppData();
     return { ok: true, id };
   } catch (error) {
     return {

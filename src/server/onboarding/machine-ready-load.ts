@@ -94,14 +94,16 @@ export async function queryMachineReadyFacts(tx: Tx, orgId: string): Promise<Mac
   );
   if (machines.length === 0) return [];
 
-  // Titlarna i automaten: saldo över 0, eller ett fack i Awish (kapacitet).
+  // Titlarna i automaten: saldo över 0, eller ett fack i Awish (kapacitet). `inside` räknas
+  // en gång (materialized): annars lade planeraren (som under RLS tror att titlarna är en rad)
+  // vyn stock_levels i en loop per titel, 171 ms i stället för 10 ms i drift (EXPLAIN ANALYZE).
   const titleRows = await rows(
     tx,
     sql`with t as (
           select (now() at time zone o.timezone)::date as today
           from public.organizations o where o.id = ${org}
         ),
-        inside as (
+        inside as materialized (
           select loc.machine_id, sl.title_id
           from public.stock_levels sl
           join public.stock_locations loc

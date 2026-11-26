@@ -12,7 +12,7 @@ import type { SearchParamsInput } from "@/components/shell/period-state";
 import { loadContext, loadMasterData, loadPeriod, requireViewer } from "@/server/data/core";
 import { loadShrinkageFor } from "@/server/data/shrinkage";
 
-import { hemKey, loadHemCore } from "./hem-base";
+import { hemKey, loadHemLostSales } from "./hem-base";
 
 /** Dagar bakåt (t.o.m. i dag) för svinnet, samma som gamla Hem. */
 export const SHRINK_DAYS = 14;
@@ -45,8 +45,7 @@ export interface SoldoutShrinkCard {
 export async function loadSoldoutShrink(sp: SearchParamsInput): Promise<SoldoutShrinkCard | null> {
   const ctx = await loadContext();
   if (!ctx.canSeeEconomy) return null;
-  const [home, p] = await Promise.all([loadHemCore(hemKey(sp)), loadPeriod(sp)]);
-  const lost = home?.lostSales ?? null;
+  const [lost, p] = await Promise.all([loadHemLostSales(hemKey(sp)), loadPeriod(sp)]);
   const period = { start: addDays(ctx.today, -(SHRINK_DAYS - 1)), end: ctx.today };
   let shrink: SoldoutShrinkCard["shrink"] = null;
   try {

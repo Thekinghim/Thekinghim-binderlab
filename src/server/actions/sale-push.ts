@@ -10,7 +10,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { ECONOMY_ROLES, requireContextRole } from "@/server/data/core";
+import { ECONOMY_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
 import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { pushStatus } from "@/server/notify/push";
 import { loadSalePushPref, saveSalePushPref } from "@/server/sales-push/prefs";
@@ -77,5 +77,7 @@ export async function saveSalePushSetting(
   }
   revalidatePath("/drift/larm");
   revalidatePath("/");
+  // Rutan "Få notis vid varje försäljning" på Hem är sparad (cachedViewState): räknas om.
+  await revalidateAppData();
   return { ok: true };
 }

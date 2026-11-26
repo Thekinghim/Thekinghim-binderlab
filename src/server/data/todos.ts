@@ -31,7 +31,13 @@ import type { LostSalesSummary } from "@/server/purchasing/types";
 import { withUserDb } from "@/server/session";
 
 import { loadSlotPeriodsFor, querySlotPeriods, todoStateWithoutRetired } from "./assortment";
-import { cachedForViewer, loadOptionalContext, loadTodoState, requireViewer } from "./core";
+import {
+  cachedForViewer,
+  cachedViewState,
+  loadOptionalContext,
+  loadTodoState,
+  requireViewer,
+} from "./core";
 import { applySlotAlerts, loadSlotAlertDataFor, todoStateWithSlotAlerts } from "./core/slot-alerts";
 import {
   businessToday,
@@ -254,41 +260,43 @@ export async function loadTodoVisitPlanFor(
   // Hälsans indata delas med flottans läge i samma förfrågan (v2/in-request.ts).
   const dataP = healthDataInRequest(viewer, today, now);
   dataP.catch(() => {});
-  return withUserDbFor(viewer.user, async (tx) => {
-    const [data, slotPeriods, places, stockRows, capacities] = await Promise.all([
-      dataP,
+  // Transaktionen läser bara sitt eget; hälsan, lagret och kapaciteten (egna transaktioner,
+  // delade i förfrågan) väntas in utanför den, så att ingen anslutning står och väntar.
+  const ownP = withUserDbFor(viewer.user, async (tx) => {
+    const [slotPeriods, places] = await Promise.all([
       querySlotPeriods(tx, orgId),
       queryStorePlaces(tx, orgId),
-      stockP,
-      capacityP,
     ]);
     // Dagens gräns och ruttens start (V2): samma plan på Att göra, Hem, Rutt och Drift.
     const route = await queryRoutePlanSettings(tx, orgId);
-    const warehouse = ownStockTotals(stockRows);
-    const plan = weeklyVisitPlan({
-      orders: data.orders,
-      // Butikens plats: med plats för alla dagens butiker ordnas dagen efter avstånd (Drift).
-      machines: data.machines
-        .filter((m) => !m.archived)
-        .map((m) => ({
-          ...m,
-          location: (m.storeId ? places.get(m.storeId)?.location : null) ?? null,
-        })),
-      limits: route.limits,
-      depot: route.depot?.location ?? null,
-      titles: data.titles,
-      stock: data.stock,
-      warehouseStock: warehouse.length > 0 ? warehouse : null,
-      health: healthOf(data, timeZone, now),
-      slotPeriods,
-      capacities,
-      weekShares: await shapesP,
-      today,
-      timeZone,
-      now,
-    });
-    return { plan, places };
+    return { slotPeriods, places, route };
   });
+  const [{ slotPeriods, places, route }, data, stockRows, capacities, weekShares] =
+    await Promise.all([ownP, dataP, stockP, capacityP, shapesP]);
+  const warehouse = ownStockTotals(stockRows);
+  const plan = weeklyVisitPlan({
+    orders: data.orders,
+    // Butikens plats: med plats för alla dagens butiker ordnas dagen efter avstånd (Drift).
+    machines: data.machines
+      .filter((m) => !m.archived)
+      .map((m) => ({
+        ...m,
+        location: (m.storeId ? places.get(m.storeId)?.location : null) ?? null,
+      })),
+    limits: route.limits,
+    depot: route.depot?.location ?? null,
+    titles: data.titles,
+    stock: data.stock,
+    warehouseStock: warehouse.length > 0 ? warehouse : null,
+    health: healthOf(data, timeZone, now),
+    slotPeriods,
+    capacities,
+    weekShares,
+    today,
+    timeZone,
+    now,
+  });
+  return { plan, places };
 }
 
 /**
@@ -299,7 +307,10 @@ export const loadTodoVisitPlan = cache(async (): Promise<TodoVisitPlan | null> =
   const ctx = await loadOptionalContext();
   if (!ctx) return null;
   try {
-    return await loadTodoVisitPlanFor(await requireViewer(), new Date(ctx.now));
+    // Beror inte på vald period: sparad mellan förfrågningar (core/cachedViewState).
+    return await cachedViewState("todo-visit-plan", async () =>
+      loadTodoVisitPlanFor(await requireViewer(), new Date(ctx.now)),
+    );
   } catch (error) {
     if (error instanceof AuthorizationError) throw error;
     console.error("[att-gora] Besöksplanen kunde inte läsas:", error);
@@ -316,6 +327,13 @@ export const loadTodoVisitPlan = cache(async (): Promise<TodoVisitPlan | null> =
 export const loadRankedTodoState = cache(async (): Promise<TodoState> => {
   const ctx = await loadOptionalContext();
   if (!ctx) return { items: [], dismissed: [] };
+  // Beror inte på vald period: sparad mellan förfrågningar (core/cachedViewState).
+  return cachedViewState("ranked-todos", () => rankedTodoStateNow(ctx));
+});
+
+async function rankedTodoStateNow(
+  ctx: NonNullable<Awaited<ReturnType<typeof loadOptionalContext>>>,
+): Promise<TodoState> {
   const viewer = await requireViewer();
   const now = new Date(ctx.now);
   // Förlorad försäljning räknas parallellt med punkterna (inte efter), när rollen ser
@@ -332,4 +350,14 @@ export const loadRankedTodoState = cache(async (): Promise<TodoState> => {
     now,
     (period) => lost ?? lostSalesSummaryFor(viewer, period, now),
   );
-});
+}
+
+/**
+ * Raderna utanför reglerna (loadTodoExtrasFor) för den inloggade, en gång per förfrågan och
+ * sparade mellan förfrågningar: Hems modell och Hems Att göra läser samma (förut två gånger
+ * per sidladdning).
+ */
+export const loadTodoExtras = cache(
+  async (): Promise<Awaited<ReturnType<typeof loadTodoExtrasFor>>> =>
+    cachedViewState("todo-extras", async () => loadTodoExtrasFor(await requireViewer())),
+);

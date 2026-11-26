@@ -14,6 +14,7 @@ import { validateNewPin } from "@/server/auth/phone";
 import { summariseAwishPush } from "@/server/awish/push-status";
 import { pushRefillToAwish } from "@/server/awish/control/refill-push";
 import { recordAwishPushFailure } from "@/server/awish/web-service";
+import { expireAppData } from "@/server/data/core";
 import { saveRefillItems, undoRefillItems } from "@/server/data/field-refills";
 import { requireStaff } from "@/server/staff/session";
 
@@ -82,6 +83,8 @@ export async function staffSubmitRefill(raw: unknown): Promise<StaffSubmitResult
       error: "Påfyllningen kunde inte sparas. Försök igen eller säg till ägaren.",
     };
   }
+  // Ägarens Hem (sparat läge: flottan, rutten, lagret) räknas om vid nästa sida.
+  expireAppData(orgId);
   const savedIds = new Set(saved.map((r) => r.clientId));
   const packs = items
     .filter((it) => savedIds.has(it.clientId))
@@ -114,7 +117,10 @@ export async function staffUndo(
     return { ok: false, error: "Inget att ångra." };
   }
   const result = await undoRefillItems(staff.user, orgId, clientIds);
-  if (result.ok && result.packs > 0) await pushToAwish(orgId, machineId, staff.user.userId);
+  if (result.ok && result.packs > 0) {
+    expireAppData(orgId);
+    await pushToAwish(orgId, machineId, staff.user.userId);
+  }
   return result;
 }
 

@@ -8,7 +8,7 @@
 
 import "server-only";
 
-import { loadSyncInfo } from "@/server/data/core";
+import { cachedViewState, loadSyncInfo } from "@/server/data/core";
 
 import { loadFleetState } from "../fleet";
 
@@ -28,7 +28,12 @@ export interface OpsCard {
   readonly syncState: "ok" | "stale" | "failed" | "no-orders" | null;
 }
 
+/** Driftstatus. Beror inte på vald period: sparad mellan förfrågningar (cachedViewState). */
 export async function loadOps(): Promise<OpsCard> {
+  return cachedViewState("hem-ops", opsNow);
+}
+
+async function opsNow(): Promise<OpsCard> {
   const [fleet, sync] = await Promise.all([loadFleetState(), loadSyncInfo().catch(() => null)]);
   const offline = fleet.machines.filter((m) => m.status === "offline");
   const off = fleet.machines.filter((m) => m.powerOffNow);

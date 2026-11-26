@@ -20,7 +20,7 @@ import { withUserDbFor } from "@/server/access";
 import { querySlotPeriods } from "@/server/data/assortment";
 import { healthOf, loadMachinePower } from "@/server/alerts/inputs";
 
-import { loadContext, requireViewer } from "../core";
+import { cachedViewState, loadContext, requireViewer } from "../core";
 import { businessToday, requireViewerRole, type Viewer } from "../core/loaders";
 import { ALL_ROLES, canSeeEconomy, OPERATOR_ROLES } from "../core/types";
 import { healthDataInRequest, machineReadinessInRequest } from "./in-request";
@@ -93,9 +93,10 @@ export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<Fleet
   // Hälsans indata delas med besöksplanen i samma förfrågan (in-request.ts).
   const dataP = healthDataInRequest(viewer, today, now);
   dataP.catch(() => {});
-  const db = await withUserDbFor(viewer.user, async (tx) => {
-    const [data, power, storeRows, fillRows, refillRows, slotPeriods] = await Promise.all([
-      dataP,
+  // Hälsan läses i en egen transaktion: den här väntar inte på den (ingen anslutning står och
+  // väntar medan en annan läser).
+  const dbP = withUserDbFor(viewer.user, async (tx) => {
+    const [power, storeRows, fillRows, refillRows, slotPeriods] = await Promise.all([
       loadMachinePower(tx, orgId, today),
       tx.execute(
         sql`select id::text as id, name, city, address, phone, contact_name, latitude, longitude,
@@ -128,8 +129,10 @@ export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<Fleet
       // Sortimentet: en slut titel i automaten (0 pack) räknas som "Fyll på", som i Fyll på.
       querySlotPeriods(tx, orgId),
     ]);
-    return { data, power, storeRows, fillRows, refillRows, slotPeriods };
+    return { power, storeRows, fillRows, refillRows, slotPeriods };
   });
+  const [dbRows, data] = await Promise.all([dbP, dataP]);
+  const db = { ...dbRows, data };
 
   const stores = new Map<string, FleetStore>();
   for (const r of Array.from(db.storeRows) as Row[]) {
@@ -201,13 +204,16 @@ export async function loadFleetBaseFor(viewer: Viewer, now: Date): Promise<Fleet
  * För serverkomponenter: flottans läge som den inloggade, en gång per förfrågan (Hem,
  * Automater och Rutt i samma rendering delar det). Ekonomin räknas bara för roller som ser den.
  */
-export const loadFleetState = cache(async (): Promise<FleetState> => {
-  const ctx = await loadContext();
-  const economy = ctx.canSeeEconomy ? loadEconomy() : null;
-  economy?.catch(() => {});
-  const base = await loadFleetBase();
-  return buildFleetState({ ...base, economy: economy ? await economy : null });
-});
+export const loadFleetState = cache(async (): Promise<FleetState> =>
+  // Beror inte på vald period: sparat mellan förfrågningar (ett periodbyte läser inte om det).
+  cachedViewState("fleet", async () => {
+    const ctx = await loadContext();
+    const economy = ctx.canSeeEconomy ? loadEconomy() : null;
+    economy?.catch(() => {});
+    const base = await loadFleetBase();
+    return buildFleetState({ ...base, economy: economy ? await economy : null });
+  }),
+);
 
 /** Indata utom ekonomin, en gång per förfrågan (delas av loadFleetState och loadFleetStatus). */
 const loadFleetBase = cache(async (): Promise<FleetBaseInput> => {

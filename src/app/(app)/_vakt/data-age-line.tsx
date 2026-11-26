@@ -1,7 +1,14 @@
 import Link from "next/link";
+import { cache } from "react";
 
 import { requireViewer } from "@/server/data/core";
 import { loadAwishFreshnessFor, loadMachineAgeFor } from "@/server/monitoring/watch";
+
+/**
+ * Awish-färskheten för den inloggade, en gång per förfrågan (bannern och Senaste köp på Hem
+ * läser samma). Fel som i loadAwishFreshnessFor; den som anropar fångar dem.
+ */
+export const loadAwishFreshness = cache(async () => loadAwishFreshnessFor(await requireViewer()));
 
 /**
  * Hur gammal datan är, per automat (Hem): "Data från Awish: alla 4 automater, 3 min
@@ -43,9 +50,7 @@ export async function DataAgeLine({ className }: { className?: string }) {
  * Binderlab redan har löst ska inte störa. Ingenting utan Awish-källa; ett fel döljer raden.
  */
 export async function AwishFreshnessLine({ className }: { className?: string }) {
-  const f = await requireViewer()
-    .then((viewer) => loadAwishFreshnessFor(viewer))
-    .catch(() => null);
+  const f = await loadAwishFreshness().catch(() => null);
   if (!f || (!f.text && f.status.length === 0)) return null;
   return (
     <div className={className} data-awish-freshness>
@@ -71,9 +76,7 @@ export async function AwishFreshnessLine({ className }: { className?: string }) 
  * ägare och admin. Ingenting när allt fungerar; ett fel döljer bannern.
  */
 export async function AwishOrdersBanner({ className }: { className?: string }) {
-  const f = await requireViewer()
-    .then((viewer) => loadAwishFreshnessFor(viewer))
-    .catch(() => null);
+  const f = await loadAwishFreshness().catch(() => null);
   if (!f?.banner) return null;
   return (
     <p className={className} data-awish-banner>

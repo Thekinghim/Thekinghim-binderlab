@@ -71,7 +71,7 @@ import {
 import type { OrgSettings, PlacementRecord } from "@/server/data/core/types";
 import { storesPlacedIn } from "@/server/reports/sources";
 import { monthSlices, isWholeMonth } from "@/server/settlements/advance";
-import { computeSettlementsTx } from "@/server/settlements/live";
+import { computeSettlementsTx, type LiveSettlement } from "@/server/settlements/live";
 import { parseCorrections, parseStatement } from "@/server/settlements/model";
 
 /** En utbetalning som ska delas. */
@@ -394,7 +394,7 @@ export async function loadAllocationInputsTx(
     grossOre: number;
     historyBp: number[];
   }[] = [];
-  for (const m of monthSlices({ start: from, end: to })) {
+  const monthParts = monthSlices({ start: from, end: to }).map((m) => {
     const inMonth = groups.filter((g) => g.date >= m.start && g.date <= m.end);
     const placed = storesPlacedIn(ctx.placements, { start: m.start, end: m.end });
     const storeIds = [
@@ -402,16 +402,24 @@ export async function loadAllocationInputsTx(
     ];
     const whole = isWholeMonth(m);
     const needLive = storeIds.filter((id) => !(whole && ctx.settlements.has(smKey(id, m.month))));
-    const live =
+    return { m, inMonth, storeIds, whole, needLive };
+  });
+  // Avräkningarna som räknas nu, för alla månader samtidigt (förut en månad i taget).
+  const lives = await Promise.all(
+    monthParts.map(({ m, whole, needLive }) =>
       needLive.length > 0
-        ? await computeSettlementsTx(tx, {
+        ? computeSettlementsTx(tx, {
             organizationId: ctx.organizationId,
             month: m.month,
             storeIds: needLive,
             now,
             ...(whole ? {} : { period: { start: m.start, end: m.end } }),
           })
-        : new Map();
+        : Promise.resolve(new Map<string, LiveSettlement>()),
+    ),
+  );
+  for (const [i, { m, inMonth, storeIds, whole }] of monthParts.entries()) {
+    const live = lives[i] ?? new Map<string, LiveSettlement>();
     for (const storeId of [...storeIds, null]) {
       const mine = inMonth.filter((g) => g.storeId === storeId);
       if (storeId === null && mine.length === 0) continue;

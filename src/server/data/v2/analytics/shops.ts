@@ -31,7 +31,7 @@ import {
 } from "@/domain";
 import { requestPageLoaders } from "@/server/data/page-loaders";
 import { withUserDbFor } from "@/server/access";
-import { loadContext, requireViewer } from "@/server/data/core";
+import { cachedViewState, loadContext, requireViewer, type AppContext } from "@/server/data/core";
 import { correctionsTotal, payoutDueDate } from "@/server/settlements/model";
 import { loadPaymentListFor, type PaymentListItem } from "@/server/settlements/payments";
 import { loadSettlementPageFor, type SettlementRow } from "@/server/settlements/service";
@@ -112,6 +112,11 @@ export function payItems(rows: readonly SettlementRow[], today: IsoDate): PayIte
 export const loadMoneyPay = cache(async (): Promise<MoneyPay | null> => {
   const ctx = await loadContext();
   if (!ctx.canSeeEconomy) return null;
+  // Beror inte på vald period: sparad mellan förfrågningar (core/cachedViewState).
+  return cachedViewState("money-pay", () => moneyPayNow(ctx));
+});
+
+async function moneyPayNow(ctx: AppContext): Promise<MoneyPay> {
   const page = await loadSettlementPageFor(await requireViewer());
   const items = payItems(page.rows, ctx.today);
   return {
@@ -128,7 +133,7 @@ export const loadMoneyPay = cache(async (): Promise<MoneyPay | null> => {
         (a, b) => a.month.localeCompare(b.month) || a.storeName.localeCompare(b.storeName, "sv"),
       ),
   };
-});
+}
 
 /**
  * "Att betala just nu" ur utbetalningarna från Nayax: samma saldon och samma summa som

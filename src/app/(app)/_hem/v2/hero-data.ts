@@ -19,7 +19,7 @@ import {
 } from "@/components/shell/period-state";
 import { middleOut } from "@/components/v2/empty";
 import { profitability } from "@/domain";
-import { loadContext, loadPeriod } from "@/server/data/core";
+import { cachedViewState, loadContext, loadPeriod, type AppContext } from "@/server/data/core";
 import { hemKey, loadHemCore, loadHemProfit } from "@/server/data/v2/analytics/hem-base";
 import { loadMoneyGoal } from "@/server/data/v2/analytics/goal";
 import { loadKpiBand, type KpiBandTile } from "@/server/data/v2/analytics/kpi-band";
@@ -101,8 +101,16 @@ function previousDaily(prev: Parameters<typeof profitability>[0] | null): number
 }
 
 export async function loadHemHero(sp: SearchParamsInput): Promise<HemHeroData | null> {
-  const ctx = await loadContext();
+  const [ctx, p] = await Promise.all([loadContext(), loadPeriod(sp)]);
   if (!ctx.canSeeEconomy) return null;
+  // Sparat mellan förfrågningar per period och filter (cachedViewState; ändringar och
+  // Awish-synken rensar det): tillbaka till en period man nyss såg visar vinsten direkt.
+  return cachedViewState(`hem-hero:${p.period.start}:${p.period.end}:${hemKey(sp)}`, () =>
+    heroNow(sp, ctx),
+  );
+}
+
+async function heroNow(sp: SearchParamsInput, ctx: AppContext): Promise<HemHeroData | null> {
   const key = hemKey(sp);
   const [tiles, home, money, p, top, goal] = await Promise.all([
     loadKpiBand(sp),
@@ -206,7 +214,10 @@ export async function loadGoalCelebration(
 ): Promise<{ titles: string[]; top: string | null; ahead: string } | null> {
   const ctx = await loadContext();
   if (ctx.role !== "owner" || !goal.reached) return null;
-  const month = await loadTopCard({ period: "manad" }).catch(() => null);
+  // Månadens titlar beror inte på vald period: sparade mellan förfrågningar.
+  const month = await cachedViewState("goal-month-top", () =>
+    loadTopCard({ period: "manad" }),
+  ).catch(() => null);
   const ranked = (month ?? []).slice(0, 5).map((t) => t.name);
   return {
     // Solfjäderns ordning: mest såld i mitten (som i tomma lägen).
