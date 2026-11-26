@@ -159,7 +159,7 @@ export default async function ExpansionPage({
           href={`/expansion/saljunderlag?from=${data.period.period.start}&to=${data.period.period.end}`}
           size="sm"
         >
-          Säljunderlag (PDF)
+          <span className="v2-tl">Säljunderlag</span> PDF
         </ButtonLink>
       }
     >

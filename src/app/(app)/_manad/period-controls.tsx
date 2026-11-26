@@ -56,6 +56,7 @@ export function ReopenMonthButton({ month, monthLabel }: { month: string; monthL
       <Modal
         open={open}
         onClose={() => (pending ? undefined : setOpen(false))}
+        dismissible={!pending}
         eyebrow="Stängd månad"
         title={`Öppna ${monthLabel} igen?`}
         description="Då kan priser, avtal, testköp och återbetalningar ändras i månaden. Betalda avräkningar ändras inte. Skillnaden visas på Utbetalning."

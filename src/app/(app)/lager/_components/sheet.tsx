@@ -4,21 +4,10 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 
 import { IconButton } from "@/components/ui/button";
 import { ModalPanel } from "@/components/ui/modal";
+import { useV2Shell } from "@/components/v2/shell/shell-context";
+import { Sheet as V2Sheet } from "@/components/v2/sheet";
 
-/**
- * Registreringsarket på Lager. Samma <dialog> och yta som `Modal` (fokusfälla, Esc,
- * inert bakgrund, ark från botten på mobilen), men med en stängknapp på 44 × 44 px:
- * arket används stående vid automaten, ofta med en hand. `Modal` har 28 px.
- */
-export function Sheet({
-  open,
-  onClose,
-  title,
-  eyebrow,
-  children,
-  footer,
-  closeLabel = "Stäng",
-}: {
+type SheetProps = {
   open: boolean;
   onClose: () => void;
   title: string;
@@ -27,7 +16,44 @@ export function Sheet({
   footer?: ReactNode;
   /** Stängknappens etikett (standard "Stäng"). */
   closeLabel?: string;
-}) {
+};
+
+/**
+ * Registreringsarket på Lager. I appens V2-skal: V2:s ark (vaul), som övriga ark i appen
+ * (dras ner, låser sidan bakom, fält i fokus rullas fram över tangentbordet). Utanför skalet
+ * (Enkel vy, Fyll på): samma <dialog> och yta som `Modal`, men med en stängknapp på
+ * 44 × 44 px: arket används stående vid automaten, ofta med en hand. `Modal` har 28 px.
+ */
+export function Sheet(props: SheetProps) {
+  return useV2Shell() ? <VaulSheet {...props} /> : <DialogSheet {...props} />;
+}
+
+function VaulSheet({ open, onClose, title, eyebrow, children, footer, closeLabel }: SheetProps) {
+  return (
+    <V2Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={title}
+      eyebrow={eyebrow}
+      footer={footer}
+      closeLabel={closeLabel}
+    >
+      {children}
+    </V2Sheet>
+  );
+}
+
+function DialogSheet({
+  open,
+  onClose,
+  title,
+  eyebrow,
+  children,
+  footer,
+  closeLabel = "Stäng",
+}: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 

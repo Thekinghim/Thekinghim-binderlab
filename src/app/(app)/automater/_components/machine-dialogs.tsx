@@ -126,6 +126,7 @@ function FormDialog({
     <Modal
       open={open}
       onClose={close}
+      dismissible={!pending}
       title={title}
       eyebrow={eyebrow}
       description={description}

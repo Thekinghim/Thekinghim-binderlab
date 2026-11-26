@@ -69,6 +69,17 @@
     color: var(--v2-ink);
     font-weight: 650;
   }
+  /* Pekskärm: Stad / Butik / Ingen ritas små men tar emot tryck på ungefär 44 px. */
+  @media (pointer: coarse) {
+    .v2-auto .grp button {
+      position: relative;
+    }
+    .v2-auto .grp button::after {
+      content: "";
+      position: absolute;
+      inset: -9px -1px;
+    }
+  }
 
   /* ---- Raderna ---- */
   .v2-auto .arow {

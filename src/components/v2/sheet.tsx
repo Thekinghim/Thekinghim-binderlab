@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Drawer } from "vaul";
 
 import { usePhone } from "./use-media";
@@ -22,6 +22,9 @@ export function Sheet({
   footer,
   dismissible = true,
   hideHead = false,
+  eyebrow,
+  closeLabel = "Stäng",
+  wide = false,
 }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -36,8 +39,23 @@ export function Sheet({
   dismissible?: boolean;
   /** Rubriken bara för skärmläsare: innehållet börjar med samma namn (t.ex. butikens kort). */
   hideHead?: boolean;
+  /** Liten rad ovanför rubriken (t.ex. titeln arket gäller). */
+  eyebrow?: ReactNode;
+  /** Stängknappens etikett (standard "Stäng"). */
+  closeLabel?: string;
+  /** Bredare låda på datorn (560 px i stället för 420). */
+  wide?: boolean;
 }) {
   const phone = usePhone();
+  // Kontrollerat ark utan `trigger`: Radix lämnar fokus till sin (tomma) trigger när arket
+  // stängs, och fokus hamnar på body. Kom ihåg vad som hade fokus när arket öppnades (innan
+  // innehållet monteras och tar fokus) och lämna tillbaka det, som <dialog> gjorde.
+  const returnTo = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (open && document.activeElement instanceof HTMLElement) {
+      returnTo.current = document.activeElement;
+    }
+  }, [open]);
   return (
     <Drawer.Root
       open={open}
@@ -45,17 +63,29 @@ export function Sheet({
       direction={phone ? "bottom" : "right"}
       dismissible={dismissible}
       repositionInputs
+      // Dator: fokus flyttas in i arket när det öppnas (som <dialog>), så att tangentbordet
+      // inte står kvar på knappen bakom. Inte på telefonen: där skulle ett fält i fokus fälla
+      // upp tangentbordet direkt.
+      autoFocus={!phone}
     >
       {trigger ? <Drawer.Trigger asChild>{trigger}</Drawer.Trigger> : null}
       <Drawer.Portal>
         <Drawer.Overlay className="v2-scrim" />
         <Drawer.Content
-          className="v2-sheet"
+          className={wide ? "v2-sheet wide" : "v2-sheet"}
           // Utan beskrivning: säg det uttryckligen (annars varnar Radix).
           {...(description ? {} : { "aria-describedby": undefined })}
+          onCloseAutoFocus={(e) => {
+            const el = returnTo.current;
+            returnTo.current = null;
+            if (trigger || !el?.isConnected || el === document.body) return;
+            e.preventDefault();
+            el.focus({ preventScroll: true });
+          }}
         >
           {phone ? <span className="grab" aria-hidden="true" /> : null}
           <div className={hideHead ? "sr-only" : "sh"}>
+            {eyebrow ? <p className="eb">{eyebrow}</p> : null}
             <Drawer.Title asChild>
               <h2>{title}</h2>
             </Drawer.Title>
@@ -65,7 +95,7 @@ export function Sheet({
               </Drawer.Description>
             ) : null}
             {!phone ? (
-              <Drawer.Close className="x" aria-label="Stäng">
+              <Drawer.Close className="x" aria-label={closeLabel}>
                 <svg
                   width="18"
                   height="18"

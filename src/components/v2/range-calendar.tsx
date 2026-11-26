@@ -15,14 +15,16 @@ function weekdayIndex(d: Date): number {
   return (d.getDay() + 6) % 7;
 }
 
-function monthGrid(month: Date): Array<Date | null> {
+/** Alltid sex veckor (42 rutor): kalendern har samma höjd varje månad, så att arket och
+ *  knapparna under den inte hoppar när man bläddrar. */
+export function monthGrid(month: Date): Array<Date | null> {
   const first = startOfMonth(month);
   const last = endOfMonth(month);
   const cells: Array<Date | null> = Array.from({ length: weekdayIndex(first) }, () => null);
   for (let d = 1; d <= last.getDate(); d++) {
     cells.push(new Date(month.getFullYear(), month.getMonth(), d));
   }
-  while (cells.length % 7 !== 0) cells.push(null);
+  while (cells.length < 42) cells.push(null);
   return cells;
 }
 
@@ -160,7 +162,7 @@ export function RangeCalendar({
         role="grid"
         aria-label={`Välj intervall, ${formatMonth(month)}`}
         onKeyDown={onKeyDown}
-        onMouseLeave={() => setHover(null)}
+        onPointerLeave={() => setHover(null)}
       >
         <thead>
           <tr>
@@ -201,7 +203,11 @@ export function RangeCalendar({
                       aria-label={`${WEEKDAYS_LONG[weekdayIndex(d)]} ${formatDate(d)}${today ? ", i dag" : ""}`}
                       aria-current={today ? "date" : undefined}
                       onClick={() => pick(d)}
-                      onMouseEnter={() => setHover(d)}
+                      // Förhandsvisningen följer bara musen: på en pekskärm skickar WebKit
+                      // låtsade mushändelser vid tryck, och då fastnade visningen.
+                      onPointerEnter={(e) => {
+                        if (e.pointerType === "mouse") setHover(d);
+                      }}
                       onFocus={() => {
                         setFocus(d);
                         setHover(d);

@@ -124,6 +124,9 @@ async function shot(page: Page, name: string): Promise<string> {
   return screenshot(page, name);
 }
 
+/** Det öppna arket: <dialog> i Enkel vy, V2:s ark (vaul) i appens skal. */
+const OPEN_SHEET = "dialog[open], .v2-sheet";
+
 async function settled(page: Page): Promise<void> {
   // Bara arkets egna, ändliga animationer: sidan bakom kan ha en som aldrig tar slut.
   await until(
@@ -134,7 +137,7 @@ async function settled(page: Page): Promise<void> {
           const timing = a.effect.getComputedTiming();
           if (timing.iterations === Infinity) return true;
           const target = (a.effect as KeyframeEffect).target;
-          const open = document.querySelector("dialog[open]");
+          const open = document.querySelector("dialog[open], .v2-sheet");
           return open !== null && target !== null && !open.contains(target);
         }),
       ),
@@ -305,7 +308,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await sheet.getByText("Comes in about 7 days. The list stops asking for them.").waitFor();
     await qty.fill("56");
     await settled(page);
-    await expectPhoneFit(page, "dialog[open]");
+    await expectPhoneFit(page, OPEN_SHEET);
     await shot(page, "23-t3-ordered-sheet-iphonese");
     await sheet.getByRole("button", { name: "Save as ordered" }).click();
     await page.getByText(`Ordered: 56 packs ${title}.`).first().waitFor();
@@ -351,7 +354,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     // Och vad som blir kvar per pack med det nya priset (149 kr − 118 kr).
     await sheet.getByText(/Kvar per pack blir 31\skr\./).waitFor();
     await settled(page);
-    await expectPhoneFit(page, "dialog[open]");
+    await expectPhoneFit(page, OPEN_SHEET);
     await shot(page, "23-t3-kom-fram-ark-iphonese");
     await sheet.getByRole("button", { name: "Lägg in i lagret" }).click();
     await page
@@ -391,7 +394,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await sheet.getByRole("button", { name: /^New price from today/ }).waitFor();
     await sheet.getByRole("button", { name: /^Fix the old price/ }).waitFor();
     await settled(page);
-    await expectPhoneFit(page, "dialog[open]");
+    await expectPhoneFit(page, OPEN_SHEET);
     await shot(page, "23-t3-price-sheet-iphonese");
     await field.fill("1190");
     await field.press("Enter");
@@ -399,7 +402,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
       .getByText(/1,190\skr is much more than the last price 118\skr\. Is that right\?/)
       .waitFor();
     await settled(page);
-    await expectPhoneFit(page, "dialog[open]");
+    await expectPhoneFit(page, OPEN_SHEET);
     await shot(page, "23-t3-price-doubt-iphonese");
     // Inget är sparat än.
     expect((await prices()).at(-1)?.ore).toBe(11800);
@@ -423,7 +426,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await price.fill("121");
     await sheet.getByText(/^New price 121\skr \(was 119\skr\)\./).waitFor();
     await settled(page);
-    await expectPhoneFit(page, "dialog[open]");
+    await expectPhoneFit(page, OPEN_SHEET);
     expect(await sheet.innerText()).not.toMatch(SWEDISH);
     await shot(page, "23-t3-delivery-price-iphonese");
     await sheet.getByRole("button", { name: "Add", exact: true }).click();
@@ -513,7 +516,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     expect(await way.getByLabel("Number of packs").inputValue()).toBe("10");
     await way.getByRole("button", { name: /They are not coming/ }).waitFor();
     await settled(page);
-    await expectPhoneFit(page, "dialog[open]");
+    await expectPhoneFit(page, OPEN_SHEET);
     expect(await way.innerText()).not.toMatch(SWEDISH);
     await shot(page, "23-t3-not-coming-iphonese");
     await way.getByRole("button", { name: /They are not coming/ }).click();

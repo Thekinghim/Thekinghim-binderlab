@@ -6,15 +6,23 @@ import { changedField, hasUnsavedInput, isTypingIn, setUnsavedInput } from "./un
 function fakeDocument({
   active = null,
   dialogOpen = false,
+  sheetOpen = false,
   fields = [],
 }: {
   active?: object | null;
   dialogOpen?: boolean;
+  /** Ett öppet V2-ark (vaul). */
+  sheetOpen?: boolean;
   fields?: object[];
 } = {}): Document {
   return {
     activeElement: active,
-    querySelector: (sel: string) => (sel === "dialog[open]" && dialogOpen ? {} : null),
+    querySelector: (sel: string) => {
+      const parts = sel.split(",").map((p) => p.trim());
+      if (dialogOpen && parts.includes("dialog[open]")) return {};
+      if (sheetOpen && parts.includes('.v2-sheet[data-state="open"]')) return {};
+      return null;
+    },
     querySelectorAll: () => fields,
   } as unknown as Document;
 }
@@ -52,6 +60,10 @@ describe("osparad inmatning", () => {
 
   it("en öppen dialog: osparat", () => {
     expect(hasUnsavedInput(fakeDocument({ dialogOpen: true }))).toBe(true);
+  });
+
+  it("ett öppet ark (V2): osparat", () => {
+    expect(hasUnsavedInput(fakeDocument({ sheetOpen: true }))).toBe(true);
   });
 
   it("ändrat formulärfält: osparat", () => {

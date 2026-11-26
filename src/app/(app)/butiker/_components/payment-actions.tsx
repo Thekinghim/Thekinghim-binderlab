@@ -126,6 +126,7 @@ export function RegisterPaymentButton({
       <Modal
         open={open}
         onClose={() => (pending ? undefined : setOpen(false))}
+        dismissible={!pending}
         eyebrow="Betalning till butik"
         title={preview ? "Så delas betalningen" : "Registrera betalning"}
         description={
@@ -290,6 +291,7 @@ export function DeletePaymentButton({
       <Modal
         open={open}
         onClose={() => (pending ? undefined : setOpen(false))}
+        dismissible={!pending}
         eyebrow="Betalning till butik"
         title={`Ta bort ${exactKr(amountOre)} till ${storeName}?`}
         description={`Betalningen för ${periodLabel} försvinner. Avräkningar som var betalda med den blir obetalda igen.`}

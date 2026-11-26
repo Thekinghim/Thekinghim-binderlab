@@ -906,7 +906,9 @@
     border-collapse: collapse;
     width: 100%;
     font-size: var(--v2-t-sm);
-    min-width: 620px;
+    /* Ingen fast minsta bredd: med få månader gick överskottet till den låsta första kolumnen,
+       som då täckte hela rutan på telefonen och dolde siffrorna. Tabellen blir ändå så bred
+       som innehållet kräver (nowrap) och rullar i sidled. */
   }
   .g4-yt th,
   .g4-yt td {
@@ -933,6 +935,22 @@
   }
   .g4-yt thead th[aria-sort="ascending"] button::after {
     content: " ↑";
+  }
+  /* Pekskärm: månadsrubrikerna sorterar och tar emot tryck på ungefär 44 px (rubrikraden blir
+     lite högre, resten av ytan går ner över första raden, som inte går att trycka på). */
+  @media (pointer: coarse) {
+    .g4-yt thead th {
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+    .g4-yt thead button {
+      position: relative;
+    }
+    .g4-yt thead button::before {
+      content: "";
+      position: absolute;
+      inset: -10px -6px -20px;
+    }
   }
   .g4-yt tbody th,
   .g4-yt tfoot th,

@@ -314,7 +314,7 @@ export default async function KontraktPage({
         />
 
         <div>
-          <ViewTabs tabs={TABS} value={tab} basePath="/avtal" query="" label="Visa" />
+          <ViewTabs tabs={TABS} value={tab} basePath="/avtal" query="" label="Visa" scroll />
         </div>
 
         <div key={tab} className="v2-enter v2-stack">

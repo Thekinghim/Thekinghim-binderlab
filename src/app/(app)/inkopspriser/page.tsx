@@ -262,7 +262,8 @@ export default async function PurchasePricesPage({
               Varor i Awish
             </ButtonLink>
             <ButtonLink href="/inkopspriser/ny-produkt?flik=ny" size="sm" variant="act">
-              + Ny produkt
+              <span aria-hidden="true">+</span>
+              <span className="v2-tl">Ny produkt</span>
             </ButtonLink>
           </>
         ) : undefined

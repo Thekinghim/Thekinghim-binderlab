@@ -185,6 +185,7 @@ export function RecipientActions({ recipient }: { recipient: RecipientView }) {
       <Modal
         open={dialog === "delete"}
         onClose={() => (pending ? undefined : setDialog(null))}
+        dismissible={!pending}
         eyebrow="Butiker / Mottagare"
         title={`Ta bort ${recipient.name}?`}
         description={`${recipient.email} får inga fler rapporter för butiken. En mottagare som redan fått rapporter kan bara pausas.`}

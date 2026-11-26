@@ -166,7 +166,9 @@ export default async function VartLagerPage({
       tools={
         view.canEdit ? (
           <>
-            <ButtonLink href="/vart-lager?vy=andra">Ändra antal</ButtonLink>
+            <ButtonLink href="/vart-lager?vy=andra">
+              Ändra<span className="v2-tl"> antal</span>
+            </ButtonLink>
             <Link href="/vart-lager/mystery" className="v2-btn max-[900px]:hidden">
               Mystery packs
             </Link>

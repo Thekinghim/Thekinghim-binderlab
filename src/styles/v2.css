@@ -585,6 +585,24 @@
       display: none;
     }
   }
+  /* Smal telefon (320 px, iPhone SE 1 och zoomad visning): sidhuvudets knappar visar bara
+     ikonen eller ett kort ord, så att rubriken inte kortas till "Kon…". Texten finns kvar för
+     skärmläsaren. */
+  @media (max-width: 359px) {
+    .v2-top .v2-tl {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .v2-top :is(a, button):has(.v2-tl) {
+      gap: 0;
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+  }
   .v2-sub {
     margin: 2px 22px 0;
     /* En rad även medan raden laddar (skeleton), så att sidan under inte hoppar. */
@@ -874,6 +892,36 @@
     }
     .v2-btn:where(.sm)::after {
       inset: -8px -2px;
+    }
+  }
+  /* Pekskärm: små kontroller (textlänkar i kortens huvud, chips, segment, arkets kryss) ritas
+     som förut men tar emot tryck på ungefär 44 px med en osynlig kant runt om. */
+  @media (pointer: coarse) {
+    [data-ui="v2"] :is(a, button).lk {
+      position: relative;
+    }
+    [data-ui="v2"] :is(a, button).lk::after {
+      content: "";
+      position: absolute;
+      inset: -13px -8px;
+    }
+    .v2-chips button {
+      position: relative;
+    }
+    .v2-chips button::after {
+      content: "";
+      position: absolute;
+      inset: -4px -3px;
+    }
+    .v2-seg button::after {
+      content: "";
+      position: absolute;
+      inset: -8px 0;
+    }
+    .v2-sheet .x::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1685,6 +1733,12 @@
     color: var(--v2-mute);
     margin-top: 4px;
   }
+  .v2-sheet .sh .eb {
+    margin: 0 0 2px;
+  }
+  .v2-sheet[data-vaul-drawer-direction="right"].wide {
+    width: 560px;
+  }
   .v2-sheet .x {
     position: absolute;
     top: 10px;
@@ -2460,6 +2514,22 @@
   .v2-psheet .v2-cal td button {
     height: 42px;
     font-size: var(--v2-t-md);
+  }
+  /* Pekskärm (periodarket på telefonen, rutan på en pekskärm): snabbvalen och månadspilarna
+     är 44 px, Apples minsta tryckyta. */
+  @media (pointer: coarse) {
+    .v2-ppresets button,
+    .v2-psheet .v2-ppresets button {
+      height: 44px;
+      padding: 0 14px;
+    }
+    .v2-cal-hd .v2-btn.ico {
+      width: 44px;
+      height: 44px;
+    }
+    .v2-cal-hd .v2-btn.ico::after {
+      content: none;
+    }
   }
   .v2-psheet .v2-pfoot .v2-btn {
     flex: none;
