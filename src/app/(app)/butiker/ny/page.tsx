@@ -91,6 +91,7 @@ export default async function NyButikPage({
               lead={lead}
               operator={setup.operator}
               today={ctx.today}
+              owner={`${viewer.organization.id}:${viewer.user.userId}`}
             />
           </CardBody>
         </Card>

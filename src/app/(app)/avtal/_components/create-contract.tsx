@@ -78,6 +78,7 @@ export function CreateContract({
   variant = "primary",
   large = false,
   label = "Skapa kontrakt",
+  owner,
 }: {
   options: readonly CreateContractOption[];
   operator: ContractParty;
@@ -94,6 +95,8 @@ export function CreateContract({
   /** Stor knapp (sidans huvudåtgärd). */
   large?: boolean;
   label?: string;
+  /** Organisation och användare: utkastet är personens eget (inte nästa inloggads). */
+  owner: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -103,7 +106,7 @@ export function CreateContract({
   const step = url.step ?? 0;
   const startOf = (value: string) => options.find((o) => o.value === value)?.suggestedFrom ?? today;
   const firstTarget = first ? initialTarget! : (options[0]?.value ?? "");
-  const [saved, setDraft] = useScopedStore(draftStore, initialTarget ?? "");
+  const [saved, setDraft] = useScopedStore(draftStore, `${owner}|${initialTarget ?? ""}`);
   // Ett sparat utkast för en butik som inte längre går att välja glöms.
   const draft: ContractDraft =
     saved && options.some((o) => o.value === saved.target)

@@ -135,6 +135,7 @@ export function StoreGuide({
   lead,
   operator,
   today,
+  owner,
 }: {
   found: readonly GuideMachine[];
   preselected: string | null;
@@ -142,6 +143,8 @@ export function StoreGuide({
   lead: GuideLead | null;
   operator: ContractParty;
   today: string;
+  /** Organisation och användare: utkastet är personens eget (inte nästa inloggads). */
+  owner: string;
 }) {
   const toast = useToast();
   // Steget i adressen (?steg=2 … 5; Butik utan steg): svepet bakåt backar ett steg.
@@ -149,7 +152,7 @@ export function StoreGuide({
   const step = url.step ?? 0;
   const toUrl = (s: number) => (s === 0 ? null : s);
   const hydrated = useHydrated();
-  const scope = `${lead?.id ?? ""}|${preselected ?? ""}`;
+  const scope = `${owner}|${lead?.id ?? ""}|${preselected ?? ""}`;
   const [saved, setDraft] = useScopedStore(draftStore, scope);
   const fresh = useMemo<GuideDraft>(
     () => ({
@@ -196,8 +199,14 @@ export function StoreGuide({
   useUnsavedWarning(dirty);
 
   useEffect(() => {
-    if (!hydrated || finishing.current) {
-      if (step === 4) finishing.current = false;
+    if (!hydrated) return;
+    if (finishing.current) {
+      // Klart står i adressen: härifrån lämnar ett steg bakåt guiden. (Det behövs ingen
+      // ny rendering efter den här för att det ska gälla.)
+      if (step === 4) {
+        finishing.current = false;
+        shownDone.current = true;
+      }
       return;
     }
     if (contract) {

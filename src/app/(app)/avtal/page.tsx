@@ -280,6 +280,7 @@ export default async function KontraktPage({
             firstContract={firstContract}
             initialTarget={skapa}
             autoOpen={Boolean(skapa)}
+            owner={`${viewer.organization.id}:${viewer.user.userId}`}
           />
         ) : undefined
       }
