@@ -167,6 +167,26 @@ export function CreateContract({
     if (step === 3 && !done && !pending) replace(2);
   }, [step, done, pending, replace]);
 
+  // Klart har visats: ett steg bakåt därifrån (svepet) stänger rutan, som Stäng. Flaggan
+  // sätts först när Klart står i adressen, så att renderingen mellan sparat kontrakt och
+  // bytt steg inte räknas som ett steg bakåt.
+  const shownDone = useRef(false);
+  useEffect(() => {
+    if (!done || !open) {
+      shownDone.current = false;
+      return;
+    }
+    if (step === 3) {
+      shownDone.current = true;
+      return;
+    }
+    if (shownDone.current) {
+      shownDone.current = false;
+      url.back(null);
+      router.refresh();
+    }
+  });
+
   useUnsavedWarning(open && !done && JSON.stringify(terms) !== JSON.stringify(DEFAULT_TERMS));
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
