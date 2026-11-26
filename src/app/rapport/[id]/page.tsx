@@ -35,8 +35,17 @@ const BADGE_TONE: Record<ReportStatus, string> = {
  * till PDF av servern (headless Chromium med den inloggades cookies). Kräver inloggning
  * och rollen ägare, admin eller läsare (kontrolleras i getReportFor, och RLS).
  */
-export default async function ReportPrintPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function ReportPrintPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ utskrift?: string | string[] }>;
+}) {
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
+  // ?utskrift=1: PDF:en kunde inte skapas här (fil-routen skickade hit). Då är utskriften enda
+  // vägen till en PDF, också på telefonen: Skriv ut visas och arket flödar inte.
+  const printFallback = sp.utskrift === "1";
   const viewer = await currentReportViewer().catch((error: unknown) => {
     if (error instanceof AuthorizationError) redirect("/");
     throw error;
@@ -60,7 +69,7 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
   return (
     <ReportChrome
       // Telefon: arket flödar i skärmens bredd (utskriften är oförändrad; PDF:en är en fil).
-      reflow
+      reflow={!printFallback}
       back={{ href: back, label: "Rapporter" }}
       crumb={
         <>
@@ -78,12 +87,16 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
               key={kind}
               href={`/rapport/${report.id}/fil/${kind}`}
               fallbackName={`rapport.${kind}`}
+              // PDF:en kan bli utskriftssidan (omdirigering) när den inte kan skapas här.
+              download={kind !== "pdf"}
               className="v2-btn touch"
             >
               {FILE_LABEL[kind]}
             </DownloadLink>
           ))}
-          <V2PrintButton desktopOnly={kinds.includes("pdf")}>Skriv ut</V2PrintButton>
+          <V2PrintButton desktopOnly={kinds.includes("pdf") && !printFallback}>
+            Skriv ut
+          </V2PrintButton>
         </>
       }
     >

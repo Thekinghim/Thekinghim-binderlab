@@ -147,6 +147,7 @@ export default async function StyrPage({ params }: { params: Params }) {
           code={machine.code}
           online={data.online}
           blocked={styrBlocked(data)}
+          versionBlocked={data.versionBlocked}
         />
         <ScheduleCard
           machineId={machine.id}

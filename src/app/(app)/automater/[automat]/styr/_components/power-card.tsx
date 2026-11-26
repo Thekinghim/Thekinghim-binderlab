@@ -18,15 +18,21 @@ export function PowerCard({
   code,
   online,
   blocked,
+  versionBlocked,
 }: {
   machineId: string;
   code: string;
   online: boolean | null;
   /**
-   * Inget kan skickas (inloggningen saknas, versionsbyte eller signering, styrBlocked): båda
+   * Inget kan skickas (inloggningen saknas eller signeringen godkänns inte, styrBlocked): båda
    * knapparna är avstängda. Varför står överst på sidan, en gång, med vägen till Datakällor.
    */
   blocked: boolean;
+  /**
+   * Awish bytte version (inte bekräftat): bara Stäng av är pausad. Omstart kräver inget
+   * versionsbyte (guard.ts: den behövs ibland just när något är fel).
+   */
+  versionBlocked: boolean;
 }) {
   // Förhandsvisningen läses från servern: den ger beviset som bekräftelsen kräver.
   const reboot = useFlow<PowerPreview>();
@@ -67,7 +73,7 @@ export function PowerCard({
             <Button
               touch
               className="styr-danger-outline"
-              disabled={offline || blocked}
+              disabled={offline || blocked || versionBlocked}
               onClick={() =>
                 shutdown.start(() => previewPowerAction({ machineId, method: "SHUTDOWN" }))
               }

@@ -129,16 +129,16 @@ async function machineByCode(viewer: Viewer, code: string): Promise<StyrMachine 
 }
 
 /**
- * Kan inget skickas till automaten just nu? Inloggningen saknas, Awish bytte version (inte
- * bekräftat) eller signeringen godkänns inte. Sidan säger varför överst (en gång); knapparna
- * är då avstängda.
+ * Kan inget skickas till automaten just nu? Inloggningen saknas eller signeringen godkänns
+ * inte (guard.ts stoppar då allt). Sidan säger varför överst (en gång); knapparna är då
+ * avstängda. Ett obekräftat versionsbyte stoppar inte omstarten (bara Stäng av), så det
+ * räknas inte här.
  */
 export function styrBlocked(data: {
   readonly missingCredentials: string | null;
-  readonly versionBlocked: boolean;
   readonly signFailed: boolean;
 }): boolean {
-  return data.missingCredentials !== null || data.versionBlocked || data.signFailed;
+  return data.missingCredentials !== null || data.signFailed;
 }
 
 export async function loadStyrPage(

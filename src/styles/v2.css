@@ -705,6 +705,10 @@
     .v2-filters-fold:not([data-open]) .v2-filters {
       display: none;
     }
+    /* Order har en egen filterknapp (.ord-pbar, order.css): ingen Filter-knapp till. */
+    .ord-v2 > .v2-filters-fold {
+      display: none;
+    }
   }
   .v2-page-body {
     padding: 16px 22px 24px;
