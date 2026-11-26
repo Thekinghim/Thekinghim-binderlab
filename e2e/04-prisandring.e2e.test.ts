@@ -74,6 +74,19 @@ function newPrice(): string {
  * om ett extra tryck. Testets pris är slumpat, så frågan kommer ibland: svara ja då.
  */
 async function confirmIfAsked(saved: Locator): Promise<void> {
+  // "Rätta priset" frågar först när det skriver om priset för order som redan har ett.
+  const fix = page.getByRole("button", { name: "Ja, rätta priset" });
+  const asked = await Promise.race([
+    saved.waitFor().then(
+      () => false,
+      () => false,
+    ),
+    fix.waitFor().then(
+      () => true,
+      () => false,
+    ),
+  ]);
+  if (asked) await fix.click();
   const yes = page.getByRole("button", { name: "Ja, spara ändå" });
   // Förloraren avbryts när sidan stängs: felet fångas här och blir null.
   const first = await Promise.race([

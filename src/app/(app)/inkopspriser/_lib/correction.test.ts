@@ -5,7 +5,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { correctionText as rawText, correctionToast as rawToast, planCorrection } from "./model";
+import {
+  correctionRewrites,
+  correctionText as rawText,
+  correctionToast as rawToast,
+  defaultPriceAction,
+  planCorrection,
+} from "./model";
 
 const NBSP = " ";
 const MINUS = "\u2212";
@@ -216,5 +222,38 @@ describe("planCorrection", () => {
       today: TODAY,
     });
     expect(correctionToast(c)).toBe(`Priset rättat – vinsten ändrades med +0,50${NBSP}kr`);
+  });
+});
+
+describe("correctionRewrites och defaultPriceAction (frågan före att rätta bakåt)", () => {
+  it("räknar bara order som redan har ett pris och får ett annat", () => {
+    const c = planCorrection({
+      prices: PRICES,
+      orderDays: DAYS,
+      unitCostOre: 9_000,
+      closedMonths: [],
+      today: TODAY,
+    });
+    expect(correctionRewrites(c)).toBe(c.affectedOrders - c.ordersGainingPrice);
+    expect(correctionRewrites(c)).toBeGreaterThan(0);
+  });
+
+  it("utan tidigare pris skrivs inget om, och ingen rättelse ger 0", () => {
+    const first = planCorrection({
+      prices: [],
+      orderDays: DAYS,
+      unitCostOre: 9_000,
+      closedMonths: [],
+      today: TODAY,
+    });
+    expect(first.ordersGainingPrice).toBe(first.affectedOrders);
+    expect(correctionRewrites(first)).toBe(0);
+    expect(correctionRewrites(null)).toBe(0);
+    expect(correctionRewrites({ start: null, affectedOrders: 5, ordersGainingPrice: 0 })).toBe(0);
+  });
+
+  it("Retur: nytt pris från i dag när titeln har ett pris, annars priset för all försäljning", () => {
+    expect(defaultPriceAction(true)).toBe("today");
+    expect(defaultPriceAction(false)).toBe("correct");
   });
 });
