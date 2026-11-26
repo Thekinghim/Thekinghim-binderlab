@@ -165,6 +165,15 @@
       flex-wrap: wrap;
       gap: 8px 16px;
     }
+    /* Nyckeltalen: enheten (kr) under talet när spalten är smal, i stället för avklippt. */
+    .rp-chrome[data-reflow] .bl-kpis dd {
+      flex-wrap: wrap;
+    }
+    /* Betalare, mottagare och fakturan under varandra: tre spalter fick inte plats. */
+    .rp-chrome[data-reflow] .bl-basis {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+    }
     /* Breda tabeller rullar i sidled i stället för att trycka ut sidan. */
     .rp-chrome[data-reflow] .bl-page-body {
       overflow-x: auto;

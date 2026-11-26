@@ -87,8 +87,6 @@ export default async function ReportPrintPage({
               key={kind}
               href={`/rapport/${report.id}/fil/${kind}`}
               fallbackName={`rapport.${kind}`}
-              // PDF:en kan bli utskriftssidan (omdirigering) när den inte kan skapas här.
-              download={kind !== "pdf"}
               className="v2-btn touch"
             >
               {FILE_LABEL[kind]}

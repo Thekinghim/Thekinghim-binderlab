@@ -572,10 +572,10 @@ export function StoreReportDocument({
           className={
             vat.length > 3
               ? // Med "Redan betalt" och "Kvar att betala": bredare spalt för beloppen.
-                "grid grid-cols-[4fr_3fr_5fr] items-start gap-[6mm]"
+                "bl-basis grid grid-cols-[4fr_3fr_5fr] items-start gap-[6mm]"
               : vat.length > 0 || nothingToInvoice
-                ? "grid grid-cols-[5fr_3fr_4fr] items-start gap-[6mm]"
-                : "grid grid-cols-[5fr_7fr] items-start gap-[6mm]"
+                ? "bl-basis grid grid-cols-[5fr_3fr_4fr] items-start gap-[6mm]"
+                : "bl-basis grid grid-cols-[5fr_7fr] items-start gap-[6mm]"
           }
         >
           {basisFacts}

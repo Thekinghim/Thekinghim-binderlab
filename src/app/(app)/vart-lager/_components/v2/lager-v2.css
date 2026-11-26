@@ -206,6 +206,8 @@
   align-items: flex-end;
   min-width: 0;
   overflow: hidden;
+  /* Klipper även skärmläsartexten (sr-only, absolut): annars breddade den sidan på 320 px. */
+  position: relative;
 }
 .v2-lager .wp {
   display: flex;

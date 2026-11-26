@@ -164,7 +164,7 @@ export function ReportKpiRow({
 }) {
   return (
     <dl
-      className={cn("grid border-t border-line-strong", className)}
+      className={cn("bl-kpis grid border-t border-line-strong", className)}
       style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
     >
       {items.map((k, i) => (

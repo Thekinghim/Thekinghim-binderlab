@@ -7,15 +7,16 @@ import { toastV2 } from "./toast";
 
 /**
  * En nedladdningslänk (CSV, månadspaket) som på telefonen öppnar delningsarket med filen i
- * stället för att lämna appen. På datorn, och utan JavaScript, en vanlig länk med download.
+ * stället för att lämna appen. På datorn, och utan JavaScript, en vanlig länk: servern skickar
+ * filen som bilaga (Content-Disposition: attachment), så den sparas utan `download`.
  *
  * Svarar servern med en sida i stället för en fil (en omdirigering, t.ex. rapportens
- * utskriftssida när PDF:en inte kan skapas, eller inloggningen) öppnas sidan som vanligt.
+ * utskriftssida när PDF:en inte kan skapas, eller inloggningen) öppnas sidan som vanligt,
+ * också på datorn (med `download` hade sidan sparats som fil, t.ex. "logga-in.html").
  */
 export function DownloadLink({
   href,
   fallbackName,
-  download = true,
   onClick,
   children,
   ...rest
@@ -23,11 +24,6 @@ export function DownloadLink({
   href: string;
   /** Filnamnet när servern inte säger något (Content-Disposition). */
   fallbackName: string;
-  /**
-   * `download` på länken (datorn). false när servern kan svara med en sida i stället för en
-   * fil (rapportens PDF): då öppnas sidan i stället för att sparas som fil.
-   */
-  download?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const handle = async (e: MouseEvent<HTMLAnchorElement>) => {
@@ -61,13 +57,7 @@ export function DownloadLink({
     }
   };
   return (
-    <a
-      {...rest}
-      href={href}
-      download={download || undefined}
-      onClick={handle}
-      aria-busy={busy || undefined}
-    >
+    <a {...rest} href={href} onClick={handle} aria-busy={busy || undefined}>
       {children}
     </a>
   );
