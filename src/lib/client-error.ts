@@ -17,14 +17,25 @@ export const CLIENT_ERROR_LIMITS = {
   userAgent: 300,
 } as const;
 
-/** Var felet fångades: felrutan (en felgräns) eller lyssnarna på window. */
-export type ClientErrorSource = "boundary" | "error" | "unhandledrejection";
+/**
+ * Var felet fångades: felrutan (en felgräns) eller lyssnarna på window. "viewport" är inget fel
+ * utan fältdata från bottenradens ViewportPin (se viewport-pin-telemetry.ts).
+ */
+export type ClientErrorSource = "boundary" | "error" | "unhandledrejection" | "viewport";
+
+/** ViewportPins mått: kolumnnamn, skärmhöjd och högst 12 rader med tal. */
+export interface ClientErrorViewport {
+  cols: string;
+  screen: number;
+  rows: string[];
+}
 
 export interface ClientErrorExtra {
   source: ClientErrorSource;
   online?: boolean;
   standalone?: boolean;
   visibility?: string;
+  vp?: ClientErrorViewport;
 }
 
 export interface ClientErrorReport {
@@ -75,8 +86,33 @@ function optional(value: unknown, max: number): string | null {
   return text ? text : null;
 }
 
-const SOURCES: readonly ClientErrorSource[] = ["boundary", "error", "unhandledrejection"];
+const SOURCES: readonly ClientErrorSource[] = [
+  "boundary",
+  "error",
+  "unhandledrejection",
+  "viewport",
+];
 const VISIBILITY = /^(visible|hidden|prerender|unloaded)$/;
+const VP_COLS = /^[A-Za-z,]{1,120}$/;
+const VP_ROW = /^[A-Za-z0-9,-]{1,80}$/;
+/** Så att extra ryms i databasens gräns (1000 byte, annars sparas {}). */
+const VP_MAX_JSON = 800;
+
+/** ViewportPins mått om de har rätt form (bara tal, kommatecken och händelsenamn), annars null. */
+function clampViewport(value: unknown): ClientErrorViewport | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.cols !== "string" || !VP_COLS.test(v.cols)) return null;
+  if (typeof v.screen !== "number" || !Number.isFinite(v.screen)) return null;
+  if (!Array.isArray(v.rows) || v.rows.length > 12) return null;
+  if (!v.rows.every((r) => typeof r === "string" && VP_ROW.test(r))) return null;
+  const vp: ClientErrorViewport = {
+    cols: v.cols,
+    screen: Math.round(Math.max(0, Math.min(10_000, v.screen))),
+    rows: v.rows as string[],
+  };
+  return JSON.stringify(vp).length <= VP_MAX_JSON ? vp : null;
+}
 
 /**
  * Ett giltigt klientfel ur det som skickades (okänd form), eller null om det inte går att
@@ -100,6 +136,10 @@ export function clampClientError(input: unknown): ClientErrorReport | null {
   if (typeof rawExtra.standalone === "boolean") extra.standalone = rawExtra.standalone;
   if (typeof rawExtra.visibility === "string" && VISIBILITY.test(rawExtra.visibility)) {
     extra.visibility = rawExtra.visibility;
+  }
+  if (source === "viewport") {
+    const vp = clampViewport(rawExtra.vp);
+    if (vp) extra.vp = vp;
   }
   return {
     path: scrubPath(v.path),

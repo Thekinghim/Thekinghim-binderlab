@@ -103,6 +103,65 @@ export function reportClientError(
   }
 }
 
+const VIEWPORT_KEY = "binderlab:vp-report";
+let viewportLast: number | null = null;
+
+/**
+ * Skickar ViewportPins mått (se viewport-pin-telemetry.ts) som en rad i klientfelen, med
+ * message "ViewportPin: <orsak>", raderna i stack och i extra.vp. `due` avgör om det är dags
+ * (en gång per tio minuter, mätt i sessionStorage och i minnet). Kastar aldrig.
+ */
+export function reportViewportSample(
+  reason: string,
+  vp: { cols: string; screen: number; rows: string[] },
+  due: (last: number | null, now: number) => boolean,
+): void {
+  try {
+    if (typeof window === "undefined") return;
+    const now = Date.now();
+    let last = viewportLast;
+    try {
+      const raw = Number(window.sessionStorage.getItem(VIEWPORT_KEY));
+      if (raw > 0 && (last === null || raw > last)) last = raw;
+    } catch {
+      // Utan sessionStorage gäller tiden i minnet.
+    }
+    if (!due(last, now)) return;
+    viewportLast = now;
+    try {
+      window.sessionStorage.setItem(VIEWPORT_KEY, String(now));
+    } catch {
+      // Utan sessionStorage gäller tiden i minnet.
+    }
+    const payload = {
+      path: window.location.pathname,
+      message: `ViewportPin: ${reason.replace(/[^a-z0-9 -]/gi, "").slice(0, 40)}`,
+      stack: [vp.cols, ...vp.rows].join("\n"),
+      digest: null,
+      buildId: loadedBuildId(),
+      userAgent: navigator.userAgent,
+      extra: {
+        source: "viewport" satisfies ClientErrorSource,
+        online: navigator.onLine,
+        standalone: standalone(),
+        visibility: document.visibilityState,
+        vp,
+      },
+    };
+    void fetch(ENDPOINT, {
+      method: "POST",
+      credentials: "same-origin",
+      keepalive: true,
+      cache: "no-store",
+      redirect: "manual",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  } catch {
+    // Mätningen får aldrig ge ett fel.
+  }
+}
+
 let listening = false;
 
 /**

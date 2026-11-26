@@ -2,14 +2,19 @@
 
 import { useEffect } from "react";
 
+import { reportViewportSample } from "@/components/pwa/client-error-report";
+
 import {
   forgetsHealthy,
   HealthyTracker,
   isTypingTarget,
   keyboardUp,
   looksStuck,
-  pinShift,
+  pinDecision,
+  RELEARN_MS,
+  STUCK_MIN_GAP,
 } from "./viewport-pin";
+import { REPORT_EVERY_MS, reportDue, SnapshotRing, vpReport } from "./viewport-pin-telemetry";
 
 const DEBUG_KEY = "binderlab:vp-debug";
 
@@ -20,7 +25,9 @@ const DEBUG_KEY = "binderlab:vp-debug";
  * bottenraden inte står mitt i vägen ovanför det.
  *
  * Felsökning på telefonen: öppna valfri sida med `?vp=1` (av: `?vp=0`) så visas måtten uppe
- * till vänster.
+ * till vänster. I hemskärmsappen skickas dessutom de senaste måtten till klientfelen när raden
+ * flyttas, när skyddet mot en för liten förskjutning slår till eller när raden hamnar nedanför
+ * den friska höjden (viewport-pin-telemetry.ts).
  */
 export function ViewportPin() {
   useEffect(() => {
@@ -51,41 +58,115 @@ export function ViewportPin() {
     let raf = 0;
     let lastVvHeight = vv.height;
     const timers: number[] = [];
+    // Fältdata (bara hemskärmsappen): de senaste måtten och när appen senast kom tillbaka.
+    const ring = new SnapshotRing();
+    let resumedAt = performance.now();
+    let reportTimer = 0;
+    let pendingReason = "";
+    let quietUntil = 0;
+    let recheckTimer = 0;
+    let event = "start";
 
-    const measure = () => {
+    let lastGap = 0;
+    // Ett glapp i storlek med statusraden (som skyddet inte flyttar): värt att se i fältdatan.
+    const smallGap = (gap: number) => gap >= 20 && gap < STUCK_MIN_GAP;
+    // Det fasta innehållet hamnar nedanför den friska höjden (WebKit ritar raden under
+    // skärmkanten, något vi aldrig rättar uppåt): just det felet vill vi se i fältdatan.
+    const below = (gap: number) => gap <= -20;
+    const minor = (reason: string) => reason === "small gap" || reason === "below";
+
+    const report = (reason: string, stillTrue: () => boolean = () => true) => {
+      if (!useHealthy || Date.now() < quietUntil) return;
+      // En väntande "small gap"/"below" får ge plats åt en flyttad rad eller en omlärd höjd.
+      if (reportTimer && (!minor(pendingReason) || minor(reason))) return;
+      window.clearTimeout(reportTimer);
+      pendingReason = reason;
+      // Vänta lite så att raderna också visar vad som hände efteråt.
+      reportTimer = window.setTimeout(() => {
+        reportTimer = 0;
+        // Bara ett glapp som håller i sig (inte en bildruta medan tangentbordet går ner).
+        if (!stillTrue()) return;
+        quietUntil = Date.now() + REPORT_EVERY_MS;
+        reportViewportSample(reason, vpReport(ring.rows(), screenMax), reportDue);
+      }, 2000);
+    };
+
+    const measure = (ev = "measure") => {
+      event = ev;
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
+        const cause = event;
         const typing = isTypingTarget(document.activeElement);
         const naturalBottom = probe.getBoundingClientRect().bottom;
         const visibleBottom = vv.offsetTop + vv.height;
+        // Ett vaul-ark är öppet (eller låser body): mätningen kan påverkas, lär inget då.
+        const drawerOpen =
+          document.querySelector("[data-vaul-drawer]") !== null ||
+          document.body.style.position === "fixed";
+        const scrollY = window.scrollY;
         let healthyBottom = 0;
+        let relearned = false;
         if (useHealthy) {
           const r = healthy.sample({
             innerWidth: window.innerWidth,
             innerHeight: window.innerHeight,
             vvWidth: vv.width,
             vvHeight: vv.height,
+            vvTop: vv.offsetTop,
             naturalBottom,
             typing,
             scale: vv.scale,
+            blocked: drawerOpen,
+            now: performance.now(),
             screenMin,
             screenMax,
           });
           healthyBottom = r.healthy;
+          relearned = r.relearned;
           if (r.confirm && confirmFrames < 30) {
             confirmFrames++;
-            measure(); // nästa bildruta
+            measure("confirm"); // nästa bildruta
           } else if (!r.confirm) {
             confirmFrames = 0;
           }
+          // En lägre höjd väntar på att ligga still: mät igen när den gjort det.
+          if (r.recheck && !recheckTimer) {
+            recheckTimer = window.setTimeout(() => {
+              recheckTimer = 0;
+              measure("recheck");
+            }, RELEARN_MS + 100);
+          }
         }
-        const next = pinShift({
+        const decision = pinDecision({
           naturalBottom,
           visibleBottom,
+          visibleTop: vv.offsetTop,
           healthyBottom,
           scale: vv.scale,
           typing,
+          learned: useHealthy,
         });
+        const next = decision.shift;
+        if (useHealthy) {
+          ring.push({
+            ev: cause,
+            inner: window.innerHeight,
+            vvH: vv.height,
+            vvTop: vv.offsetTop,
+            fixedBottom: naturalBottom,
+            healthy: healthyBottom,
+            shift: next,
+            gap: decision.gap,
+            scrollY,
+            msResume: performance.now() - resumedAt,
+            drawerOpen,
+          });
+          lastGap = typing ? 0 : decision.gap;
+          if (next > 0 && shift === 0) report("shift");
+          else if (relearned) report("relearn");
+          else if (smallGap(lastGap)) report("small gap", () => smallGap(lastGap));
+          else if (healthyBottom > 0 && below(lastGap)) report("below", () => below(lastGap));
+        }
         if (next !== shift) {
           shift = next;
           if (next) root.style.setProperty("--v2-vp-shift", `${next}px`);
@@ -111,6 +192,8 @@ export function ViewportPin() {
           fixedBottom: Math.round(naturalBottom),
           healthy: healthyBottom,
           shift,
+          gap: decision.gap,
+          drawer: drawerOpen,
           kb,
           mode: standalone ? "standalone" : "browser",
         });
@@ -133,35 +216,45 @@ export function ViewportPin() {
       window.scrollTo(x, y + 1);
       requestAnimationFrame(() => {
         window.scrollTo(x, Math.max(0, y));
-        measure();
+        measure("nudge");
       });
     };
 
     // Efter tangentbord, ark eller återkomst: låt Safari landa, puffa vyn och mät igen.
-    const settle = () => {
-      measure();
+    const settle = (ev: string) => {
+      measure(ev);
       for (const ms of [120, 400, 900]) {
         timers.push(
           window.setTimeout(() => {
             if (ms === 120) nudge();
-            measure();
+            measure(`t${ms}`);
           }, ms),
         );
       }
     };
+    const resumed = (ev: string) => {
+      resumedAt = performance.now();
+      settle(ev);
+    };
     const onVvResize = () => {
       // Tangentbordet stängdes (vyn blev mycket högre): samma städning som vid blur.
-      if (vv.height - lastVvHeight >= 60) settle();
-      else measure();
+      if (vv.height - lastVvHeight >= 60) settle("vvresize");
+      else measure("vvresize");
       lastVvHeight = vv.height;
     };
+    const onVvScroll = () => measure("vvscroll");
+    const onScroll = () => measure("scroll");
+    const onPageShow = () => resumed("pageshow");
+    const onFocus = () => resumed("focus");
+    const onFocusOut = () => settle("focusout");
+    const onFocusIn = () => measure("focusin");
     const onVisible = () => {
-      if (document.visibilityState === "visible") settle();
+      if (document.visibilityState === "visible") resumed("visible");
     };
     let lastWidth = Math.round(window.innerWidth);
     // Vridning: mät om när vyn landat. Glöm inget här: är bredden oförändrad (vyn kan vara fast
     // just då) skulle den fastnade höjden läras in. Ny bredd glöms i onResize och i sample().
-    const onOrientation = settle;
+    const onOrientation = () => settle("orient");
     const onResize = () => {
       const w = Math.round(window.innerWidth);
       if (forgetsHealthy("resize", lastWidth, w)) {
@@ -169,31 +262,33 @@ export function ViewportPin() {
         healthy.reset();
         confirmFrames = 0;
       }
-      measure();
+      measure("resize");
     };
     vv.addEventListener("resize", onVvResize);
-    vv.addEventListener("scroll", measure);
+    vv.addEventListener("scroll", onVvScroll);
     window.addEventListener("resize", onResize);
-    window.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("orientationchange", onOrientation);
-    window.addEventListener("pageshow", settle);
-    window.addEventListener("focus", settle);
-    document.addEventListener("focusout", settle);
-    document.addEventListener("focusin", measure);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("focusin", onFocusIn);
     document.addEventListener("visibilitychange", onVisible);
-    measure();
+    measure("start");
     return () => {
       cancelAnimationFrame(raf);
       for (const t of timers) window.clearTimeout(t);
+      window.clearTimeout(reportTimer);
+      window.clearTimeout(recheckTimer);
       vv.removeEventListener("resize", onVvResize);
-      vv.removeEventListener("scroll", measure);
+      vv.removeEventListener("scroll", onVvScroll);
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", measure);
+      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("orientationchange", onOrientation);
-      window.removeEventListener("pageshow", settle);
-      window.removeEventListener("focus", settle);
-      document.removeEventListener("focusout", settle);
-      document.removeEventListener("focusin", measure);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("visibilitychange", onVisible);
       probe.remove();
       root.style.removeProperty("--v2-vp-shift");
