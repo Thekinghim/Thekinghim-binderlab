@@ -200,7 +200,8 @@ export default async function MachinePage({
       <SubNav />
       <div className="v2-stack">
         <nav aria-label="Brödsmulor" className="ops-bar">
-          <Link href={listHref} className="ops-link text-v2-mute">
+          {/* Telefon: tillbaka-pilen före rubriken (V2Back) gör samma sak. */}
+          <Link href={listHref} className="ops-link text-v2-mute max-[900px]:hidden">
             <span aria-hidden className="mr-1">
               ←
             </span>
