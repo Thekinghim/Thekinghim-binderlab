@@ -56,6 +56,7 @@ describe("keepInPlace", () => {
         onResize?.();
       },
       touch: () => listeners.get("touchstart")?.(),
+      click: () => listeners.get("pointerdown")?.(),
       get top() {
         return top;
       },
@@ -76,6 +77,14 @@ describe("keepInPlace", () => {
     const t = setup();
     keepInPlace(t.el);
     t.touch();
+    t.grow(250);
+    expect(t.scrollBy).not.toHaveBeenCalled();
+  });
+
+  it("slutar vid ett klick (t.ex. på en länk till en annan sida)", () => {
+    const t = setup();
+    keepInPlace(t.el);
+    t.click();
     t.grow(250);
     expect(t.scrollBy).not.toHaveBeenCalled();
   });

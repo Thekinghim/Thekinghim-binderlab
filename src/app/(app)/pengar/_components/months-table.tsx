@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { PHONE_QUERY } from "@/components/v2/use-media";
 
@@ -49,14 +49,23 @@ export function MonthsTable({ table }: { table: MonthTable }) {
     sort.key === key ? (sort.dir === "desc" ? "descending" : "ascending") : undefined;
   const running = table.months.find((m) => m.running);
   // Telefon: hopfälld under rubriken (prototypens "Visa"), dator: öppen. Servern ritar den
-  // öppen för alla; tills man själv trycker (toggled === null) döljer CSS innehållet på
-  // telefonen (data-auto, money.css). Då hoppar inget efter hydreringen och tabellen öppnas
-  // aldrig först för att sedan fällas ihop.
+  // öppen för alla; före hydreringen (toggled === null) döljer CSS innehållet på telefonen
+  // (data-auto, money.css). Då hoppar inget efter hydreringen och tabellen öppnas aldrig
+  // först för att sedan fällas ihop.
   const [toggled, setToggled] = useState<boolean | null>(null);
   const open = toggled ?? true;
+  // Efter hydreringen på telefon: stäng den på riktigt (ser likadan ut, CSS döljde redan
+  // innehållet), så att skärmläsaren säger "hopfälld" och "Visa" öppnar den som vanligt.
+  // Stängningen ger ett toggle-event, och onToggle sparar läget (toggled = false).
+  const ref = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && window.matchMedia(PHONE_QUERY).matches) el.open = false;
+  }, []);
 
   return (
     <details
+      ref={ref}
       className="v2-card g4-year"
       open={open}
       data-auto={toggled === null ? "" : undefined}
@@ -64,17 +73,7 @@ export function MonthsTable({ table }: { table: MonthTable }) {
         if (e.currentTarget.open !== open) setToggled(e.currentTarget.open);
       }}
     >
-      <summary
-        className="v2-card-hd"
-        onClick={(e) => {
-          // Telefonens första tryck: tabellen är öppen men dold av CSS, så "Visa" ska visa den
-          // (inte stänga den). Exportera-länken i rubriken gör som vanligt.
-          if (toggled !== null || (e.target as Element).closest("a")) return;
-          if (!window.matchMedia(PHONE_QUERY).matches) return;
-          e.preventDefault();
-          setToggled(true);
-        }}
-      >
+      <summary className="v2-card-hd">
         <h2>Vinst per automat · kr per dag i tjänst, {table.months.length} mån</h2>
         <span className="g4-ysh">Visa</span>
         <div className="g4-xbtns">

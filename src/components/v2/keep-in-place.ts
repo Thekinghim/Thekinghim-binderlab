@@ -1,6 +1,6 @@
 /**
  * Håll en kontroll på samma plats på skärmen medan sidan under och ovanför den byts ut
- * (periodvalet i Analys på Hem: korten ovanför får nya höjder när den nya perioden kommer).
+ * (ett periodval under kort som får nya höjder när den nya perioden kommer).
  * Chrome gör det själv (scroll anchoring); Safari på iPhone gör det inte, så sidan hoppade och
  * knappen man just tryckte på försvann ur bild.
  *
@@ -14,7 +14,10 @@ export function scrollFix(before: number, now: number): number {
   return Math.abs(d) < 1 ? 0 : Math.round(d);
 }
 
-const STOP_EVENTS = ["wheel", "touchstart", "keydown"] as const;
+// pointerdown: ett klick (mus, finger, penna) eller ett grepp i rullningslisten betyder att
+// personen tar över. Utan den kunde ett klick på en länk inom 8 s följas av att sidan rullades
+// tillbaka när den nya sidan växte.
+const STOP_EVENTS = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
 
 /**
  * Börja hålla `el` på plats. Returnerar en funktion som slutar. Slutar också av sig själv
