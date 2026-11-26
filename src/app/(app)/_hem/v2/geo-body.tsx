@@ -4,7 +4,7 @@ import { useState, type CSSProperties } from "react";
 
 import { Card } from "@/components/v2/card";
 import { Segmented } from "@/components/v2/segmented";
-import { usePhone } from "@/components/v2/use-media";
+import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 
 import type { GeoCard } from "./cards-data";
@@ -13,12 +13,15 @@ const kr = (ore: number) => `${formatInt(Math.round(ore / 100))}${NBSP}kr`;
 
 type By = "stad" | "automat";
 
+/** Rader innan "Visa alla": 10 på datorn, 5 på telefon. */
+const LIMIT_DESKTOP = 10;
+const LIMIT_PHONE = 5;
+
 /**
  * Vinst per stad eller per automat (Analys): topp 10 (5 på telefon), resten bakom "Visa alla".
  * Staplarna är vinsten mot den största raden; andelen är av all vinst i perioden.
  */
 export function GeoBody({ data }: { data: GeoCard }) {
-  const phone = usePhone();
   const [by, setBy] = useState<By>("stad");
   const [all, setAll] = useState(false);
   const rows =
@@ -37,8 +40,9 @@ export function GeoBody({ data }: { data: GeoCard }) {
           value: m.profitOre,
           shareBp: data.totalOre > 0 ? Math.round((m.profitOre * 10_000) / data.totalOre) : 0,
         }));
-  const limit = phone ? 5 : 10;
-  const shown = all ? rows : rows.slice(0, limit);
+  // Telefonens gräns (5) sätts i CSS (hem.css .x-br.ph-x), så att servern och telefonen
+  // ritar samma rader och inget hoppar efter hydreringen.
+  const shown = all ? rows : rows.slice(0, LIMIT_DESKTOP);
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <Card
@@ -62,7 +66,7 @@ export function GeoBody({ data }: { data: GeoCard }) {
       <div className="x-b">
         <div className="x-bl2">
           {shown.map((r, i) => (
-            <div className="x-br" key={r.key}>
+            <div className={cn("x-br", !all && i >= LIMIT_PHONE && "ph-x")} key={r.key}>
               <span className="x-bn">
                 <b>{r.name}</b>
                 <small>{r.sub}</small>
@@ -85,10 +89,10 @@ export function GeoBody({ data }: { data: GeoCard }) {
             </div>
           ))}
         </div>
-        {rows.length > limit ? (
+        {rows.length > LIMIT_PHONE ? (
           <button
             type="button"
-            className="x-more"
+            className={cn("x-more", rows.length <= LIMIT_DESKTOP && "ph-only")}
             onClick={() => setAll((v) => !v)}
             aria-expanded={all}
           >

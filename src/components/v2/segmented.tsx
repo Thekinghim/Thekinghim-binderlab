@@ -1,10 +1,10 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
-export type SegmentOption<T extends string> = { value: T; label: string };
+export type SegmentOption<T extends string> = { value: T; label: ReactNode };
 
 /**
  * Segmentkontroll med glidande markering (prototypens .seg): periodval, Stad/Butik/Ingen,

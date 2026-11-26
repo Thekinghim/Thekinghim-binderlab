@@ -9,6 +9,8 @@ import { PackImage } from "./pack-image";
 
 /** Rader som visas innan resten fälls ihop ("Visa alla 14"). */
 const VISIBLE = 8;
+/** Rader på telefon med phoneTop (samma tal som nth-child i v2.css .v2-ds-c). */
+const PHONE_VISIBLE = 3;
 
 function kr(ore: number): string {
   return formatKronor(ore / 100, { decimals: 0 });
@@ -31,6 +33,7 @@ export function DaySalesCard({
   inline,
   link,
   className,
+  phoneTop,
 }: {
   sales: DaySales;
   title: string;
@@ -38,10 +41,16 @@ export function DaySalesCard({
   inline: string;
   link?: { href: string; label: string };
   className?: string;
+  /**
+   * Telefon (≤ 900 px): bara de tre första raderna per lista innan "Visa alla" (Hem). Ren CSS
+   * (.v2-ds-c), så att datorn ser ut som förut och inget hoppar efter hydreringen.
+   */
+  phoneTop?: boolean;
 }) {
   const economy = sales.economy;
+  const cls = className ?? "v2-ds";
   return (
-    <Card title={title} link={link} className={className ?? "v2-ds"}>
+    <Card title={title} link={link} className={phoneTop ? `${cls} v2-ds-c` : cls}>
       {sales.units === 0 ? (
         <Empty title={`Inget sålt ${inline}`}>
           Köpen visas här när automaterna har sålt något under perioden.
@@ -83,8 +92,20 @@ export function DaySalesCard({
           {sales.hours.length === 24 ? <Hours sales={sales} inline={inline} /> : null}
 
           <div className="v2-ds-cols">
-            <Rows heading="Per titel" rows={sales.titles} economy={economy} kind="title" />
-            <Rows heading="Per automat" rows={sales.machines} economy={economy} kind="machine" />
+            <Rows
+              heading="Per titel"
+              rows={sales.titles}
+              economy={economy}
+              kind="title"
+              phoneTop={phoneTop}
+            />
+            <Rows
+              heading="Per automat"
+              rows={sales.machines}
+              economy={economy}
+              kind="machine"
+              phoneTop={phoneTop}
+            />
           </div>
           {economy ? (
             <p className="v2-ds-note">
@@ -146,14 +167,19 @@ function Rows({
   rows,
   economy,
   kind,
+  phoneTop,
 }: {
   heading: string;
   rows: readonly DaySalesRow[];
   economy: boolean;
   kind: "title" | "machine";
+  phoneTop?: boolean;
 }) {
   const top = rows.slice(0, VISIBLE);
   const rest = rows.slice(VISIBLE);
+  // Telefonens hopfällning (phoneTop) behöver en "Visa alla" även när datorn visar alla rader
+  // utan den: rutan .ph syns bara på telefon (v2.css) och öppnar raderna efter de första.
+  const phoneOnly = rest.length === 0 && phoneTop === true && rows.length > PHONE_VISIBLE;
   return (
     <section className="v2-ds-list" aria-label={heading}>
       <div className="lh">
@@ -165,8 +191,8 @@ function Rows({
           <Row key={r.id || "none"} r={r} economy={economy} kind={kind} />
         ))}
       </ul>
-      {rest.length > 0 ? (
-        <details>
+      {rest.length > 0 || phoneOnly ? (
+        <details className={phoneOnly ? "ph" : undefined}>
           <summary>Visa alla {formatInt(rows.length)}</summary>
           <ul>
             {rest.map((r) => (
