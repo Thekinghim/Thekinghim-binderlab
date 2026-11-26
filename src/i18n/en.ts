@@ -302,6 +302,8 @@ export const en: Messages = {
       room === null ? `Suggested ${suggested}.` : `Suggested ${suggested}. Room for ${room}.`,
     countLabel: "This many packs are in the machine now",
     wrongCount: "Wrong count in the machine?",
+    countInvalid: (max: number) => `Enter a whole number from 0 to ${f.int(max)}.`,
+    becomes: (n: string) => `After: ${n}`,
     needsNet: "Needs a connection",
     doneStillWorks: "Done still works.",
     countFailed: "Could not recount",
