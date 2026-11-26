@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useId,
   useMemo,
@@ -63,20 +63,20 @@ interface Done {
  * (utkast), så en halvfärdig inventering finns kvar om appen stängs. Ett tomt fält =
  * produkten hoppas över och ändras inte. Samma tryck två gånger sparar en gång (utkastets
  * id följer med inskicket).
+ *
+ * Valt lager står i adressen (?lager=), som ett eget steg i historiken: svepet bakåt går
+ * från räkningen till lagervalet, inte ut ur inventeringen.
  */
 export function CountFlow({
   places,
   rows,
   scope,
-  initialPlaceId,
   stockHref,
 }: {
   places: readonly CountPlace[];
   rows: readonly CountRow[];
   /** Organisation och användare: utkastet är personens eget. */
   scope: string;
-  /** Lagret från länken (?lager=), t.ex. från Att göra. */
-  initialPlaceId: string | null;
   stockHref: string;
 }) {
   const t = useT();
@@ -86,12 +86,40 @@ export function CountFlow({
   // Utan lagring (privat läge) lever utkastet i minnet så länge sidan är öppen.
   const [local, setLocal] = useState<CountDrafts | null>(null);
   const drafts = useMemo(() => local ?? parseDrafts(stored), [local, stored]);
-  const [placeId, setPlaceId] = useState<string | null>(
-    places.some((p) => p.id === initialPlaceId) ? initialPlaceId : null,
-  );
+  // Adressen byts med pushState (Next läser av den utan att hämta sidan igen).
+  const fromUrl = useSearchParams().get("lager");
+  const placeId = places.some((p) => p.id === fromUrl) ? fromUrl : null;
+  // Lagret valdes här (eget steg i historiken): Byt lager backar dit.
+  const pickedHere = useRef(false);
   const [screen, setScreen] = useState<"count" | "review">("count");
   const [done, setDone] = useState<Done | null>(null);
   const [pending, start] = useTransition();
+  // Nytt lager (valt, eller bakåt till valet): börja på räkningen, utan förra bekräftelsen.
+  const [shownPlace, setShownPlace] = useState(placeId);
+  if (placeId !== shownPlace) {
+    setShownPlace(placeId);
+    setScreen("count");
+    setDone(null);
+  }
+
+  const placeHref = (id: string | null) => {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("lager", id);
+    else url.searchParams.delete("lager");
+    return url;
+  };
+  const pickPlace = (id: string) => {
+    window.history.pushState(null, "", placeHref(id));
+    pickedHere.current = true;
+  };
+  const toPicker = () => {
+    if (pickedHere.current) {
+      pickedHere.current = false;
+      window.history.back();
+    } else {
+      window.history.replaceState(null, "", placeHref(null));
+    }
+  };
 
   const place = places.find((p) => p.id === placeId) ?? null;
   const draft = place ? drafts[place.id] : undefined;
@@ -119,8 +147,7 @@ export function CountFlow({
         more={places.length > 1}
         onAnother={() => {
           setDone(null);
-          setPlaceId(null);
-          setScreen("count");
+          toPicker();
         }}
       />
     );
@@ -130,15 +157,7 @@ export function CountFlow({
     return (
       <>
         <BackToStock href={stockHref} />
-        <PlacePicker
-          places={places}
-          rows={rows}
-          drafts={drafts}
-          onPick={(id) => {
-            setPlaceId(id);
-            setScreen("count");
-          }}
-        />
+        <PlacePicker places={places} rows={rows} drafts={drafts} onPick={pickPlace} />
       </>
     );
   }
@@ -184,7 +203,7 @@ export function CountFlow({
     <Counting
       back={
         places.length > 1 ? (
-          <BackButton onClick={() => setPlaceId(null)}>{t.count.changePlace}</BackButton>
+          <BackButton onClick={toPicker}>{t.count.changePlace}</BackButton>
         ) : (
           <BackToStock href={stockHref} />
         )

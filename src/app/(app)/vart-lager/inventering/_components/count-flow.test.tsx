@@ -13,7 +13,12 @@ import type { Locale } from "@/i18n";
 
 import type { CountPlace, CountRow } from "../_lib/model";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
+// Adressens ?lager= (valt lager).
+let lager: string | null = null;
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => {} }),
+  useSearchParams: () => new URLSearchParams(lager ? { lager } : {}),
+}));
 vi.mock("../actions", () => ({ saveStockCount: vi.fn() }));
 
 const { CountFlow } = await import("./count-flow");
@@ -37,17 +42,12 @@ const rows: CountRow[] = [
   },
 ];
 
-function html(locale: Locale, initialPlaceId: string | null): string {
+function html(locale: Locale, placeId: string | null): string {
+  lager = placeId;
   return renderToString(
     <LocaleProvider locale={locale}>
       <ToastProvider locale={locale}>
-        <CountFlow
-          places={places}
-          rows={rows}
-          scope="org:user"
-          initialPlaceId={initialPlaceId}
-          stockHref="/vart-lager"
-        />
+        <CountFlow places={places} rows={rows} scope="org:user" stockHref="/vart-lager" />
       </ToastProvider>
     </LocaleProvider>,
   )
