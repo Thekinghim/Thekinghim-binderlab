@@ -236,7 +236,11 @@ describe("påfyllaren får aldrig ekonomi", () => {
       expect(t.evidence.figures.every((f) => f.unit !== "ore")).toBe(true);
       expect(t.detail).not.toMatch(/kr\b/);
     }
-    const payload = JSON.stringify({ stock, sales, master, todos });
+    // Slumpade id:n (uuid) kan råka innehålla "7900": de tas bort innan beloppen letas.
+    const payload = JSON.stringify({ stock, sales, master, todos }).replace(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+      "<id>",
+    );
     expect(payload).not.toMatch(ECONOMY_KEYS);
     expect(payload).not.toContain("7900");
     expect(payload).not.toContain("8900");
