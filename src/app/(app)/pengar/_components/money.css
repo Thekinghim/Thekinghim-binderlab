@@ -906,7 +906,9 @@
     border-collapse: collapse;
     width: 100%;
     font-size: var(--v2-t-sm);
-    min-width: 620px;
+    /* Ingen fast minsta bredd: med få månader gick överskottet till den låsta första kolumnen,
+       som då täckte hela rutan på telefonen och dolde siffrorna. Tabellen blir ändå så bred
+       som innehållet kräver (nowrap) och rullar i sidled. */
   }
   .g4-yt th,
   .g4-yt td {
