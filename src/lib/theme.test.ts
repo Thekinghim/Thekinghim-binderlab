@@ -32,7 +32,7 @@ describe("temats cookie", () => {
   it("statusradens färg är ljus som standard (samma grå som appen och manifestet)", () => {
     expect(themeColorFromCookie(undefined)).toBe("#f1f1f1");
     expect(themeColorFromCookie("<script>")).toBe("#f1f1f1");
-    expect(themeColorFromCookie("light")).toBe("#f4f3ef");
+    expect(themeColorFromCookie("light")).toBe("#f1f1f1");
     expect(themeColorFromCookie("dark")).toBe("#0a0a0b");
   });
 });

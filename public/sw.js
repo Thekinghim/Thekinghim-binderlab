@@ -8,6 +8,7 @@
  *    (/_next/static) hämtas också från nätet först och sparas för läget utan nät.
  * 2. Push: larm från /api/cron/larm visas som notiser. Ett klick öppnar sidan som förklarar
  *    larmet (eller fokuserar ett öppet fönster).
+ * 3. Startsidan (/, appen på hemskärmen) utan nät: till den sparade Fyll på-sidan om den finns.
  *
  * Bara fältsidorna sparas (inga belopp). Andra sidor och alla anrop går alltid till nätet.
  *
@@ -239,6 +240,24 @@ async function networkFirst(request, url, clientId) {
   }
 }
 
+/**
+ * Startsidan (/, manifestets start_url): alltid nätet. Utan nät och med en sparad Fyll på för
+ * personen: dit i stället (appen på hemskärmen öppnas då som förut, mitt i fältet). Annars
+ * sidan "ingen uppkoppling" med länk till Fyll på.
+ */
+async function startPage(request) {
+  try {
+    return await fetch(request);
+  } catch {
+    const scope = await currentScope();
+    const cache = scope ? await caches.open(pageCacheName(scope)) : null;
+    if (cache && (await cache.match("/fyll-pa"))) {
+      return Response.redirect(new URL("/fyll-pa", self.location.origin).href, 302);
+    }
+    return offlinePage("/");
+  }
+}
+
 // Statiska filer: nätet först (webbläsarens egen cache gör det snabbt), den sparade kopian
 // bara utan nät. Så kan en gammal kopia aldrig blandas med en ny sida. Filerna är samma för
 // alla användare.
@@ -280,6 +299,10 @@ self.addEventListener("fetch", (event) => {
   if (request.headers.get("RSC") === "1" || url.searchParams.has("_rsc")) return;
   if (request.mode === "navigate" && isFieldPage(url)) {
     event.respondWith(networkFirst(request, url, event.resultingClientId || event.clientId));
+    return;
+  }
+  if (request.mode === "navigate" && url.pathname === "/") {
+    event.respondWith(startPage(request));
     return;
   }
   if (url.pathname.startsWith("/_next/static/")) {
