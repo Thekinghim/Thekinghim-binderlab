@@ -12,11 +12,13 @@ import "server-only";
 
 import {
   buildBriefCards,
+  limitLinks,
   type BriefCard,
   type BriefInput,
   type BriefRole,
 } from "@/analytics/brief";
 import type { TodoItem } from "@/analytics/todos";
+import { activeRouteId, routeById, type Role } from "@/components/shell/nav";
 import { addDays, daysBetween, type IsoDate } from "@/domain";
 import { loadContext } from "@/server/data/core";
 import { loadRankedTodoState } from "@/server/data/todos";
@@ -89,6 +91,12 @@ async function loadYesterday(today: IsoDate): Promise<BriefInput["yesterday"]> {
   };
 }
 
+/** Rollen får öppna sidan (menyns regler, samma som requireRoute). Okänd sökväg: ja. */
+export function roleCanOpen(role: Role, href: string): boolean {
+  const id = activeRouteId(href.split(/[?#]/)[0] ?? href);
+  return id === null || routeById(id).roles.includes(role);
+}
+
 function soft<T>(label: string, p: Promise<T>, fallback: T): Promise<T> {
   return p.catch((error: unknown) => {
     console.error(`[brief] ${label} kunde inte läsas:`, error);
@@ -146,5 +154,6 @@ export async function loadBrief(): Promise<BriefPayload | null> {
     lossPrices,
     yesterday: economy ? yesterday : null,
   };
-  return { day: ctx.today, cards: buildBriefCards(input) };
+  const cards = limitLinks(buildBriefCards(input), (href) => roleCanOpen(role, href));
+  return { day: ctx.today, cards };
 }

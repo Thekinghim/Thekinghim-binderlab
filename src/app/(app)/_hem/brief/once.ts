@@ -1,6 +1,6 @@
 /**
- * "En gång per dag" för Dagens brief: dagen rutan senast visades sparas per användare i
- * webbläsaren (localStorage, per enhet). Går lagringen inte att läsa eller skriva (privat
+ * "En gång per dag" för Dagens brief: dagen rutan senast visades sparas per användare och
+ * organisation i webbläsaren (localStorage, per enhet). Går lagringen inte att läsa eller skriva (privat
  * läge, spärrad) räknas det i stället per besök: högst en gång tills sidan laddas om.
  */
 

@@ -34,7 +34,7 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
   med **Spara pris mot kund** (då på priset som gäller i dag). Ett nytt inköpspris från en leverans eller
   mystery-kalkylen tar över periodens pris mot kund. Läsare ser båda priserna, påfyllare och butikernas portal ser
   inget av dem.
-- **Dagens brief:** första gången appen öppnas varje dag (per person och enhet, svensk tid)
+- **Dagens brief:** första gången appen öppnas varje dag (per person, organisation och enhet, svensk tid)
   kommer en ruta mitt på skärmen med 1–6 kort att svepa mellan, viktigast först: automater
   offline och larm, påfyllning, dagens rutt, betala butikerna, priser med förlust, inköpspris
   som saknas och **I går** (sålt i kronor och pack mot ett vanligt dygn). Varje kort har en bild,

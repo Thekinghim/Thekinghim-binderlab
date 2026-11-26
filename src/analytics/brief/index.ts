@@ -277,7 +277,8 @@ function settlementCard(input: BriefInput, view: boolean): Ranked | null {
       art: "money",
       tone: left !== null && left < 0 ? "crit" : "profit",
       title: `Betala butikerna ${kr(total)}`,
-      line: `${plural(count, "butik", "butiker")}${when}`,
+      // En månad: en avräkning per butik. Flera månader: samma butik kan stå två gånger.
+      line: `${list.length === 1 ? plural(count, "butik", "butiker") : plural(count, "avräkning", "avräkningar")}${when}`,
       action: {
         label: view ? "Visa" : "Betala",
         href: list.length === 1 ? list[0]!.href : "/butiker?vy=utbetalning",
@@ -391,4 +392,19 @@ export function buildBriefCards(input: BriefInput): BriefCard[] {
   const out = cards.slice(0, MAX_BRIEF_CARDS);
   if (economy) return out;
   return out.map((c) => ({ ...c, title: noKronor(c.title), line: noKronor(c.line) }));
+}
+
+/**
+ * Knappar till sidor rollen inte får öppna (t.ex. läsaren och ett larm som leder till
+ * Inställningar) går i stället till larmlistan på Drift, eller blir "Klart" (stänger).
+ */
+export function limitLinks(
+  cards: readonly BriefCard[],
+  canOpen: (href: string) => boolean,
+): BriefCard[] {
+  return cards.map((c) => {
+    if (!c.action || canOpen(c.action.href)) return c;
+    const fallback = c.key === "alert" && canOpen("/drift#larm") ? "/drift#larm" : null;
+    return { ...c, action: fallback ? { label: c.action.label, href: fallback } : null };
+  });
 }

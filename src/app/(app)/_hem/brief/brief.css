@@ -18,7 +18,9 @@ dialog.v2-brief {
   border: 0;
   padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
     max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
-  overflow: hidden;
+  /* Låg skärm (telefonen på tvären): rutan rullar i stället för att knapparna hamnar utanför. */
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   background: rgb(26 26 26 / 0);
   color: var(--v2-ink);
@@ -28,7 +30,7 @@ dialog.v2-brief {
 }
 dialog.v2-brief[open] {
   display: grid;
-  place-items: center;
+  justify-items: center;
 }
 dialog.v2-brief::backdrop {
   background: transparent;
@@ -41,6 +43,8 @@ dialog.v2-brief[data-state="closing"] {
 }
 
 .v2-brief .bf-card {
+  /* margin auto: mitt på skärmen, men toppen klipps aldrig när rutan är högre än skärmen. */
+  margin: auto 0;
   width: min(360px, 100%);
   background: var(--v2-panel);
   border-radius: 20px;
@@ -72,7 +76,8 @@ dialog.v2-brief[data-state="closing"] {
   scroll-snap-type: x mandatory;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  touch-action: pan-x;
+  /* Sidled svep mellan korten; ett lodrätt drag går vidare till rutan (låg skärm). */
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 .v2-brief .bf-track::-webkit-scrollbar {
@@ -127,17 +132,30 @@ dialog.v2-brief[data-state="closing"] {
   text-wrap: balance;
 }
 
-/* Prickarna: visar var man är, och går att trycka på (24 px tryckyta). */
+@media (max-height: 520px) {
+  .v2-brief .bf-art {
+    height: 72px;
+  }
+  .v2-brief .bf-art svg {
+    max-height: 72px;
+    width: auto;
+  }
+  .v2-brief .bf-slide {
+    padding-top: 18px;
+  }
+}
+
+/* Prickarna: visar var man är, och går att trycka på (24 × 32 px tryckyta). */
 .v2-brief .bf-dots {
   display: flex;
   justify-content: center;
-  gap: 2px;
-  padding: 6px 0 2px;
+  gap: 0;
+  padding: 2px 0 0;
 }
 .v2-brief .bf-dot {
   position: relative;
-  width: 20px;
-  height: 24px;
+  width: 24px;
+  height: 32px;
   touch-action: manipulation;
 }
 .v2-brief .bf-dot::before {

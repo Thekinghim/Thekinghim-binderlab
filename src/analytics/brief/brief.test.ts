@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildBriefCards, MAX_BRIEF_CARDS, shortDate, type BriefInput } from "./index";
+import { buildBriefCards, limitLinks, MAX_BRIEF_CARDS, shortDate, type BriefInput } from "./index";
 
 const base: BriefInput = {
   role: "owner",
@@ -143,5 +143,42 @@ describe("buildBriefCards", () => {
 describe("shortDate", () => {
   it("dag och kort månad", () => {
     expect(shortDate("2026-12-15")).toBe("15 dec");
+  });
+});
+
+describe("limitLinks", () => {
+  const cards = buildBriefCards({
+    ...full,
+    role: "viewer",
+    machines: [],
+    alerts: [{ title: "Kontrollen gick inte igenom", href: "/installningar/kontroll" }],
+  });
+
+  it("larm till en sida rollen inte får öppna går till larmlistan", () => {
+    const out = limitLinks(cards, (href) => !href.startsWith("/installningar"));
+    const alert = out.find((c) => c.key === "alert");
+    expect(alert?.action?.href).toBe("/drift#larm");
+    expect(alert?.action?.label).toBe("Visa");
+  });
+
+  it("andra kort utan tillåten sida får ingen länk (knappen stänger)", () => {
+    const out = limitLinks(cards, (href) => !href.startsWith("/lonsamhet"));
+    expect(out.find((c) => c.key === "loss-price")?.action).toBeNull();
+    expect(out.find((c) => c.key === "route")?.action?.href).toBe("/rutt");
+  });
+});
+
+describe("betala butikerna över flera månader", () => {
+  it("räknar avräkningar, inte butiker två gånger", () => {
+    const cards = buildBriefCards({
+      ...base,
+      settlements: [
+        { count: 2, totalOre: 100_000, due: "2026-11-15", href: "/a" },
+        { count: 2, totalOre: 50_000, due: "2026-12-15", href: "/b" },
+      ],
+    });
+    const s = cards.find((c) => c.key === "settlement");
+    expect(s?.line).toMatch(/^4 avräkningar/);
+    expect(s?.action?.href).toBe("/butiker?vy=utbetalning");
   });
 });

@@ -138,7 +138,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         {children}
       </AppFrame>
       {/* Dagens brief: rutan första gången appen öppnas varje dag (hämtas efter laddningen). */}
-      <DailyBrief userKey={ctx.user.id} timeZone={ctx.timeZone} />
+      <DailyBrief userKey={`${ctx.user.id}:${ctx.organization.id}`} timeZone={ctx.timeZone} />
     </AppFrameRoot>
   );
 }

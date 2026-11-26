@@ -133,31 +133,55 @@ export function DailyBrief({ userKey, timeZone }: { userKey: string; timeZone: s
   );
 
   // Av sig själv: en gång per dag, när sidan laddats och inget annat ark är öppet.
+  // Appen på hemskärmen laddas sällan om: står den öppen över natten räknas nästa gång den
+  // visas (visibilitychange) som att den öppnas, så rutan kommer även då.
   const quiet = QUIET_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   useEffect(() => {
-    if (quiet || seenToday(userKey, todayIn(timeZone))) return;
+    if (quiet) return;
     const ac = new AbortController();
     let retry: ReturnType<typeof setTimeout> | null = null;
-    const stopIdle = whenIdle(async () => {
-      const data = await fetchBrief(ac.signal);
-      if (!data || data.cards.length === 0 || ac.signal.aborted) return;
-      cache.current = { at: Date.now(), data };
-      let tries = 0;
-      const attempt = () => {
+    let stopIdle: (() => void) | null = null;
+    let running = false;
+    const run = () => {
+      if (running || ac.signal.aborted || seenToday(userKey, todayIn(timeZone))) return;
+      running = true;
+      stopIdle = whenIdle(async () => {
+        const data = await fetchBrief(ac.signal);
         if (ac.signal.aborted) return;
-        if (seenToday(userKey, data.day ?? todayIn(timeZone))) return;
-        if (document.visibilityState === "hidden" || otherModalOpen()) {
-          if (++tries <= RETRIES) retry = setTimeout(attempt, RETRY_MS);
+        if (!data || data.cards.length === 0) {
+          running = false;
           return;
         }
-        show(data);
-      };
-      attempt();
-    });
+        cache.current = { at: Date.now(), data };
+        let tries = 0;
+        const attempt = () => {
+          retry = null;
+          if (ac.signal.aborted) return;
+          if (seenToday(userKey, data.day ?? todayIn(timeZone))) {
+            running = false;
+            return;
+          }
+          if (document.visibilityState === "hidden" || otherModalOpen()) {
+            if (++tries <= RETRIES) retry = setTimeout(attempt, RETRY_MS);
+            else running = false;
+            return;
+          }
+          running = false;
+          show(data);
+        };
+        attempt();
+      });
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") run();
+    };
+    run();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       ac.abort();
-      stopIdle();
+      stopIdle?.();
       if (retry) clearTimeout(retry);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [quiet, userKey, timeZone, show]);
 
@@ -185,6 +209,7 @@ function BriefDialog({ cards, onClosed }: { cards: readonly BriefCard[]; onClose
   const [index, setIndex] = useState(0);
   const closing = useRef(false);
   const unlock = useRef<(() => void) | null>(null);
+  const downOnBackdrop = useRef(false);
 
   // Senaste onClosed utan att rutan öppnas på nytt när skalet ritas om.
   const onClosedRef = useRef(onClosed);
@@ -226,6 +251,8 @@ function BriefDialog({ cards, onClosed }: { cards: readonly BriefCard[]; onClose
       el.setAttribute("open", "");
     }
     unlock.current = lockScroll();
+    // Knappen som gör något får fokus (Enter), utan att sidan rullar.
+    el.querySelector<HTMLElement>("[data-brief-primary]")?.focus({ preventScroll: true });
     // Nästa bildruta: från 0,96 och genomskinlig till på plats (brief.css).
     const raf = requestAnimationFrame(() => {
       el.dataset.state = "open";
@@ -234,14 +261,23 @@ function BriefDialog({ cards, onClosed }: { cards: readonly BriefCard[]; onClose
       e.preventDefault();
       close();
     };
+    // Stängd av webbläsaren själv (t.ex. Escape två gånger): städa ändå.
+    const onNativeClose = () => {
+      if (!closing.current) {
+        closing.current = true;
+        finish();
+      }
+    };
     el.addEventListener("cancel", onCancel);
+    el.addEventListener("close", onNativeClose);
     return () => {
       cancelAnimationFrame(raf);
       el.removeEventListener("cancel", onCancel);
+      el.removeEventListener("close", onNativeClose);
       unlock.current?.();
       unlock.current = null;
     };
-  }, [close]);
+  }, [close, finish]);
 
   const onScroll = useCallback(() => {
     const t = track.current;
@@ -282,8 +318,12 @@ function BriefDialog({ cards, onClosed }: { cards: readonly BriefCard[]; onClose
       aria-labelledby="dagens-brief-rubrik"
       aria-modal="true"
       onKeyDown={onKeyDown}
+      onPointerDown={(e) => {
+        downOnBackdrop.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) close();
+        // Bara ett tryck som både börjar och slutar på den mörka ytan (inte ett drag ut ur kortet).
+        if (e.target === e.currentTarget && downOnBackdrop.current) close();
       }}
     >
       <BriefDeck
@@ -302,12 +342,17 @@ function BriefDialog({ cards, onClosed }: { cards: readonly BriefCard[]; onClose
                 href={card.action.href}
                 className="v2-btn lg act"
                 onClick={() => close(true)}
-                autoFocus
+                data-brief-primary=""
               >
                 {card.action.label}
               </Link>
             ) : (
-              <button type="button" className="v2-btn lg act" onClick={() => close()} autoFocus>
+              <button
+                type="button"
+                className="v2-btn lg act"
+                onClick={() => close()}
+                data-brief-primary=""
+              >
                 Klart
               </button>
             )}
