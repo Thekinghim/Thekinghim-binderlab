@@ -11,7 +11,6 @@
  * tipsraden (panel-context.tsx) öppnar den via useAssistantPanel.
  */
 
-import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -19,6 +18,7 @@ import { assistantPanelState, type PanelState } from "@/app/(app)/assistent/pane
 import { fabLayout, fabVisibleAfterScroll, showsRefillShortcut } from "@/components/shell/fab";
 import type { Role } from "@/components/shell/nav";
 import { cn } from "@/lib/cn";
+import { lazyPart } from "@/lib/lazy-part";
 import {
   canUseAssistant,
   pageContextFromUrl,
@@ -37,10 +37,10 @@ import { useAssistantConversation } from "./use-assistant-conversation";
  * samtalet, underlaget, frågefältet). Sedan ligger det kvar, så att samtalet och stängningen
  * fungerar som förut.
  */
-const AssistantPanelBody = dynamic(
-  () => import("./assistant-panel-body").then((m) => m.AssistantPanelBody),
-  { ssr: false },
+const assistantPanelBody = lazyPart(() =>
+  import("./assistant-panel-body").then((m) => m.AssistantPanelBody),
 );
+const AssistantPanelBody = assistantPanelBody.Component;
 
 export { AiPageLine, AskAiButton, AskAiSparkle, PageTip, useAssistantPanel } from "./panel-context";
 

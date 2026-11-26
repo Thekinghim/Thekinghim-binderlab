@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import dynamic from "next/dynamic";
 
 import {
   MAX_RANGE_DAYS,
@@ -18,6 +17,7 @@ import { useShellNavigation } from "@/components/shell/shell-navigation";
 import { usePeriod } from "@/components/shell/use-period";
 import { cn } from "@/lib/cn";
 import { formatPeriodShort } from "@/lib/format";
+import { lazyPart } from "@/lib/lazy-part";
 import { addDays, isSameDay } from "@/lib/period";
 
 import { keepInPlace } from "./keep-in-place";
@@ -28,14 +28,8 @@ import { useV2Shell } from "./shell/shell-context";
 import { PHONE_QUERY } from "./use-media";
 
 /** Arket på telefonen: laddas när det behövs första gången (./period-sheet.tsx). */
-const PeriodSheet = dynamic(() => import("./period-sheet").then((m) => m.PeriodSheet), {
-  ssr: false,
-});
-
-/** Hämtar arkets kod i förväg (fingret på Datum), så att det öppnas utan väntan. */
-function preloadPeriodSheet(): void {
-  void import("./period-sheet");
-}
+const periodSheet = lazyPart(() => import("./period-sheet").then((m) => m.PeriodSheet));
+const PeriodSheet = periodSheet.Component;
 
 /** Snabbvalen i panelen (Datum…), i den ordning de står. */
 const PANEL_PRESETS: ReadonlyArray<{ key: PresetKey; label: string }> = [
@@ -64,7 +58,8 @@ export function PeriodSegment({ className }: { className?: string }) {
   // fungerar direkt (usePhone är falskt på servern).
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"sheet" | "pop">("pop");
-  // Arket monteras vid första öppningen på telefonen och ligger sedan kvar (det glider ner).
+  // Arket monteras (stängt) när fingret landar på Datum eller vid första öppningen på telefonen
+  // och ligger sedan kvar (det glider ner). Koden hämtas då, inte i sidans start.
   const [sheetUsed, setSheetUsed] = useState(false);
   const value = v2PeriodOf(key);
   const close = useCallback(() => setOpen(false), []);
@@ -113,7 +108,10 @@ export function PeriodSegment({ className }: { className?: string }) {
         setOpen(true);
       }}
       onPointerDown={(e) => {
-        if (e.pointerType !== "mouse") preloadPeriodSheet();
+        if (e.pointerType !== "mouse") {
+          void periodSheet.load().catch(() => {});
+          setSheetUsed(true);
+        }
       }}
     >
       <CalendarIcon />

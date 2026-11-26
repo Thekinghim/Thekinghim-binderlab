@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState, useTransition, type ReactNode } from "react";
 import { AssistantPanelProvider } from "@/components/assistant/assistant-panel";
@@ -19,6 +18,7 @@ import type {
 } from "@/components/shell/side-nav";
 import { useCommandPaletteHotkey } from "@/components/ui/command-hotkey";
 import { useToast } from "@/components/ui/toast";
+import { lazyPart } from "@/lib/lazy-part";
 import { logout, switchOrganization } from "@/server/actions/auth";
 
 import { crumbsFor } from "./crumbs";
@@ -28,10 +28,10 @@ import { crumbsFor } from "./crumbs";
  * åtgärder, steg) och behövs inte för att visa sidan. Sedan ligger den kvar, så att den
  * öppnas direkt nästa gång.
  */
-const CommandMenu = dynamic(
-  () => import("@/components/shell/command-menu").then((m) => m.CommandMenu),
-  { ssr: false },
+const commandMenu = lazyPart(() =>
+  import("@/components/shell/command-menu").then((m) => m.CommandMenu),
 );
+const CommandMenu = commandMenu.Component;
 
 /**
  * Klientdelen av appens layout: kopplar skalets organisationsväxlare och

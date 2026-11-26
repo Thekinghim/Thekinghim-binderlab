@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import {
   Suspense,
@@ -33,6 +32,7 @@ import { BackHistory } from "@/components/v2/shell/back";
 import { V2TabBar } from "@/components/v2/shell/tab-bar";
 import { FillReturnToast } from "@/components/v2/fill-return-toast";
 import { V2Toaster } from "@/components/v2/toast";
+import { lazyPart } from "@/lib/lazy-part";
 
 export type AppShellProps = {
   children: ReactNode;
@@ -101,10 +101,10 @@ export type AppShellProps = {
 };
 
 /** Skalets kommandopalett laddas först när den öppnas första gången. */
-const ShellCommandPalette = dynamic(
-  () => import("./shell-command-palette").then((m) => m.ShellCommandPalette),
-  { ssr: false },
+const shellCommandPalette = lazyPart(() =>
+  import("./shell-command-palette").then((m) => m.ShellCommandPalette),
 );
+const ShellCommandPalette = shellCommandPalette.Component;
 
 /**
  * Appens skal: sidomeny (lg+), bottenrad med "Mer" (mobil), toppbar med
