@@ -84,6 +84,7 @@ import {
 import { useFreshData } from "../_lib/use-fresh-data";
 import { bringStrip, listGroups, minutesAt, nextMachineId, receiptItems } from "../_lib/list";
 import { BringScreen } from "./bring-list";
+import { CheckStopScreen } from "./fill-check";
 import {
   BringCard,
   DoneRow,
@@ -118,7 +119,13 @@ export interface FillAppProps {
    * V2: ruttläget (öppnat från Rutt, ?rutt=1): dagens stopp i körordning. Stegraden "Stopp 2 av
    * 5" ersätter automatväljaren, och efter Klar öppnas nästa stopp. null = vanligt läge.
    */
-  readonly route?: { readonly ids: readonly string[] } | null;
+  readonly route?: {
+    readonly ids: readonly string[];
+    /** Ruttens dag (nyckeln för checklistans bockar, samma som på Rutt). */
+    readonly date?: string;
+    /** Offline-stoppen: checklistan i stället för facken. */
+    readonly check?: readonly string[];
+  } | null;
   /**
    * V2: öppnad från Hem eller Automater (?fran=): efter Klar går appen tillbaka dit och sidan
    * visar notisen med Ångra (src/lib/fill-return.ts). Bara när allt sparades direkt och Awish
@@ -249,6 +256,11 @@ export function FillApp({
   const [lastSource, setLastSource] = useRemembered(rememberKey(scope, "fyll-lager"));
   // Lager valt med "Från: … ▾" för en automat (gäller tills sidan laddas om).
   const [override, setOverride] = useState<Record<string, string>>({});
+  // Ruttläget: offline-stopp där man ändå vill fylla (automaten startade om på plats).
+  const [fillAnyway, setFillAnyway] = useState<ReadonlySet<string>>(new Set());
+  // Ruttläget: offline-stopp som hoppas över. Servern svarar med rutten utan stoppet; skärmen
+  // står kvar tills nästa stopp öppnas (inte facken en kort stund).
+  const [skippingStop, setSkippingStop] = useState<string | null>(null);
   const placeName = useCallback(
     (id: string | null) => sources.places.find((p) => p.id === id)?.name ?? t.common.homeFallback,
     [sources.places, t],
@@ -678,6 +690,43 @@ export function FillApp({
     const id = stops[i];
     if (id) go(`${BASE}/${id}${routeSuffix}`);
   };
+
+  if (
+    selectedId &&
+    selected &&
+    route?.date &&
+    (route.check?.includes(selected.id) || skippingStop === selected.id) &&
+    !fillAnyway.has(selected.id)
+  ) {
+    // Ruttläget, offline-stopp: inget att fylla (automaten svarar inte). Checklistan, Stoppet
+    // klart och Hoppa över, som på Rutt; fungerar utan nät utom Hoppa över (servern).
+    const nextId = stopIndex >= 0 ? (stops[stopIndex + 1] ?? null) : null;
+    return (
+      <CheckStopScreen
+        machine={selected}
+        store={data.stores?.[selected.id] ?? null}
+        scope={scope}
+        date={route.date}
+        link={links[selected.id] ?? null}
+        route={{
+          index: stopIndex,
+          total: stops.length,
+          ...(stopIndex > 0 ? { onPrev: () => goStop(stopIndex - 1) } : {}),
+          ...(nextId ? { onNext: () => goStop(stopIndex + 1) } : {}),
+        }}
+        tools={
+          <div className="flex items-center gap-2">
+            {refreshButton}
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} v2={!simple} />
+          </div>
+        }
+        onBack={() => router.push("/rutt")}
+        onLeave={() => (nextId ? goStop(stopIndex + 1) : router.push("/rutt"))}
+        onFill={() => setFillAnyway((cur) => new Set(cur).add(selected.id))}
+        onSkip={(on) => setSkippingStop(on ? selected.id : null)}
+      />
+    );
+  }
 
   if (selectedId && selected) {
     const source = sourceOf(selected.id);

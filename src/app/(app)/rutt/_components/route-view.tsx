@@ -3,8 +3,7 @@
 import { approxKr } from "@/analytics/forecast/common";
 import "./rutt.css";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useTransition } from "react";
 
 import { Badge } from "@/components/v2/badge";
 import { Button, ButtonLink } from "@/components/v2/button";
@@ -19,44 +18,12 @@ import { formatInt, NBSP } from "@/lib/format";
 import type { DayRoute, RouteStop } from "@/server/data/v2/types";
 
 import { changeRoute, undoRouteChange } from "../actions";
+import { CHECKLIST, dayKeys, useDayChecks } from "../_lib/day-checks";
+import { addInFlight, visibleRoute, type InFlight } from "../_lib/pending";
 import { reach } from "../_lib/reach";
 import type { RouteChangeKind } from "../_lib/service";
 import { durationText, emptyRouteText } from "@/server/data/v2/route-model";
 import { LimitsSheet } from "./limits-sheet";
-
-const CHECKLIST = [
-  "Har automaten ström? Kolla kontakten och säkringen.",
-  "Har den nät? Starta om routern om lampan är släckt.",
-  "Starta om automaten. Vänta tills skärmen visar facken.",
-  "Syns den i Awish igen?",
-] as const;
-
-/** Bockar sparas i den här webbläsaren för dagen (packlistan och checklistan). */
-function useDayChecks(key: string): [ReadonlySet<string>, (id: string) => void] {
-  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(key);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- läser webbläsarens minne efter hydrering
-      if (raw) setChecked(new Set(JSON.parse(raw) as string[]));
-    } catch {
-      /* privat läge: inga sparade bockar */
-    }
-  }, [key]);
-  const toggle = (id: string) =>
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      try {
-        window.localStorage.setItem(key, JSON.stringify([...next]));
-      } catch {
-        /* inget minne: bocken gäller bara nu */
-      }
-      return next;
-    });
-  return [checked, toggle];
-}
 
 function weekdayShort(date: string): string {
   const d = new Date(`${date}T12:00:00Z`);
@@ -90,16 +57,23 @@ export function RouteView({
   /** Ägare och admin: dagens gräns. */
   canEditLimits: boolean;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [packed, togglePacked] = useDayChecks(`v2-rutt-pack:${scope}:${route.date}`);
-  const [checks, toggleCheck] = useDayChecks(`v2-rutt-check:${scope}:${route.date}`);
+  const [, startTransition] = useTransition();
+  // Det man tryckt på syns direkt; servern svarar med den nya rutten (action-svaret). Går det
+  // inte fram släpper React läget och stoppet står där igen, med "Ingen kontakt".
+  const [inFlight, markInFlight] = useOptimistic<InFlight, Parameters<typeof addInFlight>[1]>(
+    {},
+    addInFlight,
+  );
+  const keys = dayKeys(scope, route.date);
+  const [packed, togglePacked] = useDayChecks(keys.pack);
+  const [checks, toggleCheck] = useDayChecks(keys.check);
+  const [checkedStops, toggleChecked] = useDayChecks(keys.checked);
 
   const byId = useMemo(() => new Map(route.stops.map((s) => [s.machineId, s])), [route.stops]);
-  const remaining = route.stops.filter((s) => !s.done);
+  const view = visibleRoute(route, inFlight, checkedStops);
+  const remaining = view.remaining;
   const first = remaining[0] ?? null;
-  const stopCount = route.stops.length;
+  const stopCount = view.stops.length;
   const substituteFor = useMemo(() => {
     const m = new Map<string, { titleName: string; slots: number; forTitleName: string }>();
     for (const s of route.substitutes) {
@@ -115,15 +89,14 @@ export function RouteView({
   const subPacks = route.substitutes.reduce((a, s) => a + s.packs, 0);
 
   function run(machineId: string, change: RouteChangeKind, name: string) {
-    setBusy(`${machineId}:${change}`);
+    if (inFlight[machineId]) return;
     startTransition(async () => {
+      markInFlight({ key: machineId, kind: change });
       const r = await reach(() => changeRoute(machineId, change));
-      setBusy(null);
       if (!r.ok) {
         toastV2(r.error, { tone: "critical" });
         return;
       }
-      router.refresh();
       const data = r.data;
       if (!data) return;
       const title =
@@ -132,28 +105,22 @@ export function RouteView({
           : change === "later"
             ? `${name} flyttas till i morgon`
             : `${name} ligger i dagens rutt`;
-      toastUndo(title, undefined, () => {
-        startTransition(async () => {
-          const u = await reach(() => undoRouteChange(data.id, data.replaced));
-          if (!u.ok) toastV2(u.error, { tone: "critical" });
-          else router.refresh();
-        });
-      });
+      toastUndo(title, undefined, () => undo(data.id, data.replaced));
     });
   }
 
-  function undo(id: string) {
+  function undo(id: string, restore: RouteChangeKind | null = null) {
+    if (inFlight[id]) return;
     startTransition(async () => {
-      const u = await reach(() => undoRouteChange(id));
+      markInFlight({ key: id, kind: "undo" });
+      const u = await reach(() => undoRouteChange(id, restore));
       if (!u.ok) toastV2(u.error, { tone: "critical" });
-      else router.refresh();
     });
   }
 
   const startHref = first ? `/fyll-pa/${first.machineId}?rutt=1` : null;
   const origin = route.depot?.address ?? null;
-  const mapStops = route.stops
-    .filter((s) => !s.done)
+  const mapStops = remaining
     .map(
       (s) =>
         [s.store?.address, s.store?.city].filter(Boolean).join(", ") ||
@@ -161,7 +128,22 @@ export function RouteView({
     )
     .filter(Boolean);
 
-  const empty = emptyRouteText(route);
+  const empty = emptyRouteText({
+    ...route,
+    stops: view.stops,
+    // Allt just flyttat (innan servern svarat): samma text som när det är sparat.
+    removed: view.removedNow
+      ? [
+          ...route.removed,
+          ...route.stops.map((x) => ({
+            id: x.machineId,
+            machineId: x.machineId,
+            name: x.name,
+            change: "skip" as const,
+          })),
+        ]
+      : route.removed,
+  });
   const titleLine =
     stopCount === 0
       ? empty.title
@@ -173,12 +155,53 @@ export function RouteView({
           .filter(Boolean)
           .join(" · ");
 
+  const overflowLine =
+    route.overflow.length > 0 ? (
+      <span className="o">
+        {route.overflow.length === 1
+          ? `${route.overflow[0]!.name} ryms inte i veckans rutter`
+          : `${formatInt(route.overflow.length)} automater ryms inte i veckans rutter`}
+        {canEditLimits ? " · höj gränsen under Kommande dagar" : ""}
+      </span>
+    ) : null;
+  const changes =
+    route.removed.length > 0 || route.added.length > 0 ? (
+      <div className="rchanges">
+        {[...route.removed, ...route.added].map((c) => {
+          const undoing = inFlight[c.id] !== undefined;
+          return (
+            <div className="lrow" key={c.id}>
+              <div>
+                <b>{c.name}</b>
+                <small>
+                  {c.change === "skip"
+                    ? "Hoppas över i dag"
+                    : c.change === "later"
+                      ? "Flyttad till i morgon"
+                      : "Lagd i rutten i dag"}
+                </small>
+              </div>
+              {canEdit ? (
+                <Button size="sm" onClick={() => undo(c.id)} disabled={undoing} pending={undoing}>
+                  Ångra
+                </Button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    ) : null;
+  // Inga stopp i dag: EN rad som säger varför, i stället för rubriken, ett tomt stoppkort och
+  // en tom packlista med samma besked.
+  const nothing = stopCount === 0;
+  const packEmpty = route.load.length === 0;
+
   return (
     <div className="v2-rutt">
-      <div className="rsum-row">
-        <div className="rsum">
-          <b>{titleLine}</b>
-          {stopCount > 0 ? (
+      {nothing ? null : (
+        <div className="rsum-row">
+          <div className="rsum">
+            <b>{titleLine}</b>
             <span>
               {formatInt(stopCount)} stopp
               {route.savesProfitPerDayOre !== null && route.savesProfitPerDayOre > 0 ? (
@@ -187,8 +210,8 @@ export function RouteView({
                   · räddar{" "}
                   <span className="pf">{approxKr(route.savesProfitPerDayOre)} vinst/dag</span>
                 </>
-              ) : null}{" "}
-              · {formatInt(route.totalPacks)} pack
+              ) : null}
+              {packEmpty ? "" : ` · ${formatInt(route.totalPacks)} pack`}
               {subPacks > 0 ? ` (plus ${formatInt(subPacks)} ersättare)` : ""}
               {route.short.length > 0 ? (
                 <>
@@ -202,52 +225,49 @@ export function RouteView({
                 </>
               ) : null}
             </span>
-          ) : empty.body ? (
-            <span>{empty.body}.</span>
-          ) : null}
-          {route.overflow.length > 0 ? (
-            <span className="o">
-              {route.overflow.length === 1
-                ? `${route.overflow[0]!.name} ryms inte i veckans rutter`
-                : `${formatInt(route.overflow.length)} automater ryms inte i veckans rutter`}
-              {canEditLimits ? " · höj gränsen under Kommande dagar" : ""}
-            </span>
-          ) : null}
+            {overflowLine}
+          </div>
+          <div className="rsum-go">
+            {mapStops.length > 0 ? (
+              <RouteMapsLink
+                stops={mapStops}
+                origin={origin}
+                size="touch"
+                className="max-[900px]:w-full"
+              />
+            ) : null}
+            {/* Dator: Starta rutt i sidhuvudet (telefonen har den klistrade raden längst ner). */}
+            {startHref && canRefill ? (
+              <ButtonLink href={startHref} variant="act" className="max-[900px]:hidden">
+                {remaining.length === stopCount ? "Starta rutt" : "Fortsätt rutten"}
+              </ButtonLink>
+            ) : null}
+          </div>
         </div>
-        <div className="rsum-go">
-          {mapStops.length > 0 ? (
-            <RouteMapsLink
-              stops={mapStops}
-              origin={origin}
-              size="touch"
-              className="max-[900px]:w-full"
-            />
-          ) : null}
-          {/* Dator: Starta rutt i sidhuvudet (telefonen har den klistrade raden längst ner). */}
-          {startHref && canRefill ? (
-            <ButtonLink href={startHref} variant="act" className="max-[900px]:hidden">
-              {remaining.length === stopCount ? "Starta rutt" : "Fortsätt rutten"}
-            </ButtonLink>
-          ) : null}
-        </div>
-      </div>
+      )}
 
-      <div className="work">
+      {/* Inga stopp: ingen packlista, så stoppkolumnen tar hela bredden (dator). */}
+      <div className={cn("work", nothing && "one")}>
         <div className="col">
-          <Card
-            className="o-stops"
-            title={`I dag · ${formatInt(stopCount)} stopp`}
-            actions={
-              <span className="hd-note">
-                {route.routeMethod === "distance" ? "Kortast väg" : "Bråttom först"}
-              </span>
-            }
-          >
-            {stopCount === 0 ? (
-              // Varför listan är tom står redan överst (empty.title): inte samma mening två gånger.
-              <Empty title="Inga stopp att visa" />
-            ) : (
-              route.groups.map((g, gi) => (
+          {nothing ? (
+            <Card className="o-empty">
+              <Empty packs={emptyPacks([])} done={route.needing === 0} title={empty.title}>
+                {empty.body ? <p>{empty.body}.</p> : null}
+                {overflowLine ? <p>{overflowLine}</p> : null}
+              </Empty>
+              {changes}
+            </Card>
+          ) : (
+            <Card
+              className="o-stops"
+              title={`I dag · ${formatInt(stopCount)} stopp`}
+              actions={
+                <span className="hd-note">
+                  {route.routeMethod === "distance" ? "Kortast väg" : "Bråttom först"}
+                </span>
+              }
+            >
+              {view.groups.map((g, gi) => (
                 <div className="rcity" key={`${g.city ?? "-"}-${gi}`}>
                   <div className="rch">
                     <b>{g.city ?? "Utan stad"}</b>
@@ -264,8 +284,9 @@ export function RouteView({
                         stop={s}
                         canEdit={canEdit}
                         canRefill={canRefill}
-                        busy={busy}
-                        pending={pending}
+                        busy={inFlight[id] !== undefined}
+                        checkedHere={s.kind === "check" && checkedStops.has(id)}
+                        onCheckedHere={(on) => toggleChecked(id, on)}
                         checks={checks}
                         toggleCheck={toggleCheck}
                         onChange={run}
@@ -276,32 +297,10 @@ export function RouteView({
                     );
                   })}
                 </div>
-              ))
-            )}
-            {route.removed.length > 0 || route.added.length > 0 ? (
-              <div className="rchanges">
-                {[...route.removed, ...route.added].map((c) => (
-                  <div className="lrow" key={c.id}>
-                    <div>
-                      <b>{c.name}</b>
-                      <small>
-                        {c.change === "skip"
-                          ? "Hoppas över i dag"
-                          : c.change === "later"
-                            ? "Flyttad till i morgon"
-                            : "Lagd i rutten i dag"}
-                      </small>
-                    </div>
-                    {canEdit ? (
-                      <Button size="sm" onClick={() => undo(c.id)} disabled={pending}>
-                        Ångra
-                      </Button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </Card>
+              ))}
+              {changes}
+            </Card>
+          )}
 
           <Card
             className="o-later"
@@ -347,11 +346,14 @@ export function RouteView({
                       {canEdit
                         ? (cities.length > 0 ? cities : [null]).map((city) => {
                             const list = d.stops.filter((s) => city === null || s.city === city);
+                            // Bara knappen man tryckte på väntar; resten går att trycka på.
+                            const adding = list.some((s) => inFlight[s.machineId] !== undefined);
                             return (
                               <Button
                                 key={city ?? "alla"}
                                 size="sm"
-                                disabled={pending}
+                                disabled={adding}
+                                pending={adding}
                                 onClick={() => {
                                   for (const s of list) run(s.machineId, "add", s.name);
                                 }}
@@ -369,98 +371,100 @@ export function RouteView({
           </Card>
         </div>
 
-        <div className="col">
-          <Card
-            className="o-pack"
-            title={`Packlista · ${formatInt(route.totalPacks)} pack`}
-            actions={
-              <span className="hd-note">
-                {formatInt(route.load.filter((l) => packed.has(l.titleId)).length)} av{" "}
-                {formatInt(route.load.length)} packade
-              </span>
-            }
-          >
-            {route.load.length === 0 ? (
-              // Tomt läge med packbilder (Visuellt, mock 08): bocken säger att allt är klart.
-              remaining.some((s) => s.kind === "fill") ? (
-                // Stopp att fylla men inget i listan (okänd kapacitet): inte "Allt är fullt".
-                <Empty title="Inget i packlistan">
-                  <p>Se Fyll på för vad som ska med.</p>
-                </Empty>
+        {nothing ? null : (
+          // Telefon: packlistan först när den har något; tom är den en rad efter stoppen.
+          <div className={cn("col", packEmpty && "pack-empty")}>
+            <Card
+              className="o-pack"
+              title={packEmpty ? "Packlista" : `Packlista · ${formatInt(route.totalPacks)} pack`}
+              actions={
+                packEmpty ? null : (
+                  <span className="hd-note">
+                    {formatInt(route.load.filter((l) => packed.has(l.titleId)).length)} av{" "}
+                    {formatInt(route.load.length)} packade
+                  </span>
+                )
+              }
+            >
+              {packEmpty ? (
+                <p className="rempty">
+                  {remaining.some((s) => s.kind === "fill")
+                    ? // Stopp att fylla men inget i listan (okänd kapacitet): inte "Allt är fullt".
+                      "Inget i listan. Se Fyll på för vad som ska med."
+                    : "Inget att packa i dag."}
+                </p>
               ) : (
-                <Empty packs={emptyPacks([])} done title="Allt är fullt – ingen packning i dag" />
-              )
-            ) : (
-              <>
-                {route.short.map((sh) => {
-                  const line = route.load.find((l) => l.titleId === sh.titleId);
-                  const sub = substituteFor.get(sh.titleId);
-                  const need = (line?.quantity ?? 0) + sh.shortBy;
-                  return (
-                    <div className="pw" key={sh.titleId}>
-                      <PackImage title={sh.titleName} size="m" />
-                      <div>
-                        <b>
-                          {sh.titleName}: behövs {formatInt(need)}, hemma{" "}
-                          {formatInt(line?.home ?? 0)}
-                        </b>
-                        <small>
-                          {formatInt(sh.shortBy)} saknas hemma.
-                          {sub
-                            ? ` ${sub.slots === 1 ? "1 fack får" : `${sub.slots} fack får`} ${sub.titleName}.`
-                            : " Beställ eller packa fler."}
-                        </small>
-                      </div>
-                      {sub ? <Badge tone="plain">Ersättare</Badge> : null}
-                    </div>
-                  );
-                })}
-                <ul className="plist">
-                  {route.load.map((l) => {
-                    const on = packed.has(l.titleId);
-                    const short = l.shortBy > 0;
+                <>
+                  {route.short.map((sh) => {
+                    const line = route.load.find((l) => l.titleId === sh.titleId);
+                    const sub = substituteFor.get(sh.titleId);
+                    const need = (line?.quantity ?? 0) + sh.shortBy;
                     return (
-                      <li key={l.titleId}>
-                        <label className={cn("prow", on && "on", short && "o")}>
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            onChange={() => togglePacked(l.titleId)}
-                          />
-                          <span className="pkx" aria-hidden="true">
-                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                              <path
-                                d="M2.5 6.2 5 8.6l4.5-5"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </span>
-                          <span className="pkb">
-                            <PackImage title={l.titleName} size="m" />
-                          </span>
-                          <span className="pkt">
-                            <b>{l.titleName}</b>
-                            <small>
-                              {l.home !== null ? `Hemma ${formatInt(l.home)}` : "Hemma okänt"}
-                              {short ? ` · behövs ${formatInt(l.quantity + l.shortBy)}` : ""}
-                            </small>
-                          </span>
-                          <span className="pkq">{formatInt(l.quantity)}</span>
-                        </label>
-                      </li>
+                      <div className="pw" key={sh.titleId}>
+                        <PackImage title={sh.titleName} size="m" />
+                        <div>
+                          <b>
+                            {sh.titleName}: behövs {formatInt(need)}, hemma{" "}
+                            {formatInt(line?.home ?? 0)}
+                          </b>
+                          <small>
+                            {formatInt(sh.shortBy)} saknas hemma.
+                            {sub
+                              ? ` ${sub.slots === 1 ? "1 fack får" : `${sub.slots} fack får`} ${sub.titleName}.`
+                              : " Beställ eller packa fler."}
+                          </small>
+                        </div>
+                        {sub ? <Badge tone="plain">Ersättare</Badge> : null}
+                      </div>
                     );
                   })}
-                </ul>
-                <p className="pft">
-                  Bocka av det du packat. Det sparas i den här webbläsaren i dag.
-                </p>
-              </>
-            )}
-          </Card>
-        </div>
+                  <ul className="plist">
+                    {route.load.map((l) => {
+                      const on = packed.has(l.titleId);
+                      const short = l.shortBy > 0;
+                      return (
+                        <li key={l.titleId}>
+                          <label className={cn("prow", on && "on", short && "o")}>
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => togglePacked(l.titleId)}
+                            />
+                            <span className="pkx" aria-hidden="true">
+                              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                                <path
+                                  d="M2.5 6.2 5 8.6l4.5-5"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
+                            <span className="pkb">
+                              <PackImage title={l.titleName} size="m" />
+                            </span>
+                            <span className="pkt">
+                              <b>{l.titleName}</b>
+                              <small>
+                                {l.home !== null ? `Hemma ${formatInt(l.home)}` : "Hemma okänt"}
+                                {short ? ` · behövs ${formatInt(l.quantity + l.shortBy)}` : ""}
+                              </small>
+                            </span>
+                            <span className="pkq">{formatInt(l.quantity)}</span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="pft">
+                    Bocka av det du packat. Det sparas i den här webbläsaren i dag.
+                  </p>
+                </>
+              )}
+            </Card>
+          </div>
+        )}
       </div>
 
       {startHref && canRefill ? (
@@ -497,7 +501,8 @@ function StopRow({
   canEdit,
   canRefill,
   busy,
-  pending,
+  checkedHere,
+  onCheckedHere,
   checks,
   toggleCheck,
   onChange,
@@ -506,13 +511,17 @@ function StopRow({
   stop: RouteStop;
   canEdit: boolean;
   canRefill: boolean;
-  busy: string | null;
-  pending: boolean;
+  /** Ett tryck på just det här stoppet väntar på servern. */
+  busy: boolean;
+  /** Offline-stoppet är kollat ("Stoppet klart" i Fyll på, sparat i den här telefonen). */
+  checkedHere: boolean;
+  onCheckedHere: (on: boolean) => void;
   checks: ReadonlySet<string>;
   toggleCheck: (id: string) => void;
   onChange: (machineId: string, change: RouteChangeKind, name: string) => void;
   substitute: { titleName: string; slots: number; forTitleName: string } | undefined;
 }) {
+  const done = s.done || checkedHere;
   const loss = s.lossProfitPerDayOre;
   const lossLead =
     s.status === "tom"
@@ -523,18 +532,18 @@ function StopRow({
           ? "Tom i morgon · t"
           : "T";
   const lossBadge =
-    loss !== null && loss >= 500 && !s.done ? (
+    loss !== null && loss >= 500 && !done ? (
       <Badge tone={s.status === "tom" || s.status === "offline" ? "critical" : "warning"}>
         {lossLead}appar {approxKr(loss)} vinst/dag
       </Badge>
     ) : null;
   return (
-    <div className={cn("stop", s.done && "done")}>
+    <div className={cn("stop", done && "done")}>
       <span
         className="sno"
-        aria-label={s.done ? `Stopp ${s.sequence}, klart` : `Stopp ${s.sequence}`}
+        aria-label={done ? `Stopp ${s.sequence}, klart` : `Stopp ${s.sequence}`}
       >
-        {s.done ? (
+        {done ? (
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path
               d="M2.5 6.2 5 8.6l4.5-5"
@@ -554,6 +563,10 @@ function StopRow({
           {s.done ? (
             <Badge tone="success" dot>
               Påfylld i dag
+            </Badge>
+          ) : checkedHere ? (
+            <Badge tone="success" dot>
+              Kollad i dag
             </Badge>
           ) : s.kind === "check" ? (
             <Badge tone="critical" dot>
@@ -575,7 +588,7 @@ function StopRow({
             </>
           ) : null}
         </small>
-        {s.kind === "check" && !s.done ? (
+        {s.kind === "check" && !done ? (
           <ul className="chk">
             {CHECKLIST.map((text, i) => {
               const id = `${s.machineId}:${i}`;
@@ -646,13 +659,16 @@ function StopRow({
             Fyll på
           </ButtonLink>
         ) : null}
-        {canEdit && !s.done ? (
+        {checkedHere && !s.done ? (
+          <Button variant="plain" touch onClick={() => onCheckedHere(false)}>
+            Ångra klart
+          </Button>
+        ) : canEdit && !done ? (
           <>
             <Button
               variant="plain"
               touch
-              disabled={pending}
-              pending={busy === `${s.machineId}:skip`}
+              disabled={busy}
               onClick={() => onChange(s.machineId, "skip", s.name)}
             >
               Hoppa över
@@ -660,8 +676,7 @@ function StopRow({
             <Button
               variant="plain"
               touch
-              disabled={pending}
-              pending={busy === `${s.machineId}:later`}
+              disabled={busy}
               onClick={() => onChange(s.machineId, "later", s.name)}
             >
               Till i morgon

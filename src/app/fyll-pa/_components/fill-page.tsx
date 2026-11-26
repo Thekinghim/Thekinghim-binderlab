@@ -41,7 +41,12 @@ export async function FillPage({
     loadFillDataFor(viewer, now),
     routeMode && ctx.viewMode !== "simple"
       ? loadDayRoute()
-          .then((r) => ({ ids: r.stops.map((x) => x.machineId) }))
+          .then((r) => ({
+            ids: r.stops.map((x) => x.machineId),
+            date: r.date,
+            // Offline-stopp: checklistan, Stoppet klart och Hoppa över i stället för facken.
+            check: r.stops.filter((x) => x.kind === "check" && !x.done).map((x) => x.machineId),
+          }))
           .catch(() => null)
       : Promise.resolve(null),
     // Offline / strömmen av (märket i Fyll på): ett fel här stoppar aldrig Fyll på.

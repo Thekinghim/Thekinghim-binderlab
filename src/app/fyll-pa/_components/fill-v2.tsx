@@ -436,17 +436,18 @@ export function SlotTile({
         {r.name}
       </span>
       <span className="fl" aria-hidden="true">
-        <span className={cn("bar", cap === null && "unk")}>
-          {cap !== null ? (
-            <>
+        {cap !== null ? (
+          <>
+            <span className="bar">
               <i className="add" style={{ transform: `scaleX(${v.shownShare})` }} />
               <i className="now" style={{ transform: `scaleX(${v.nowShare})` }} />
-            </>
-          ) : null}
-        </span>
-        <span className="n">
-          {cap !== null ? `${formatInt(v.shown)}/${formatInt(cap)}` : formatInt(v.shown)}
-        </span>
+            </span>
+            <span className="n">{`${formatInt(v.shown)}/${formatInt(cap)}`}</span>
+          </>
+        ) : (
+          // Okänd kapacitet: antalet som finns (känt), ingen tom stapel.
+          <span className="n">{`${formatInt(v.shown)} i automaten`}</span>
+        )}
       </span>
       {v.out ? (
         <span className="chips" aria-hidden="true">

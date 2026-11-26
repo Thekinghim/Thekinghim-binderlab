@@ -55,6 +55,20 @@ export function glyphSlotsOf(m: Pick<FillMachine, "rows" | "slots">): GlyphSlot[
   return inSlotOrder(m.rows, m.slots).map(glyphSlotOf);
 }
 
+/**
+ * Okänd nivå (ingen känd kapacitet): det man faktiskt vet, antalet i automaten per titel, i
+ * fackordning. Inga "?"-rutor: antalet är känt även när hur fullt det är inte är det.
+ */
+export function unknownTiles(
+  m: Pick<FillMachine, "rows" | "slots">,
+): { titleId: string; name: string; now: number }[] {
+  return inSlotOrder(m.rows, m.slots).map((r) => ({
+    titleId: r.titleId,
+    name: r.name,
+    now: Math.max(0, Math.trunc(r.now)),
+  }));
+}
+
 /** Bildens läge: offline, tom (slut eller tomma fack), fyll på, annars ok. */
 export function glyphStatusFor(
   m: Pick<FillMachine, "empty" | "emptySlots" | "needs">,

@@ -222,26 +222,30 @@
     flex-wrap: wrap;
     gap: 4px;
   }
+  /* Antalet i automaten under packbilden (det som är känt utan kapacitet). */
   .v2-fill-app .fl-unk-row .sl {
-    position: relative;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
   }
   .v2-fill-app .fl-unk-row .sl .v2-pk {
     display: block;
-    filter: grayscale(1);
-    opacity: 0.32;
     height: 32px !important;
     width: auto !important;
   }
   .v2-fill-app .fl-unk-row .sl i {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
     font-style: normal;
-    font-weight: 700;
-    font-size: var(--v2-t-sm);
+    font-weight: 650;
+    font-size: var(--v2-t-xs);
+    line-height: 1;
     color: var(--v2-body2);
+    font-variant-numeric: tabular-nums;
+  }
+  .v2-fill-app .fl-unk-row .fl-more {
+    align-self: center;
+    font-size: var(--v2-t-xs);
+    color: var(--v2-mute);
   }
   .v2-fill-app .fl-unk-none {
     font-size: var(--v2-t-sm);

@@ -25,6 +25,7 @@ import {
   glyphSlotsOf,
   glyphStatusFor,
   titlar,
+  unknownTiles,
 } from "../_lib/list";
 import type { FillMachine } from "../_lib/model";
 import type { MachineLink } from "../_lib/tiles";
@@ -188,7 +189,10 @@ export function NeedCard({
 /* Okänd nivå                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** Ingen Awish-läsning: skärmen blek med "?", titlarna som blekta packbilder med "?". */
+/**
+ * Okänd nivå (ingen känd kapacitet): skärmen blek, titlarna som packbilder med antalet som finns
+ * i automaten (det som är känt), inte "?".
+ */
 export function UnknownCard({
   m,
   store,
@@ -207,6 +211,7 @@ export function UnknownCard({
   onOpen: () => void;
 }) {
   const slots = glyphSlotsOf(m);
+  const tiles = unknownTiles(m);
   return (
     <a href={href} onClick={open(onOpen)} aria-label={ariaLabel} className="fl-unk">
       <MachineGlyph
@@ -221,14 +226,21 @@ export function UnknownCard({
           <b>{m.name || m.code}</b>
           <span>{placeLine(m, store)}</span>
         </span>
-        {slots.length > 0 ? (
+        {tiles.length > 0 ? (
           <span className="fl-unk-row">
-            {slots.slice(0, 12).map((s, i) => (
-              <span key={`${s.title}-${i}`} className="sl">
-                <PackImage title={s.title} size="xs" />
-                <i>?</i>
+            {tiles.slice(0, 12).map((t) => (
+              <span
+                key={t.titleId}
+                className="sl"
+                title={`${t.name}: ${formatInt(t.now)} i automaten`}
+              >
+                <PackImage title={t.name} size="xs" />
+                <i>{formatInt(t.now)}</i>
               </span>
             ))}
+            {tiles.length > 12 ? (
+              <span className="fl-more">+{titlar(tiles.length - 12)}</span>
+            ) : null}
           </span>
         ) : (
           <span className="fl-unk-none">Hur full den är syns efter nästa läsning</span>

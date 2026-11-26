@@ -9,6 +9,7 @@ import { requestStoreShareView } from "@/server/data/core";
 import { StatusTag } from "@/components/ui/status-tag";
 import { ButtonLink } from "@/components/v2/button";
 import { Empty } from "@/components/v2/empty";
+import { LazyMount } from "@/components/v2/lazy-mount";
 import { Notice } from "@/components/v2/notice";
 import { V2Page } from "@/components/v2/shell/page";
 import { SubNav } from "@/components/v2/sub-nav";
@@ -171,6 +172,9 @@ export default async function MachinePage({
   const openPlace = first(sp.gor) === "placera" && store === null;
   // "Placera automat" på en ny butik (Butiker → På väg in) skickar med butiken: den är vald.
   const placeStore = openPlace ? first(sp.butik) : undefined;
+  // Fyll på är det man oftast gör vid automaten: sidans första knapp (samma roller som Fyll på).
+  const canFill = ctx.role === "owner" || ctx.role === "admin" || ctx.role === "refiller";
+  const fillHref = `/fyll-pa/${machine.id}?fran=automater`;
 
   return (
     <V2Page
@@ -190,9 +194,16 @@ export default async function MachinePage({
         </>
       }
       tools={
-        ctx.canEdit ? (
+        ctx.canEdit || canFill ? (
           <span className="flex items-center gap-2 max-[900px]:hidden">
-            <ButtonLink href={`/fyll-pa/${machine.id}/qr`}>QR för egen påfyllning</ButtonLink>
+            {ctx.canEdit ? (
+              <ButtonLink href={`/fyll-pa/${machine.id}/qr`}>QR för egen påfyllning</ButtonLink>
+            ) : null}
+            {canFill ? (
+              <ButtonLink href={fillHref} variant="act" prefetch={false}>
+                Fyll på
+              </ButtonLink>
+            ) : null}
           </span>
         ) : undefined
       }
@@ -207,6 +218,14 @@ export default async function MachinePage({
             </span>
             Alla automater
           </Link>
+          {canFill ? (
+            // Telefon: Fyll på först och störst, på en egen rad (datorn har den i sidhuvudet).
+            <div className="acts w-full min-[901px]:hidden">
+              <ButtonLink href={fillHref} variant="act" touch prefetch={false} className="flex-1">
+                Fyll på
+              </ButtonLink>
+            </div>
+          ) : null}
           {ctx.canEdit ? (
             <div className="acts">
               <ButtonLink href={`/fyll-pa/${machine.id}/qr`} touch className="min-[901px]:hidden">
@@ -490,7 +509,10 @@ function TitlesAndHours({ data, days }: { data: MachineDetailData; days: string 
               <span className="text-v2-sm font-[650] text-v2-ink">Bästa titlar</span>
               <span className="tnum text-v2-xs text-v2-mute">{`${formatInt(titles.length)} ${titles.length === 1 ? "titel" : "titlar"}`}</span>
             </p>
-            <TitleBars titles={titles} />
+            {/* Ritas först när kortet närmar sig skärmen (telefonen öppnar sidan snabbare). */}
+            <LazyMount minHeight={Math.min(titles.length, 10) * 36} label="Bästa titlar">
+              <TitleBars titles={titles} />
+            </LazyMount>
           </div>
           <div className="flex min-w-0 flex-col gap-3 lg:col-span-7">
             <p className="flex flex-wrap items-baseline justify-between gap-x-3 border-t border-v2-line2 pt-3">
@@ -501,7 +523,9 @@ function TitlesAndHours({ data, days }: { data: MachineDetailData; days: string 
                   : `${formatInt(heat.total)}${NBSP}köp`}
               </span>
             </p>
-            <SalesHeatmap heat={heat} days={data.period.span.days} />
+            <LazyMount minHeight={240} label="Köp per veckodag och timme">
+              <SalesHeatmap heat={heat} days={data.period.span.days} />
+            </LazyMount>
           </div>
         </div>
       ) : (
