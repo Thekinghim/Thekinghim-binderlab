@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { parseIsoDate, wallClockIn } from "@/components/shell/period-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag } from "@/components/ui/status-tag";
+import { Button } from "@/components/v2/button";
 import {
   formatDate,
   formatDateTime,
@@ -201,17 +202,40 @@ export function RecentOrdersTable({
       },
     ];
   }, [timeZone, now]);
+  // Långa listor (två veckors order) ritas inte på en gång: de senaste först, resten på tryck.
+  const [all, setAll] = useState(false);
+  const rows = useMemo(() => (all ? orders : newestOrders(orders, FIRST_ORDERS)), [all, orders]);
   return (
-    <DataTable
-      surface="bg"
-      columns={cols}
-      rows={orders}
-      rowKey={(o) => o.id}
-      caption="Senaste order i automaten"
-      defaultSort={{ key: "at", dir: "desc" }}
-      dense
-    />
+    <>
+      <DataTable
+        surface="bg"
+        columns={cols}
+        rows={rows}
+        rowKey={(o) => o.id}
+        caption="Senaste order i automaten"
+        defaultSort={{ key: "at", dir: "desc" }}
+        dense
+      />
+      {rows.length < orders.length ? (
+        <div className="flex justify-center pt-3">
+          <Button touch onClick={() => setAll(true)}>
+            Visa alla {formatInt(orders.length)} order
+          </Button>
+        </div>
+      ) : null}
+    </>
   );
+}
+
+/** Så många order visas först. */
+export const FIRST_ORDERS = 40;
+
+/** De `n` senaste ordrarna (nyast först). */
+export function newestOrders<T extends { orderedAt: string }>(
+  orders: readonly T[],
+  n: number,
+): T[] {
+  return [...orders].sort((a, b) => b.orderedAt.localeCompare(a.orderedAt)).slice(0, n);
 }
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import {
   minutesAt,
   nextMachineId,
   receiptItems,
+  unknownTiles,
 } from "./list";
 import { fillMachines, pairKey, type AwishFillEntry, type FillInput } from "./model";
 
@@ -165,5 +166,21 @@ describe("kvittot", () => {
     expect(nextMachineId({ justFilled: "A", routeNext: "B", machines: ms })).toBe("B");
     expect(nextMachineId({ justFilled: "A", machines: ms })).toBe("C");
     expect(nextMachineId({ justFilled: "C", machines: [{ id: "C", needs: true }] })).toBeNull();
+  });
+});
+
+describe("okänd nivå: antalet i automaten, inte ?", () => {
+  const row = (titleId: string, now: number) =>
+    ({ titleId, name: `Titel ${titleId}`, now, capacity: null }) as never;
+  it("visar antalet per titel i fackordning (minst 0, hela pack)", () => {
+    const tiles = unknownTiles({
+      rows: [row("a", 6), row("b", -2), row("c", 3.7)],
+      slots: ["c", "a"],
+    });
+    expect(tiles).toEqual([
+      { titleId: "c", name: "Titel c", now: 3 },
+      { titleId: "a", name: "Titel a", now: 6 },
+      { titleId: "b", name: "Titel b", now: 0 },
+    ]);
   });
 });

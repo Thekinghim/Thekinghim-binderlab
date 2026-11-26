@@ -56,7 +56,8 @@ describe.each([
     await page.goto("/rutt");
     await page.getByRole("heading", { level: 1, name: /Rutt/ }).waitFor();
     await page.locator(".v2-rutt").waitFor();
-    await page.getByRole("heading", { name: /Packlista/ }).waitFor();
+    // Packlistan när dagen har stopp; utan stopp EN rad som säger varför (inga tomma kort).
+    await page.locator(".v2-rutt .o-pack, .v2-rutt .o-empty").first().waitFor();
     await page.waitForLoadState("networkidle");
     await noSideScroll(page);
     await screenshot(page, `rutt-v2-agare-${name}`);

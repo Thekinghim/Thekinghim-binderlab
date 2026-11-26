@@ -588,14 +588,18 @@
     opacity: 0.35;
     filter: grayscale(1);
   }
+  /* Två rader: "Lorcana: Into the Inklands" ska gå att läsa, inte "Lorcana: Into the Inkl…". */
   .v2-fill-machine .tile .nm {
-    display: block;
+    display: -webkit-box;
     margin-top: 8px;
     font-size: var(--v2-t-md);
     font-weight: 600;
-    white-space: nowrap;
+    line-height: 1.25;
     overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
   .v2-fill-machine .tile .fl {
     display: flex;
@@ -606,9 +610,6 @@
   .v2-fill-machine .tile .bar {
     flex: 1;
     min-width: 0;
-  }
-  .v2-fill-machine .tile .bar.unk {
-    visibility: hidden;
   }
   .v2-fill-machine .tile .bar .add {
     background: var(--v2-adding);
@@ -655,6 +656,55 @@
     .v2-fill-machine .say {
       display: none;
     }
+  }
+
+  /* Ruttläget, offline-stopp: checklistan i stället för facken, Hoppa över + Stoppet klart. */
+  .v2-fill-check .chkstop {
+    background: var(--v2-panel);
+    border-radius: var(--v2-r-lg);
+    box-shadow: 0 0 0 1px var(--v2-line);
+    padding: 14px 16px 6px;
+  }
+  .v2-fill-check .chkstop h2 {
+    margin: 0;
+    font-size: var(--v2-t-lg);
+    font-weight: 650;
+    color: var(--v2-ink);
+  }
+  .v2-fill-check .chkstop p {
+    margin: 2px 0 6px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .v2-fill-check .chk {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .v2-fill-check .chk li + li {
+    border-top: 1px solid var(--v2-line2);
+  }
+  .v2-fill-check .chk label {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    min-height: 48px;
+    font-size: var(--v2-t-md);
+    color: var(--v2-body2);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .v2-fill-check .chk input {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--v2-ink);
+    flex: none;
+  }
+  .v2-fill-check .chkfoot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 8px;
   }
 
   /* Arket för ett fack */
