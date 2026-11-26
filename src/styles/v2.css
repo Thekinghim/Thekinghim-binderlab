@@ -182,6 +182,10 @@
     background: var(--v2-bg);
     font-family: var(--v2-sans);
     font-feature-settings: normal;
+  }
+  /* Ingen gummisnodd eller dra-för-att-ladda-om på sidan: appen har egna rullytor (ark, listor).
+     Måste stå på roten; på body gäller den inte sidans rullning. */
+  :root:has([data-ui="v2"]) {
     overscroll-behavior-y: none;
   }
   [data-ui="v2"] :where(b, strong) {
@@ -193,6 +197,23 @@
   [data-ui="v2"] :where(button, a, [role="button"]):not(input, textarea) {
     -webkit-user-select: none;
     user-select: none;
+  }
+  /* Inget långtrycksfönster (länkförhandsvisning, kopiera) på flikar, rader, kort och knappar:
+     de är kontroller, inte innehåll. Vanliga textlänkar behåller det. */
+  [data-ui="v2"]
+    :where(
+      button,
+      [role="button"],
+      .v2-btn,
+      .v2-tabs a,
+      .v2-nav,
+      a.v2-row,
+      a.v2-card,
+      a.g4-mrow,
+      a.hh-k,
+      a.x-lr
+    ) {
+    -webkit-touch-callout: none;
   }
   [data-ui="v2"] kbd {
     font-family: var(--v2-code);
@@ -527,6 +548,8 @@
   }
   .v2-sub {
     margin: 2px 22px 0;
+    /* En rad även medan raden laddar (skeleton), så att sidan under inte hoppar. */
+    min-height: 20px;
     font-size: var(--v2-t-md);
     line-height: 20px;
     color: var(--v2-mute);
@@ -615,6 +638,19 @@
     .v2-page-body {
       padding: 12px 12px 20px;
     }
+  }
+  /* Periodbyte eller filter som väntar på servern (main[aria-busy], shell-navigation.tsx):
+     sidans siffror bleknar efter 100 ms (ett snabbt svar blinkar inte), medan rubriken och det
+     nya periodvalet står skarpa. Gamla sidor utan V2Page tonas som helhet. */
+  .v2-page-body,
+  .v2-main:not(:has([data-v2-page])) > div {
+    transition: opacity 0.2s var(--v2-ease);
+  }
+  .v2-main[aria-busy="true"] .v2-page-body,
+  .v2-main[aria-busy="true"]:not(:has([data-v2-page])) > div {
+    opacity: 0.45;
+    transition-duration: 0.15s;
+    transition-delay: 0.1s;
   }
   /* Sidbyte: bara en kort toning (150 ms). Sidbyten sker många gånger om dagen och
      prototypen flyttar inte innehållet. */
@@ -1121,6 +1157,14 @@
       background: var(--v2-hover);
     }
   }
+  /* Tryckt läge (telefon och mus): raden svarar när fingret landar, inte först när nästa sida
+     laddats. Direkt in, 150 ms ut (radens egen övergång). */
+  a.v2-row:active,
+  button.v2-row:active,
+  a.v2-card:active {
+    background-color: var(--v2-sel);
+    transition-duration: 0s;
+  }
   @media (max-width: 900px) {
     .v2-row {
       grid-template-columns: minmax(0, 1fr) auto;
@@ -1551,6 +1595,11 @@
     border-radius: var(--v2-r-lg) var(--v2-r-lg) 0 0;
     box-shadow: 0 -8px 30px rgb(0 0 0 / 0.08);
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  /* Med knappar längst ner (.ft) står luften för hemindikatorn i knappraden; inte en gång till
+     under den (annars ~34 px tomt under knapparna på iPhone med Face ID). */
+  .v2-sheet[data-vaul-drawer-direction="bottom"]:has(.ft) {
+    padding-bottom: 0;
   }
   .v2-sheet .grab {
     display: block;
@@ -2326,6 +2375,22 @@
   }
   .v2-psheet .sb {
     padding: 8px 16px 16px;
+  }
+  /* Telefonens ark: snabbval, kalender och fält rullar; Använd står fast i botten (.ft), så att
+     knappen aldrig hamnar under skärmkanten. */
+  .v2-psheet .v2-ppanel {
+    flex: 1;
+    min-height: 0;
+    gap: 0;
+  }
+  .v2-psheet .v2-ppanel > .sb {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .v2-psheet .v2-pfoot.ft {
+    flex: none;
+    gap: 8px;
   }
   .v2-psheet .v2-ppresets button {
     height: 36px;

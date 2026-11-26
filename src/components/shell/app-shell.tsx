@@ -191,7 +191,7 @@ export function AppShell(props: AppShellProps) {
               onOrganizationChange={props.onOrganizationChange}
               onSignOut={props.onSignOut}
             />
-            <ShellMain className="v2-main">
+            <ShellMain className="v2-main" fade={false}>
               {/* De gamla sidornas huvud: döljs av CSS när sidan är en V2-sida (data-v2-page). */}
               <div data-legacy-chrome>
                 <Topbar

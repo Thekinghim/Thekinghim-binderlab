@@ -370,7 +370,7 @@ export async function WorstCardView() {
                 {medianAt !== null ? <em style={{ left: `${medianAt * 100}%` }} /> : null}
               </span>
             </span>
-            <ButtonLink size="sm" href={m.action.href}>
+            <ButtonLink prefetch={false} size="sm" href={m.action.href}>
               {m.action.label}
             </ButtonLink>
           </div>
@@ -448,7 +448,7 @@ export async function StockCardView() {
               {t.home <= 0 ? "Slut hemma" : `${formatInt(t.lastsDays ?? 0)}${NBSP}d`}
             </Badge>
             {t.verb ? (
-              <ButtonLink size="sm" href="/vart-lager">
+              <ButtonLink prefetch={false} size="sm" href="/vart-lager">
                 {t.verb}
               </ButtonLink>
             ) : null}
@@ -493,7 +493,9 @@ export async function LossCardView({ sp }: { sp: SearchParamsInput }) {
                 nu.{" "}
               </>
             ) : null}
-            <Link href={l.lost.href}>Underlaget →</Link>
+            <Link prefetch={false} href={l.lost.href}>
+              Underlaget →
+            </Link>
           </p>
         </>
       ) : (
@@ -517,7 +519,7 @@ export async function LossCardView({ sp }: { sp: SearchParamsInput }) {
         <p className="x-sum">Inga pack saknas.</p>
       ) : (
         l.shrink.machines.slice(0, 3).map((m) => (
-          <Link className="x-lr" key={m.machineId} href={l.shrink!.href}>
+          <Link prefetch={false} className="x-lr" key={m.machineId} href={l.shrink!.href}>
             <span className="x-ln">
               <b>
                 {m.name} <span className="wid text-v2-mute">{m.code}</span>
@@ -563,6 +565,7 @@ export async function ShopsCardView({ sp }: { sp: SearchParamsInput }) {
       </div>
       {s.rows.slice(0, 3).map((r) => (
         <Link
+          prefetch={false}
           className="x-lr"
           key={r.storeId}
           href={`/butiker?valj=${encodeURIComponent(r.storeId)}`}
@@ -645,7 +648,9 @@ export async function OpsCardView({ timeZone }: { timeZone: string }) {
           {o.offline.map((m, i) => (
             <span key={m.id}>
               {i > 0 ? ", " : ""}
-              <Link href={`/automater?valj=${encodeURIComponent(m.code)}`}>{m.name}</Link>
+              <Link prefetch={false} href={`/automater?valj=${encodeURIComponent(m.code)}`}>
+                {m.name}
+              </Link>
             </span>
           ))}
           .

@@ -465,7 +465,7 @@ describe("sidorna", () => {
 
   it("/ (Hem V2): påfyllaren får sidan, och Hems laddare skickar inga belopp", async () => {
     await loginAs(req, cast.personas.refiller);
-    const mod = (await import("@/app/(app)/page")) as {
+    const mod = (await import("@/app/(app)/(hem)/page")) as {
       default: (props: unknown) => Promise<unknown>;
     };
     const outcome = await call(() => mod.default({ searchParams: Promise.resolve({}) }));

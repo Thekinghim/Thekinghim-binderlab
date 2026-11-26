@@ -154,6 +154,7 @@ export function TitleTable({
           return (
             <span className="flex min-w-0 flex-col">
               <Link
+                prefetch={false}
                 href={titleHref(baseQuery, r.id)}
                 scroll={false}
                 onClick={(e) => {

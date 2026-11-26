@@ -125,7 +125,7 @@ export function PeriodSegment({ className }: { className?: string }) {
                   <h2>Välj period</h2>
                 </Drawer.Title>
               </div>
-              <div className="sb">{panel}</div>
+              {panel}
             </Drawer.Content>
           </Drawer.Portal>
         </Drawer.Root>
@@ -240,8 +240,8 @@ function PeriodPanel({
       ? "Välj sista dagen"
       : "Välj första dagen";
 
-  return (
-    <div className="v2-ppanel">
+  const body = (
+    <>
       <div className="v2-ppresets" role="group" aria-label="Snabbval">
         {PANEL_PRESETS.map((p) => (
           <button
@@ -279,24 +279,38 @@ function PeriodPanel({
           />
         </label>
       </div>
-      <div className="v2-pfoot">
-        <span className="sum" aria-live="polite">
-          {tooLong ? "Högst två år" : summary}
-        </span>
-        {!phone ? (
-          <button type="button" className="v2-btn quiet" onClick={onCancel}>
-            Avbryt
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className={cn("v2-btn act", phone && "lg")}
-          disabled={!r || tooLong}
-          onClick={() => r && onRange(r)}
-        >
-          Använd
+    </>
+  );
+  const foot = (
+    <>
+      <span className="sum" aria-live="polite">
+        {tooLong ? "Högst två år" : summary}
+      </span>
+      {!phone ? (
+        <button type="button" className="v2-btn quiet" onClick={onCancel}>
+          Avbryt
         </button>
-      </div>
+      ) : null}
+      <button
+        type="button"
+        className={cn("v2-btn act", phone && "lg")}
+        disabled={!r || tooLong}
+        onClick={() => r && onRange(r)}
+      >
+        Använd
+      </button>
+    </>
+  );
+  // Telefonens ark: innehållet rullar (.sb) och Använd står fast i botten (.ft).
+  return phone ? (
+    <div className="v2-ppanel">
+      <div className="sb">{body}</div>
+      <div className="v2-pfoot ft">{foot}</div>
+    </div>
+  ) : (
+    <div className="v2-ppanel">
+      {body}
+      <div className="v2-pfoot">{foot}</div>
     </div>
   );
 }

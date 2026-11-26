@@ -6,7 +6,8 @@ import { cn } from "@/lib/cn";
 /**
  * En rad i en lista (Kräver åtgärd, Att göra, Butiker): rubrik och undertext till vänster,
  * innehåll i mitten (status, fyllnad, text), knappar till höger. På telefon hamnar innehållet
- * under rubriken. Med `href` är hela raden en länk (då utan knappar).
+ * under rubriken. Med `href` är hela raden en länk (då utan knappar), utan förhämtning: listor har
+ * många rader och telefonen ska inte hämta alla sidor i förväg.
  */
 export function ListRow({
   title,
@@ -34,7 +35,7 @@ export function ListRow({
     </>
   );
   return href ? (
-    <Link href={href} className={cn("v2-row", className)}>
+    <Link href={href} className={cn("v2-row", className)} prefetch={false}>
       {inner}
     </Link>
   ) : (

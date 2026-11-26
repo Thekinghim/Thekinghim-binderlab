@@ -21,6 +21,7 @@ export async function WatchLines({ className }: { className?: string }) {
       {lines.map((line) => (
         <li key={line.key} className="mt-2 first:mt-0">
           <Link
+            prefetch={false}
             href={line.href}
             role="alert"
             className="group flex min-h-11 items-start justify-between gap-3 rounded-sm border border-signal-line bg-surface px-4 py-3 hover:bg-hover"

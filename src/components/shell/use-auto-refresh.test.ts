@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { FOCUS_STALE_MS, INTERVAL_MS, isBusy, shouldRefresh } from "./use-auto-refresh";
+import {
+  FOCUS_STALE_MS,
+  INTERVAL_MS,
+  SCROLL_QUIET_MS,
+  isBusy,
+  shouldRefresh,
+} from "./use-auto-refresh";
 
 function doc(
   opts: {
@@ -7,6 +13,7 @@ function doc(
     tag?: string;
     modal?: boolean;
     sheet?: boolean;
+    drawer?: boolean;
     editable?: boolean;
   } = {},
 ) {
@@ -16,7 +23,9 @@ function doc(
       ? ({ tagName: opts.tag, isContentEditable: !!opts.editable } as unknown as Element)
       : null,
     querySelector: (sel: string) =>
-      (opts.modal && sel.includes("aria-modal")) || (opts.sheet && sel.includes("dialog[open]"))
+      (opts.modal && sel.includes("aria-modal")) ||
+      (opts.sheet && sel.includes("dialog[open]")) ||
+      (opts.drawer && sel.includes("[data-vaul-drawer]"))
         ? ({} as Element)
         : null,
   };
@@ -54,5 +63,19 @@ describe("shouldRefresh", () => {
     expect(isBusy(doc({ tag: "DIV", editable: true }))).toBe(true);
     expect(isBusy(doc({ tag: "SELECT" }))).toBe(true);
     expect(isBusy(doc())).toBe(false);
+  });
+
+  it("hoppar över medan ett V2-ark (vaul) är öppet", () => {
+    const late = t0 + INTERVAL_MS;
+    expect(shouldRefresh("interval", late, t0, doc({ drawer: true }))).toBe(false);
+    expect(shouldRefresh("focus", late, t0, doc({ drawer: true }))).toBe(false);
+  });
+
+  it("timern väntar tills man slutat rulla en stund", () => {
+    const late = t0 + INTERVAL_MS;
+    expect(shouldRefresh("interval", late, t0, doc(), late - 1_000)).toBe(false);
+    expect(shouldRefresh("interval", late, t0, doc(), late - SCROLL_QUIET_MS)).toBe(true);
+    // Tillbaka till appen efter en stund borta: rullningen före spelar ingen roll.
+    expect(shouldRefresh("focus", late, t0, doc(), late - 1_000)).toBe(true);
   });
 });

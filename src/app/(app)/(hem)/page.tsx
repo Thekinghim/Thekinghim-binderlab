@@ -32,10 +32,10 @@ import { loadAwishFreshnessFor } from "@/server/monitoring/watch";
 import { loadSalePushPref } from "@/server/sales-push/prefs";
 import { withUserDb } from "@/server/session";
 
-import { AwishOrdersBanner } from "./_vakt/data-age-line";
-import { BriefButton } from "./_hem/brief/button";
-import { SalesScreen } from "./forsaljning/_components/sales-screen";
-import { SplitCard } from "./pengar/_components/split-card";
+import { AwishOrdersBanner } from "../_vakt/data-age-line";
+import { BriefButton } from "../_hem/brief/button";
+import { SalesScreen } from "../forsaljning/_components/sales-screen";
+import { SplitCard } from "../pengar/_components/split-card";
 import {
   GeoCardView,
   LossCardView,
@@ -46,13 +46,14 @@ import {
   TopCardView,
   WhenCardView,
   WorstCardView,
-} from "./_hem/v2/analytics";
-import { HemHero } from "./_hem/v2/hero-card";
-import { ActionsCard, LiveCard, RouteCard, TodayLine, TodoCard } from "./_hem/v2/today";
-import { SalePrompt } from "./_hem/v2/sale-prompt";
-import { loadHemToday } from "./_hem/v2/today-data";
+} from "../_hem/v2/analytics";
+import { HemHero } from "../_hem/v2/hero-card";
+import { HemHeroSkeleton } from "../_hem/v2/hero-skeleton";
+import { ActionsCard, LiveCard, RouteCard, TodayLine, TodoCard } from "../_hem/v2/today";
+import { SalePrompt } from "../_hem/v2/sale-prompt";
+import { loadHemToday } from "../_hem/v2/today-data";
 
-import "./_hem/v2/hem.css";
+import "../_hem/v2/hem.css";
 
 /** Hem; i Enkel vy är startsidan Försäljning (på personens språk). */
 export async function generateMetadata(): Promise<Metadata> {
@@ -105,7 +106,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       tools={<BriefButton />}
       className="hem2"
       sub={
-        <SafeSuspense fallback={<Skeleton width={320} height={16} />}>
+        <SafeSuspense fallback={<Skeleton width="min(320px, 85%)" height={16} />}>
           <TodaySub />
         </SafeSuspense>
       }
@@ -119,9 +120,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       {/* Hjältekortet (visuellt/02): vinst, pallen och månadens mål, nyckeltalen kompakt under
           (ersätter KPI-bandet; _hem/v2/hero-card.tsx). Bara ekonomiroller. */}
       {economy ? (
-        <SafeSuspense
-          fallback={<div className="v2-card h-[380px] max-md:h-[640px]" aria-busy="true" />}
-        >
+        <SafeSuspense fallback={<HemHeroSkeleton />}>
           <HemHero sp={sp} />
         </SafeSuspense>
       ) : null}
@@ -197,7 +196,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           <div className="x-hd">
             <h2 id="hem-analys">Analys{periodName ? <span> · {periodName}</span> : null}</h2>
             <PeriodSegment className="aseg" />
-            <Link className="lk text-v2-sm text-v2-mute" href="/pengar">
+            <Link prefetch={false} className="lk text-v2-sm text-v2-mute" href="/pengar">
               Allt i Pengar →
             </Link>
           </div>

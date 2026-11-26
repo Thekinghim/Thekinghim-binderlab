@@ -226,6 +226,7 @@ export function ActionsList({
                     ) : null}
                     {r.code ? (
                       <ButtonLink
+                        prefetch={false}
                         size="sm"
                         variant="plain"
                         className={cn((hasCall || (canRoute && r.machineId)) && "sec")}
@@ -236,15 +237,16 @@ export function ActionsList({
                     ) : null}
                   </>
                 ) : r.kind === "pris" ? (
-                  <ButtonLink size="sm" href="/lonsamhet#prisrad">
+                  <ButtonLink prefetch={false} size="sm" href="/lonsamhet#prisrad">
                     Ändra pris
                   </ButtonLink>
                 ) : canRoute && r.machineId ? (
-                  <ButtonLink size="sm" href={`/fyll-pa/${r.machineId}?fran=hem`}>
+                  <ButtonLink prefetch={false} size="sm" href={`/fyll-pa/${r.machineId}?fran=hem`}>
                     Fyll på
                   </ButtonLink>
                 ) : r.code ? (
                   <ButtonLink
+                    prefetch={false}
                     size="sm"
                     variant="plain"
                     href={`/automater?valj=${encodeURIComponent(r.code)}`}
@@ -283,7 +285,7 @@ export function CalmLine({
   total: number;
 }) {
   return (
-    <Link className="calm" href="/automater">
+    <Link prefetch={false} className="calm" href="/automater">
       <span>
         <span className="dot g" aria-hidden="true" />
         {formatInt(running)} i drift

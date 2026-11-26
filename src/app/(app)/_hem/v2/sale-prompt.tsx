@@ -76,7 +76,7 @@ export function SalePrompt({
       action={
         <div className="flex flex-wrap gap-2">
           {hint ? (
-            <ButtonLink href="/drift/larm" touch>
+            <ButtonLink prefetch={false} href="/drift/larm" touch>
               Visa hur
             </ButtonLink>
           ) : (

@@ -1720,8 +1720,10 @@
       display: none;
     }
   }
+  /* Tryckt: direkt in (ingen övergång), 150 ms ut. Tydligare än hovringen. */
   a.g4-mrow:active {
-    background: var(--v2-hover);
+    background: var(--v2-sel);
+    transition-duration: 0s;
   }
   @media (hover: hover) and (pointer: fine) {
     a.g4-mrow:hover {

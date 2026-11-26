@@ -268,7 +268,7 @@ export async function WaterfallCard({ sp, days }: { sp: SearchParamsInput; days:
       {w.unpricedRevenueOre > 0 ? (
         <div className="g4-foot">
           {kr(w.unpricedRevenueOre)} i intäkt saknar inköpspris och ingår inte.{" "}
-          <Link href="/inkopspriser" className="underline underline-offset-4">
+          <Link prefetch={false} href="/inkopspriser" className="underline underline-offset-4">
             Lägg in priset
           </Link>
         </div>
@@ -326,14 +326,18 @@ export async function WorstCard() {
                   <small className="o">{signedPct(m.vsMedianBp)} mot median</small>
                 ) : null}
               </div>
-              <Link className="v2-btn" href={`/automater?valj=${encodeURIComponent(m.code)}`}>
+              <Link
+                prefetch={false}
+                className="v2-btn"
+                href={`/automater?valj=${encodeURIComponent(m.code)}`}
+              >
                 {m.emptySlots > 0 ? "Fyll på" : "Visa automaten"}
               </Link>
             </div>
           );
         })
       )}
-      <Link className="g4-more" href="/automater">
+      <Link prefetch={false} className="g4-more" href="/automater">
         Alla automater och rangordningen <span aria-hidden="true">→</span>
       </Link>
     </Card>
@@ -393,7 +397,12 @@ export async function PayCard() {
       )}
       {pay.canEdit ? (
         <div className="psum">
-          <Link href="/pengar/utbetalningar" className="lk" data-testid="pay-all-link">
+          <Link
+            prefetch={false}
+            href="/pengar/utbetalningar"
+            className="lk"
+            data-testid="pay-all-link"
+          >
             Se allt att betala från Nayax <span aria-hidden="true">→</span>
           </Link>
         </div>
