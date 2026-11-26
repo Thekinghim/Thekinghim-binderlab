@@ -39,6 +39,7 @@ import {
   type SplitNumbers,
 } from "../_lib/model";
 import { isPriceDoubt } from "../_lib/price-check";
+import { useCloseEditor } from "./editor-frame";
 
 export interface PriceFormProps {
   titleId: string;
@@ -118,6 +119,7 @@ export function PriceForm({
 }: PriceFormProps) {
   const router = useRouter();
   const toast = useToast();
+  const closeEditor = useCloseEditor();
   const [amount, setAmount] = useState("");
   const [validFrom, setValidFrom] = useState(today);
   const [note, setNote] = useState("");
@@ -246,6 +248,12 @@ export function PriceForm({
     setNote("");
     setValidFrom(today);
     setOtherDate(false);
+    // Telefonens ark: stäng tillbaka till listan (som läses om av stängningen), i stället för
+    // att stå kvar med ett tomt fält.
+    if (closeEditor) {
+      closeEditor();
+      return;
+    }
     // Sidans siffror (Vad varje pack lämnar, kvar per order) läses om direkt; Hem och
     // Lönsamhet är redan omvaliderade av server action. Titeln läggs i adressen, så att
     // redigeraren stannar på den (annars valdes nästa titel som saknar pris).
@@ -356,7 +364,8 @@ export function PriceForm({
             : sentence(`${titleName}: ${formatKronor(kr(customerPrice))} per pack`),
         tone: "ok",
       });
-      router.refresh();
+      if (closeEditor) closeEditor();
+      else router.refresh();
     });
   };
 

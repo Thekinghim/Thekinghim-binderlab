@@ -695,6 +695,11 @@
     background: var(--v2-hover);
   }
 }
+/* Tryckt läge på Hems rader och nyckeltal: svarar när fingret landar, direkt in, 150 ms ut. */
+.hem2 :is(.x-more, a.x-lr, button.x-lr, button.x-br, a.hh-k, a.v2-kt):active {
+  background-color: var(--v2-sel);
+  transition-duration: 0s;
+}
 
 /* 1. Resultat */
 .hem2 .x-rt {
@@ -2435,5 +2440,70 @@
 @media (max-width: 1240px) {
   .hem2 .work .x-ops {
     order: 4;
+  }
+}
+
+/* Hjältekortet medan det laddar (hero-skeleton.tsx): samma rutnät som kortet, grå ytor i
+   stället för siffror och bilder. */
+.hem2 .hh-skel .hh-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hem2 .hh-skel .sk-spark {
+  margin-top: auto;
+}
+/* Axeln och förklaringen under kurvan (som .hh-axis och .hh-legend), så att kortet får
+   samma höjd som det färdiga på dator. */
+.hem2 .hh-skel .sk-legend {
+  margin-top: 6px;
+}
+.hem2 .hh-skel .sk-pod {
+  align-self: center;
+  margin-top: 8px;
+}
+.hem2 .hh-skel .sk-ring {
+  align-self: center;
+  margin-top: 8px;
+  border-radius: 999px;
+}
+.hem2 .hh-skel .hh-k {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@media (max-width: 900px) {
+  .hem2 .hh-skel {
+    --hh-sk-spark: 58px;
+  }
+  /* Målet står i ett eget kort på telefon (.hh-goalcard); .hh-skel .hh-sec ovan vinner annars
+     över .hh-goal { display: none } och skelettet blir ~180 px för högt. Axeln och
+     förklaringen syns inte heller på telefon. */
+  .hem2 .hh-skel .hh-goal,
+  .hem2 .hh-skel .sk-axis,
+  .hem2 .hh-skel .sk-legend {
+    display: none;
+  }
+  .hem2 .hh-skel .hh-profit {
+    display: grid;
+    gap: 0 14px;
+  }
+  .hem2 .hh-skel .sk-big {
+    grid-column: 1;
+    margin: 6px 0 8px;
+  }
+  .hem2 .hh-skel .sk-dl {
+    grid-column: 1;
+  }
+  .hem2 .hh-skel .sk-spark {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    align-self: end;
+  }
+  .hem2 .hh-skel .hh-goalcard-b {
+    display: flex;
+  }
+  .hem2 .hh-skel .hh-goalcard-b .sk-ring {
+    margin: 0;
   }
 }

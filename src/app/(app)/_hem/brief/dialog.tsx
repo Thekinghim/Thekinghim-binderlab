@@ -339,6 +339,7 @@ function BriefDialog({ cards, onClosed }: { cards: readonly BriefCard[]; onClose
             </button>
             {card?.action ? (
               <Link
+                prefetch={false}
                 href={card.action.href}
                 className="v2-btn lg act"
                 onClick={() => close(true)}

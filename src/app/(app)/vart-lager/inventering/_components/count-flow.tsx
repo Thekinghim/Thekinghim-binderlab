@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState, useTransition, type ReactNode } from "react";
+import {
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/v2/notice";
@@ -186,15 +194,18 @@ export function CountFlow({
       draft={draft}
       counted={summary.lines.length + summary.invalid.length}
       canReview={summary.lines.length > 0 && summary.invalid.length === 0}
-      onChange={(titleId, text) =>
-        update((d) =>
-          withCount(d, titleId, text, new Date(), {
+      onChange={(titleId, text, next) =>
+        update((d) => {
+          const counted = withCount(d, titleId, text, new Date(), {
             // Vad appen tror just nu: ändras lagret innan man sparar pekas raden ut.
             expected: rows.find((r) => r.titleId === titleId)?.byPlace[place.id] ?? 0,
             // Ett ändrat antal är ett nytt inskick (ett redan sparat svar gäller inte det).
             clientId: newId(),
-          }),
-        )
+          });
+          // Stämmer: antalet och nästa produkt i samma skrivning (två skrivningar efter
+          // varandra läser samma utkast, och den andra skrev över antalet).
+          return next === undefined ? counted : { ...counted, index: next };
+        })
       }
       onMode={(mode) => update((d) => ({ ...d, mode }))}
       onIndex={(index) => update((d) => ({ ...d, index }))}
@@ -305,7 +316,8 @@ function Counting({
   draft: CountDraft | undefined;
   counted: number;
   canReview: boolean;
-  onChange: (titleId: string, text: string) => void;
+  /** `next`: gå samtidigt till den produkten (Stämmer). */
+  onChange: (titleId: string, text: string, next?: number) => void;
   onMode: (mode: CountMode) => void;
   onIndex: (index: number) => void;
   onReview: () => void;
@@ -451,12 +463,14 @@ function Step({
   index: number;
   counted: number;
   canReview: boolean;
-  onChange: (titleId: string, text: string) => void;
+  /** `next`: gå samtidigt till den produkten (Stämmer). */
+  onChange: (titleId: string, text: string, next?: number) => void;
   onIndex: (index: number) => void;
   onReview: () => void;
 }) {
   const t = useT();
   const ids = useId();
+  const field = useRef<HTMLInputElement>(null);
   const row = rows[Math.max(0, index)];
   if (!row) return null;
   const expected = row.byPlace[place.id] ?? 0;
@@ -464,13 +478,22 @@ function Step({
   const bad = text !== "" && !parseCount(text).ok;
   const last = index >= rows.length - 1;
 
+  // Tangentbordet ska vara uppe hela vägen genom listan. Fältet är samma element från produkt
+  // till produkt (ingen key: ett nytt fält tappade fokus), knapparna tar inte fokus från det
+  // (mousedown), och fältet får fokus direkt i trycket (iPhone öppnar bara tangentbordet då).
+  const keepFocus = (e: MouseEvent) => e.preventDefault();
+  const go = (next: number) => {
+    onIndex(next);
+    field.current?.focus({ preventScroll: true });
+  };
+
   return (
     <form
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
         if (bad) return;
-        if (!last) onIndex(index + 1);
+        if (!last) go(index + 1);
         else if (canReview) onReview();
       }}
       className="flex flex-col gap-3"
@@ -483,7 +506,12 @@ function Step({
           {expected >= 0 && text !== String(expected) ? (
             <button
               type="button"
-              onClick={() => onChange(row.titleId, String(expected))}
+              onMouseDown={keepFocus}
+              onClick={() => {
+                // Stämmer: fyll i och gå vidare (som att skriva siffran och trycka Nästa).
+                onChange(row.titleId, String(expected), last ? undefined : index + 1);
+                field.current?.focus({ preventScroll: true });
+              }}
               className="v2-btn lg"
             >
               <Icon name="check" size={16} />
@@ -493,10 +521,11 @@ function Step({
         </div>
         <label htmlFor={`${ids}-n`}>{t.count.fieldLabel}</label>
         <input
-          key={row.titleId}
+          ref={field}
           id={`${ids}-n`}
           inputMode="numeric"
           pattern="[0-9]*"
+          enterKeyHint={last ? "done" : "next"}
           autoComplete="off"
           placeholder="–"
           value={text}
@@ -515,7 +544,8 @@ function Step({
       <div className="two">
         <button
           type="button"
-          onClick={() => onIndex(index - 1)}
+          onMouseDown={keepFocus}
+          onClick={() => go(index - 1)}
           disabled={index <= 0}
           className={SECONDARY}
         >
@@ -525,7 +555,12 @@ function Step({
         {last ? (
           <span />
         ) : (
-          <button type="submit" disabled={bad} className={text === "" ? SECONDARY : PRIMARY}>
+          <button
+            type="submit"
+            onMouseDown={keepFocus}
+            disabled={bad}
+            className={text === "" ? SECONDARY : PRIMARY}
+          >
             {text === "" ? t.count.skip : t.count.next}
             <Icon name="chevronRight" size={18} />
           </button>

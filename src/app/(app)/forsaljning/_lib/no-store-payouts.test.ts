@@ -29,7 +29,7 @@ describe("Försäljning i Enkel vy utan butikernas utbetalning", () => {
   });
 
   it("Hem lämnar över till Försäljning i Enkel vy innan utbetalningsraderna", () => {
-    const src = read("../../page.tsx");
+    const src = read("../../(hem)/page.tsx");
     const simple = src.indexOf('if (simple.viewMode === "simple")');
     const salesReturn = src.indexOf("return <SalesScreen ctx={simple}");
     // V2: Hems innehåll börjar med sidramen; utbetalningarna står i kortet Butiker.

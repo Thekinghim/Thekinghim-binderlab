@@ -44,7 +44,8 @@ export function Card({
           </h2>
           {actions ??
             (link ? (
-              <Link className="lk" href={link.href}>
+              // Ingen förhämtning: kortens länkar är många och sällan tryckta (telefonens data).
+              <Link className="lk" href={link.href} prefetch={false}>
                 {link.label} <span aria-hidden="true">→</span>
               </Link>
             ) : null)}

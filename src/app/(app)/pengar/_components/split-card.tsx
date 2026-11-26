@@ -155,7 +155,7 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
             <>
               {plural(v.unpricedOrders, "order", "order")} saknar inköpspris. Partnerns inköp och
               momsen blir för låga.{" "}
-              <Link href="/inkopspriser" className="underline underline-offset-4">
+              <Link prefetch={false} href="/inkopspriser" className="underline underline-offset-4">
                 Lägg in priset
               </Link>
             </>
@@ -165,7 +165,7 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
               Andelen för {plural(v.shareUnknownStoreIds.length, "butik", "butiker")} kan inte
               räknas än. {v.shareUnknownStoreIds.length === 1 ? "Den står" : "De står"} som 0 kr i
               summan.{" "}
-              <Link href="/butiker" className="underline underline-offset-4">
+              <Link prefetch={false} href="/butiker" className="underline underline-offset-4">
                 Butiker
               </Link>
             </>
@@ -186,7 +186,7 @@ function unknownReason(missingPrice: boolean, partly: boolean): ReactNode {
   return (
     <>
       {partly ? "En del kan inte räknas, inköpspris saknas." : "Inköpspris saknas."}{" "}
-      <Link href="/inkopspriser" className="underline underline-offset-4">
+      <Link prefetch={false} href="/inkopspriser" className="underline underline-offset-4">
         Lägg in priset
       </Link>
     </>
@@ -229,7 +229,11 @@ function subText(row: SplitRow, noAgreement: boolean): ReactNode {
         return (
           <>
             Inget avtal inlagt.{" "}
-            <Link href="/installningar#partneravtal" className="underline underline-offset-4">
+            <Link
+              prefetch={false}
+              href="/installningar#partneravtal"
+              className="underline underline-offset-4"
+            >
               Lägg in avtal
             </Link>
           </>

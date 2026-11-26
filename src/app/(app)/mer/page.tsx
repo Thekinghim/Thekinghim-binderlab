@@ -65,7 +65,7 @@ function Row({
   aside?: ReactNode;
 }) {
   return (
-    <Link href={href} className="g4-mrow">
+    <Link prefetch={false} href={href} className="g4-mrow">
       {icon}
       <span className="mt">
         <b>{title}</b>

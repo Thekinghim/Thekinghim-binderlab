@@ -171,7 +171,7 @@ function NoGoal({ canEdit }: { canEdit: boolean }) {
     <div className="hh-nogoal">
       <p>Inget mål för månaden.</p>
       {canEdit ? (
-        <ButtonLink size="sm" href="/expansion?vy=mal">
+        <ButtonLink prefetch={false} size="sm" href="/expansion?vy=mal">
           Sätt ett mål
         </ButtonLink>
       ) : null}
@@ -205,7 +205,7 @@ function CompactKpi({ t }: { t: KpiBandTile }) {
   // Kompakt: en förändring som avrundas till 0 visas inte (talet står ändå).
   const showDelta = d !== null && rounded !== 0;
   return (
-    <Link href={t.href} className="hh-k" title={t.compare ?? undefined}>
+    <Link prefetch={false} href={t.href} className="hh-k" title={t.compare ?? undefined}>
       <span className="l">{t.label}</span>
       <span className="v">
         {compactValue(t)}
@@ -234,7 +234,7 @@ export async function HemHero({ sp }: { sp: SearchParamsInput }) {
       <div className="v2-card hh-card">
         <section className="hh-sec hh-profit" style={order(0)} aria-label={profitLabel}>
           <span className="lab">{profitLabel}</span>
-          <Link href={p?.href ?? "/pengar"} className="hh-big">
+          <Link prefetch={false} href={p?.href ?? "/pengar"} className="hh-big">
             {krInt(p?.value ?? 0)}
             <small>{NBSP}kr</small>
           </Link>
@@ -263,7 +263,7 @@ export async function HemHero({ sp }: { sp: SearchParamsInput }) {
             <span className="lab" id="hh-pod-h">
               Mest sålda · {h.periodName}
             </span>
-            <Link className="lk" href={h.topHref}>
+            <Link prefetch={false} className="lk" href={h.topHref}>
               Alla titlar <span aria-hidden="true">→</span>
             </Link>
           </div>
@@ -286,7 +286,7 @@ export async function HemHero({ sp }: { sp: SearchParamsInput }) {
             <span className="lab" id="hh-goal-h">
               {goalTitle ? `${goalTitle} · ${goal?.label}` : "Mål för månaden"}
             </span>
-            <Link className="lk" href="/expansion?vy=mal">
+            <Link prefetch={false} className="lk" href="/expansion?vy=mal">
               Mål <span aria-hidden="true">→</span>
             </Link>
           </div>

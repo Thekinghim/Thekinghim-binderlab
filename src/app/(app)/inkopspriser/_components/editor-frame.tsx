@@ -16,6 +16,17 @@ import { usePhone } from "@/components/v2/use-media";
 const InSheet = createContext(false);
 
 /**
+ * Stänger telefonens ark tillbaka till listan (null utanför arket, på dator). Formuläret anropar
+ * den efter en lyckad sparning: annars stod arket kvar med ett tomt fält, och nästa tryck på
+ * Spara gav "Ange inköpspriset".
+ */
+const CloseEditor = createContext<(() => void) | null>(null);
+
+export function useCloseEditor(): (() => void) | null {
+  return useContext(CloseEditor);
+}
+
+/**
  * Det som inte behövs för att sätta ett pris (Awish-länkarna, Egen produkt, historiken). På
  * dator som förut; i arket hopfällt under formuläret, så att arket blir packen, fälten och
  * Spara.
@@ -73,19 +84,23 @@ export function EditorFrame({
   }, [sheetOpen]);
   if (!phone) return <div className="ip-inline">{children}</div>;
   if (!open) return null;
+  // Servern har redan läst om sidans data (server action): listan under är färsk.
+  const close = () => router.replace(closeHref, { scroll: false });
   return (
     <Sheet
       open
       onOpenChange={(o) => {
-        if (!o) router.replace(closeHref, { scroll: false });
+        if (!o) close();
       }}
       title={title}
       description={description}
     >
       <div className="ip-sheet" ref={body}>
         <InSheet.Provider value={true}>
-          {head}
-          {children}
+          <CloseEditor.Provider value={close}>
+            {head}
+            {children}
+          </CloseEditor.Provider>
         </InSheet.Provider>
       </div>
     </Sheet>

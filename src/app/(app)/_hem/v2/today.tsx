@@ -25,25 +25,25 @@ export function TodayLine({ today }: { today: HemToday }) {
   const parts: ReactNode[] = [];
   if (c.refill > 0)
     parts.push(
-      <Link key="r" href="/automater?f=behover" className="o">
+      <Link prefetch={false} key="r" href="/automater?f=behover" className="o">
         <b>{formatInt(c.refill)}</b> behöver påfyllning
       </Link>,
     );
   if (c.offline > 0)
     parts.push(
-      <Link key="o" href="/automater?f=offline" className="o c">
+      <Link prefetch={false} key="o" href="/automater?f=offline" className="o c">
         <b>{formatInt(c.offline)} offline</b>
       </Link>,
     );
   if (c.startklar > 0)
     parts.push(
-      <Link key="s" href="/automater?f=ny" className="o i">
+      <Link prefetch={false} key="s" href="/automater?f=ny" className="o i">
         <b>{formatInt(c.startklar)}</b> startklar
       </Link>,
     );
   if (c.badPricing > 0)
     parts.push(
-      <Link key="p" href="/lonsamhet#prisrad" className="o c">
+      <Link prefetch={false} key="p" href="/lonsamhet#prisrad" className="o c">
         <b>{formatInt(c.badPricing)}</b> {c.badPricing === 1 ? "pris går" : "priser går"} med
         förlust
       </Link>,
@@ -117,7 +117,9 @@ export function ActionsCard({
             {soon.map((m, i) => (
               <span key={m.id}>
                 {i > 0 ? ", " : ""}
-                <Link href={`/automater?valj=${encodeURIComponent(m.code)}`}>{m.name}</Link>{" "}
+                <Link prefetch={false} href={`/automater?valj=${encodeURIComponent(m.code)}`}>
+                  {m.name}
+                </Link>{" "}
                 <small>
                   ({formatInt(m.days)}
                   {NBSP}d)
@@ -141,7 +143,9 @@ function OverflowLine({ n }: { n: number }) {
     <div className="rwarn">
       <span>
         {n === 1 ? "1 automat ryms" : `${formatInt(n)} automater ryms`} inte i veckans rutter ·{" "}
-        <Link href="/rutt">Rutt</Link>
+        <Link prefetch={false} href="/rutt">
+          Rutt
+        </Link>
       </span>
     </div>
   );
@@ -224,12 +228,13 @@ export function RouteCard({ today, canRoute }: { today: HemToday; canRoute: bool
         {r.overflow > 0 ? <OverflowLine n={r.overflow} /> : null}
         <div className="racts">
           {r.totalPacks > 0 ? (
-            <ButtonLink size="lg" href="/rutt">
+            <ButtonLink prefetch={false} size="lg" href="/rutt">
               Packa
             </ButtonLink>
           ) : null}
           {canRoute ? (
             <ButtonLink
+              prefetch={false}
               size="lg"
               variant="act"
               href={allDone || !r.nextMachineId ? "/rutt" : `/fyll-pa/${r.nextMachineId}?rutt=1`}
@@ -272,14 +277,14 @@ export function TodoCard({ today, limit = 6 }: { today: HemToday; limit?: number
               <div className="t">{x.title}</div>
               {x.detail ? <div className="d">{x.detail}</div> : null}
             </div>
-            <ButtonLink size="sm" href={x.href}>
+            <ButtonLink prefetch={false} size="sm" href={x.href}>
               {x.verb}
             </ButtonLink>
           </div>
         ))
       )}
       {t.rows.length > limit ? (
-        <Link className="lk amore" href="/att-gora">
+        <Link prefetch={false} className="lk amore" href="/att-gora">
           Visa alla {formatInt(t.rows.length)}
         </Link>
       ) : null}

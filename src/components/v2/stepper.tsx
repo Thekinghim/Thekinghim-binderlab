@@ -106,20 +106,15 @@ export function Stepper({
     <span className={cn("v2-step", className)}>
       {button(-1)}
       {inputId ? (
-        <input
+        <StepperInput
           id={inputId}
-          type="number"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          min={min}
-          max={Number.isFinite(max) ? max : undefined}
           value={value}
-          aria-label={label}
-          data-zero={value === 0 ? "" : undefined}
-          onFocus={(e) => e.currentTarget.select()}
-          onChange={(e) => {
-            const n = Math.trunc(Number(e.target.value) || 0);
-            onChange(Math.max(min, Math.min(max, n)));
+          min={min}
+          max={max}
+          label={label}
+          onChange={(n) => {
+            valueRef.current = n;
+            onChange(n);
           }}
         />
       ) : (
@@ -129,5 +124,74 @@ export function Stepper({
       )}
       {button(1)}
     </span>
+  );
+}
+
+/**
+ * Det man skrivit i fältet, städat: bara siffror, inga inledande nollor ("007" → "7"), och ett
+ * tal över max blir max. `value` är talet att skicka vidare, eller null när fältet är tomt (då
+ * ändras inget förrän man skriver en siffra; lämnar man det tomt gäller det förra talet).
+ */
+export function stepperDraft(
+  raw: string,
+  min: number,
+  max: number,
+): { draft: string; value: number | null } {
+  const digits = raw.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  if (digits === "") return { draft: "", value: null };
+  const n = Math.max(min, Math.min(max, Number(digits)));
+  return { draft: n === Number(digits) ? digits : String(n), value: n };
+}
+
+/**
+ * Stegarens sifferfält. Textfält med sifferknappsats (inputMode numeric), inte type="number":
+ * där blev "05" kvar, tomt blev 0 direkt medan man suddade, och iPhone markerade inte talet
+ * vid fokus. Medan man skriver får fältet vara tomt; när man lämnar det visas talet igen.
+ */
+function StepperInput({
+  id,
+  value,
+  min,
+  max,
+  label,
+  onChange,
+}: {
+  id: string;
+  value: number;
+  min: number;
+  max: number;
+  label: string;
+  onChange: (value: number) => void;
+}) {
+  // null: man skriver inte just nu, fältet visar talet.
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      id={id}
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      autoComplete="off"
+      enterKeyHint="done"
+      value={draft ?? String(value)}
+      aria-label={label}
+      data-zero={value === 0 && !draft ? "" : undefined}
+      onFocus={(e) => {
+        // Markera talet så att nästa siffra ersätter det (select() direkt räcker inte på iPhone).
+        const el = e.currentTarget;
+        requestAnimationFrame(() => {
+          if (document.activeElement === el) el.setSelectionRange(0, el.value.length);
+        });
+      }}
+      onChange={(e) => {
+        const next = stepperDraft(e.target.value, min, max);
+        setDraft(next.draft);
+        if (next.value !== null && next.value !== value) onChange(next.value);
+      }}
+      onBlur={() => setDraft(null)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+    />
   );
 }

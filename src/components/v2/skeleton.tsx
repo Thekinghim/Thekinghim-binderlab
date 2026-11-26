@@ -40,6 +40,7 @@ export function V2PageSkeleton({
   side,
   kpis = 0,
   sub = false,
+  period = false,
 }: {
   /** "Laddar lönsamhet" (skärmläsare). */
   label: string;
@@ -51,6 +52,8 @@ export function V2PageSkeleton({
   kpis?: number;
   /** En rad under rubriken (sidans sammanfattning). */
   sub?: boolean;
+  /** Periodvalet under rubriken på telefon (sidor med `period` i V2Page), så att inget hoppar. */
+  period?: boolean;
 }) {
   const cards = (rows: readonly number[]) => rows.map((r, i) => <SkeletonCard key={i} rows={r} />);
   return (
@@ -66,6 +69,11 @@ export function V2PageSkeleton({
       {sub ? (
         <div className="v2-sub">
           <Skeleton width="min(80%, 360px)" />
+        </div>
+      ) : null}
+      {period ? (
+        <div className="v2-mperiod">
+          <Skeleton width="100%" height={44} />
         </div>
       ) : null}
       <div className="v2-page-body">

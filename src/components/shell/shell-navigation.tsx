@@ -104,15 +104,21 @@ export function NavigationProgress() {
   );
 }
 
-/** <main> som visar att innehållet laddas (aria-busy, tonat) medan skalets navigering väntar. */
+/**
+ * <main> som visar att innehållet laddas (aria-busy, tonat) medan skalets navigering väntar.
+ * `fade={false}`: tona inte här; skalets CSS tonar själv det som väntar via main[aria-busy]
+ * (V2: bara sidans innehåll, så att det nya periodvalet ovanför står skarpt).
+ */
 export function ShellMain({
   children,
   className,
   style,
+  fade = true,
 }: {
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  fade?: boolean;
 }) {
   const nav = useShellNavigation();
   const pending = nav?.pending ?? false;
@@ -120,9 +126,9 @@ export function ShellMain({
     <main id="main" aria-busy={pending || undefined} className={className} style={style}>
       <div
         className={cn(
-          "transition-opacity duration-200 ease-out",
+          fade && "transition-opacity duration-200 ease-out",
           // Fördröjt, så att ett snabbt svar inte blinkar.
-          pending && "opacity-60 delay-150",
+          fade && pending && "opacity-60 delay-150",
         )}
       >
         {children}

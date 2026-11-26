@@ -19,6 +19,7 @@ import { formatInt, NBSP } from "@/lib/format";
 import type { DayRoute, RouteStop } from "@/server/data/v2/types";
 
 import { changeRoute, undoRouteChange } from "../actions";
+import { reach } from "../_lib/reach";
 import type { RouteChangeKind } from "../_lib/service";
 import { durationText, emptyRouteText } from "@/server/data/v2/route-model";
 import { LimitsSheet } from "./limits-sheet";
@@ -116,7 +117,7 @@ export function RouteView({
   function run(machineId: string, change: RouteChangeKind, name: string) {
     setBusy(`${machineId}:${change}`);
     startTransition(async () => {
-      const r = await changeRoute(machineId, change);
+      const r = await reach(() => changeRoute(machineId, change));
       setBusy(null);
       if (!r.ok) {
         toastV2(r.error, { tone: "critical" });
@@ -133,9 +134,9 @@ export function RouteView({
             : `${name} ligger i dagens rutt`;
       toastUndo(title, undefined, () => {
         startTransition(async () => {
-          const u = await undoRouteChange(data.id, data.replaced);
+          const u = await reach(() => undoRouteChange(data.id, data.replaced));
           if (!u.ok) toastV2(u.error, { tone: "critical" });
-          router.refresh();
+          else router.refresh();
         });
       });
     });
@@ -143,9 +144,9 @@ export function RouteView({
 
   function undo(id: string) {
     startTransition(async () => {
-      const u = await undoRouteChange(id);
+      const u = await reach(() => undoRouteChange(id));
       if (!u.ok) toastV2(u.error, { tone: "critical" });
-      router.refresh();
+      else router.refresh();
     });
   }
 
@@ -622,11 +623,11 @@ function StopRow({
       </div>
       <div className="sgo">
         {s.kind === "check" ? (
-          <ButtonLink href={`/automater?valj=${encodeURIComponent(s.code)}`} touch>
+          <ButtonLink prefetch={false} href={`/automater?valj=${encodeURIComponent(s.code)}`} touch>
             Öppna
           </ButtonLink>
         ) : canRefill && !s.done ? (
-          <ButtonLink href={`/fyll-pa/${s.machineId}?rutt=1`} touch>
+          <ButtonLink prefetch={false} href={`/fyll-pa/${s.machineId}?rutt=1`} touch>
             Fyll på
           </ButtonLink>
         ) : null}

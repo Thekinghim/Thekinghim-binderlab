@@ -12,6 +12,7 @@ import { formatInt } from "@/lib/format";
 import type { RouteLimits } from "@/server/data/v2/types";
 
 import { saveRouteLimits } from "../actions";
+import { reach } from "../_lib/reach";
 
 const DAYS = [
   [1, "Mån"],
@@ -48,7 +49,9 @@ export function LimitsSheet({ limits }: { limits: RouteLimits }) {
 
   function save() {
     start(async () => {
-      const r = await saveRouteLimits({ maxStops: stops, maxPacks: packs, weekdays: [...days] });
+      const r = await reach(() =>
+        saveRouteLimits({ maxStops: stops, maxPacks: packs, weekdays: [...days] }),
+      );
       if (!r.ok) {
         setError(r.error);
         return;

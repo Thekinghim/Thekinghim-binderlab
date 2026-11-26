@@ -22,6 +22,7 @@ export async function DataAgeLine({ className }: { className?: string }) {
     >
       {age.stale ? (
         <Link
+          prefetch={false}
           href="/datakallor"
           className="inline-flex min-h-11 items-center gap-2.5 rounded-sm border border-signal-line bg-surface px-4 py-2.5 text-base text-fg hover:bg-hover"
         >
@@ -53,7 +54,7 @@ export async function AwishFreshnessLine({ className }: { className?: string }) 
         <ul className="mt-1 flex flex-col gap-0.5" data-awish-reserv>
           {f.status.map((s) => (
             <li key={s.key} className="text-sm text-muted">
-              <Link href="/datakallor#awish-halsa" className="hover:text-fg">
+              <Link prefetch={false} href="/datakallor#awish-halsa" className="hover:text-fg">
                 {s.text}
               </Link>
             </li>
@@ -77,6 +78,7 @@ export async function AwishOrdersBanner({ className }: { className?: string }) {
   return (
     <p className={className} data-awish-banner>
       <Link
+        prefetch={false}
         href="/datakallor#ladda-upp"
         role="alert"
         className="inline-flex min-h-11 w-full items-center gap-2.5 rounded-sm border border-signal-line bg-surface px-4 py-2.5 text-base text-fg hover:bg-hover"

@@ -46,7 +46,7 @@ export function PriceShelf({
             className={cn("ip-tile", state.missing && "miss", r.id === selectedId && "on")}
             style={{ "--i": Math.min(i, 14) } as CSSProperties}
           >
-            <Link href={href(r.id)} className="ip-hit" scroll={false}>
+            <Link prefetch={false} href={href(r.id)} className="ip-hit" scroll={false}>
               <span className="ip-stage">
                 <PackImage title={r.name} size="l" />
               </span>
