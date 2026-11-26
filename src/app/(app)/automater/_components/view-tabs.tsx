@@ -6,7 +6,8 @@ export type ViewTab<T extends string> = { value: T; label: string };
 
 /**
  * Under md radbryts flikarna i ett rutnät (hela bredden, 44 px höga), så att ingen flik
- * döljs utanför kanten.
+ * döljs utanför kanten. Med `scroll` står de i stället på en rad som rullar i sidled (som
+ * chipraden): en flik på en egen andra rad såg ut som ett eget val.
  *
  * Flikar som länkar (?vy=). Serverrenderade, så valt läge syns direkt och
  * fungerar utan JavaScript. Övriga parametrar (period, filter) följer med.
@@ -18,6 +19,7 @@ export function ViewTabs<T extends string>({
   query,
   label,
   className,
+  scroll = false,
 }: {
   tabs: ReadonlyArray<ViewTab<T>>;
   value: T;
@@ -26,6 +28,8 @@ export function ViewTabs<T extends string>({
   query: string;
   label: string;
   className?: string;
+  /** Telefon: en rad som rullar i sidled i stället för ett rutnät. */
+  scroll?: boolean;
 }) {
   const base = new URLSearchParams(query.replace(/^\?/, ""));
   base.delete("vy");
@@ -33,7 +37,10 @@ export function ViewTabs<T extends string>({
     <nav
       aria-label={label}
       className={cn(
-        "inline-flex h-8 w-fit max-w-full [scrollbar-width:none] divide-x divide-line-strong overflow-x-auto rounded-sm border border-line-strong max-md:flex max-md:h-auto max-md:w-full max-md:flex-wrap max-md:gap-px max-md:divide-x-0 max-md:overflow-visible max-md:bg-line-strong",
+        "inline-flex h-8 w-fit max-w-full [scrollbar-width:none] divide-x divide-line-strong overflow-x-auto rounded-sm border border-line-strong max-md:flex max-md:h-auto max-md:w-full max-md:gap-px max-md:divide-x-0 max-md:bg-line-strong [&::-webkit-scrollbar]:hidden",
+        scroll
+          ? "max-md:flex-nowrap max-md:overscroll-x-contain"
+          : "max-md:flex-wrap max-md:overflow-visible",
         // V2-skalet: som .v2-seg (grå ränna, vald flik vit med skugga).
         "v2:gap-0.5 v2:divide-x-0 v2:rounded-v2 v2:border-0 v2:bg-v2-line v2:p-[3px]",
         className,

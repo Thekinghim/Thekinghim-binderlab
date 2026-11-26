@@ -12,18 +12,24 @@ export const TOAST_MS = 6_000;
  * Notiserna i V2 (sonner), monterade EN gång i skalet (AppShell och Fyll på). Nere till höger
  * på dator, ovanför bottenraden på telefon; svep ner för att stänga.
  */
+/**
+ * Ovanför bottenraden, och följer den när ViewportPin flyttar den (iPhone, viewport-pin.ts).
+ * Sonners eget mobileOffset gäller bara under 600 px; bottenraden syns upp till 900 px
+ * (PHONE_QUERY), så samma luft ges som offset för hela telefonbredden (liggande telefon).
+ */
+export const PHONE_TOAST_OFFSET = {
+  bottom: "calc(76px + env(safe-area-inset-bottom, 0px) - var(--v2-vp-shift, 0px))",
+  left: 12,
+  right: 12,
+} as const;
+
 export function V2Toaster() {
   const phone = usePhone();
   return (
     <Toaster
       position={phone ? "bottom-center" : "bottom-right"}
-      offset={22}
-      mobileOffset={{
-        // Följer bottenraden när ViewportPin flyttar den (iPhone, viewport-pin.ts).
-        bottom: "calc(76px + env(safe-area-inset-bottom, 0px) - var(--v2-vp-shift, 0px))",
-        left: 12,
-        right: 12,
-      }}
+      offset={phone ? PHONE_TOAST_OFFSET : 22}
+      mobileOffset={PHONE_TOAST_OFFSET}
       duration={TOAST_MS}
       visibleToasts={3}
       gap={8}

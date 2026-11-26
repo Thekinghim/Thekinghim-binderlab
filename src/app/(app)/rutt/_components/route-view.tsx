@@ -216,7 +216,12 @@ export function RouteView({
         </div>
         <div className="rsum-go">
           {mapStops.length > 0 ? (
-            <RouteMapsLink stops={mapStops} origin={origin} className="max-[900px]:w-full" />
+            <RouteMapsLink
+              stops={mapStops}
+              origin={origin}
+              size="touch"
+              className="max-[900px]:w-full"
+            />
           ) : null}
           {/* Dator: Starta rutt i sidhuvudet (telefonen har den klistrade raden längst ner). */}
           {startHref && canRefill ? (
@@ -626,8 +631,9 @@ function StopRow({
             city={s.store?.city}
             lat={s.store?.location?.lat}
             lng={s.store?.location?.lng}
+            size="touch"
           />
-          <CallLink phone={s.store?.phone} name={s.store?.contactName} />
+          <CallLink phone={s.store?.phone} name={s.store?.contactName} size="touch" />
         </div>
       </div>
       <div className="sgo">

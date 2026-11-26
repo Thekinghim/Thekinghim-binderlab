@@ -253,7 +253,8 @@ export function CreateContract({
           url.push(0);
         }}
       >
-        {label}
+        {/* Under 360 px står bara plustecknet i sidhuvudet (v2.css .v2-tl). */}
+        <span className="v2-tl">{label}</span>
       </Button>
       <Modal open={open} onClose={close} eyebrow="Kontrakt" title="Skapa kontrakt">
         <ol aria-label="Steg" className="mb-6 grid grid-cols-4 gap-2">

@@ -14,7 +14,8 @@ export function CallLink({
   phone: string | null | undefined;
   name?: string | null;
   className?: string;
-  size?: "sm" | "lg";
+  /** "touch": 44 px hög på telefon (Rutt, där man trycker med tummen). */
+  size?: "sm" | "lg" | "touch";
 }) {
   const href = telHref(phone);
   if (!href) return null;
@@ -42,7 +43,8 @@ export function MapsLink({
   lng?: number | null;
   label?: string;
   className?: string;
-  size?: "sm" | "lg";
+  /** "touch": 44 px hög på telefon (Rutt, där man trycker med tummen). */
+  size?: "sm" | "lg" | "touch";
 }) {
   const href = mapsSearchUrl({ address, city, lat, lng });
   if (!href) return null;
@@ -64,16 +66,24 @@ export function RouteMapsLink({
   origin,
   label = "Öppna hela rutten i Maps",
   className,
+  size,
 }: {
   stops: readonly string[];
   origin?: string | null;
   label?: string;
   className?: string;
+  /** "touch": 44 px hög på telefon. */
+  size?: "sm" | "lg" | "touch";
 }) {
   const href = mapsDirUrl(stops, origin);
   if (!href) return null;
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={cn(linkClass, className)}>
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(linkClass, size, className)}
+    >
       {label}
     </a>
   );
