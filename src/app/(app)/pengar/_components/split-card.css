@@ -18,6 +18,17 @@
     font-size: var(--v2-t-sm);
     color: var(--v2-mute);
   }
+  /* Nästa utbetalning till butikerna (senast den 15:e månaden efter). */
+  .g4-sp-pay {
+    margin: 0;
+    padding: 0 18px 10px;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .g4-sp-pay b {
+    color: var(--v2-ink);
+    font-weight: 600;
+  }
   .g4-sp-row {
     display: grid;
     grid-template-columns: minmax(150px, 230px) minmax(40px, 1fr) 112px 44px;
@@ -154,6 +165,9 @@
   @media (max-width: 900px) {
     .g4-sp-basis {
       padding: 4px 16px 8px;
+    }
+    .g4-sp-pay {
+      padding: 0 16px 10px;
     }
     .g4-sp-row {
       grid-template-columns: minmax(0, 1fr) auto;

@@ -12,6 +12,7 @@
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 
+import { day, monthName } from "@/analytics/todos/text";
 import { Card } from "@/components/v2/card";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { loadMoneySplit } from "@/server/data/v2/analytics/split";
@@ -51,6 +52,10 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
   // Utan partneravtal får ägaren också tillbaka det korten kostade: säg det, så att andelen
   // inte läses som vinst.
   const noAgreement = v.rows.some((r) => r.kind === "partner" && !r.partner?.hasAgreement);
+  // Nästa utbetalning till butikerna (avtalen: senast den 15:e månaden efter).
+  const storesPaid = v.rows.some(
+    (r) => (r.kind === "store_owner" || r.kind === "store") && r.amountOre > 0,
+  );
   const max = Math.max(1, v.basisOre, ...v.rows.map((r) => Math.abs(r.amountOre)));
   return (
     <Card title={title} link={PAY} className="g4-sp-card">
@@ -59,6 +64,12 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
           Av försäljningen {days}, {kr(v.basisDisplayOre)} inkl. moms. Butikernas andel enligt
           avtalen.{s.filtered ? " Gäller alla butiker, inte filtret." : ""}
         </p>
+        {storesPaid ? (
+          <p className="g4-sp-pay" data-testid="split-store-pay">
+            Butikerna får betalt för {monthName(s.storePay.month)} senast{" "}
+            <b>{day(s.storePay.due)}</b>.
+          </p>
+        ) : null}
         {v.rows.map((row, i) => {
           // Hela raden är en andel som inte gick att räkna (0 kr): säg det i stället för "0 kr".
           const unknownRow = row.unknownStores > 0 && row.displayOre === 0;

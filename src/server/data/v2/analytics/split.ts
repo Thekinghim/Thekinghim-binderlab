@@ -9,8 +9,9 @@ import "server-only";
 
 import { cache } from "react";
 
-import type { SearchParamsInput } from "@/components/shell/period-state";
-import { daysBetween } from "@/domain";
+import { toIsoDate, type SearchParamsInput } from "@/components/shell/period-state";
+import { settlementDue } from "@/analytics/todos";
+import { daysBetween, monthOf, type IsoDate, type IsoMonth } from "@/domain";
 import { loadContext, loadPeriod, requireViewer } from "@/server/data/core";
 import { loadPeriodSplitFor } from "@/server/payouts/period-split";
 
@@ -26,6 +27,8 @@ export type MoneySplit =
       readonly view: SplitView;
       /** Sidan har ett filter på butik, ägare eller automat (fördelningen gäller alla). */
       readonly filtered: boolean;
+      /** Månaden som butikerna får betalt för härnäst (i dag) och sista dagen (den 15:e efter). */
+      readonly storePay: { readonly month: IsoMonth; readonly due: IsoDate };
     }
   | { readonly state: "too_long" }
   | { readonly state: "error" };
@@ -36,11 +39,13 @@ const loadCached = cache(async (key: string): Promise<MoneySplit | null> => {
   const [p, viewer] = await Promise.all([loadPeriod(parseMoneyKey(key)), requireViewer()]);
   if (daysBetween(p.period.start, p.period.end) > SPLIT_MAX_DAYS) return { state: "too_long" };
   try {
+    const payMonth = monthOf(toIsoDate(p.resolved.today));
     const view = await loadPeriodSplitFor(viewer, p.period, new Date(ctx.now));
     return {
       state: "ok",
       view,
       filtered: Boolean(p.scope.storeId || p.scope.machineId || p.scope.ownerId),
+      storePay: { month: payMonth, due: settlementDue(payMonth) },
     };
   } catch (error) {
     console.error("[pengar] fördelning", error instanceof Error ? error.message : error);
