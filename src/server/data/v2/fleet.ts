@@ -20,7 +20,7 @@ import { withUserDbFor } from "@/server/access";
 import { querySlotPeriods } from "@/server/data/assortment";
 import { healthOf, loadMachinePower } from "@/server/alerts/inputs";
 
-import { cachedViewState, loadContext, requireViewer } from "../core";
+import { cachedViewState, loadContext, markViewStateDegraded, requireViewer } from "../core";
 import { businessToday, requireViewerRole, type Viewer } from "../core/loaders";
 import { ALL_ROLES, canSeeEconomy, OPERATOR_ROLES } from "../core/types";
 import { healthDataInRequest, machineReadinessInRequest } from "./in-request";
@@ -57,6 +57,7 @@ async function loadEconomy(): Promise<FleetEconomyInput> {
     };
   } catch (error) {
     console.error("[v2/fleet] Rangordningen kunde inte räknas:", error);
+    markViewStateDegraded();
     return { rows: new Map(), medianProfitPerDayOre: null };
   }
 }

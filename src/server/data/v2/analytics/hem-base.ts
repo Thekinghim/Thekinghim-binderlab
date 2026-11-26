@@ -12,7 +12,12 @@ import "server-only";
 
 import { cache } from "react";
 
-import { cachedViewState, loadContext, requireViewer } from "@/server/data/core";
+import {
+  cachedViewState,
+  loadContext,
+  markViewStateDegraded,
+  requireViewer,
+} from "@/server/data/core";
 
 import { loadMoneyProfit, moneyKey, parseMoneyKey } from "./money-base";
 
@@ -60,6 +65,7 @@ export const loadHemStock = cache(async (): Promise<VartLagerView | null> => {
     );
   } catch (error) {
     console.error("[hem] Vårt lager kunde inte läsas:", error);
+    markViewStateDegraded();
     return null;
   }
 });

@@ -46,6 +46,7 @@ import {
   loadDomainInput,
   loadPeriod,
   loadSyncInfo,
+  markViewStateDegraded,
   requireViewer,
 } from "@/server/data/core";
 import type { DomainInput } from "@/server/data/core/types";
@@ -225,6 +226,7 @@ const loadHemStockValue = cache(async (): Promise<{ now: number; history: number
     const history = await loadStockValueHistory(ctx.today, ctx.timeZone, unitCost).catch(
       (error: unknown) => {
         console.error("[hem] Lagervärdets historik kunde inte räknas:", error);
+        markViewStateDegraded();
         return [];
       },
     );
@@ -249,7 +251,10 @@ export async function loadKpiBand(sp: SearchParamsInput): Promise<KpiBandTile[] 
     isToday ? loadHemProfit(key30) : Promise.resolve(null),
     loadHemStockValue(),
     loadDomainInput({ period: { start: yesterday, end: ctx.today }, compare: null, ...p.scope }),
-    loadSyncInfo().catch(() => null),
+    loadSyncInfo().catch(() => {
+      markViewStateDegraded();
+      return null;
+    }),
   ]);
   if (!home) return null;
   const kpis = new Map(home.model.kpis.map((k) => [k.id, k]));

@@ -18,6 +18,7 @@ import { messages } from "@/i18n";
 import {
   cachedViewState,
   loadContext,
+  markViewStateDegraded,
   loadOptionalContextIfSignedIn,
   loadPeriod,
   requireRoute,
@@ -343,10 +344,14 @@ async function Live({ nowIso }: { nowIso: string }) {
     const [orders, fresh] = await Promise.all([
       loadLiveOrders().catch((error: unknown) => {
         console.error("[hem] Senaste köp kunde inte läsas:", error);
+        markViewStateDegraded();
         return null;
       }),
       // Riktig ålder i stället för "ungefär var 5:e minut" (null vid fel: raden blir neutral).
-      loadAwishFreshness().catch(() => null),
+      loadAwishFreshness().catch(() => {
+        markViewStateDegraded();
+        return null;
+      }),
     ]);
     return { orders, freshness: fresh?.text };
   });

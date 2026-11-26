@@ -28,6 +28,7 @@ import {
   loadContext,
   loadMasterData,
   loadSalesCounts,
+  markViewStateDegraded,
   requireViewer,
 } from "@/server/data/core";
 import { loadRankedTodoState, loadTodoExtras } from "@/server/data/todos";
@@ -49,6 +50,7 @@ const loadLossAdvice = cache(async () => {
     return advice.rows.filter((r) => r.profitOre < 0);
   } catch (error) {
     console.error("[hem] Prisråden kunde inte läsas:", error);
+    markViewStateDegraded();
     return [];
   }
 });
@@ -93,6 +95,7 @@ async function loadLossPrices(): Promise<ActionPriceInput[]> {
     });
   } catch (error) {
     console.error("[hem] Prisråden kunde inte läsas:", error);
+    markViewStateDegraded();
     return [];
   }
 }
@@ -101,7 +104,10 @@ async function loadLossPrices(): Promise<ActionPriceInput[]> {
 export const loadHemExtras = cache(async (): Promise<ReturnType<typeof homeExtraTodos>> =>
   loadTodoExtras()
     .then(homeExtraTodos)
-    .catch(() => []),
+    .catch(() => {
+      markViewStateDegraded();
+      return [];
+    }),
 );
 
 export interface HemRouteCard {
@@ -158,6 +164,7 @@ async function loadHemTodayNow(): Promise<HemToday> {
     loadLossPrices(),
     loadRankedTodoState().catch((error: unknown) => {
       console.error("[hem] Att göra kunde inte läsas:", error);
+      markViewStateDegraded();
       return { items: [], dismissed: [] };
     }),
     loadHemExtras(),

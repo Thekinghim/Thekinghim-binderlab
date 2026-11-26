@@ -36,8 +36,15 @@ import {
   cachedViewState,
   loadOptionalContext,
   loadTodoState,
+  markViewStateDegraded,
   requireViewer,
 } from "./core";
+
+/** Reservvärdet null för en rad som inte kunde läsas (sparas inte mellan förfrågningar). */
+function degradedNull(): null {
+  markViewStateDegraded();
+  return null;
+}
 import { applySlotAlerts, loadSlotAlertDataFor, todoStateWithSlotAlerts } from "./core/slot-alerts";
 import {
   businessToday,
@@ -150,9 +157,9 @@ export async function loadTodoExtrasFor(viewer: Viewer): Promise<{
   startklar: ReadinessTodo | null;
 }> {
   const [ready, found, awishExpiry, startklar] = await Promise.all([
-    readyPackageFor(viewer).catch(() => null),
-    loadNewMachinesFor(viewer).catch(() => null),
-    loadAwishExpiryFor(viewer).catch(() => null),
+    readyPackageFor(viewer).catch(degradedNull),
+    loadNewMachinesFor(viewer).catch(degradedNull),
+    loadAwishExpiryFor(viewer).catch(degradedNull),
     loadStartklarFor(viewer),
   ]);
   return {
@@ -175,6 +182,7 @@ export async function loadStartklarFor(viewer: Viewer): Promise<ReadinessTodo | 
   } catch (error) {
     if (error instanceof AuthorizationError) return null;
     console.error("[startklar] Rollen kunde inte läsas:", error);
+    markViewStateDegraded();
     return null;
   }
   return readinessTodo(await machineReadinessInRequest(viewer));
@@ -314,6 +322,7 @@ export const loadTodoVisitPlan = cache(async (): Promise<TodoVisitPlan | null> =
   } catch (error) {
     if (error instanceof AuthorizationError) throw error;
     console.error("[att-gora] Besöksplanen kunde inte läsas:", error);
+    markViewStateDegraded();
     return null;
   }
 });

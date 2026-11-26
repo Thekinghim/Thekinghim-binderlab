@@ -17,7 +17,13 @@ import { cache } from "react";
 import { addDays, type IsoDate } from "@/domain";
 import { withUserDbFor } from "@/server/access";
 
-import { cachedViewState, loadContext, loadMasterData, requireViewer } from "../core";
+import {
+  cachedViewState,
+  loadContext,
+  loadMasterData,
+  markViewStateDegraded,
+  requireViewer,
+} from "../core";
 import type { Viewer } from "../core/loaders";
 import { stockRowsInRequest } from "../core/loaders";
 import { ownStockTotals } from "../core/own-stock";
@@ -46,6 +52,7 @@ export async function loadRouteLimitsFor(viewer: Viewer): Promise<RouteLimits> {
     });
   } catch (error) {
     console.error("[v2/route] Gränsen kunde inte läsas:", error);
+    markViewStateDegraded();
     return ROUTE_LIMIT_DEFAULTS;
   }
 }
@@ -91,14 +98,21 @@ const loadDayRouteInputs = cache(async (): Promise<Omit<DayRouteInput, "fleet">>
     loadTodoVisitPlan(),
     // Gränsen och ruttens start i en transaktion (vid fel: standarden och ingen start).
     withUserDbFor(viewer.user, (tx) => queryRoutePlanSettings(tx, viewer.organization.id)).catch(
-      () => ({ limits: ROUTE_LIMIT_DEFAULTS, depot: null }),
+      () => {
+        markViewStateDegraded();
+        return { limits: ROUTE_LIMIT_DEFAULTS, depot: null };
+      },
     ),
     // En vecka bakåt: modellen tar "till i morgon" från förra ruttdagen (route-model.ts).
     loadRouteChangesFor(viewer, ctx.today, addDays(ctx.today, -7)).catch((error: unknown) => {
       console.error("[v2/route] Ändringarna kunde inte läsas:", error);
+      markViewStateDegraded();
       return [];
     }),
-    stockRowsInRequest(viewer).catch(() => null),
+    stockRowsInRequest(viewer).catch(() => {
+      markViewStateDegraded();
+      return null;
+    }),
     loadMasterData(),
   ]);
   const { limits, depot } = settings;

@@ -19,7 +19,13 @@ import {
 } from "@/components/shell/period-state";
 import { middleOut } from "@/components/v2/empty";
 import { profitability } from "@/domain";
-import { cachedViewState, loadContext, loadPeriod, type AppContext } from "@/server/data/core";
+import {
+  cachedViewState,
+  loadContext,
+  loadPeriod,
+  markViewStateDegraded,
+  type AppContext,
+} from "@/server/data/core";
 import { hemKey, loadHemCore, loadHemProfit } from "@/server/data/v2/analytics/hem-base";
 import { loadMoneyGoal } from "@/server/data/v2/analytics/goal";
 import { loadKpiBand, type KpiBandTile } from "@/server/data/v2/analytics/kpi-band";
@@ -119,10 +125,12 @@ async function heroNow(sp: SearchParamsInput, ctx: AppContext): Promise<HemHeroD
     loadPeriod(sp),
     loadTopCard(sp).catch((error: unknown) => {
       console.error("[hem] Mest sålda kunde inte läsas:", error);
+      markViewStateDegraded();
       return null;
     }),
     loadMoneyGoal().catch((error: unknown) => {
       console.error("[hem] Månadens mål kunde inte läsas:", error);
+      markViewStateDegraded();
       return null;
     }),
   ]);

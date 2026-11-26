@@ -30,6 +30,7 @@ import {
 } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
+import { BUILD_ID } from "@/lib/build-id";
 import { NotCacheableError, decodeFromCache, encodeForCache } from "@/lib/cache-codec";
 import type { CostLines } from "@/lib/cost-lines";
 import { ACTIVE_ORG_COOKIE } from "@/server/auth/flows";
@@ -495,6 +496,34 @@ export const VIEW_STATE_BUCKET_SECONDS = 300;
 const notCacheableWarned = new Set<string>();
 
 /**
+ * Förfrågans markering att ett fel har fångats och ersatts med ett reservvärde (null, [],
+ * standardgränsen …), en gång per förfrågan (React cache). Ett sparat läge (cachedViewState)
+ * som blir klart efter det sparas inte: annars skulle ett tillfälligt fel (en timeout) visas
+ * i minuter i stället för på en sida.
+ */
+const requestDegraded = cache((): { degraded: boolean } => ({ degraded: false }));
+
+/**
+ * Anropas där ett fel fångas och ersätts med ett reservvärde i det som cachedViewState
+ * sparar, så att reservvärdet inte sparas mellan förfrågningar (bara den här sidan får det).
+ */
+export function markViewStateDegraded(): void {
+  try {
+    requestDegraded().degraded = true;
+  } catch {
+    // Utanför en förfrågan: inget sparas ändå.
+  }
+}
+
+/** Kastas ur unstable_cache när läsningen bar ett reservvärde: då sparas inget. */
+class DegradedRead extends Error {
+  constructor() {
+    super("Läsningen bar ett reservvärde och sparas inte.");
+    this.name = "DegradedRead";
+  }
+}
+
+/**
  * Ett läge som inte beror på vald period (flottan, dagens rutt, Att göra, Vårt lager …),
  * sparat mellan förfrågningar för den inloggade, så att ett periodbyte på Hem inte läser
  * om det.
@@ -529,6 +558,10 @@ export async function cachedViewState<T>(name: string, fn: () => Promise<T>): Pr
       async () => {
         ran = true;
         const value = await fn();
+        if (requestDegraded().degraded) {
+          fresh = { value };
+          throw new DegradedRead();
+        }
         try {
           return { ok: true as const, v: encodeForCache(value) };
         } catch (error) {
@@ -543,6 +576,9 @@ export async function cachedViewState<T>(name: string, fn: () => Promise<T>): Pr
       },
       [
         "view-state:v1",
+        // Bygget: datacachen lever kvar över en driftsättning, och ett läge som ett äldre
+        // bygge sparade kan ha en annan form eller räkning än den här koden.
+        BUILD_ID,
         name,
         userId,
         orgId,
@@ -557,6 +593,9 @@ export async function cachedViewState<T>(name: string, fn: () => Promise<T>): Pr
     );
     entry = await load();
   } catch (error) {
+    // Läsningen bar ett reservvärde: den här sidan får det, men det sparas inte.
+    const degraded = fresh as { value: T } | null;
+    if (error instanceof DegradedRead && degraded) return degraded.value;
     // Ingen datacache (utanför en Next-förfrågan, eller i tester utan den): läs som vanligt.
     // Bara när fn inte hann köras, så att ett fel i själva läsningen inte läses en gång till.
     if (!ran) return fn();

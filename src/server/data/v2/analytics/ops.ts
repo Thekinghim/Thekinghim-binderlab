@@ -8,7 +8,7 @@
 
 import "server-only";
 
-import { cachedViewState, loadSyncInfo } from "@/server/data/core";
+import { cachedViewState, loadSyncInfo, markViewStateDegraded } from "@/server/data/core";
 
 import { loadFleetState } from "../fleet";
 
@@ -34,7 +34,13 @@ export async function loadOps(): Promise<OpsCard> {
 }
 
 async function opsNow(): Promise<OpsCard> {
-  const [fleet, sync] = await Promise.all([loadFleetState(), loadSyncInfo().catch(() => null)]);
+  const [fleet, sync] = await Promise.all([
+    loadFleetState(),
+    loadSyncInfo().catch(() => {
+      markViewStateDegraded();
+      return null;
+    }),
+  ]);
   const offline = fleet.machines.filter((m) => m.status === "offline");
   const off = fleet.machines.filter((m) => m.powerOffNow);
   const firstPower = off.map((m) => m.store?.power).find((p) => p) ?? null;
