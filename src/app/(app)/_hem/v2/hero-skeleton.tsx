@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/v2/skeleton";
  */
 export function HemHeroSkeleton() {
   return (
-    <div className="hh hh-calm hh-skel" aria-busy="true" aria-label="Laddar">
+    <div className="hh hh-calm hh-skel" role="status" aria-busy="true" aria-label="Laddar vinsten">
       <div className="v2-card hh-card">
         <div className="hh-sec hh-profit">
           <Skeleton className="lab" width={110} />
