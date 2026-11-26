@@ -5,6 +5,7 @@
  * VMB-uträkningen (när VMB är på). Sist: kontoplanen.
  */
 
+import { DownloadLink } from "@/components/v2/download-link";
 import { PageIntro } from "@/components/v2/page-intro";
 import { StateMessage } from "@/components/ui/state-message";
 import { MobileFold } from "@/components/ui/mobile-fold";
@@ -249,9 +250,13 @@ function MonthItem({
           ) : !row.hasVoucher && row.receipts.length === 0 ? (
             <span className="text-v2-sm text-v2-mute">Inget att bokföra</span>
           ) : (
-            <a href={`/ekonomi/bokforing/paket?manad=${row.month}`} download className={PRIMARY}>
+            <DownloadLink
+              href={`/ekonomi/bokforing/paket?manad=${row.month}`}
+              fallbackName={`bokforing-${row.month}.zip`}
+              className={PRIMARY}
+            >
               Ladda ner månadspaket
-            </a>
+            </DownloadLink>
           )}
           {canEdit && row.status !== "open" ? (
             <SentToggle month={row.month} sent={row.status === "sent"} />

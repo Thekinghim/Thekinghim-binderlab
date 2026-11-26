@@ -17,12 +17,16 @@ export function PowerCard({
   machineId,
   code,
   online,
-  versionBlocked,
+  blocked,
 }: {
   machineId: string;
   code: string;
   online: boolean | null;
-  versionBlocked: boolean;
+  /**
+   * Inget kan skickas (inloggningen saknas, versionsbyte eller signering, styrBlocked): båda
+   * knapparna är avstängda. Varför står överst på sidan, en gång, med vägen till Datakällor.
+   */
+  blocked: boolean;
 }) {
   // Förhandsvisningen läses från servern: den ger beviset som bekräftelsen kräver.
   const reboot = useFlow<PowerPreview>();
@@ -37,7 +41,7 @@ export function PowerCard({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             touch
-            disabled={offline}
+            disabled={offline || blocked}
             onClick={() => reboot.start(() => previewPowerAction({ machineId, method: "REBOOT" }))}
           >
             Starta om automaten
@@ -63,18 +67,13 @@ export function PowerCard({
             <Button
               touch
               className="styr-danger-outline"
-              disabled={offline || versionBlocked}
+              disabled={offline || blocked}
               onClick={() =>
                 shutdown.start(() => previewPowerAction({ machineId, method: "SHUTDOWN" }))
               }
             >
               Stäng av…
             </Button>
-            {versionBlocked ? (
-              <span className="text-v2-sm text-v2-mute">
-                Pausat tills versionsbytet är bekräftat.
-              </span>
-            ) : null}
           </div>
         ) : null}
       </div>

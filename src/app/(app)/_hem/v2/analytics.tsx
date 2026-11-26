@@ -644,7 +644,17 @@ export async function ShopsCardView({
 
 /* 10. Driftstatus -------------------------------------------------- */
 
-export async function OpsCardView({ timeZone }: { timeZone: string }) {
+/**
+ * Driftstatus. `field` (påfyllaren): bara det som gäller ute vid automaterna (online och
+ * ström). Awish-synken och "köp var 5:e minut" är kontorets sak och stod som ett "–".
+ */
+export async function OpsCardView({
+  timeZone,
+  field = false,
+}: {
+  timeZone: string;
+  field?: boolean;
+}) {
   const o = await loadOps();
   const time = o.syncedAt
     ? new Intl.DateTimeFormat("sv-SE", { hour: "2-digit", minute: "2-digit", timeZone }).format(
@@ -670,13 +680,19 @@ export async function OpsCardView({ timeZone }: { timeZone: string }) {
             {o.powerWindow ? `enligt butikens tider, ${o.powerWindow}` : "enligt butikernas tider"}
           </small>
         </div>
-        <div>
-          <span className="x-l">Senaste Awish-synk</span>
-          <b>{time}</b>
-          <small>
-            {o.syncState === "failed" ? "Synken misslyckades" : "Köp kommer var 5:e minut"}
-          </small>
-        </div>
+        {field ? null : (
+          <div>
+            <span className="x-l">Senaste Awish-synk</span>
+            <b>{time}</b>
+            <small>
+              {o.syncState === "failed"
+                ? "Synken misslyckades"
+                : o.syncedAt
+                  ? "Köp kommer var 5:e minut"
+                  : "Ingen synk än"}
+            </small>
+          </div>
+        )}
       </div>
       {o.offline.length > 0 ? (
         <p className="x-sum">

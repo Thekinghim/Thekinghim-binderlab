@@ -6,6 +6,7 @@
 
 import Link from "next/link";
 
+import { DownloadLink } from "@/components/v2/download-link";
 import type { Viewer } from "@/server/data/core/loaders";
 import { readyPackageFor, type ReadyLine } from "@/server/bokforing/stored";
 
@@ -34,13 +35,13 @@ export async function BokforingReady({
           : `Bokföring för ${month} är preliminär: ${ready.reason ?? "underlaget är inte klart."}`}
       </p>
       <span className="flex items-center gap-3 text-sm max-md:shrink-0 max-md:[&>a]:inline-flex max-md:[&>a]:min-h-11 max-md:[&>a]:items-center">
-        <a
+        <DownloadLink
           href={`/ekonomi/bokforing/paket?manad=${ready.month}`}
-          download
+          fallbackName={`bokforing-${ready.month}.zip`}
           className="font-[550] text-fg underline-offset-2 hover:underline"
         >
           Ladda ner
-        </a>
+        </DownloadLink>
         <Link
           href="/ekonomi?vy=bokforing"
           className="text-muted underline-offset-2 hover:underline"

@@ -9,7 +9,7 @@ import { Notice } from "@/components/v2/notice";
 import { V2Page } from "@/components/v2/shell/page";
 import { formatDateTime, formatTime } from "@/lib/format";
 import { DEMO_MESSAGES } from "@/server/demo/guard";
-import { loadStyrPage, type StyrLogRow } from "@/server/machine-control/load";
+import { loadStyrPage, styrBlocked, type StyrLogRow } from "@/server/machine-control/load";
 import { timezoneBlock } from "@/server/machine-control/power-schedule";
 
 import { currentViewer } from "../../_lib/session";
@@ -101,6 +101,19 @@ export default async function StyrPage({ params }: { params: Params }) {
     >
       <div className="v2-stack">
         {crumb}
+        {data.missingCredentials ? (
+          <Notice
+            tone="warning"
+            title="Awish-inloggningen saknas. Inget kan skickas."
+            action={
+              <ButtonLink href="/datakallor" size="sm" touch>
+                Datakällor
+              </ButtonLink>
+            }
+          >
+            {data.missingCredentials}
+          </Notice>
+        ) : null}
         {data.versionBlocked ? (
           <Notice
             tone="warning"
@@ -113,8 +126,16 @@ export default async function StyrPage({ params }: { params: Params }) {
           />
         ) : null}
         {data.signFailed ? (
-          <Notice tone="warning" title="Awish godkänner inte vår signering ännu.">
-            Skrivningar via API är pausade. Testa under Datakällor → Awish API.
+          <Notice
+            tone="warning"
+            title="Awish godkänner inte vår signering ännu."
+            action={
+              <ButtonLink href="/datakallor" size="sm" touch>
+                Datakällor
+              </ButtonLink>
+            }
+          >
+            Skrivningar via API är pausade.
           </Notice>
         ) : null}
         {data.errors.map((e) => (
@@ -125,7 +146,7 @@ export default async function StyrPage({ params }: { params: Params }) {
           machineId={machine.id}
           code={machine.code}
           online={data.online}
-          versionBlocked={data.versionBlocked}
+          blocked={styrBlocked(data)}
         />
         <ScheduleCard
           machineId={machine.id}

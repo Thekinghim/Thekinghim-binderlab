@@ -9,16 +9,22 @@ import type { PdfStatus } from "@/server/pdf/render";
 export function ServiceLines({
   status,
   hideMail = false,
+  showSettings = process.env.NODE_ENV !== "production",
 }: {
   /** Dela-läget: e-post behövs inte, så raden om e-post visas inte. */
   hideMail?: boolean;
+  /**
+   * Visa namnen på miljövariablerna som saknas. Bara under utveckling: ägaren kan inte göra
+   * något med dem (de sätts i driftmiljön), och de ser ut som ett fel.
+   */
+  showSettings?: boolean;
   status: {
     mail: MailerStatus;
     pdf: PdfStatus;
     storage: { kind: "local" | "supabase"; configured: boolean; missing: string[] };
   };
 }) {
-  // Namnen på miljövariablerna är tekniska uppgifter: de står bakom "Visa detaljer".
+  // Namnen på miljövariablerna är tekniska uppgifter: bara under utveckling (showSettings).
   const lines: { key: string; message: string; detail: string; settings: string }[] = [];
   if (hideMail) {
     // Inget om e-post: rapporten delas för hand.
@@ -59,7 +65,7 @@ export function ServiceLines({
       {lines.map((l) => (
         <Notice key={l.key} tone="info" title={l.message}>
           {l.detail}
-          {l.settings ? (
+          {showSettings && l.settings ? (
             <span className="mt-0.5 block text-v2-xs break-all opacity-80">
               Inställningar: {l.settings}
             </span>

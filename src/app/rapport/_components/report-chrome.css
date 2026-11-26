@@ -126,4 +126,51 @@
       display: none;
     }
   }
+
+  /*
+   * Telefon under 600 px (data-reflow): arket flödar i skärmens bredd och läses i normal
+   * textstorlek, i stället för ett A4 skalat till en tredjedel. Bara på skärmen; utskriften och
+   * serverns PDF (print-media) använder A4-arket ovan.
+   */
+  @media (max-width: 599px) {
+    .rp-chrome[data-reflow] .rp-chrome-main {
+      padding: 8px 0 32px;
+    }
+    .rp-chrome[data-reflow] .bl-report {
+      gap: 12px;
+    }
+    .rp-chrome[data-reflow] .bl-sheet {
+      max-width: none;
+      aspect-ratio: auto;
+      overflow: visible;
+      container-type: normal;
+      outline: none;
+      box-shadow: none;
+      border-block: 1px solid var(--v2-line);
+    }
+    .rp-chrome[data-reflow] .bl-page {
+      position: static;
+      width: auto;
+      height: auto;
+      padding: 16px;
+      transform: none;
+      font-size: 14px;
+      line-height: 20px;
+    }
+    .rp-chrome[data-reflow] .bl-page > header {
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .rp-chrome[data-reflow] .bl-page > header dl {
+      flex-wrap: wrap;
+      gap: 8px 16px;
+    }
+    /* Breda tabeller rullar i sidled i stället för att trycka ut sidan. */
+    .rp-chrome[data-reflow] .bl-page-body {
+      overflow-x: auto;
+      overflow-y: visible;
+      padding-top: 16px;
+      padding-bottom: 16px;
+    }
+  }
 }

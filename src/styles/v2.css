@@ -632,6 +632,9 @@
     gap: 8px;
     margin: 10px 22px 0;
   }
+  .v2-filters-fold .v2-filters-toggle {
+    display: none;
+  }
   .v2-filters .v2-filter-select {
     height: 32px;
     width: auto;
@@ -686,6 +689,21 @@
     .v2-filters .v2-filter-vmb {
       grid-column: 1 / -1;
       justify-self: start;
+    }
+    /* Fällda filter (V2Page filters): en knapp "Filter"; valen visas när den är öppen. */
+    .v2-filters-fold .v2-filters-toggle {
+      display: inline-flex;
+      height: 44px;
+      margin: 8px 12px 0;
+    }
+    .v2-filters-toggle .chev {
+      transition: transform 160ms var(--v2-ease, ease-out);
+    }
+    .v2-filters-fold[data-open] .v2-filters-toggle .chev {
+      transform: rotate(180deg);
+    }
+    .v2-filters-fold:not([data-open]) .v2-filters {
+      display: none;
     }
   }
   .v2-page-body {

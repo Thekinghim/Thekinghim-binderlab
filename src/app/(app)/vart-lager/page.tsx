@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { StateMessage } from "@/components/ui/state-message";
+import { inPlace } from "@/components/stock/place-text";
 import { ButtonLink } from "@/components/v2/button";
 import { DaySalesCard } from "@/components/v2/day-sales";
 import { SkeletonCard } from "@/components/v2/skeleton";
@@ -86,7 +87,11 @@ export default async function VartLagerPage({
         date={date}
         sub={
           view.canEdit
-            ? "Skriv antalet hemma, lägg in inköp och flytta mellan lagren. Sparas direkt."
+            ? view.places.length === 1
+              ? `Skriv antalet ${inPlace(view.places[0]!.name)} och lägg in inköp. Sparas direkt.`
+              : view.places.length > 1
+                ? "Skriv antalet per lager, lägg in inköp och flytta mellan lagren. Sparas direkt."
+                : "Skriv antalet och lägg in inköp. Sparas direkt."
             : undefined
         }
         tools={

@@ -1,6 +1,24 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+
 import { cn } from "@/lib/cn";
 
-import { mapsDirUrl, mapsSearchUrl, telHref } from "./links";
+import { isAppleMobile, mapsDirUrl, mapsSearchUrl, telHref, type MapsProvider } from "./links";
+
+const noSubscribe = () => () => {};
+
+/**
+ * Kartappen på den här enheten: Apple på iPhone och iPad, annars Google. Servern (och första
+ * ritningen) säger Google, så att sidan inte ritas om olika; länken byts direkt efteråt.
+ */
+function useMapsProvider(): MapsProvider {
+  return useSyncExternalStore(
+    noSubscribe,
+    () => (isAppleMobile(navigator) ? "apple" : "google"),
+    () => "google",
+  );
+}
 
 const linkClass = "v2-btn";
 
@@ -27,7 +45,7 @@ export function CallLink({
   );
 }
 
-/** "Kör dit" (en plats i Google Maps, ny flik). Inget ritas utan adress eller koordinater. */
+/** "Kör dit" (en plats i kartan: Apple Kartor på iPhone, annars Google Maps i ny flik). Inget ritas utan adress eller koordinater. */
 export function MapsLink({
   address,
   city,
@@ -46,7 +64,7 @@ export function MapsLink({
   /** "touch": 44 px hög på telefon (Rutt, där man trycker med tummen). */
   size?: "sm" | "lg" | "touch";
 }) {
-  const href = mapsSearchUrl({ address, city, lat, lng });
+  const href = mapsSearchUrl({ address, city, lat, lng }, useMapsProvider());
   if (!href) return null;
   return (
     <a
@@ -75,7 +93,7 @@ export function RouteMapsLink({
   /** "touch": 44 px hög på telefon. */
   size?: "sm" | "lg" | "touch";
 }) {
-  const href = mapsDirUrl(stops, origin);
+  const href = mapsDirUrl(stops, origin, useMapsProvider());
   if (!href) return null;
   return (
     <a

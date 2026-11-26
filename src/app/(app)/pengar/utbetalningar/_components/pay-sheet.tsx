@@ -125,7 +125,7 @@ export function PaySheet({
             />
           )}
         </Field>
-        <Field label="Belopp" hint="Ändra om du betalar en del nu.">
+        <Field label="Belopp" hint="Betalar du bara en del? Ändra beloppet.">
           {(p) => (
             <Input
               {...p}

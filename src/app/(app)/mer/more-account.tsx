@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useTransition, type ReactNode } from "react";
 
 import { AppRefreshRow } from "@/components/pwa/app-refresh-button";
 import { pushEndpointForLogout } from "@/components/pwa/push-device";
@@ -12,15 +12,20 @@ import { ListRow } from "@/components/v2/list-row";
 import { toastV2 } from "@/components/v2/toast";
 import { logout, switchOrganization } from "@/server/actions/auth";
 
-/** Kontot på Mer: byt organisation, uppdatera appen och logga ut (telefonen har ingen sidomeny). */
+/**
+ * Kontot på Mer: kontots sidor (children: Mitt konto, Notiser), byt organisation, uppdatera
+ * appen och logga ut (telefonen har ingen sidomeny).
+ */
 export function MoreAccount({
   email,
   organizations,
   activeOrganizationId,
+  children,
 }: {
   email: string;
   organizations: { id: string; name: string }[];
   activeOrganizationId: string;
+  children?: ReactNode;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -28,6 +33,7 @@ export function MoreAccount({
   const [signingOut, startSignOut] = useTransition();
   return (
     <Card title="Konto">
+      {children}
       {organizations.length > 1
         ? organizations.map((o) => (
             <ListRow

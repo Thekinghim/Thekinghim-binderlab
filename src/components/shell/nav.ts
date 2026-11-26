@@ -799,8 +799,20 @@ export function v2MobileNavForRole(role: Role): V2NavLink[] {
 }
 
 /**
+ * Gamla sidor under Automater som bara nås från Mer (Alla sidor): Drift, Inkorg, Order och
+ * Kampanjer. På telefonen ska Mer vara tänd där, inte Automater (som inte länkar dit).
+ */
+const REACHED_FROM_MER: ReadonlySet<RouteId> = new Set<RouteId>([
+  "drift",
+  "inkorg",
+  "order",
+  "kampanjer",
+]);
+
+/**
  * V2-posten som är aktiv på en sökväg. De gamla sidorna hör till sin gamla huvudflik
- * (Drift → Automater, Lönsamhet → Pengar, Inställningar → Mer); besöksplanen hör till Rutt.
+ * (Lager → Automater, Lönsamhet → Pengar, Inställningar → Mer); besöksplanen hör till Rutt.
+ * Sidor som bara nås från Mer (Drift, Inkorg …) hör till Mer.
  */
 export function activeV2NavId(pathname: string | null | undefined): V2NavId | null {
   if (!pathname) return null;
@@ -809,6 +821,8 @@ export function activeV2NavId(pathname: string | null | undefined): V2NavId | nu
   const id = activeRouteId(path);
   if (!id) return null;
   if (id === "rutt" || id === "pengar" || id === "mer") return id;
+  // Nås bara från Mer (inte från Automaters sida): Mer förblir tänd, och tillbaka går till Mer.
+  if (REACHED_FROM_MER.has(id)) return "mer";
   const section = sectionOfRoute(id)?.id ?? null;
   // Sidor som inte står under någon gammal flik (Assistent m.fl.) hör till Mer.
   return section ?? "mer";

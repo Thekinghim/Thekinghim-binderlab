@@ -11,11 +11,19 @@ siffrorna syns. Allt finns i `src/seed/demo/`, skriptet heter `scripts/db/seed-d
 npm run db:seed-demo                   # binderlab_dev (DATABASE_URL)
 npm run db:seed-demo -- test           # binderlab_test (DATABASE_URL_TEST)
 npm run db:seed-demo -- --url <url>    # annan lokal databas
+npm run db:seed-demo -- --datum 2026-12-01   # demons "nu" ett visst datum
+npm run db:seed-demo -- --original     # originalets "nu", 2 nov 2026
 ```
+
+- Demons "nu" är **seedningsdagen** kl. 12 (i går om klockan inte har blivit 12). Hela berättelsen
+  (1 feb – 2 nov 2026) flyttas lika många dagar (`demoSeedClock` och `demoCatalog` i `calendar.ts`), så demon
+  ser levande ut. En demo som redan finns behåller sitt "nu"; `--aterstall` flyttar den till i dag.
+- Demon hämtar aldrig från Awish, så varningarna om gammal data (bannern på Hem, "inaktuell" synk, raden om
+  gammal import) visas inte i en demo.
 
 - Det tar ungefär 25 sekunder. Databasen måste ha alla migreringar (`npm run db:reset -- dev` eller `npm run db:migrate`).
 - Seeden är **idempotent**. En andra körning skapar inget nytt.
-- Den är **deterministisk**: samma kod ger alltid samma demo, på öret.
+- Den är **deterministisk**: samma kod och samma "nu" ger alltid samma demo, på öret.
 - Den är **lokal som standard**. En värd som inte är `127.0.0.1` eller `localhost` nekas om du inte lägger till
   `--allow-remote`. Mot en fjärrdatabas skapas inga användare. De måste då redan finnas i Supabase Auth.
 

@@ -348,4 +348,63 @@
     color: var(--v2-crit-text);
     font-size: var(--v2-t-sm);
   }
+
+  /* Betallistan: i appen på telefonen, som CSV-fil på datorn. */
+  .ut-hero .ut-phone {
+    display: none;
+  }
+  @media (max-width: 900px) {
+    .ut-hero .ut-phone {
+      display: contents;
+    }
+    .ut-hero .ut-desk {
+      display: none;
+    }
+  }
+  .ut-bank {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+  .ut-bank li {
+    border: 1px solid var(--v2-line2);
+    border-radius: var(--v2-r-md);
+    padding: 4px 14px;
+  }
+  .ut-bank-h {
+    padding: 10px 0 6px;
+  }
+  .ut-bank-h b {
+    display: block;
+    font-weight: 650;
+    color: var(--v2-ink);
+  }
+  .ut-bank-h small,
+  .ut-bank-v small {
+    display: block;
+    font-size: var(--v2-t-sm);
+    color: var(--v2-mute);
+  }
+  .ut-bank-v {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--v2-line2);
+  }
+  .ut-bank-v > span {
+    min-width: 0;
+  }
+  .ut-bank-v b {
+    display: block;
+    font-weight: 600;
+    color: var(--v2-ink);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { addDays, dayOfWeek } from "@/domain/dates";
 
-import { demoCatalog, DEMO_DEFAULT_CLOCK } from "./calendar";
+import { demoCatalog, demoSeedClock, DEMO_DEFAULT_CLOCK } from "./calendar";
 import {
   DEMO_AGREEMENTS,
   DEMO_CONTRACTS,
@@ -90,5 +90,33 @@ describe("demons kalender", () => {
   it("vägrar ett ogiltigt nu", () => {
     expect(() => demoCatalog({ date: "2027-02-30x", hour: 1 })).toThrow();
     expect(() => demoCatalog({ date: "2027-02-03", hour: 24 })).toThrow();
+  });
+});
+
+describe("demons nu vid seedning (db:seed-demo)", () => {
+  // 26 nov 2026 kl. 14:30 och 09:30 svensk tid (CET = UTC+1).
+  const afternoon = new Date("2026-11-26T13:30:00Z");
+  const morning = new Date("2026-11-26T08:30:00Z");
+
+  it("seedningsdagen kl. 12, eller i går före kl. 12", () => {
+    expect(demoSeedClock({ now: afternoon })).toEqual({ date: "2026-11-26", hour: 12 });
+    expect(demoSeedClock({ now: morning })).toEqual({ date: "2026-11-25", hour: 12 });
+  });
+
+  it("en befintlig demo behåller sitt nu; --datum och --original går före", () => {
+    expect(demoSeedClock({ now: afternoon, existingLastDay: "2026-11-10" })).toEqual({
+      date: "2026-11-10",
+      hour: 12,
+    });
+    expect(
+      demoSeedClock({ now: afternoon, date: "2026-12-01", existingLastDay: "2026-11-10" }),
+    ).toEqual({ date: "2026-12-01", hour: 12 });
+    expect(demoSeedClock({ now: afternoon, original: true })).toEqual(DEMO_DEFAULT_CLOCK);
+  });
+
+  it("katalogen för seedningsdagen slutar på seedningsdagen", () => {
+    const cat = demoCatalog(demoSeedClock({ now: afternoon }));
+    expect(cat.period.end).toBe("2026-11-26");
+    expect(cat.shiftDays).toBe(24);
   });
 });

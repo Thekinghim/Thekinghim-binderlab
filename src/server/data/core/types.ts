@@ -273,4 +273,9 @@ export interface SyncInfo {
   readonly state: "ok" | "stale" | "failed" | "no-orders";
   /** Antal aktiva (ej arkiverade) datakällor. */
   readonly sources: number;
+  /**
+   * Organisationen är en demo: den hämtar aldrig från Awish, så datan är "gammal" med
+   * flit. Inga varningar om gammal data (state är aldrig "stale").
+   */
+  readonly demo?: boolean;
 }

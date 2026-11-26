@@ -153,7 +153,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
               så att den inte blir ett ensamt kort i en egen sektion och lämnar ett hål här. */}
           {!economy ? (
             <SafeSuspense fallback={<SkeletonCard rows={3} className="x-c x-ops" />}>
-              <OpsCardView timeZone={ctx.timeZone} />
+              <OpsCardView timeZone={ctx.timeZone} field={ctx.role === "refiller"} />
             </SafeSuspense>
           ) : null}
           {economy ? (

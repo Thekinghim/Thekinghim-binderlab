@@ -334,6 +334,7 @@ describe("behörighet och demo", () => {
     expect(page.slots.map((x) => x.name)).toEqual(["12", "A3"]);
     expect(page.store).toEqual({ storeName: "Ica Kvantum", on: "10:00", off: "21:00" });
     expect(page.errors).toEqual([]);
+    expect(page.missingCredentials).toBeNull();
     expect(st.writes).toEqual([]);
   });
 });

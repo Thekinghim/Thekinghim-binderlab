@@ -47,6 +47,12 @@ describe("brödsmulor", () => {
     expect(crumbsFor("/ekonomi", "B", "bokforing")).toEqual(["B", "Pengar", "Bokföring"]);
     expect(crumbsFor("/prognos", "B")).toEqual(["B", "Vårt lager", "Inköp"]);
     expect(crumbsFor("/prognos", "B", "prognos")).toEqual(["B", "Vårt lager", "Prognos"]);
+    expect(crumbsFor("/inkopspriser/ny-produkt", "B")).toEqual([
+      "B",
+      "Vårt lager",
+      "Inköpspriser",
+      "Ny produkt",
+    ]);
   });
 });
 
@@ -76,6 +82,8 @@ describe("tillbaka-pilens mål", () => {
     expect(back("/butiker")?.href).toBe("/mer");
     expect(back("/installningar")?.href).toBe("/mer");
     expect(back("/assistent")?.href).toBe("/mer");
+    expect(back("/drift")?.href).toBe("/mer");
+    expect(back("/inkorg")?.href).toBe("/mer");
     expect(back("/lager")?.href).toBe("/automater");
     expect(back("/att-gora")?.href).toBe("/");
     expect(back("/kom-igang")?.href).toBe("/");

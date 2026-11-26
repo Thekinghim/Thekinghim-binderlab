@@ -10,6 +10,8 @@ import { currentReportViewer } from "@/server/reports/runtime";
 import { getReportFor, ReportError, type ReportDetail } from "@/server/reports/service";
 import { AuthorizationError } from "@/server/session";
 
+import { DownloadLink } from "@/components/v2/download-link";
+
 import { ReportChrome } from "../_components/report-chrome";
 import { ReportView } from "../_components/report-view";
 import { V2PrintButton } from "../_components/v2-print-button";
@@ -50,12 +52,15 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
     throw error;
   }
   const s = report.snapshot;
+  const kinds = fileKindsOf(s);
   const scope = s.type === "butik" ? s.store.name : periodLabel(s);
   const range = isWholeMonth(s.period) ? "" : `&fran=${s.period.start}&till=${s.period.end}`;
   const back = `/rapporter?manad=${s.month}&typ=${s.type}${s.type === "butik" ? `&butiken=${s.store.id}` : ""}${range}`;
 
   return (
     <ReportChrome
+      // Telefon: arket flödar i skärmens bredd (utskriften är oförändrad; PDF:en är en fil).
+      reflow
       back={{ href: back, label: "Rapporter" }}
       crumb={
         <>
@@ -68,12 +73,17 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
           <span className={`v2-badge ${BADGE_TONE[report.status]}`}>
             {STATUS_LABEL[report.status]}
           </span>
-          {fileKindsOf(s).map((kind) => (
-            <a key={kind} href={`/rapport/${report.id}/fil/${kind}`} className="v2-btn touch">
+          {kinds.map((kind) => (
+            <DownloadLink
+              key={kind}
+              href={`/rapport/${report.id}/fil/${kind}`}
+              fallbackName={`rapport.${kind}`}
+              className="v2-btn touch"
+            >
               {FILE_LABEL[kind]}
-            </a>
+            </DownloadLink>
           ))}
-          <V2PrintButton>Skriv ut</V2PrintButton>
+          <V2PrintButton desktopOnly={kinds.includes("pdf")}>Skriv ut</V2PrintButton>
         </>
       }
     >
