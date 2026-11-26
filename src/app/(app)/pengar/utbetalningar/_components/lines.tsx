@@ -215,7 +215,8 @@ export function PayoutLines({ payout, today }: { payout: PayoutView; today: stri
                   ? "Nayax räckte inte till allt"
                   : payout.lines.some((x) => x.kind === "partner")
                     ? "Din del av vinsten"
-                    : "Kvar till dig, inköpet ingår"
+                    : // Radens namn är redan "Kvar till dig".
+                      "Inköpet ingår"
                 : l.kind === "store_owner"
                   ? `${new Set(l.stores.map((c) => c.storeId)).size} butiker`
                   : "Butikens andel";

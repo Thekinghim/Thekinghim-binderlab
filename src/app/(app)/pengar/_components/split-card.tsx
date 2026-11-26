@@ -67,7 +67,8 @@ export async function SplitCard({ sp, days }: { sp: SearchParamsInput; days: str
         {storesPaid ? (
           <p className="g4-sp-pay" data-testid="split-store-pay">
             Butikerna får betalt för {monthName(s.storePay.month)} senast{" "}
-            <b>{day(s.storePay.due)}</b>.
+            {/* "15 dec." har redan en punkt: ingen dubbel punkt. */}
+            <b>{day(s.storePay.due).replace(/\.$/, "")}</b>.
           </p>
         ) : null}
         {v.rows.map((row, i) => {

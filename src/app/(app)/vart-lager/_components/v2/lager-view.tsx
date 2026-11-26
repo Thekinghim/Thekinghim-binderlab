@@ -6,7 +6,9 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
+import { businessDateAt } from "@/analytics/todos/time";
 import { ButtonLink } from "@/components/v2/button";
+import { daysBetween } from "@/domain";
 import { Card } from "@/components/v2/card";
 import { Empty } from "@/components/v2/empty";
 import { PackImage } from "@/components/v2/pack-image";
@@ -81,8 +83,9 @@ function dayText(iso: string, timeZone: string): string {
     .replace(".", "");
 }
 
-function agoText(iso: string, now: string): string {
-  const days = Math.floor((Date.parse(now) - Date.parse(iso)) / 86_400_000);
+/** Kalenderdagar i organisationens tidszon, som inventeringssidan ("20 nov. · 6 dagar sedan"). */
+function agoText(iso: string, now: string, timeZone: string): string {
+  const days = daysBetween(businessDateAt(iso, timeZone), businessDateAt(now, timeZone));
   if (days <= 0) return "Räknat i dag";
   if (days === 1) return "Räknat i går";
   return `Räknat för ${formatInt(days)} dagar sedan`;
@@ -373,7 +376,9 @@ export function LagerView(p: LagerViewProps) {
               <div className="cnt" key={x.id}>
                 <div>
                   <b>{x.name}</b>
-                  <small>{x.lastCounted ? agoText(x.lastCounted, p.now) : "Inte räknat än"}</small>
+                  <small>
+                    {x.lastCounted ? agoText(x.lastCounted, p.now, p.timeZone) : "Inte räknat än"}
+                  </small>
                 </div>
                 {p.canEdit ? (
                   <ButtonLink size="sm" href="/vart-lager/inventering">

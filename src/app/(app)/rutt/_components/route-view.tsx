@@ -376,7 +376,14 @@ export function RouteView({
           >
             {route.load.length === 0 ? (
               // Tomt läge med packbilder (Visuellt, mock 08): bocken säger att allt är klart.
-              <Empty packs={emptyPacks([])} done title="Allt är fullt – ingen packning i dag" />
+              remaining.some((s) => s.kind === "fill") ? (
+                // Stopp att fylla men inget i listan (okänd kapacitet): inte "Allt är fullt".
+                <Empty title="Inget i packlistan">
+                  <p>Se Fyll på för vad som ska med.</p>
+                </Empty>
+              ) : (
+                <Empty packs={emptyPacks([])} done title="Allt är fullt – ingen packning i dag" />
+              )
             ) : (
               <>
                 {route.short.map((sh) => {
@@ -608,7 +615,9 @@ function StopRow({
             </div>
           </details>
         ) : s.kind === "fill" && !s.done ? (
-          <p className="sreason">{s.reasons[0] ?? "Lagd i rutten."}</p>
+          <p className="sreason">
+            {s.reasons[0] ?? (s.added ? "Lagd i rutten." : "Något är slut. Se Fyll på.")}
+          </p>
         ) : null}
         <div className="sact">
           <MapsLink
