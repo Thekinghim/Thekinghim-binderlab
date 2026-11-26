@@ -1,6 +1,7 @@
 /**
- * Fältdata från ViewportPin: när bottenraden flyttas (eller när skyddet mot en för liten
- * förskjutning slår till) i hemskärmsappen skickas de senaste måtten en gång, via
+ * Fältdata från ViewportPin: när bottenraden flyttas, när skyddet mot en för liten
+ * förskjutning slår till eller när raden hamnar nedanför den friska höjden ("below") skickas i
+ * hemskärmsappen de senaste måtten en gång, via
  * klientfelens väg (POST /api/klientfel → private.client_errors, message "ViewportPin: …").
  * Bara mått och händelsenamn, inget om personen. Högst en rapport per REPORT_EVERY_MS
  * (sessionStorage) och per sidladdning; databasen släpper dessutom fler än 30 per timme.

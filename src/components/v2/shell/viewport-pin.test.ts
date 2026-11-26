@@ -25,7 +25,6 @@ const browser: PinInput = {
   scale: 1,
   typing: false,
   learned: false,
-  overscroll: false,
 };
 
 /** Hemskärmsappen på ägarens iPhone: vyn 793 hög, skärmen 852 (statusraden 59 utanför). */
@@ -37,7 +36,6 @@ const app: PinInput = {
   scale: 1,
   typing: false,
   learned: true,
-  overscroll: false,
 };
 
 describe("pinShift i vanliga Safari (oförändrat)", () => {
@@ -87,11 +85,23 @@ describe("pinShift i hemskärmsappen", () => {
     expect(pinShift({ ...app, visibleTop: 59, visibleBottom: 59 + 793 })).toBe(0);
   });
 
-  it("offsetTop stor som ett tangentbord räknas, men inte under gummibandsscroll", () => {
-    expect(pinShift({ ...app, visibleTop: 200, visibleBottom: 200 + 793 })).toBe(200);
-    expect(pinShift({ ...app, visibleTop: 200, visibleBottom: 200 + 793, overscroll: true })).toBe(
-      0,
-    );
+  it("offsetTop räknas aldrig: en kvarglömd stor offsetTop med hela höjden skjuter inte ut raden", () => {
+    // 200 + 793 = 993 ligger 141 px under en 852 hög skärm.
+    expect(pinShift({ ...app, visibleTop: 200, visibleBottom: 200 + 793 })).toBe(0);
+    expect(pinShift({ ...app, visibleTop: 200, visibleBottom: 993, healthyBottom: 0 })).toBe(0);
+    // En fastnad vy med offsetTop rättas mot den inlärda höjden, inte mot offsetTop + höjd.
+    expect(
+      pinShift({ ...app, naturalBottom: 500, visibleTop: 400, visibleBottom: 400 + 500 }),
+    ).toBe(293);
+  });
+
+  it("utan inlärd höjd gäller visualViewport.height (vyn fastnad men visualViewport rätt)", () => {
+    expect(pinShift({ ...app, naturalBottom: 500, healthyBottom: 0 })).toBe(293);
+    expect(pinShift({ ...app, naturalBottom: 500, visibleBottom: 500, healthyBottom: 0 })).toBe(0);
+  });
+
+  it("den inlärda höjden är målet även när visualViewport säger mer (aldrig under skärmen)", () => {
+    expect(pinShift({ ...app, naturalBottom: 500, visibleBottom: 852 })).toBe(293);
   });
 
   it("flyttar aldrig upp och aldrig ett glapp under STUCK_MIN_GAP", () => {
@@ -162,7 +172,6 @@ function shiftFor(t: HealthyTracker, s: HealthySample) {
     scale: s.scale,
     typing: s.typing,
     learned: true,
-    overscroll: false,
   });
 }
 
@@ -264,16 +273,38 @@ describe("HealthyTracker", () => {
 });
 
 describe("ägarens iPhone: 793 hög vy, 852 hög skärm", () => {
-  it("en 852-avläsning vid återkomst skjuter inte ut raden och glöms", () => {
+  it("en 852-avläsning (hela skärmen) vid återkomst lärs aldrig in över 793", () => {
     const t = new HealthyTracker();
     expect(settle(t, owner)).toBe(793);
-    // Återkomst från bakgrunden: WebKit säger 852 överallt i två bildrutor, sedan 793 igen.
-    expect(settle(t, { ...ownerResume852, now: 1000 })).toBe(852);
-    // Raden ligger kvar i skärmens nederkant (793) trots att 852 lärts in.
+    // Återkomst från bakgrunden: WebKit säger 852 överallt i många bildrutor, sedan 793 igen.
+    for (let i = 0; i < 10; i++) t.sample({ ...ownerResume852, now: 1000 + i * 16 });
+    expect(t.get(390)).toBe(793);
+    expect(shiftFor(t, { ...owner, now: 1200 })).toBe(0);
+    // Och om man skriver direkt efteråt och vyn fastnar: rättas mot 793, inte 852.
+    expect(settle(t, { ...ownerStuck, now: 1300 })).toBe(793);
+    expect(shiftFor(t, ownerStuck)).toBe(293);
+  });
+
+  it("hela skärmen som allra första avläsning lärs in (och lärs om när vyn visar 793)", () => {
+    const t = new HealthyTracker();
+    expect(settle(t, ownerResume852)).toBe(852);
+    expect(t.sample({ ...owner, now: 100 })).toMatchObject({ healthy: 852, recheck: true });
+    expect(t.sample({ ...owner, now: 100 + RELEARN_MS })).toMatchObject({
+      healthy: 793,
+      relearned: true,
+    });
+  });
+
+  it("en för stor höjd under skärmsidan vid återkomst glöms efter RELEARN_MS", () => {
+    const t = new HealthyTracker();
+    expect(settle(t, owner)).toBe(793);
+    const resume830 = { ...owner, innerHeight: 830, vvHeight: 830, naturalBottom: 830 };
+    expect(settle(t, { ...resume830, now: 1000 })).toBe(830);
+    // Raden ligger kvar i skärmens nederkant (793) trots att 830 lärts in.
     expect(shiftFor(t, { ...owner, now: 1100 })).toBe(0);
-    expect(t.sample({ ...owner, now: 1100 })).toMatchObject({ healthy: 852, recheck: true });
+    expect(t.sample({ ...owner, now: 1100 })).toMatchObject({ healthy: 830, recheck: true });
     expect(t.sample({ ...owner, now: 1100 + RELEARN_MS - 1 })).toMatchObject({
-      healthy: 852,
+      healthy: 830,
       recheck: true,
     });
     expect(t.sample({ ...owner, now: 1100 + RELEARN_MS })).toMatchObject({
@@ -288,12 +319,30 @@ describe("ägarens iPhone: 793 hög vy, 852 hög skärm", () => {
   it("en orolig avläsning (offsetTop 59) avbryter omlärningen, klockan börjar om", () => {
     const t = new HealthyTracker();
     settle(t, owner);
-    settle(t, { ...ownerResume852, now: 1000 });
+    const resume830 = { ...owner, innerHeight: 830, vvHeight: 830, naturalBottom: 830 };
+    settle(t, { ...resume830, now: 1000 });
     t.sample({ ...owner, now: 1100 });
     t.sample({ ...owner, vvTop: 59, now: 1200 });
-    expect(t.sample({ ...owner, now: 1300 })).toMatchObject({ healthy: 852, recheck: true });
-    expect(t.sample({ ...owner, now: 1300 + RELEARN_MS - 1 })).toMatchObject({ healthy: 852 });
+    expect(t.sample({ ...owner, now: 1300 })).toMatchObject({ healthy: 830, recheck: true });
+    expect(t.sample({ ...owner, now: 1300 + RELEARN_MS - 1 })).toMatchObject({ healthy: 830 });
     expect(t.sample({ ...owner, now: 1300 + RELEARN_MS })).toMatchObject({ healthy: 793 });
+  });
+
+  it("WebKit ritar layoutvyn 852 hög: raden flyttas inte (aldrig uppåt), glappet syns negativt", () => {
+    const t = new HealthyTracker();
+    settle(t, owner);
+    settle(t, ownerResume852);
+    expect(
+      pinDecision({
+        naturalBottom: 852,
+        visibleBottom: 852,
+        visibleTop: 0,
+        healthyBottom: t.get(390),
+        scale: 1,
+        typing: false,
+        learned: true,
+      }),
+    ).toEqual({ shift: 0, gap: -59 });
   });
 
   it("tangentbordet fastnar: 793 → 500 rättas med 293 px", () => {
@@ -308,13 +357,13 @@ describe("ägarens iPhone: 793 hög vy, 852 hög skärm", () => {
     expect(shiftFor(t, owner)).toBe(0);
   });
 
-  it("kvarglömd offsetTop efter tangentbordet: lärs inte in, och 59 px flyttar inget", () => {
+  it("kvarglömd offsetTop efter tangentbordet: lärs inte in och flyttar inget (59 eller 200 px)", () => {
     const t = new HealthyTracker();
     settle(t, owner);
     expect(settle(t, { ...owner, vvTop: 59 })).toBe(793);
     expect(shiftFor(t, { ...owner, vvTop: 59 })).toBe(0);
     expect(settle(t, { ...owner, vvTop: 200 })).toBe(793);
-    expect(shiftFor(t, { ...owner, vvTop: 200 })).toBe(200);
+    expect(shiftFor(t, { ...owner, vvTop: 200 })).toBe(0);
   });
 
   it("ark öppnas och stängs (vaul): inget lärs in, raden står still", () => {
@@ -391,5 +440,133 @@ describe("looksStuck och keyboardUp", () => {
     expect(keyboardUp({ typing: true, visibleHeight: 500, fullHeight: 844 })).toBe(true);
     expect(keyboardUp({ typing: true, visibleHeight: 844, fullHeight: 844 })).toBe(false);
     expect(keyboardUp({ typing: false, visibleHeight: 500, fullHeight: 844 })).toBe(false);
+  });
+});
+
+/**
+ * Följder av riktiga iOS-händelser i hemskärmsappen (ägarens iPhone, vyn 793, skärmen 852).
+ * För varje bildruta: var hamnar radens nederkant (mätpunkten + förskjutningen)? Den får aldrig
+ * hamna under 793, och en fastnad vy ska rättas till 793.
+ */
+describe("händelseföljder i hemskärmsappen", () => {
+  type Frame = Partial<HealthySample> & { expectBottom?: number };
+  function run(frames: Frame[]) {
+    const t = new HealthyTracker();
+    const out: number[] = [];
+    frames.forEach((f, i) => {
+      const s: HealthySample = { ...owner, now: i * 50, ...f };
+      t.sample(s);
+      const shift = pinShift({
+        naturalBottom: s.naturalBottom,
+        visibleBottom: s.vvTop + s.vvHeight,
+        visibleTop: s.vvTop,
+        healthyBottom: t.get(s.innerWidth),
+        scale: s.scale,
+        typing: s.typing,
+        learned: true,
+      });
+      const bottom = s.naturalBottom + shift;
+      out.push(bottom);
+      // Aldrig under skärmens nederkant (stående: 793) på grund av förskjutningen.
+      if (shift > 0) expect(bottom).toBeLessThanOrEqual(s.innerWidth === 390 ? 793 : 390);
+      if (f.expectBottom !== undefined) expect(bottom, `bildruta ${i}`).toBe(f.expectBottom);
+    });
+    return out;
+  }
+  const full = { innerHeight: 793, vvHeight: 793, naturalBottom: 793, vvTop: 0 };
+  const stuck = { innerHeight: 457, vvHeight: 457, naturalBottom: 457, vvTop: 0 };
+  const kb = { typing: true, innerHeight: 793, vvHeight: 457, naturalBottom: 793, vvTop: 0 };
+
+  it("kallstart, sedan återkomst med en ensam 852-bildruta", () => {
+    run([
+      { ...full, expectBottom: 793 },
+      { ...full, expectBottom: 793 },
+      { innerHeight: 852, vvHeight: 852, naturalBottom: 852 },
+      { ...full, expectBottom: 793 },
+      { ...full, expectBottom: 793 },
+    ]);
+  });
+
+  it("Inköpspriser: tangentbord upp, ner och vyn fastnar; sedan loss", () => {
+    run([
+      full,
+      full,
+      { ...kb, expectBottom: 793 },
+      { ...kb, vvTop: 300, expectBottom: 793 },
+      // Tangentbordet ner, vyn fastnad (ibland med kvarglömd offsetTop).
+      { ...stuck, expectBottom: 793 },
+      { ...stuck, vvTop: 336, expectBottom: 793 },
+      { ...full, vvTop: 200, expectBottom: 793 },
+      { ...full, expectBottom: 793 },
+    ]);
+  });
+
+  it("återkomst med 852 i flera bildrutor, direkt tangentbord och fastnad vy", () => {
+    run([
+      full,
+      full,
+      { innerHeight: 852, vvHeight: 852, naturalBottom: 852 },
+      { innerHeight: 852, vvHeight: 852, naturalBottom: 852 },
+      { innerHeight: 852, vvHeight: 852, naturalBottom: 852 },
+      kb,
+      { ...stuck, expectBottom: 793 },
+    ]);
+  });
+
+  it("vaul-ark med tangentbord och systemark (notisfrågan)", () => {
+    run([
+      full,
+      full,
+      { ...full, blocked: true, expectBottom: 793 },
+      { ...kb, blocked: true, expectBottom: 793 },
+      { ...stuck, blocked: true, expectBottom: 793 },
+      { ...full, expectBottom: 793 },
+      // Notisfrågan: vyn krymper utan att någon skriver, och fastnar ibland efteråt.
+      { innerHeight: 793, vvHeight: 793, naturalBottom: 793, vvTop: 59, expectBottom: 793 },
+      { ...stuck, expectBottom: 793 },
+      { ...full, expectBottom: 793 },
+    ]);
+  });
+
+  it("gummiband i toppen och botten flyttar inget", () => {
+    run([
+      full,
+      full,
+      { ...full, vvTop: -40, expectBottom: 793 },
+      { ...full, vvTop: 60, expectBottom: 793 },
+    ]);
+  });
+
+  it("vridning åt båda hållen", () => {
+    const land = {
+      innerWidth: 852,
+      vvWidth: 852,
+      innerHeight: 390,
+      vvHeight: 390,
+      naturalBottom: 390,
+    };
+    run([
+      full,
+      full,
+      // Mitt i vridningen: bredden ändrad men inte visualViewport, sedan stående höjd kvar.
+      { ...land, vvWidth: 390, innerHeight: 793, naturalBottom: 793 },
+      { ...land, innerHeight: 793, vvHeight: 793, naturalBottom: 793 },
+      { ...land, expectBottom: 390 },
+      { ...land, expectBottom: 390 },
+      { ...full, vvWidth: 852 },
+      { ...full, expectBottom: 793 },
+      { ...full, expectBottom: 793 },
+      { ...stuck, expectBottom: 793 },
+    ]);
+  });
+});
+
+describe("vanliga Safari: verktygsraden", () => {
+  it("följer visualViewport när verktygsraden fälls ihop och ut", () => {
+    // Verktygsraden ute: vyn 664; ihopfälld: 739. Layoutvyn hänger med (inget glapp).
+    expect(pinShift({ ...browser, naturalBottom: 664, visibleBottom: 664 })).toBe(0);
+    expect(pinShift({ ...browser, naturalBottom: 739, visibleBottom: 739 })).toBe(0);
+    // Layoutvyn släpar efter en bildruta: raden följer den synliga vyn.
+    expect(pinShift({ ...browser, naturalBottom: 695, visibleBottom: 739 })).toBe(44);
   });
 });

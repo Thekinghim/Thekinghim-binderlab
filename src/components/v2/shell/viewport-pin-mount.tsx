@@ -26,7 +26,8 @@ const DEBUG_KEY = "binderlab:vp-debug";
  *
  * Felsökning på telefonen: öppna valfri sida med `?vp=1` (av: `?vp=0`) så visas måtten uppe
  * till vänster. I hemskärmsappen skickas dessutom de senaste måtten till klientfelen när raden
- * flyttas eller när skyddet mot en för liten förskjutning slår till (viewport-pin-telemetry.ts).
+ * flyttas, när skyddet mot en för liten förskjutning slår till eller när raden hamnar nedanför
+ * den friska höjden (viewport-pin-telemetry.ts).
  */
 export function ViewportPin() {
   useEffect(() => {
@@ -69,11 +70,15 @@ export function ViewportPin() {
     let lastGap = 0;
     // Ett glapp i storlek med statusraden (som skyddet inte flyttar): värt att se i fältdatan.
     const smallGap = (gap: number) => gap >= 20 && gap < STUCK_MIN_GAP;
+    // Det fasta innehållet hamnar nedanför den friska höjden (WebKit ritar raden under
+    // skärmkanten, något vi aldrig rättar uppåt): just det felet vill vi se i fältdatan.
+    const below = (gap: number) => gap <= -20;
+    const minor = (reason: string) => reason === "small gap" || reason === "below";
 
     const report = (reason: string, stillTrue: () => boolean = () => true) => {
       if (!useHealthy || Date.now() < quietUntil) return;
-      // En väntande "small gap" får ge plats åt en flyttad rad eller en omlärd höjd.
-      if (reportTimer && (pendingReason !== "small gap" || reason === "small gap")) return;
+      // En väntande "small gap"/"below" får ge plats åt en flyttad rad eller en omlärd höjd.
+      if (reportTimer && (!minor(pendingReason) || minor(reason))) return;
       window.clearTimeout(reportTimer);
       pendingReason = reason;
       // Vänta lite så att raderna också visar vad som hände efteråt.
@@ -99,8 +104,6 @@ export function ViewportPin() {
           document.querySelector("[data-vaul-drawer]") !== null ||
           document.body.style.position === "fixed";
         const scrollY = window.scrollY;
-        const maxScroll = root.scrollHeight - window.innerHeight;
-        const overscroll = scrollY < 0 || scrollY > maxScroll + 1;
         let healthyBottom = 0;
         let relearned = false;
         if (useHealthy) {
@@ -142,7 +145,6 @@ export function ViewportPin() {
           scale: vv.scale,
           typing,
           learned: useHealthy,
-          overscroll,
         });
         const next = decision.shift;
         if (useHealthy) {
@@ -163,6 +165,7 @@ export function ViewportPin() {
           if (next > 0 && shift === 0) report("shift");
           else if (relearned) report("relearn");
           else if (smallGap(lastGap)) report("small gap", () => smallGap(lastGap));
+          else if (healthyBottom > 0 && below(lastGap)) report("below", () => below(lastGap));
         }
         if (next !== shift) {
           shift = next;

@@ -34,7 +34,7 @@ export type PinInput = {
   naturalBottom: number;
   /** visualViewport.offsetTop + visualViewport.height. */
   visibleBottom: number;
-  /** visualViewport.offsetTop (används bara i hemskärmsappen). */
+  /** visualViewport.offsetTop (hemskärmsappen räknar bort den, se pinDecision). */
   visibleTop: number;
   /** Den friska höjden för den här bredden (hemskärmsapp på telefon), annars 0. */
   healthyBottom: number;
@@ -47,8 +47,6 @@ export type PinInput = {
    * när glappet är stort som ett tangentbord. Annars (vanliga Safari) gäller visualViewport.
    */
   learned: boolean;
-  /** Sidan gummibandsscrollar förbi kanten: offsetTop säger då inget om en fastnad vy. */
-  overscroll: boolean;
 };
 
 export type PinDecision = {
@@ -65,11 +63,9 @@ export function pinShift(i: PinInput): number {
 
 /**
  * Som pinShift, men säger också hur stort glappet var. Hemskärmsappen: målet är den friska
- * höjden (eller visualViewport.height om den är högre). offsetTop räknas bara med när den är
- * stor som ett tangentbord och sidan inte gummibandsscrollar: en liten offsetTop (t.ex. 59 px
- * efter återkomst eller ett gummiband) sköt annars raden under skärmen. Ett glapp mindre än
- * STUCK_MIN_GAP flyttas aldrig, så en för stor inlärd höjd (852 i stället för 793) kan inte
- * trycka ut raden.
+ * höjden, och bara när den inte är inlärd ännu visualViewport.height (utan offsetTop). Ett
+ * glapp mindre än STUCK_MIN_GAP flyttas aldrig, så en för stor inlärd höjd (852 i stället för
+ * 793) kan inte trycka ut raden.
  */
 export function pinDecision(i: PinInput): PinDecision {
   if (i.naturalBottom <= 0 || i.typing || Math.abs(i.scale - 1) > 0.01) return { shift: 0, gap: 0 };
@@ -81,10 +77,11 @@ export function pinDecision(i: PinInput): PinDecision {
     if (Math.abs(shift) < 2 || Math.abs(shift) > target * 0.6) return { shift: 0, gap: shift };
     return { shift, gap: shift };
   }
+  // Den inlärda höjden är facit: vyn slutar aldrig nedanför den. offsetTop räknas aldrig: en
+  // kvarglömd offsetTop med hela höjden kvar (59 px efter återkomst, 200 px efter ett formulär)
+  // sköt annars raden lika långt under skärmen, och den går inte att skilja från en äkta.
   const top = Number.isFinite(i.visibleTop) ? i.visibleTop : 0;
-  const offsetCounts = !i.overscroll && top >= STUCK_MIN_GAP;
-  const visible = offsetCounts ? i.visibleBottom : i.visibleBottom - top;
-  const target = Math.max(visible, i.healthyBottom);
+  const target = i.healthyBottom > 0 ? i.healthyBottom : i.visibleBottom - top;
   const gap = Math.round(target - i.naturalBottom);
   if (gap < STUCK_MIN_GAP || gap > target * 0.6) return { shift: 0, gap };
   return { shift: gap, gap };
@@ -234,7 +231,14 @@ export class HealthyTracker {
     } else {
       this.calm = null;
     }
-    const r = healthyReading(s);
+    let r = healthyReading(s);
+    // Stående hemskärmsapp: statusraden hör inte till vyn, så en höjd lika stor som hela skärmen
+    // (852 på en vy som är 793) är en felavläsning vid återkomst. Den får aldrig höja en redan
+    // inlärd höjd; bara den allra första avläsningen (en telefon där det stämmer) lärs in.
+    const side = screenHeightFor(s.innerWidth, s.screenMin, s.screenMax);
+    if (r !== null && this.value > 0 && side > 0 && side === s.screenMax && r >= side - 1) {
+      r = null;
+    }
     if (r === null || r <= this.value) {
       this.pending = null;
       return { healthy: this.value, confirm: false, recheck, relearned };
