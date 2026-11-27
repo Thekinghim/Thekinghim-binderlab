@@ -200,9 +200,11 @@ export function suggestFill(
   const n = Math.max(0, now);
   const batch = mysteryBatch(batchSize);
   if (batch !== null) {
-    // En hel omgång när facket är tomt och lagret har en hel omgång, annars inget.
+    // En hel omgång när facket är tomt och lagret har en hel omgång, annars inget. Aldrig
+    // fler än facket rymmer.
     const q = mysteryRefillQty(n, batch);
-    return q > 0 && Math.max(0, home) >= q ? q : 0;
+    if (q <= 0 || Math.max(0, home) < q) return 0;
+    return capacity !== null ? Math.min(q, Math.max(0, capacity - n)) : q;
   }
   const target =
     capacity !== null
@@ -213,27 +215,43 @@ export function suggestFill(
   return Math.max(0, Math.min(target - n, Math.max(0, home)));
 }
 
-/** Största antal som går att välja för en rad (stegarens tak). */
+/**
+ * Största antal som går att välja för en rad (stegarens tak): det som får plats, kapacitet −
+ * nu, också för mystery packs (Awish tar aldrig emot fler än facket rymmer). Ett fullt fack
+ * ger 0. Utan känd kapacitet 500 (inget tak).
+ */
 export function maxFill(
   row: Pick<FillRow, "now" | "capacity"> & Partial<Pick<FillRow, "batchSize">>,
 ): number {
   if (row.capacity === null) return 500;
-  const base = Math.max(0, row.capacity - row.now, 1);
-  // Mystery pack: en hel omgång ska alltid gå att välja (varning om den inte får plats).
-  const batch = mysteryBatch(row.batchSize);
-  return batch !== null ? Math.max(base, batch) : base;
+  return Math.max(0, row.capacity - Math.max(0, row.now));
+}
+
+/**
+ * Raden under stegaren när taket nås och facket redan har pack: "Facket rymmer 14. 1 ligger
+ * redan i." Annars null (okänd kapacitet, tomt fack, eller antalet under taket).
+ */
+export function slotHoldsNote(
+  row: Pick<FillRow, "now" | "capacity"> & Partial<Pick<FillRow, "batchSize">>,
+  value: number,
+  t: Messages = sv,
+): string | null {
+  if (row.capacity === null || row.now <= 0) return null;
+  if (value < maxFill(row)) return null;
+  return t.fill.slotHolds(row.capacity, Math.max(0, row.now));
 }
 
 /**
  * Antalet "Fyll allt" sätter för en rad: kapacitet − nu; mystery packs en hel omgång när
- * facket är tomt, annars 0; utan känd kapacitet behålls det valda antalet.
+ * facket är tomt (högst det facket rymmer), annars 0; utan känd kapacitet behålls det valda
+ * antalet.
  */
 export function fillAllQty(
   row: Pick<FillRow, "now" | "capacity"> & Partial<Pick<FillRow, "batchSize">>,
   current: number,
 ): number {
   const batch = mysteryBatch(row.batchSize);
-  if (batch !== null) return mysteryRefillQty(row.now, batch);
+  if (batch !== null) return Math.min(mysteryRefillQty(row.now, batch), maxFill(row));
   if (row.capacity === null) return current;
   return Math.max(0, row.capacity - row.now);
 }

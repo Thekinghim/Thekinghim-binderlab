@@ -96,4 +96,23 @@ describe("planAwishPush: mystery packs", () => {
     );
     expect(fits.notSent).toEqual([]);
   });
+
+  it("räknat av en person efter påfyllningen: antalet skickas, också i ett fack som inte är tomt", () => {
+    // BL-001 A2: Awish har 1, ägaren räknade 14 i Binderlab ("Räkna om").
+    const plan = planAwishPush(
+      [{ titleName: "Mystery Pack Plus", quantity: 14, mystery: true, counted: true }],
+      [slot({ id: 2, currentInventory: 1, capacity: 14 })],
+    );
+    expect(plan.updates.map((u) => [u.productId, u.previousInventory, u.currentInventory])).toEqual(
+      [[2, 1, 14]],
+    );
+    expect(plan.notSent).toEqual([]);
+    // Fler än facket rymmer: det som får plats, resten sägs (kapaciteten, inte mystery-regeln).
+    const over = planAwishPush(
+      [{ titleName: "Mystery Pack Plus", quantity: 15, mystery: true, counted: true }],
+      [slot({ id: 2, currentInventory: 1, capacity: 14 })],
+    );
+    expect(over.updates.map((u) => u.currentInventory)).toEqual([14]);
+    expect(over.notSent).toEqual([{ titleName: "Mystery Pack Plus", left: 1, reason: "capacity" }]);
+  });
 });

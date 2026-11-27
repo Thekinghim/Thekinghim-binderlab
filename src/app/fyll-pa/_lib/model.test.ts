@@ -13,6 +13,7 @@ import {
   needsRestartReminder,
   machineOrder,
   maxFill,
+  slotHoldsNote,
   needLabel,
   packsWanted,
   pairKey,
@@ -83,10 +84,29 @@ describe("splitRefill", () => {
 });
 
 describe("maxFill", () => {
-  it("upp till kapaciteten, minst 1; utan kapacitet 500", () => {
+  it("upp till det som får plats (fullt fack 0); utan kapacitet 500", () => {
     expect(maxFill({ now: 3, capacity: 12 })).toBe(9);
-    expect(maxFill({ now: 12, capacity: 12 })).toBe(1);
+    expect(maxFill({ now: 12, capacity: 12 })).toBe(0);
+    expect(maxFill({ now: 15, capacity: 14 })).toBe(0);
     expect(maxFill({ now: 0, capacity: null })).toBe(500);
+  });
+});
+
+describe("slotHoldsNote", () => {
+  it("vid taket säger raden vad facket rymmer och vad som redan ligger i", () => {
+    expect(slotHoldsNote({ now: 1, capacity: 14 }, 13)).toBe("Facket rymmer 14. 1 ligger redan i.");
+    expect(slotHoldsNote({ now: 14, capacity: 14 }, 0)).toBe(
+      "Facket rymmer 14. 14 ligger redan i.",
+    );
+    expect(slotHoldsNote({ now: 1, capacity: 14, batchSize: 14 }, 13)).toBe(
+      "Facket rymmer 14. 1 ligger redan i.",
+    );
+  });
+
+  it("under taket, i ett tomt fack eller utan känd kapacitet: ingen rad", () => {
+    expect(slotHoldsNote({ now: 1, capacity: 14 }, 12)).toBeNull();
+    expect(slotHoldsNote({ now: 0, capacity: 14 }, 14)).toBeNull();
+    expect(slotHoldsNote({ now: 3, capacity: null }, 500)).toBeNull();
   });
 });
 

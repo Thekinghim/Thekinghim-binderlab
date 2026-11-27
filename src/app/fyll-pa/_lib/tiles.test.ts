@@ -145,10 +145,12 @@ describe("tryck på en ruta", () => {
 });
 
 describe("stegaren i arket", () => {
-  it("går från 0 till taket (kapacitet − nu, minst 1; mystery minst en omgång)", () => {
+  it("går från 0 till taket (kapacitet − nu, också för mystery; fullt fack 0)", () => {
     expect(stepperBounds({ now: 4, capacity: 10 })).toEqual({ min: 0, max: 6 });
-    expect(stepperBounds({ now: 10, capacity: 10 })).toEqual({ min: 0, max: 1 });
-    expect(stepperBounds({ now: 0, capacity: 10, batchSize: 14 })).toEqual({ min: 0, max: 14 });
+    expect(stepperBounds({ now: 10, capacity: 10 })).toEqual({ min: 0, max: 0 });
+    expect(stepperBounds({ now: 0, capacity: 10, batchSize: 14 })).toEqual({ min: 0, max: 10 });
+    // BL-001 A2: 1 Mystery Pack i ett fack som rymmer 14 → högst 13 (inte en hel omgång).
+    expect(stepperBounds({ now: 1, capacity: 14, batchSize: 14 })).toEqual({ min: 0, max: 13 });
     expect(stepperBounds({ now: 0, capacity: null })).toEqual({ min: 0, max: 500 });
   });
 

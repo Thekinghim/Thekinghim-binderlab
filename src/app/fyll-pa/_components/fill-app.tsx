@@ -48,6 +48,7 @@ import {
   maxFill,
   mysteryNote,
   mysteryShortAtHome,
+  slotHoldsNote,
   afterPacking,
   packAsks,
   qtyAfterCount,
@@ -184,10 +185,31 @@ function awishText(t: Messages, status: AwishPushStatus): string {
               : t.fill.awishNotSentFull(l.left, l.titleName, l.machine),
           )
           .join("; "),
+        status.slots ?? 0,
       );
     default:
       return t.fill.awishError;
   }
+}
+
+/**
+ * Varför Awish inte tog emot allt, per automat (automatens id → texten på raden "Awish fick
+ * inte antalen för BL-001"): vilken titel, hur många, och vad man gör.
+ */
+function notSentWhy(t: Messages, status: AwishPushStatus | undefined): Record<string, string> {
+  const by: Record<string, string[]> = {};
+  for (const l of status?.notSent ?? []) {
+    // Ett sparat besked från en äldre version saknar automatens id.
+    if (!l.machineId) continue;
+    const text =
+      l.reason === "mystery_not_empty"
+        ? t.fill.awishNotSentMystery(l.left, l.titleName, l.machine)
+        : t.fill.awishNotSentFull(l.left, l.titleName, l.machine);
+    (by[l.machineId] ??= []).push(text);
+  }
+  return Object.fromEntries(
+    Object.entries(by).map(([id, lines]) => [id, t.r2.t1.fill.awishPendingWhy(lines.join("; "))]),
+  );
 }
 
 /** Prick för Awish-läsningen: pulserar när läsningen är färsk. */
@@ -335,11 +357,32 @@ export function FillApp({
     return out;
   }, [data, pushLocal]);
 
+  // Varför Awish inte tog emot allt, per automat (från senaste beskedet: Klar, Försök igen
+  // eller försöket i bakgrunden), så att raden på automaten säger vad och vad man gör.
+  const [pushWhy, setPushWhy] = useState<Readonly<Record<string, string>>>({});
+  const noteWhy = useCallback(
+    (awish: AwishPushStatus | undefined, cleared: readonly string[] = []) => {
+      const why = notSentWhy(t, awish);
+      setPushWhy((prev) => {
+        const next: Record<string, string> = { ...prev };
+        for (const id of cleared) delete next[id];
+        // Väntar av ett annat skäl nu (fel, tiden slut): den gamla förklaringen gäller inte.
+        for (const id of awish?.failedMachineIds ?? []) if (!(id in why)) delete next[id];
+        return { ...next, ...why };
+      });
+    },
+    [t],
+  );
+
   /** Beskedet om Awish efter att påfyllningar sparats (Klar, eller kön i bakgrunden). */
   const reportAwish = useCallback(
     (awish: AwishPushStatus | undefined, machineIds: readonly string[] = []) => {
       if (!awish) return;
       if (awish.failedMachineIds?.length) notePush(awish.failedMachineIds, []);
+      noteWhy(
+        awish,
+        machineIds.filter((id) => !(awish.failedMachineIds ?? []).includes(id)),
+      );
       // Butiken stänger av strömmen på natten: skärmen visar nya antal först efter omstart.
       const restart = needsRestartReminder(awish, machineIds, data.restartAfterPush);
       if (awish.state !== "sent") {
@@ -359,7 +402,7 @@ export function FillApp({
         });
       }
     },
-    [notePush, toast, t, data.restartAfterPush],
+    [notePush, noteWhy, toast, t, data.restartAfterPush],
   );
 
   const q = useRefillQueue(scope, {
@@ -407,6 +450,11 @@ export function FillApp({
           asked.filter((id) => still.has(id)),
           asked.filter((id) => !still.has(id)),
         );
+        // Också i bakgrunden: raden på automaten säger varför Awish inte tog emot allt.
+        noteWhy(
+          res.data.awish,
+          asked.filter((id) => !still.has(id)),
+        );
         // Awish fick antalen nu (också vid ett försök i bakgrunden): butiken stänger av
         // strömmen på natten, så skärmen visar dem först efter en omstart.
         const restart = needsRestartReminder(
@@ -429,6 +477,14 @@ export function FillApp({
             description: t.fill.restartScreen,
             tone: "neutral",
           });
+        } else if (!quiet && res.data.awish?.kind === "notSent") {
+          // Awish svarade men tog inte emot allt: säg vad (titel, antal, vad man gör), inte
+          // "Försök igen om en stund" (ett nytt försök ger samma svar).
+          toast({
+            title: t.fill.sendToAwish,
+            description: awishText(t, res.data.awish),
+            tone: "neutral",
+          });
         } else if (!quiet) {
           toast({
             title: t.r2.t1.fill.retryFailedTitle,
@@ -442,7 +498,7 @@ export function FillApp({
         setRetrying(null);
       }
     },
-    [notePush, router, toast, t, data.restartAfterPush],
+    [notePush, noteWhy, router, toast, t, data.restartAfterPush],
   );
   // Appen försöker igen själv: strax efter att sidan öppnats och sedan var femte minut,
   // så länge någon automat väntar och det finns nät.
@@ -462,10 +518,16 @@ export function FillApp({
       window.clearInterval(timer);
     };
   }, [q.online, retryPush, waitingPush]);
+  /** Förklaringarna för flera väntande automater på en rad, annars undefined. */
+  const whyOf = (machines: readonly { id: string }[]): string | undefined => {
+    const lines = machines.map((m) => pushWhy[m.id]).filter((x): x is string => !!x);
+    return lines.length > 0 ? lines.join(" ") : undefined;
+  };
   const pendingLine = (m: { id: string; code: string }) =>
     pendingPush.has(m.id) ? (
       <AwishPendingLine
         title={t.r2.t1.fill.awishPending(m.code)}
+        detail={pushWhy[m.id]}
         busy={retrying === m.id || retrying === "alla"}
         disabled={!q.online}
         onRetry={() => void retryPush(m.id)}
@@ -995,6 +1057,7 @@ export function FillApp({
               .map((m) => m.code)
               .sort((a, b) => a.localeCompare(b, "sv", { numeric: true })),
           )}
+          detail={whyOf(waitingShown)}
           busy={retrying !== null}
           disabled={!q.online}
           onRetry={() => void retryPush(null)}
@@ -1233,6 +1296,7 @@ export function FillApp({
               .map((m) => m.code)
               .sort((a, b) => a.localeCompare(b, "sv", { numeric: true })),
           )}
+          detail={whyOf(waitingShown)}
           busy={retrying !== null}
           disabled={!q.online}
           onRetry={() => void retryPush(null)}
@@ -1311,12 +1375,15 @@ export function FillApp({
  */
 function AwishPendingLine({
   title,
+  detail,
   busy,
   disabled,
   onRetry,
 }: {
   /** "Awish fick inte antalen för BL-003." */
   title: string;
+  /** Varför (titel, antal, vad man gör); annars den vanliga raden "Appen försöker igen själv". */
+  detail?: string | undefined;
   busy: boolean;
   disabled: boolean;
   onRetry: () => void;
@@ -1329,7 +1396,7 @@ function AwishPendingLine({
     >
       <p className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
         <span className="text-md font-medium text-signal-fg">{title}</span>
-        <span className="text-sm text-muted">{t.r2.t1.fill.awishPendingHint}</span>
+        <span className="text-sm text-muted">{detail ?? t.r2.t1.fill.awishPendingHint}</span>
       </p>
       <button
         type="button"
@@ -2296,6 +2363,8 @@ function TitleRow({
   const short = value > Math.max(0, r.home);
   const fullNote = fullFastNote(r, t);
   const mystery = mysteryNote(r, value, t);
+  // Taket är nått: säg varför det inte går att välja fler.
+  const holds = slotHoldsNote(r, value, t);
   // Tomt mystery-fack men ingen hel omgång färdig i lagret: säg det och erbjud en omgång.
   const shortBatch = hasSource && value === 0 ? mysteryShortAtHome(r) : null;
   return (
@@ -2336,6 +2405,11 @@ function TitleRow({
       </div>
       {fullNote ? (
         <p className="-mt-1 text-sm text-muted">{`${fullNote} · ${t.fill.fullFastTip}`}</p>
+      ) : null}
+      {holds ? (
+        <p className="-mt-1 text-sm text-muted" role="note">
+          {holds}
+        </p>
       ) : null}
       {mystery ? (
         <p className="-mt-1 text-sm text-muted" role="note">

@@ -58,8 +58,10 @@ månadsrapporterna tar tid och att det inte går att säga om en ny plats lönar
   fram. En order som **återbetalas i Awish efter importen**, eller en **betald order som inte går att läsa**,
   blir en punkt i Att göra som står kvar tills den är hanterad ("Hantera ordern" öppnar ett nytt ärende i
   Inkorg med ordern och beloppet ifyllt). **Fyll på** säger när Awish inte tog emot allt ("Awish tog inte
-  emot allt: 4 Mystery pack fick inte plats i BL-002. Räkna om facket i Awish, eller ångra de packen här."),
-  och fel i de schemalagda stegen för avräkningar och kampanjer blir larm.
+  emot allt: 4 Mystery pack fick inte plats i BL-002. Räkna om facket här, så skickar appen rätt antal."),
+  också på raden på automaten och efter **Försök igen**. Stegaren går aldrig över det facket rymmer
+  ("Facket rymmer 14. 1 ligger redan i."). Räknar man om ett fack i Fyll på skickar nästa försök det räknade
+  antalet, också för ett mystery-fack som inte är tomt (en räkning är ingen påfyllning), och fel i de schemalagda stegen för avräkningar och kampanjer blir larm.
 - **Pengar som inte kan driva:** en månad **stängs av sig själv** när dess sista avräkning är betald eller
   bokföringen är markerad som skickad. Därefter går priser, avtal, placeringar, lager, testköp, återbetalningar och
   kortavgift inte att ändra i månaden, och beskedet säger varför. Ägaren kan **öppna månaden igen** med en anledning

@@ -74,10 +74,11 @@ describe("summariseAwishPush", () => {
     const out = summariseAwishPush(done(partly), ["a"]);
     expect(out).toMatchObject({ state: "partial", kind: "notSent" });
     expect(out?.message).toBe(
-      "Sparat i Binderlab. Awish tog inte emot allt: 4 Mystery pack fick inte plats i BL-002. Räkna om facket i Awish, eller ångra de packen här.",
+      "Sparat i Binderlab. 1 fack skickades till Awish. Awish tog inte emot allt: 4 Mystery pack fick inte plats i BL-002. Räkna om facket här, så skickar appen rätt antal.",
     );
-    // Automaten väntar: raden på den ligger kvar i Fyll på.
+    // Automaten väntar: raden på den ligger kvar i Fyll på, med vad som inte gick.
     expect(out?.failedMachineIds).toEqual(["a"]);
+    expect(out?.notSent?.[0]).toMatchObject({ machineId: "a", machine: "BL-002" });
   });
 
   it("mystery-facket var inte tomt: inget skickades, och det sägs (förr: 'Awish hade redan rätt antal')", () => {
@@ -87,7 +88,7 @@ describe("summariseAwishPush", () => {
       notSent: [{ titleName: "Mystery pack", left: 14, reason: "mystery_not_empty" }],
     };
     expect(summariseAwishPush(done(held), ["a"])?.message).toBe(
-      "Sparat i Binderlab. Awish tog inte emot allt: 14 Mystery pack skickades inte till BL-002: mystery-facket är inte tomt. Räkna om facket i Awish, eller ångra de packen här.",
+      "Sparat i Binderlab. Awish tog inte emot allt: 14 Mystery pack skickades inte till BL-002: mystery-facket är inte tomt. Räkna om facket här, så skickar appen rätt antal.",
     );
   });
 

@@ -29,6 +29,8 @@ export interface AwishPushStatus {
 
 /** En rad i beskedet om vad Awish inte tog emot. */
 export interface NotSentLine {
+  /** Automatens id (för raden på automaten i Fyll på). */
+  readonly machineId: string;
   readonly machine: string;
   readonly titleName: string;
   readonly left: number;
@@ -42,9 +44,16 @@ export function notSentText(l: NotSentLine): string {
     : `${l.left} ${l.titleName} fick inte plats i ${l.machine}`;
 }
 
-/** Hela beskedet på svenska. */
-export function notSentMessage(lines: readonly NotSentLine[]): string {
-  return `Sparat i Binderlab. Awish tog inte emot allt: ${lines.map(notSentText).join("; ")}. Räkna om facket i Awish, eller ångra de packen här.`;
+/** Vad man gör: räknar man facket i Fyll på skickar nästa försök det räknade antalet. */
+export const NOT_SENT_ADVICE = "Räkna om facket här, så skickar appen rätt antal.";
+
+/**
+ * Hela beskedet på svenska. `slots` = fack som Awish fick (de andra facken i samma
+ * påfyllning gick fram, och det ska synas).
+ */
+export function notSentMessage(lines: readonly NotSentLine[], slots = 0): string {
+  const sent = slots > 0 ? `${slots} fack skickades till Awish. ` : "";
+  return `Sparat i Binderlab. ${sent}Awish tog inte emot allt: ${lines.map(notSentText).join("; ")}. ${NOT_SENT_ADVICE}`;
 }
 
 /**
@@ -89,6 +98,7 @@ export function summariseAwishPush(
   // Awish tog inte emot allt: säg vad, i stället för "Sparat och skickat".
   const notSent: NotSentLine[] = own.flatMap((m) =>
     (m.notSent ?? []).map((n) => ({
+      machineId: m.machineId,
       machine: m.machineCode?.trim() || "automaten",
       titleName: n.titleName,
       left: n.left,
@@ -100,7 +110,7 @@ export function summariseAwishPush(
       state: "partial",
       kind: "notSent",
       slots,
-      message: notSentMessage(notSent),
+      message: notSentMessage(notSent, slots),
       notSent,
       failedMachineIds: failed,
       ...(updated.length > 0 ? { updatedMachineIds: updated } : {}),

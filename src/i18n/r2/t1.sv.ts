@@ -56,6 +56,9 @@ export const t1 = {
         ? `Awish fick inte antalen för ${machines.slice(0, -1).join(", ")} och ${machines.at(-1) ?? ""}.`
         : `Awish fick inte antalen för ${f.int(machines.length)} automater.`,
     awishPendingHint: "Påfyllningen är sparad här. Appen försöker igen själv.",
+    /** Varför Awish inte tog emot allt (raden på automaten): vad och vad man gör. */
+    awishPendingWhy: (lines: string) =>
+      `${lines}. Räkna om facket här, så skickar appen rätt antal.`,
     retry: "Försök igen",
     retrying: "Skickar…",
     retrySent: (slots: number) => `Skickat till Awish (${f.int(slots)} fack).`,

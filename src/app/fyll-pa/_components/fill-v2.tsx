@@ -21,6 +21,7 @@ import {
   fullFastNote,
   mysteryNote,
   mysteryShortAtHome,
+  slotHoldsNote,
   type FillMachine,
   type FillRow,
   type PackAsk,
@@ -493,6 +494,8 @@ export function SlotSheet({
   const short = value > Math.max(0, r.home);
   const fullNote = fullFastNote(r, t);
   const mystery = mysteryNote(r, value, t);
+  // Taket är nått: säg varför det inte går att välja fler.
+  const holds = slotHoldsNote(r, value, t);
   const shortBatch = hasSource && value === 0 ? mysteryShortAtHome(r) : null;
   const cap = r.capacity;
   const v = tileView(r, value);
@@ -537,6 +540,7 @@ export function SlotSheet({
               </small>
             ) : null}
             {fullNote ? <small>{`${fullNote} · ${t.fill.fullFastTip}`}</small> : null}
+            {holds ? <small role="note">{holds}</small> : null}
             {mystery ? <small role="note">{mystery}</small> : null}
             {shortBatch !== null ? (
               <small className="o" role="note">
