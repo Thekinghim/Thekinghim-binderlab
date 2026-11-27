@@ -311,6 +311,7 @@ export const en: Messages = {
     fullFast: (days) => `Full · lasts about ${f.int(days)}${NBSP}${days === 1 ? "day" : "days"}`,
     fullFastTip: "Sells fast – give it one more slot",
     mysteryOnlyEmpty: "The mystery slot is only refilled when it is empty",
+    slotHolds: (capacity, now) => `The slot holds ${f.int(capacity)}. ${f.int(now)} already in.`,
     mysteryCapacity: (capacity, batch) => `The slot holds ${capacity}, a batch is ${batch}`,
     sourceHasPacks: (place) => `${placeName(place)} has packs`,
     sourceMissing: (place) => `${placeName(place)} has no packs`,
@@ -327,8 +328,8 @@ export const en: Messages = {
     awishAlreadyRight: "Saved. The machine already had the right count.",
     awishNotLinked: "Saved. The machine itself is not connected yet.",
     awishPartial: () => "Saved. The machine itself was not updated. The app tries again by itself.",
-    awishNotSent: (lines) =>
-      `Saved. The machine did not take everything: ${lines}. Tell your manager, or undo those packs here.`,
+    awishNotSent: (lines, slots = 0) =>
+      `Saved. ${slots > 0 ? `${f.int(slots)} ${slots === 1 ? "slot was" : "slots were"} updated. ` : ""}The machine did not take everything: ${lines}. Count the slot again here and the app sends the right number.`,
     awishNotSentFull: (left, title, machine) => `${left} ${title} did not fit in ${machine}`,
     awishNotSentMystery: (left, title, machine) =>
       `${left} ${title} were not sent to ${machine}: the mystery slot is not empty`,

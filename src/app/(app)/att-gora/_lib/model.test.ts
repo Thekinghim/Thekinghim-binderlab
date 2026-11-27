@@ -676,11 +676,11 @@ describe("påfyllningsrutan använder Fyll på-logiken", () => {
       sources: { ...sources, stock: { [PLACE_A]: { [T2]: 13 } } },
     });
     expect(short.suggested).toBe(0);
-    // Ett litet fack: en hel omgång går ändå att välja (som i Fyll på).
+    // Ett litet fack: aldrig fler än det rymmer (som i Fyll på; Awish tar inte emot fler).
     expect(
       action(mystery(0), { titles, capacities: [{ machineId: M1, titleId: T2, capacity: 10 }] })
         .max,
-    ).toBe(14);
+    ).toBe(10);
   });
 
   it("taket är det som får plats i facket: ett större antal nekas", () => {

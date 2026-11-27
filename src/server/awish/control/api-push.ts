@@ -31,8 +31,8 @@ import { AwishApiError } from "../grpc-client";
 import { recordPathResult } from "../health";
 import { AwishNotConnectedError } from "../marketing";
 import type { AwishWebProduct } from "../web-client";
-import type { MachinePushResult, WebPushResult } from "../web-service";
-import { planAwishPush, type MachineTitleQuantity } from "../web-push";
+import { machineTitleStock, type MachinePushResult, type WebPushResult } from "../web-service";
+import { planAwishPush } from "../web-push";
 import { apiFor, awishMachineIdFor, controlContextFor, type ControlDeps } from "./connect";
 import { AwishUnknownOutcomeError, controlErrorMessage, isSignError } from "./errors";
 import { versionNeedsAck } from "./guard";
@@ -72,35 +72,6 @@ export function productToWebProduct(p: AwishProductDetail): AwishWebProduct {
     capacity,
     channelName: p.channel?.name ? p.channel.name : null,
   };
-}
-
-/** Binderlabs antal per titel i automaten (samma fråga som webbvägen). */
-async function machineTitleStock(
-  db: Db,
-  organizationId: string,
-  machineId: string,
-): Promise<MachineTitleQuantity[]> {
-  const rows = await query<{ title_name: string; quantity: number; mystery: boolean | null }>(
-    db,
-    sql`select t.name as title_name, l.quantity,
-               (t.own_product and exists (
-                  select 1 from public.mystery_recipes r
-                  where r.organization_id = t.organization_id and r.title_id = t.id)) as mystery
-        from public.stock_locations loc
-        join public.stock_levels l
-          on l.organization_id = loc.organization_id and l.location_id = loc.id
-        join public.titles t on t.organization_id = l.organization_id and t.id = l.title_id
-        where loc.organization_id = ${organizationId}::uuid
-          and loc.machine_id = ${machineId}::uuid
-          and loc.kind = 'machine'
-          and l.last_counted_at is not null
-          and t.archived_at is null`,
-  );
-  return rows.map((r) => ({
-    titleName: r.title_name,
-    quantity: Number(r.quantity),
-    ...(r.mystery === true ? { mystery: true } : {}),
-  }));
 }
 
 async function machineCodes(

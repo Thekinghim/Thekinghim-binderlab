@@ -292,7 +292,7 @@ describe("Awish webb-inloggning och push", () => {
     ]);
     expect(fake.state.products["1001"]?.find((p) => p.id === 11)?.currentInventory).toBe(10);
     expect(summariseAwishPush(result, [machineId])?.message).toBe(
-      "Sparat i Binderlab. Awish tog inte emot allt: 4 30th Celebration fick inte plats i BL-001. Räkna om facket i Awish, eller ångra de packen här.",
+      "Sparat i Binderlab. 1 fack skickades till Awish. Awish tog inte emot allt: 4 30th Celebration fick inte plats i BL-001. Räkna om facket här, så skickar appen rätt antal.",
     );
     // Automaten väntar på Awish (samma läge som en sändning som inte gick fram).
     expect([...(await pendingAwishPushes(db(), orgId, [machineId])).keys()]).toEqual([machineId]);

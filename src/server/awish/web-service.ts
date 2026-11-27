@@ -224,8 +224,17 @@ export async function awishMachineId(
   return raw ? Number(raw) : null;
 }
 
-/** Binderlabs antal per titel i automaten nu (bara titlar med räknat saldo). */
-async function machineTitleStock(
+/**
+ * Binderlabs antal per titel i automaten nu (bara titlar med räknat saldo). Används av båda
+ * vägarna till Awish (webbpanelen och API:t), så att de skickar samma antal.
+ *
+ * `counted`: en person har räknat titeln i automaten ("Räkna om") efter den senaste
+ * påfyllningen och den senaste läsningen från Awish, och efter att Awish senast fick
+ * automatens antal. Då är antalet det som faktiskt ligger i
+ * facket, inte en påfyllning, och skickas också för ett mystery pack vars fack inte är tomt
+ * (se planAwishPush).
+ */
+export async function machineTitleStock(
   db: Db,
   organizationId: string,
   machineId: string,
@@ -236,7 +245,25 @@ async function machineTitleStock(
              -- Mystery pack (egen produkt med innehåll): fylls bara i tomma fack.
              (t.own_product and exists (
                 select 1 from public.mystery_recipes r
-                where r.organization_id = t.organization_id and r.title_id = t.id)) as mystery
+                where r.organization_id = t.organization_id and r.title_id = t.id)) as mystery,
+             -- Senaste påfyllningen, flytten in eller räkningen: en räkning av en person
+             -- (ingen källa 'awish') efter allt annat, och gjord efter att Awish senast fick
+             -- automatens antal ('awish_push' eller 'awish_push_cleared'). En räkning som
+             -- redan har skickats, eller som Awish redan stämde med, gäller inte längre: annars
+             -- skulle en gammal räkning för alltid låta pushen höja ett mystery-fack med pack
+             -- kvar (t.ex. ett pack som sålts i Awish men inte lästs in än).
+             coalesce((
+               select e.kind = 'count' and e.source is distinct from 'awish'
+                      and e.created_at > coalesce((
+                        select max(a.created_at) from public.automation_log a
+                        where a.organization_id = loc.organization_id
+                          and a.machine_id = loc.machine_id
+                          and a.kind in ('awish_push', 'awish_push_cleared')), '-infinity')
+               from public.stock_events e
+               where e.organization_id = loc.organization_id and e.location_id = loc.id
+                 and e.title_id = l.title_id and e.kind in ('count', 'refill', 'transfer_in')
+               order by e.occurred_at desc, e.seq desc, e.created_at desc
+               limit 1), false) as counted
       from public.stock_locations loc
       join public.stock_levels l
         on l.organization_id = loc.organization_id and l.location_id = loc.id
@@ -246,11 +273,17 @@ async function machineTitleStock(
         and loc.kind = 'machine'
         and l.last_counted_at is not null
         and t.archived_at is null`),
-  ) as Array<{ title_name: string; quantity: number; mystery: boolean | null }>;
+  ) as Array<{
+    title_name: string;
+    quantity: number;
+    mystery: boolean | null;
+    counted: boolean | null;
+  }>;
   return rows.map((r) => ({
     titleName: r.title_name,
     quantity: Number(r.quantity),
     ...(r.mystery === true ? { mystery: true } : {}),
+    ...(r.mystery === true && r.counted === true ? { counted: true } : {}),
   }));
 }
 

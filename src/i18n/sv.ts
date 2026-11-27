@@ -179,6 +179,9 @@ export const sv = {
     fullFast: (days: number) => `Fullt · räcker ~${f.int(days)}${NBSP}d`,
     fullFastTip: "Säljer fort – ge den ett fack till",
     mysteryOnlyEmpty: "Mystery-facket fylls bara på när det är tomt",
+    /** Stegarens tak: "Facket rymmer 14. 1 ligger redan i." */
+    slotHolds: (capacity: number, now: number) =>
+      `Facket rymmer ${f.int(capacity)}. ${f.int(now)} ligger redan i.`,
     mysteryCapacity: (capacity: number, batch: number) =>
       `Facket rymmer ${capacity}, en omgång är ${batch}${NBSP}st`,
     sourceHasPacks: (place: string) => `${place} har pack`,
@@ -199,8 +202,8 @@ export const sv = {
     awishPartial: (error: string) =>
       `Sparat i Binderlab. Till Awish gick det inte: ${error.trim().replace(/[.!\s]+$/, "")}. Appen försöker igen själv.`,
     /** Awish tog inte emot allt: `lines` säger vad ("4 Mystery pack fick inte plats i BL-002"). */
-    awishNotSent: (lines: string) =>
-      `Sparat i Binderlab. Awish tog inte emot allt: ${lines}. Räkna om facket i Awish, eller ångra de packen här.`,
+    awishNotSent: (lines: string, slots = 0) =>
+      `Sparat i Binderlab. ${slots > 0 ? `${f.int(slots)} fack skickades till Awish. ` : ""}Awish tog inte emot allt: ${lines}. Räkna om facket här, så skickar appen rätt antal.`,
     awishNotSentFull: (left: number, title: string, machine: string) =>
       `${left} ${title} fick inte plats i ${machine}`,
     awishNotSentMystery: (left: number, title: string, machine: string) =>

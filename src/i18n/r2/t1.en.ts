@@ -39,6 +39,8 @@ export const t1: R2T1 = {
         ? `${machines.slice(0, -1).join(", ")} and ${machines.at(-1) ?? ""} did not get the new numbers.`
         : `${f.int(machines.length)} machines did not get the new numbers.`,
     awishPendingHint: "The refill is saved here. The app tries again by itself.",
+    awishPendingWhy: (lines) =>
+      `${lines}. Count the slot again here and the app sends the right number.`,
     retry: "Try again",
     retrying: "Sending…",
     retrySent: (slots) =>

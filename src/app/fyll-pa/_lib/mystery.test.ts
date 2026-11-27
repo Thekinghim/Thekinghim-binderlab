@@ -101,8 +101,12 @@ describe("Fyll på: mystery packs", () => {
     expect(fillAllQty({ now: 3, capacity: null }, 4)).toBe(4);
   });
 
-  it("stegaren: en hel omgång går alltid att välja, även när facket rymmer färre", () => {
-    expect(maxFill({ now: 0, capacity: 10, batchSize: 14 })).toBe(14);
+  it("stegaren: aldrig fler än facket rymmer, också när en omgång är större", () => {
+    expect(maxFill({ now: 0, capacity: 10, batchSize: 14 })).toBe(10);
+    expect(maxFill({ now: 1, capacity: 14, batchSize: 14 })).toBe(13);
+    expect(fillAllQty({ now: 0, capacity: 10, batchSize: 14 }, 0)).toBe(10);
+    // Förslaget också: en hel omgång hemma, men facket rymmer 10.
+    expect(suggestFill(0, 10, 28, 0, 14)).toBe(10);
     expect(maxFill({ now: 0, capacity: 20, batchSize: 14 })).toBe(20);
     expect(maxFill({ now: 0, capacity: 10 })).toBe(10);
   });

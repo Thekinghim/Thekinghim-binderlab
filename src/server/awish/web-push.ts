@@ -19,7 +19,8 @@
  *  - Mystery packs (`mystery`): ett mystery-fack fylls bara på när det är tomt (oddsen gäller
  *    per omgång). Packen läggs bara i fack med 0 pack i Awish; ett fack som har pack kvar
  *    rörs inte. Finns inget tomt fack hålls påfyllningen tillbaka och titeln rapporteras i
- *    `mysteryHeldBack`.
+ *    `mysteryHeldBack`. Har en person räknat facket efter påfyllningen (`counted`) skickas
+ *    det räknade antalet som för en vanlig titel: en räkning säger vad som ligger i facket.
  *  - Det som inte fick plats rapporteras alltid (`notSent`): pack som facken inte rymmer,
  *    eller mystery packs utan tomt fack. Anroparen säger det till den som fyllde på och låter
  *    automaten vänta, så att packen inte försvinner ur saldot vid nästa läsning av facken.
@@ -35,6 +36,12 @@ export interface MachineTitleQuantity {
   readonly quantity: number;
   /** Mystery pack: fylls bara i tomma fack. */
   readonly mystery?: boolean;
+  /**
+   * En person har räknat titeln i automaten efter den senaste påfyllningen ("Räkna om"):
+   * antalet är det som ligger i facket. Ett mystery pack skickas då som en vanlig titel (upp
+   * till fackets kapacitet), även när facket inte är tomt.
+   */
+  readonly counted?: boolean;
 }
 
 /** Ett fack som ska sättas till ett nytt antal i Awish. */
@@ -117,7 +124,7 @@ export function planAwishPush(
     let toAdd = wanted - inAwish;
     if (toAdd <= 0) continue;
 
-    if (want.mystery) {
+    if (want.mystery && !want.counted) {
       // Bara tomma fack; ett mystery-fack med pack kvar fylls inte på.
       const empty = slots.filter((x) => Math.max(0, x.currentInventory) === 0);
       for (let i = 0; i < empty.length && toAdd > 0; i += 1) {
