@@ -251,6 +251,50 @@ describe("BL-001: mystery-facket A2 som inte var tomt", () => {
   });
 });
 
+describe("räkningen gäller en gång", () => {
+  it("Awish nere vid försöket: automaten väntar kvar, och räkningen skickas när Awish svarar", async () => {
+    await event("Mystery Pack", "refill", 14, 3);
+    await pushMachinesToAwish(orgId, [machineId], deps());
+    await event("Mystery Pack", "count", 14, 1);
+    // Awish svarar 503 på allt under försöket (klienten provar igen inom tiden).
+    fake.state.failNext = 1_000;
+    const down = await retryPendingAwishPushes(orgId, [machineId], {
+      ...deps(),
+      sleep: async () => {},
+      deadlineAt: Date.now() + 2_000,
+    });
+    expect(down.pending).toEqual([machineId]);
+    expect((await logKinds()).at(-1)).toBe("awish_push_failed");
+    expect(slot(12).currentInventory).toBe(1);
+    expect(summariseAwishPush(down.push!)?.kind).not.toBe("alreadyRight");
+
+    fake.state.failNext = 0;
+    const up = await retryPendingAwishPushes(orgId, [machineId], deps());
+    expect(up.pending).toEqual([]);
+    expect(slot(12).currentInventory).toBe(14);
+  });
+
+  it("en räkning som redan skickats höjer inte mystery-facket igen vid nästa sändning", async () => {
+    await event("Mystery Pack", "refill", 14, 4);
+    await pushMachinesToAwish(orgId, [machineId], deps());
+    await event("Mystery Pack", "count", 14, 3);
+    await retryPendingAwishPushes(orgId, [machineId], deps());
+    expect(slot(12).currentInventory).toBe(14);
+    expect(await pending()).toEqual([]);
+
+    // Ett pack säljs i Awish men ordern är inte inläst än (Binderlab har kvar 14). En annan
+    // titel fylls på och automaten skickas: mystery-facket har pack kvar och rörs inte.
+    slot(12).currentInventory = 13;
+    await event("30th Celebration", "refill", 6, 1);
+    const r = await pushMachinesToAwish(orgId, [machineId], deps());
+    expect(slot(11).currentInventory).toBe(14);
+    expect(slot(12).currentInventory).toBe(13);
+    expect(r.machines[0]?.notSent).toEqual([
+      { titleName: "Mystery Pack", left: 1, reason: "mystery_not_empty" },
+    ]);
+  });
+});
+
 describe("vanligt fack med fler pack än det rymmer", () => {
   it("det som får plats skickas, resten sägs, och efter Räkna om slutar automaten vänta", async () => {
     // Surging Sparks: 1 i facket, +14 → 15, facket rymmer 14. 30th Celebration +6 går fram.

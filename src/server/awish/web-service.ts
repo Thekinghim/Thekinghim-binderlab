@@ -229,7 +229,8 @@ export async function awishMachineId(
  * vägarna till Awish (webbpanelen och API:t), så att de skickar samma antal.
  *
  * `counted`: en person har räknat titeln i automaten ("Räkna om") efter den senaste
- * påfyllningen och den senaste läsningen från Awish. Då är antalet det som faktiskt ligger i
+ * påfyllningen och den senaste läsningen från Awish, och efter att Awish senast fick
+ * automatens antal. Då är antalet det som faktiskt ligger i
  * facket, inte en påfyllning, och skickas också för ett mystery pack vars fack inte är tomt
  * (se planAwishPush).
  */
@@ -245,13 +246,22 @@ export async function machineTitleStock(
              (t.own_product and exists (
                 select 1 from public.mystery_recipes r
                 where r.organization_id = t.organization_id and r.title_id = t.id)) as mystery,
-             -- Senaste påfyllningen eller räkningen: en räkning av en person (ingen källa
-             -- 'awish') efter allt annat.
+             -- Senaste påfyllningen, flytten in eller räkningen: en räkning av en person
+             -- (ingen källa 'awish') efter allt annat, och gjord efter att Awish senast fick
+             -- automatens antal ('awish_push' eller 'awish_push_cleared'). En räkning som
+             -- redan har skickats, eller som Awish redan stämde med, gäller inte längre: annars
+             -- skulle en gammal räkning för alltid låta pushen höja ett mystery-fack med pack
+             -- kvar (t.ex. ett pack som sålts i Awish men inte lästs in än).
              coalesce((
                select e.kind = 'count' and e.source is distinct from 'awish'
+                      and e.created_at > coalesce((
+                        select max(a.created_at) from public.automation_log a
+                        where a.organization_id = loc.organization_id
+                          and a.machine_id = loc.machine_id
+                          and a.kind in ('awish_push', 'awish_push_cleared')), '-infinity')
                from public.stock_events e
                where e.organization_id = loc.organization_id and e.location_id = loc.id
-                 and e.title_id = l.title_id and e.kind in ('count', 'refill')
+                 and e.title_id = l.title_id and e.kind in ('count', 'refill', 'transfer_in')
                order by e.occurred_at desc, e.seq desc, e.created_at desc
                limit 1), false) as counted
       from public.stock_locations loc
